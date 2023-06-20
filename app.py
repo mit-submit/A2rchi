@@ -18,9 +18,6 @@ def set_openai_api_key(api_key: str):
     """
     if api_key:
         os.environ["OPENAI_API_KEY"] = api_key
-        #chain = get_chain(vectorstore)
-        #os.environ["OPENAI_API_KEY"] = ""
-        #return chain
 
 class ChatWrapper:
 
@@ -39,9 +36,6 @@ class ChatWrapper:
             if self.chain is None:
                 history.append((inp, "Please paste your OpenAI key to use"))
                 return history, history
-            # Set OpenAI key
-            #import openai
-            #openai.api_key = api_key
             # Run chain and append input.
             result = self.chain({"question": inp, "chat_history": history})
             output = result["answer"] + "\n\n <b>Source:</b>  " + result['source_documents'][0].metadata['source'].split('/')[-1] + " pg. " + str(result['source_documents'][0].metadata['page'])
@@ -68,7 +62,6 @@ with block:
             placeholder="Ask questions concerning help with submit",
             lines=1,
         )
-        submit = gr.Button(value="Send", variant="secondary").style(full_width=False)
 
     gr.Examples(
         examples=[
@@ -82,9 +75,6 @@ with block:
     state = gr.State()
     agent_state = gr.State()
 
-    submit.click(fn = chat, inputs = [message, state, agent_state], outputs=[chatbot, state])
     message.submit(fn = chat, inputs = [message, state, agent_state], outputs=[chatbot, state])
-    #submit.click(chat, inputs=[message, state, agent_state], outputs=[chatbot, state])
-    #message.submit(chat, inputs=[message, state, agent_state], outputs=[chatbot, state])
 
 block.launch(debug=True, share=True)

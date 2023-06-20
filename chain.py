@@ -15,7 +15,6 @@ import os
 class Chain() :
 
     def __init__(self):
-        os.environ["OPENAI_API_KEY"] = "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"
 
         htmls = os.listdir('data/submit_website')
         github_pages = os.listdir('data/github')
