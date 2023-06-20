@@ -19,16 +19,7 @@ class Chain() :
         htmls = os.listdir('data/submit_website')
         github_pages = os.listdir('data/github')
 
-        urls = ["https://submit.mit.edu",
-            "https://submit.mit.edu/?page_id=6",
-            "https://submit.mit.edu/?page_id=7",
-            "https://submit.mit.edu/?page_id=8",
-            "https://submit.mit.edu/?page_id=73"]
-
-        #book_loaders= [PyPDFLoader("data/markus_books_pdf/" + file_name) for file_name in books]
-        #transcript_loaders = [PyPDFLoader("data/markus_videos_pdf/" + file_name) for file_name in transcripts]
         html_loaders = [BSHTMLLoader("data/submit_website/" + file_name) for file_name in htmls]
-        #web_loaders = [WebBaseLoader(url) for url in urls]
 
         github_docs = []
         for github_page in github_pages:
