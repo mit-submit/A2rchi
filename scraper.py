@@ -29,16 +29,20 @@ for web_title in urls.keys():
 def scrape_rst_files(url):
     response = requests.get(url)
     if response.status_code == 200:
-        file_links = re.findall(r'<a[^>]*href="([^"]+\.rst)"[^>]*>', response.text)
+        #file_links = re.findall(r'<a[^>]*href="([^"]+\.rst)"[^>]*>', response.text)    
+        file_links = re.findall(r'/[^"]+\.rst', response.text)
+        print("response is: ", response.text)
+        print("file links are: ", file_links)
         for file_url in file_links:
-            file_url = ("https://raw.githubusercontent.com" + file_url).replace('/blob', '')
+            file_url = ("https://raw.githubusercontent.com/mit-submit/submit-users-guide/main/source" + file_url).replace('/blob', '')
+            print("file url is ", file_url)
             file_response = requests.get(file_url)
             if file_response.status_code == 200:
                 file_content = file_response.text
                 file_name = file_url.rsplit("/", 1)[-1]
                 
                 #write the file:
-                with open('data/github/'+file_name[:-3]+".txt", 'w') as file:
+                with open('data/github/'+file_name[:-4]+".txt", 'w') as file:
                     file.write(file_content)
             else:
                 print(f"Error downloading {file_url}: {file_response.status_code}")
