@@ -20,22 +20,25 @@ class Chain() :
         github_pages = os.listdir('data/github')
 
         html_loaders = [BSHTMLLoader("data/submit_website/" + file_name) for file_name in htmls]
+        github_loaders = [TextLoader("data/github/" + file_name) for file_name in github_pages]
 
-        github_docs = []
-        for github_page in github_pages:
-            with open('data/github/' +  github_page, 'r') as file:
-                github_docs.append(Document(page_content=file.read()))
+        #github_docs = []
+        #for github_page in github_pages:
+        #    with open('data/github/' +  github_page, 'r') as file:
+        #        github_docs.append(Document(page_content=file.read(), metadata =  {"source": "user guide chapter: " + github_page[:-3]}))
         
-        loaders = html_loaders
+        loaders = html_loaders + github_loaders
         docs = []
-        for github_doc in github_docs:
-            docs.extend(github_doc)
+        #for github_doc in github_docs:
+        #    docs.extend(github_doc)
         for loader in loaders:
             docs.extend(loader.load())
 
+        #print("docs are: ", docs)
+
 
         text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        documents = text_splitter.split_documents(github_docs)
+        documents = text_splitter.split_documents(docs)
 
         embeddings = OpenAIEmbeddings()
         vectorstore = Chroma.from_documents(documents, embeddings)
