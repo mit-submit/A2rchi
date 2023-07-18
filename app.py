@@ -38,7 +38,7 @@ class ChatWrapper:
                 return history, history
             # Run chain and append input.
             result = self.chain({"question": inp, "chat_history": history})
-            output = result["answer"] + "\n\n <b>Source:</b>  " + result['source_documents'][0].metadata['source'].split('/')[-1] + " pg. " + str(result['source_documents'][0].metadata['page'])
+            output = result["answer"] + "\n\n <b>Source:</b>  " + result['source_documents'][0].metadata['source'].split('/')[-1] #+ " pg. " + str(result['source_documents'][0].metadata['page'])
             history.append((inp, output))
         except Exception as e:
             raise e
