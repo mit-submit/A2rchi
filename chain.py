@@ -2,7 +2,10 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.llms import OpenAI
+
 from langchain.chains import ConversationalRetrievalChain
+from conversational_retrieval_and_subMIT_help.base import ConversationalRetrievalAndSubMITChain
+
 from langchain.document_loaders import TextLoader
 from langchain.document_loaders import PyPDFLoader
 from langchain.memory import ConversationBufferMemory
@@ -45,4 +48,4 @@ class Chain() :
 
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        self.chain = ConversationalRetrievalChain.from_llm(OpenAI(temperature=.04), vectorstore.as_retriever(), return_source_documents=True)
+        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(OpenAI(temperature=.04), vectorstore.as_retriever(), return_source_documents=True)
