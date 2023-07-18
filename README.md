@@ -52,8 +52,4 @@ in your conda environment. You will see a public temporary link pop up which you
 
 ### Deploying the app
 
-<<<<<<< HEAD
 Coming soon!
-=======
-Coming soon!
->>>>>>> 01cd057ac6c1daf889b86ab9861cff7afaeab070
