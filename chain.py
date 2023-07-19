@@ -44,8 +44,8 @@ class Chain() :
         documents = text_splitter.split_documents(docs)
 
         embeddings = OpenAIEmbeddings()
-        vectorstore = Chroma.from_documents(documents, embeddings)
+        self.vectorstore = Chroma.from_documents(documents, embeddings)
 
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(OpenAI(temperature=.04), vectorstore.as_retriever(), return_source_documents=True)
+        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(OpenAI(temperature=.04), self.vectorstore.as_retriever(), return_source_documents=True)
