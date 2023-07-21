@@ -9,6 +9,8 @@ from threading import Lock
 
 from chain import Chain
 
+QUERY_LIMIT = 1000 #max number of queries 
+
 # TODO: not urgent, but there is a much better way to do this rather than a large dictionary, 
 source_dict = {
     "backup.txt": "https://submit.mit.edu/submit-users-guide/backup.html",
@@ -55,6 +57,7 @@ class ChatWrapper:
         m = Chain()
         self.chain = m.chain
         self.vectorstore = m.vectorstore
+        self.number_of_queries = 0
     def __call__(self, inp: str, history: Optional[Tuple[str, str]], discussion_id: Optional[int]):
         """Execute the chat functionality."""
         self.lock.acquire()
@@ -64,7 +67,13 @@ class ChatWrapper:
             discussion_id = discussion_id or np.random.randint(100000, 999999)
 
             # Run chain to get result
-            result = self.chain({"question": inp, "chat_history": history})
+            if self.number_of_queries < QUERY_LIMIT:
+                result = self.chain({"question": inp, "chat_history": history})
+            else: 
+                history.append((inp, "Sorry, our service is currently down due to exceptional demand. Please come again later."))
+                return history, history, discussion_id
+            self.number_of_queries += 1
+            print("number of queires is: ", self.number_of_queries)
 
             # Get similarity score to see how close the input is to the source
             # Low score means very close (it's a distance between embedding vectors approximated
