@@ -2,6 +2,8 @@ import os
 from typing import Optional, Tuple
 
 import gradio as gr
+import numpy as np
+import json
 import pickle
 from threading import Lock
 
@@ -23,6 +25,27 @@ source_dict = {
     "about.html": "https://submit.mit.edu/?page_id=6",
 }
 
+# TODO: not urgent, but there is a much better way to do this
+def update_or_add_discussion(json_file, discussion_id, discussion_contents):
+    # Step 1: Read the existing JSON data from the file
+    try:
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = {}  # If the file doesn't exist or is empty, initialize an empty dictionary
+
+    discussion_id = str(discussion_id)
+    # Step 2: Check if the discussion ID exists in the JSON data
+    if discussion_id in data.keys():
+        # Step 3: Update the discussion contents for an existing discussion ID
+        data[discussion_id] = discussion_contents
+    else:
+        # Step 4: Add a new discussion if the discussion ID doesn't exist
+        data[discussion_id] = discussion_contents
+
+    # Step 5: Write the updated JSON data back to the file
+    with open(json_file, 'w') as f:
+        json.dump(data, f)
 
 class ChatWrapper:
     """Wrapper which holds functionality for the chatbot"""
@@ -32,11 +55,13 @@ class ChatWrapper:
         m = Chain()
         self.chain = m.chain
         self.vectorstore = m.vectorstore
-    def __call__(self, inp: str, history: Optional[Tuple[str, str]]):
+    def __call__(self, inp: str, history: Optional[Tuple[str, str]], discussion_id: Optional[int]):
         """Execute the chat functionality."""
         self.lock.acquire()
         try:
             history = history or []
+
+            discussion_id = discussion_id or np.random.randint(100000, 999999)
 
             # Run chain to get result
             result = self.chain({"question": inp, "chat_history": history})
@@ -54,18 +79,22 @@ class ChatWrapper:
                 output = result["answer"] + "\n\n [<b>Click here to read more</b>](" +  source_dict[source] + ")"
             else:
                 output = result["answer"]
+
             history.append((inp, output))
+
+            update_or_add_discussion("conversations.json", discussion_id, history)
 
         except Exception as e:
             raise e
         finally:
             self.lock.release()
-        return history, history
+        return history, history, discussion_id
 
-def clear_last(history, chatbot):
+def clear_last(history, chatbot, id_state):
     """Clears the most recent response so that it may be regenerated"""
     chatbot[-1][1] = None
-    return history[:-1], chatbot
+    id_state = None
+    return history[:-1], chatbot, id_state
 
 chat = ChatWrapper()
 
@@ -77,6 +106,7 @@ with block:
 
     chatbot = gr.Chatbot([[None, introduction]]).style(height=500)
     state = gr.State()
+    id_state = gr.State(None)
 
     with gr.Row():
         with gr.Column(scale=0.85):
@@ -100,10 +130,10 @@ with block:
         inputs=message,
     )
 
-    clear.click(lambda: [None, None, ""], inputs=None, outputs=[chatbot, state, message])
+    clear.click(lambda: [None, None, "", None], inputs=None, outputs=[chatbot, state, message, id_state])
 
-    regenerate.click(fn = clear_last, inputs=[state, chatbot], outputs=[state, chatbot]).then(fn = chat, inputs = [message, state], outputs=[chatbot, state])
+    regenerate.click(fn = clear_last, inputs=[state, chatbot, id_state], outputs=[state, chatbot, id_state]).then(fn = chat, inputs = [message, state, id_state], outputs=[chatbot, state, id_state])
 
-    message.submit(fn = chat, inputs = [message, state], outputs=[chatbot, state])
+    message.submit(fn = chat, inputs = [message, state, id_state], outputs=[chatbot, state, id_state])
 
 block.launch(debug=True, share=True)
