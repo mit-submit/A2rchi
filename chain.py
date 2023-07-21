@@ -49,4 +49,4 @@ class Chain() :
 
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(ChatOpenAI(temperature=.04, model_name="gpt-4"), self.vectorstore.as_retriever(), return_source_documents=True)
+        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(ChatOpenAI(model_name="gpt-4", temperature= 1), self.vectorstore.as_retriever(), return_source_documents=True)
