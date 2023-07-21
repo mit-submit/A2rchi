@@ -1,2 +1,5 @@
 *log
 key.py
+*.txt
+*.html
+__pycache__
