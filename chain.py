@@ -2,6 +2,7 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
 
 from langchain.chains import ConversationalRetrievalChain
 from conversational_retrieval_and_subMIT_help.base import ConversationalRetrievalAndSubMITChain
@@ -48,4 +49,4 @@ class Chain() :
 
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(OpenAI(temperature=.04), self.vectorstore.as_retriever(), return_source_documents=True)
+        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(ChatOpenAI(temperature=.04, model_name="gpt-4"), self.vectorstore.as_retriever(), return_source_documents=True)
