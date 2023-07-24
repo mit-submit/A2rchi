@@ -1,0 +1,4 @@
+export CLEO_URL="https://myserver.domain"
+export CLEO_USER='myuser'
+export CLEO_PW='my-password'
+export CLEO_PROJECT='my-project'
