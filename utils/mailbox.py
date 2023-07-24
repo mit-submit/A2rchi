@@ -106,7 +106,7 @@ class Mailbox:
             except UnicodeDecodeError:
                 handle_error("UnicodeDecodeError: encountered.",msg,charset)
             except AttributeError:
-                 handle_error("AttributeError: encountered" ,msg,charset)
+                handle_error("AttributeError: encountered" ,msg,charset)
     
         return body, body_html
     
