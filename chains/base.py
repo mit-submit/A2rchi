@@ -27,7 +27,7 @@ from langchain.base_language import BaseLanguageModel
 from langchain.vectorstores.base import VectorStore
 
 from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
-from conversational_retrieval_and_subMIT_help.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
+from chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 
 # Depending on the memory type and configuration, the chat history format may differ.
 # This needs to be consolidated.
@@ -55,7 +55,7 @@ def _get_chat_history(chat_history: List[CHAT_TURN_TYPE]) -> str:
             )
     return buffer
 
-class ConversationalRetrievalAndSubMITChain(BaseConversationalRetrievalChain):
+class BaseSubMITChain(BaseConversationalRetrievalChain):
     """Chain for chatting with an index, specific for submit"""
 
     retriever: BaseRetriever

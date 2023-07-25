@@ -7,7 +7,7 @@ import json
 import pickle
 from threading import Lock
 
-from chain import Chain
+from chains.chain import Chain
 
 QUERY_LIMIT = 1000 #max number of queries 
 
@@ -203,6 +203,3 @@ class Chat_UI:
             message.submit(fn = self.chat, inputs = [message, state, id_state], outputs=[chatbot, state, id_state])
 
         self.block.launch(debug=_debug, share=_share)
-
-chat_ui = Chat_UI()
-chat_ui.launch()

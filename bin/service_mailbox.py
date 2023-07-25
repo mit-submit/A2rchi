@@ -1,7 +1,7 @@
 #!/bin/python
 import os
-import cleo
-import mailbox
+from interfaces import cleo
+from utils import mailbox
 
 cleo = cleo.Cleo('Cleo_Helpdesk')
 

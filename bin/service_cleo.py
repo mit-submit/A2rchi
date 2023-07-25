@@ -1,6 +1,6 @@
 #!/bin/python
 import os
-import cleo
+from interfaces import cleo
 
 cleo = cleo.Cleo('Cleo_Helpdesk')
 

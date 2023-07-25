@@ -5,7 +5,7 @@ from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 
 from langchain.chains import ConversationalRetrievalChain
-from conversational_retrieval_and_subMIT_help.base import ConversationalRetrievalAndSubMITChain
+from chains.base import BaseSubMITChain as BaseChain
 
 from langchain.document_loaders import TextLoader
 from langchain.document_loaders import PyPDFLoader
@@ -44,7 +44,7 @@ class Chain() :
 
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        self.chain = ConversationalRetrievalAndSubMITChain.from_llm(ChatOpenAI(model_name="gpt-4", temperature= 1), self.vectorstore.as_retriever(), return_source_documents=True)
+        self.chain = BaseChain.from_llm(ChatOpenAI(model_name="gpt-4", temperature= 1), self.vectorstore.as_retriever(), return_source_documents=True)
 
     def __call__(self, history):
         """
