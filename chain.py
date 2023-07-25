@@ -19,27 +19,22 @@ import os
 class Chain() :
 
     def __init__(self):
+        """
+        Gets all the relavent files from the data directory and converts them
+        into a format that the chain can use. Then, it creates the chain using 
+        those documents.
+        """
 
         htmls = os.listdir('data/submit_website')
         github_pages = os.listdir('data/github')
 
         html_loaders = [BSHTMLLoader("data/submit_website/" + file_name) for file_name in htmls]
         github_loaders = [TextLoader("data/github/" + file_name) for file_name in github_pages]
-
-        #github_docs = []
-        #for github_page in github_pages:
-        #    with open('data/github/' +  github_page, 'r') as file:
-        #        github_docs.append(Document(page_content=file.read(), metadata =  {"source": "user guide chapter: " + github_page[:-3]}))
         
         loaders = html_loaders + github_loaders
         docs = []
-        #for github_doc in github_docs:
-        #    docs.extend(github_doc)
         for loader in loaders:
             docs.extend(loader.load())
-
-        #print("docs are: ", docs)
-
 
         text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
         documents = text_splitter.split_documents(docs)
@@ -50,3 +45,26 @@ class Chain() :
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
         self.chain = ConversationalRetrievalAndSubMITChain.from_llm(ChatOpenAI(model_name="gpt-4", temperature= 1), self.vectorstore.as_retriever(), return_source_documents=True)
+
+    def __call__(self, history):
+        """
+        Call for the chain to answer a question
+
+        Input: a history which is formatted as a list of 2-tuples, where the first element
+        of the tuple is the author and the second element of the tuple is text that that 
+        author wrote.
+
+        Output: a dictionary containing the answer and some meta data. 
+        """
+
+        #seperate out the history into past interaction and current question input
+        question = history[-1][1]
+        if history is not None:
+            prev_history = history[:-1]
+        else:
+            prev_history = None
+
+        #make the request to the chain 
+        return self.chain({"question": question, "chat_history": prev_history})
+
+
