@@ -1,8 +1,12 @@
 import os,re,sys
 import datetime
-import sender
+from utils import sender
 from redminelib import Redmine
-from standalone import run
+#from standalone import run
+
+import numpy as np ##TODO: remove this
+
+from chains.chain import Chain
 
 a2rchi_pattern = '-- A2rchi --'
 new_status_id = 1        # (or 1 this is after first work)
@@ -11,6 +15,46 @@ feedback_status_id = 4   # feedback
 resolved_status_id = 3   # resolved
 normal_priority_id = 2   # normal priority
 support_tracker_id = 3   # tracker id for 'Support'
+
+class CleoAIWrapper:
+    """
+    Wrapper which holds functionality for the cleobot. Way of interaction
+    between cleo and A2rchi core.
+    """
+
+    def __init__(self):
+        self.chain = Chain()
+        self.number_of_queries = 0 #TODO: finish installing this safegaurd.
+
+    def __call__(self, history):
+        
+        reformatted_history = []
+        for entry in history:
+            if "ISSUE_ID:" in entry[1]:
+                role = "Expert"
+            else:
+                role = "A2rchi"
+            message = CleoAIWrapper.get_substring_between(entry[1],"\n\nRe:","\r\nOn ")
+            reformatted_history.append((role,message))
+        reformatted_history[0] = ("Expert", reformatted_history[0][1])
+        reformatted_history[-1] = ("User", reformatted_history[-1][1])
+        return self.chain(reformatted_history)["answer"]
+
+    @staticmethod
+    def get_substring_between(text, start_word, end_word):
+        """
+        Small helper function. Return everything (not including) between the 
+        start_word and the end_word if start_word and end_word exist. Otherwise
+        it does nothing
+        """
+        start_index = text.find(start_word)
+        end_index = text.find(end_word)
+
+        if start_index != -1 and end_index != -1 and start_index < end_index:
+            return text[start_index + len(start_word):end_index].strip()
+        else:
+            return text
+
 
 class Cleo:
     'A class to describe the cleo redmine system.'
@@ -24,6 +68,7 @@ class Cleo:
         self.smtp = sender.Sender()
         self.user = None
         self.project = None
+        self.ai_wrapper = CleoAIWrapper()
         
         # make sure to open redmine access
         if self._verify:
@@ -42,8 +87,8 @@ class Cleo:
         """
         Extract a tuple of author and notes for this ticket
         """
-        history = []
         issue = self.redmine.issue.get(issue_id)
+        history = [("User:", "<b>" + issue.subject + "</b> \n" + issue.description )]
         for record in issue.journals:
             user = self.redmine.user.get(record.user.id)
             note = record.notes
@@ -98,7 +143,7 @@ class Cleo:
                     if record.notes != "":
                         history += f"\n next entry: {record.notes}"                    
                 print("History input: ",history)
-                answer = run(history,api_key=os.getenv('OPEN_AI_KEY'))
+                answer = self.ai_wrapper(self.get_issue_history(issue.id))
                 self.add_note_to_issue(issue.id,answer)
                 print("A2rchi's response:\n",answer)
                 self.inprogress_issue(issue.id)                        
