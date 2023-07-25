@@ -23,7 +23,7 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.schema import BaseRetriever
 from langchain.schema import Document
 from langchain.base_language import BaseLanguageModel
-from langchain.schema import BaseMessage
+#from langchain.schema import BaseMessage
 from langchain.vectorstores.base import VectorStore
 
 from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
@@ -31,37 +31,41 @@ from conversational_retrieval_and_subMIT_help.prompts import CONDENSE_QUESTION_P
 
 # Depending on the memory type and configuration, the chat history format may differ.
 # This needs to be consolidated.
-CHAT_TURN_TYPE = Union[Tuple[str, str], BaseMessage]
+CHAT_TURN_TYPE = Tuple[str, str]
 
 
-_ROLE_MAP = {"human": "Human: ", "ai": "Assistant: "}
+#_ROLE_MAP = {"human": "Human: ", "ai": "Assistant: "}
+ROLES = {"User", "A2rchi", "Expert"}
 
 
 def _get_chat_history(chat_history: List[CHAT_TURN_TYPE]) -> str:
     buffer = ""
-    for dialogue_turn in chat_history:
-        if isinstance(dialogue_turn, BaseMessage):
-            role_prefix = _ROLE_MAP.get(dialogue_turn.type, f"{dialogue_turn.type}: ")
-            buffer += f"\n{role_prefix}{dialogue_turn.content}"
-        elif isinstance(dialogue_turn, tuple):
-            human = "Human: " + dialogue_turn[0]
-            ai = "Assistant: " + dialogue_turn[1]
-            buffer += "\n" + "\n".join([human, ai])
+    for dialogue in chat_history:
+        if isinstance(dialogue, tuple) and dialogue[0] in ROLES:
+            identity = dialogue[0]
+            message = dialogue[1]
+            buffer += identity + ": " + message + "\n"
         else:
             raise ValueError(
-                f"Unsupported chat history format: {type(dialogue_turn)}."
+                "Error loading the chat history. Possible causes: " + 
+                f"Unsupported chat history format: {type(dialogue)}."
+                f"Unsupported role: {dialogue[0]}."
+
                 f" Full chat history: {chat_history} "
             )
     return buffer
 
 class ConversationalRetrievalAndSubMITChain(BaseConversationalRetrievalChain):
-    """Chain for chatting with an index."""
+    """Chain for chatting with an index, specific for submit"""
 
     retriever: BaseRetriever
     """Index to connect to."""
+    
     max_tokens_limit: Optional[int] = None
     """If set, restricts the docs to return from store based on tokens, enforced only
     for StuffDocumentChain"""
+
+    get_chat_history: Optional[function] = _get_chat_history
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:
         num_docs = len(docs)
@@ -103,7 +107,6 @@ class ConversationalRetrievalAndSubMITChain(BaseConversationalRetrievalChain):
         """Load chain from LLM."""
         combine_docs_chain_kwargs = combine_docs_chain_kwargs or {}
 
-        ##BEGIN INSERTS
         _prompt = QA_PROMPT
         document_variable_name = "context"
         llm_chain = LLMChain(
@@ -115,14 +118,6 @@ class ConversationalRetrievalAndSubMITChain(BaseConversationalRetrievalChain):
             llm_chain=llm_chain,
             document_variable_name=document_variable_name,
             verbose=verbose)
-        ##END INSERTS
-
-        #doc_chain = load_qa_chain(
-        #    llm,
-        #    chain_type=chain_type,
-        #    verbose=verbose,
-        #    **combine_docs_chain_kwargs,
-        #)
 
         _llm = condense_question_llm or llm
         condense_question_chain = LLMChain(
