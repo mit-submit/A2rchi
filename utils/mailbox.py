@@ -57,8 +57,8 @@ class Mailbox:
                         else:
                             print(f" ERROR - issue_id is not well defined: {issue_id}")
         self.mailbox.expunge()
-        #self.mailbox.close()
-        #self.mailbox.logout()
+        self.mailbox.close()
+        self.mailbox.logout()
         return
             
     def _get_charsets(self,msg):

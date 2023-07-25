@@ -1,4 +1,5 @@
-export A2RCHI_BASE=$HOME/Work/A2rchi
+#export A2RCHI_BASE=$HOME/Work/A2rchi
+export A2RCHI_BASE=/work/submit/juliush/A2rchi
 export OPEN_AI_KEY=`cat $HOME/.openai/api.key`
 export PATH="${PATH}:${A2RCHI_BASE}/bin"
 export PYTHONPATH="${PYTHONPATH}:${A2RCHI_BASE}/interfaces:${PYTHONPATH}:${A2RCHI_BASE}/utils:${A2RCHI_BASE}/utils"
