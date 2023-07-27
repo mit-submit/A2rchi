@@ -76,6 +76,7 @@ class Chain() :
             self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
             print("Updated chain with new vectorstore")
             self.lock.release()
+        return None
             
 
 
