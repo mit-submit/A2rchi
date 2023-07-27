@@ -17,29 +17,10 @@ from langchain.docstore.document import Document
 
 import os
 
-MODEL_CLASS_MAP = {
-    "OpenAILLM": {
-        "class":OpenAILLM,
-        "kwargs": {
-            "model_name": "gpt-4",
-            "temperature": 1
-        }
-    },
-    "DumbLLM": {
-        "class":DumbLLM,
-        "kwargs": {}
-    },
+from utils.config_loader import Config_Loader
+config = Config_Loader().config["chains"]["chain"]
+global_config = Config_Loader().config["global"]
 
-    "LlamaLLM": {
-        "class": LlamaLLM,
-        "kwargs": {
-            "model_path": None
-        }
-    }
-
-}
-
-MODEL_NAME = "DumbLLM"
 
 class Chain() :
 
@@ -50,11 +31,11 @@ class Chain() :
         those documents.
         """
 
-        htmls = os.listdir('data/submit_website')
-        github_pages = os.listdir('data/github')
+        htmls = os.listdir(global_config["DATA_PATH"] + 'submit_website')
+        github_pages = os.listdir(global_config["DATA_PATH"] + 'github')
 
-        html_loaders = [BSHTMLLoader("data/submit_website/" + file_name) for file_name in htmls]
-        github_loaders = [TextLoader("data/github/" + file_name) for file_name in github_pages]
+        html_loaders = [BSHTMLLoader(global_config["DATA_PATH"] + "submit_website/" + file_name) for file_name in htmls]
+        github_loaders = [TextLoader(global_config["DATA_PATH"] + "github/" + file_name) for file_name in github_pages]
         
         loaders = html_loaders + github_loaders
         docs = []
@@ -69,11 +50,13 @@ class Chain() :
 
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        llm = MODEL_CLASS_MAP[MODEL_NAME]["class"](**MODEL_CLASS_MAP[MODEL_NAME]["kwargs"])
-        
-        print("Using model ", MODEL_NAME, " with parameters: ")
-        for key, value in MODEL_CLASS_MAP[MODEL_NAME]["kwargs"]:
-            print("\t" , key , ": " , value)
+        model_class_map = config["MODEL_CLASS_MAP"]
+        model_name = config["MODEL_NAME"]
+        llm = model_class_map[model_name]["class"](**model_class_map[model_name]["kwargs"])
+
+        print("Using model ", model_name, " with parameters: ")
+        for param_name in model_class_map[model_name]["kwargs"].keys():
+            print("\t" , param_name , ": " , model_class_map[model_name]["kwargs"][param_name])
 
         self.chain = BaseChain.from_llm(llm, self.vectorstore.as_retriever(), return_source_documents=True)
 

@@ -1,7 +1,8 @@
 import os
 import getpass, imaplib, email
 
-IMAP4_PORT=143
+from utils.config_loader import Config_Loader
+config = Config_Loader().config["utils"]["mailbox"]
 
 def get_charsets(msg):
     charsets = set({})
@@ -61,7 +62,7 @@ def get_email_body(msg):
     return body, body_html  
 
 
-M = imaplib.IMAP4(host='ppc.mit.edu', port=IMAP4_PORT, timeout=None)
+M = imaplib.IMAP4(host='ppc.mit.edu', port=config["IMAP4_PORT"], timeout=None)
 #M.login(getpass.getuser(),getpass.getpass())
 M.login('cmsprod',getpass.getpass())
 M.select()

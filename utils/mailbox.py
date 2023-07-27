@@ -2,7 +2,8 @@
 import os,sys
 import getpass, imaplib, email
 
-IMAP4_PORT=143
+from utils.config_loader import Config_Loader
+config = Config_Loader().config["utils"]["mailbox"]
 
 class Mailbox:
     'A class to describe the mailbox usage.'
@@ -131,7 +132,7 @@ class Mailbox:
         Open the mailbox
         """
         print(f" Open mailbox (U:{os.getenv('IMAP_USER')} P:*********)")
-        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=IMAP4_PORT, timeout=None)
+        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=config["IMAP4_PORT"], timeout=None)
         mailbox.login(os.getenv('IMAP_USER'),os.getenv('IMAP_PW'))
         return mailbox
             
