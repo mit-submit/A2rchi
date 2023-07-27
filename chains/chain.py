@@ -1,11 +1,12 @@
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 
 from langchain.chains import ConversationalRetrievalChain
+
 from chains.base import BaseSubMITChain as BaseChain
+from chains.models import OpenAILLM, DumbLLM, LlamaLLM
 
 from langchain.document_loaders import TextLoader
 from langchain.document_loaders import PyPDFLoader
@@ -15,6 +16,30 @@ from langchain.document_loaders import WebBaseLoader
 from langchain.docstore.document import Document
 
 import os
+
+MODEL_CLASS_MAP = {
+    "OpenAILLM": {
+        "class":OpenAILLM,
+        "kwargs": {
+            "model_name": "gpt-4",
+            "temperature": 1
+        }
+    },
+    "DumbLLM": {
+        "class":DumbLLM,
+        "kwargs": {}
+    },
+
+    "LlamaLLM": {
+        "class": LlamaLLM,
+        "kwargs": {
+            "model_path": None
+        }
+    }
+
+}
+
+MODEL_NAME = "DumbLLM"
 
 class Chain() :
 
@@ -44,7 +69,13 @@ class Chain() :
 
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-        self.chain = BaseChain.from_llm(ChatOpenAI(model_name="gpt-4", temperature= 1), self.vectorstore.as_retriever(), return_source_documents=True)
+        llm = MODEL_CLASS_MAP[MODEL_NAME]["class"](**MODEL_CLASS_MAP[MODEL_NAME]["kwargs"])
+        
+        print("Using model ", MODEL_NAME, " with parameters: ")
+        for key, value in MODEL_CLASS_MAP[MODEL_NAME]["kwargs"]:
+            print("\t" , key , ": " , value)
+
+        self.chain = BaseChain.from_llm(llm, self.vectorstore.as_retriever(), return_source_documents=True)
 
     def __call__(self, history):
         """
