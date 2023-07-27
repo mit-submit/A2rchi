@@ -12,3 +12,4 @@ def test_cleo_overall():
     cleo.load()
     cleo.process_new_issues()
     cleo.process_feedback_issues()
+    cleo.ai_wrapper.chain.kill = True

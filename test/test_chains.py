@@ -46,6 +46,7 @@ def test_vectorstore():
     query = "What did the president say about Ketanji Brown Jackson"
     docs = db.similarity_search(query)
 
+    c1.kill = True
     assert docs is not None
 
 def test_chain_creation():
@@ -53,12 +54,14 @@ def test_chain_creation():
     question = "What did the president say about Ketanji Brown Jackson"
     prev_history = []
     result = c1.chain({"question": question, "chat_history": prev_history})
+    c1.kill = True
     assert result["answer"] is not None
 
 def test_chain_call_noprevhistory():
     c1 = Chain()
     question = "What did the president say about Ketanji Brown Jackson"
     result = c1([("User", question)])
+    c1.kill = True
     assert result["answer"] is not None
 
 def test_chain_call_prevhistory():
@@ -67,6 +70,7 @@ def test_chain_call_prevhistory():
     answer = "Don't know"
     follow_up = "Could you elaborate?"
     result = c1([("User", question), ("A2rchi", answer), ("User", follow_up)])
+    c1.kill = True
     assert result["answer"] is not None
     
 
