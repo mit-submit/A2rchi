@@ -16,6 +16,8 @@ from langchain.document_loaders import WebBaseLoader
 from langchain.docstore.document import Document
 
 import os
+from threading import Lock, Thread
+import time
 
 from utils.config_loader import Config_Loader
 config = Config_Loader().config["chains"]["chain"]
@@ -30,7 +32,10 @@ class Chain() :
         into a format that the chain can use. Then, it creates the chain using 
         those documents.
         """
+        self.lock = Lock()
+        self.kill = False
 
+        ##BEGIN: replace with code from DataManager
         htmls = os.listdir(global_config["DATA_PATH"] + 'submit_website')
         github_pages = os.listdir(global_config["DATA_PATH"] + 'github')
 
@@ -48,17 +53,32 @@ class Chain() :
         embeddings = OpenAIEmbeddings()
         self.vectorstore = Chroma.from_documents(documents, embeddings)
 
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        ##END: replace with code from DataManagerco
 
         model_class_map = config["MODEL_CLASS_MAP"]
         model_name = config["MODEL_NAME"]
-        llm = model_class_map[model_name]["class"](**model_class_map[model_name]["kwargs"])
+        self.llm = model_class_map[model_name]["class"](**model_class_map[model_name]["kwargs"])
 
         print("Using model ", model_name, " with parameters: ")
         for param_name in model_class_map[model_name]["kwargs"].keys():
             print("\t" , param_name , ": " , model_class_map[model_name]["kwargs"][param_name])
 
-        self.chain = BaseChain.from_llm(llm, self.vectorstore.as_retriever(), return_source_documents=True)
+        self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
+
+        update_vectorstore_thread = Thread(target=self.update_vectorstore)
+        update_vectorstore_thread.start()
+
+    def update_vectorstore(self):
+        while not self.kill:
+            time.sleep(1000)
+            self.lock.acquire()
+            #add code here that updates the vectorstore, can take existing vectorstore as input
+            self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
+            print("Updated chain with new vectorstore")
+            self.lock.release()
+            
+
+
 
     def __call__(self, history):
         """
@@ -79,6 +99,9 @@ class Chain() :
             prev_history = None
 
         #make the request to the chain 
-        return self.chain({"question": question, "chat_history": prev_history})
+        self.lock.acquire()
+        answer = self.chain({"question": question, "chat_history": prev_history})
+        self.lock.release()
+        return answer
 
 
