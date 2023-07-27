@@ -9,6 +9,9 @@ from threading import Lock
 
 from chains.chain import Chain
 
+from utils.config_loader import Config_Loader
+global_config = Config_Loader().config["global"]
+
 QUERY_LIMIT = 1000 #max number of queries 
 
 # TODO: not urgent, but there is a much better way to do this rather than a large dictionary inserted here
@@ -84,7 +87,7 @@ class ChatWrapper:
     def update_or_add_discussion(json_file, discussion_id, discussion_contents):
         # Read the existing JSON data from the file
         try:
-            with open(json_file, 'r') as f:
+            with open(global_config["DATA_PATH"] + json_file, 'r') as f:
                 data = json.load(f)
         except FileNotFoundError:
             data = {}  # If the file doesn't exist or is empty, initialize an empty dictionary
@@ -99,7 +102,7 @@ class ChatWrapper:
             data[discussion_id] = discussion_contents
 
         # Write the updated JSON data back to the file
-        with open(json_file, 'w') as f:
+        with open(global_config["DATA_PATH"] + json_file, 'w') as f:
             json.dump(data, f)
 
     def __call__(self, inp: str, history: Optional[Tuple[str, str]], discussion_id: Optional[int]):

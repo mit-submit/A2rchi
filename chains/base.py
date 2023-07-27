@@ -29,19 +29,14 @@ from langchain.vectorstores.base import VectorStore
 from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
 from chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 
-# Depending on the memory type and configuration, the chat history format may differ.
-# This needs to be consolidated.
-CHAT_TURN_TYPE = Tuple[str, str]
+from utils.config_loader import Config_Loader
+config = Config_Loader().config["chains"]["base"]
 
 
-#_ROLE_MAP = {"human": "Human: ", "ai": "Assistant: "}
-ROLES = {"User", "A2rchi", "Expert"}
-
-
-def _get_chat_history(chat_history: List[CHAT_TURN_TYPE]) -> str:
+def _get_chat_history(chat_history: List[Tuple[str, str]]) -> str:
     buffer = ""
     for dialogue in chat_history:
-        if isinstance(dialogue, tuple) and dialogue[0] in ROLES:
+        if isinstance(dialogue, tuple) and dialogue[0] in config["ROLES"]:
             identity = dialogue[0]
             message = dialogue[1]
             buffer += identity + ": " + message + "\n"
