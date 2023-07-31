@@ -3,9 +3,13 @@ An AI Augmented Research Chat Intelligence for MIT's subMIT project in the physi
 
 ## Setup
 
-### OpenAI key
+### Keys and Passwords
 
-A2rchi uses OpenAI Large Language Models (LLM's) to help answer questions. To do this, you need to have an OpenAI API key (starts with "sk-"). It is [important](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety)  that API keys are never added directly to the code. Instead, go to your .bashrc file (for example by using `vim ~/.bashrc`) and adding the line `export OPENAI_API_KEY=sk-8888` and then pasting your API key instead of sk-8888. 
+A2rchi uses several other services in order to make it's operations possible. These include OpenAI, Cleo, and a mailbox manager. In order to use these services, A2rchi must be given acsess to the account usernames and passwords. You should add these as text files in a secure directory outside the A2rchi repository. You can find templates of what the text files look like in the config directory of the repo. These are then loaded as environment variables in the `setup.sh` script. You may have to modify the paths in `setup.sh` to fit the paths where you saved the keys and passwords. 
+
+The `.imap`, `.sender`, and `.cleo ` file are only needed to run the mailbox/cleo service. The OpenAI key is needed to run the GPT-4 model which A2rchi is based on. However A2rchi is also able to run on other models (found in `chain/models.py`). The exact model to use can be changed in `config/config.yaml `. 
+
+Once all the account credentials are loaded into the places they need to be, simply run `./setup.sh`
 
 ### Conda Environment
 
@@ -23,48 +27,13 @@ conda activate A2rchi_env
 
 (You need not create the environment everytime you log in, butyou do need to activate it)
 
-### Scraping the data
+## Usage
 
-For safety and security reasons, data should never be directly added to the git repo. Instead, we use a small script `scraper.py` to scrape the information which is used by A2rchi off the internet and place it in the `data/` directory. To run the scraper, simply run
+### Running Serivces
 
-```
-python scraper.py
-```
+All the excecutables are in the `bin/` directory. Simply run them with python. You will need to run the scraper service before anything else, otherwise A2rchi will not have any information to reference for context. The scraper dumps data into the path specified in the config file. After the scraper is run, you can kill the it (or keep it running) and run any of the other services. 
 
-in the conda environment. Additionially, you may want to remove the placeholder files by running
 
-```
-rm data/github/info.txt
-rm data/submit-website/info.txt
-```
+### Running Tests
 
-You may get some warnings while running the scraper. This is normal for now (will hopefully get cleaned up soon). You only need to run the scraper when there is new data to be added.
-
-### Running the app
-
-To run the app where the chatbot appears, simply run 
-
-```
-python app.py
-```
-
-in your conda environment. You will see a public temporary link pop up which you can click on to display an app for the chatbot. Once you kill the process (for example with `ctrl-c`), the app will no longer work.
-
-### Deploying the app
-
-Coming soon!
-
-## Easy ways to contribute:
-
-### Prompts
-
-A2rchi works by prompting a LLM (such at openAI's models) to do specific tasks. To do this, we pull some context from resources which we've given A2rchi and then prompt it to give us a desired answer given some context and a prior conversation history. Some prompts are better than others at getting desire outcomes. Prompts should be simply but can be up to a couple of paragraphs long. The current prompt can be found in `conversational_rerieval_and_subMIT_help/prompts.py` under `prompt_template`. An additionial example can be seen in `prompt_template_old`. An easy way to contribute is to change or edit this prompt and see if you can make a better A2rchi.
-
-### Sources
-
-As mensioned above, A2rchi uses machine learning techniques (specifically a k-nearest neighbors approximation between embedding vectors of plain text) to look through its resources to generate context for the task at hand. One easy way to make A2rchi better is to add more sources. Do this by editing `scraper.py` to scrape your sources and put it into the `data/` directory. Then add your sources to A2rchi using (LangChain document loaders)[https://python.langchain.com/docs/modules/data_connection/document_loaders/] in `chain.py`. Remember to never add data directly to the gitrepo and to always go through the scraper.
-
-### Anything else you can think of!
-
-Some helpful resources to contribute may be the documenation of the packages Ar2chi uses: (LangChain)[https://python.langchain.com/docs/get_started/introduction.html], (Chroma)[https://docs.trychroma.com/getting-started], and (Gradio)[https://www.gradio.app/guides/quickstart] 
-
+All tests are done using pytest. In the top level directory of the repo, run the command `pytest`. 
