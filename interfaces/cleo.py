@@ -13,6 +13,7 @@ new_status_id = 1        # (or 1 this is after first work)
 inprogress_status_id = 2 # in progress
 feedback_status_id = 4   # feedback
 resolved_status_id = 3   # resolved
+closed_status_id = 5     # closed
 normal_priority_id = 2   # normal priority
 support_tracker_id = 3   # tracker id for 'Support'
 
@@ -78,7 +79,14 @@ class Cleo:
             
     def add_note_to_issue(self,issue_id,note):
         """
-        Adding a note to an existing issue (and move to 'in progress' status)
+        Adding a note to an existing issue (and move to 'feedback' status)
+        """
+        self.redmine.issue.update(issue_id,status_id=feedback_status_id,notes=note)
+        return
+
+    def reopen_issue(self, issue_id, note):
+        """
+        Move an issues status to `In Progress` and add a note
         """
         self.redmine.issue.update(issue_id,status_id=inprogress_status_id,notes=note)
         return
@@ -131,11 +139,11 @@ class Cleo:
 
     def process_new_issues(self):
         """
-        Process all issues that are assigned to me and that are in 'New' status.
+        Process all issues that are assigned to me and that are in 'New' or `In Progress` status.
         """
         issue_ids = []
         for issue in self.redmine.issue.filter(assigned_to_id=self.user.id,):
-            if issue.status.id == new_status_id:
+            if issue.status.id == new_status_id or issue.status.id == inprogress_status_id:
                 issue_ids.append(issue.id)
                 subject = f"Re:{issue.subject}"
                 history = self.remove_format(f"description: {issue.description}",'pre')
@@ -146,18 +154,18 @@ class Cleo:
                 answer = self.ai_wrapper(self.get_issue_history(issue.id))
                 self.add_note_to_issue(issue.id,answer)
                 print("A2rchi's response:\n",answer)
-                self.inprogress_issue(issue.id)                        
+                self.feedback_issue(issue.id)                        
         print(" cleo.process_new_issues: %d"%(len(issue_ids)))
         return issue_ids
 
-    def process_feedback_issues(self):
+    def process_resolved_issues(self):
         """
-        Process all issues that are in feedback mode.
+        Process all issues that are in resolved mode.
         """
         issue_ids = []
         for issue in self.project.issues:
-            if issue.status.id == feedback_status_id:
-                print(f" process_feedback_issues: {issue.id}")
+            if issue.status.id == resolved_status_id:
+                print(f" process_resolved_issues: {issue.id}")
                 issue_ids.append(issue.id)
                 subject = f"Re:{issue.subject}"
                 to = issue.custom_fields[0]['value']
@@ -170,28 +178,28 @@ class Cleo:
                 note = f"\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}"
                 addon = issue.description.replace("\n","\n > ")
                 self.smtp.send_message(to,cc,subject,f"{note}\n\nInitial request:\n > {addon}")
-                self.resolve_issue(issue.id)
-        print(" cleo.process_feedback_issues: %d"%(len(issue_ids)))
+                self.close_issue(issue.id)
+        print(" cleo.process_resolved_issues: %d"%(len(issue_ids)))
         return issue_ids
         
     def remove_format(self,string,tag):
         pattern = r"<%s>.*?</%s>"%(tag,tag)
         return re.sub(pattern,"",string,flags=re.DOTALL)
     
-    def resolve_issue(self,issue_id):
+    def close_issue(self,issue_id):
         """
-        Adding a note to an existing issue (and move to 'in progress' status)
+        Moving the issue in the 'closed' status
         """
-        self.redmine.issue.update(issue_id,status_id=resolved_status_id,
+        self.redmine.issue.update(issue_id,status_id=closed_status_id,
                                   notes=f'{a2rchi_pattern} Resolving email was sent.')
         return
     
-    def inprogress_issue(self,issue_id):
+    def feedback_issue(self,issue_id):
         """
-        Moving the issue in the 'in progress' status
+        Moving the issue in the 'feedback' status
         """
-        self.redmine.issue.update(issue_id,status_id=inprogress_status_id,
-                                  notes=f'{a2rchi_pattern} Moved into in progress.')
+        self.redmine.issue.update(issue_id,status_id=feedback_status_id,
+                                  notes=f'{a2rchi_pattern} Moved into feedback.')
         return
 
     def show_issue(self,issue_id):
