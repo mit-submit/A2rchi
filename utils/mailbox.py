@@ -49,7 +49,7 @@ class Mailbox:
                     if issue_id > 0:
                         note = f"ISSUE_ID:{issue_id} continued (leave for reference)\n\n"
                         note += f"{subject}: {description}"
-                        cleo.add_note_to_issue(issue_id,note)
+                        cleo.reopen_issue(issue_id,note)
                         self.mailbox.store(num,'+FLAGS', '\\Deleted')
                     else:
                         issue_id = cleo.new_issue(sender,cc,subject,description)
