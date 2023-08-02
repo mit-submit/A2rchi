@@ -16,11 +16,14 @@ class Sender:
         self.server_name = os.getenv('SENDER_SERVER')
         self.user = os.getenv('SENDER_USER')
         self.password = os.getenv('SENDER_PW')
+
+    def send_message(self,to,cc,subject,body):
+
+        #start and login to SMTP server 
         self.server = smtplib.SMTP(self.server_name,os.getenv('SENDER_PORT'))
         self.server.starttls()
         self.server.login(self.user,self.password)
 
-    def send_message(self,to,cc,subject,body):
         # generate the message
         msg = MIMEMultipart()
         msg['To'] = to
@@ -34,7 +37,11 @@ class Sender:
         print(f" ===============\n SUBJECT: {subject}")
         print(f" BODY:\n{body}")
 
-        # finally add the message body
+        # add the message body
         msg.attach(MIMEText(body,'plain'))
         self.server.sendmail(self.user,"%s,%s"%(to,cc),msg.as_string())
+
+        #finally, quit the server
+        self.server.quit()
+
         return
