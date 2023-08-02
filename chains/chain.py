@@ -15,6 +15,8 @@ from langchain.document_loaders import BSHTMLLoader
 from langchain.document_loaders import WebBaseLoader
 from langchain.docstore.document import Document
 
+from utils.data_manager import DataManager
+
 import os
 from threading import Lock, Thread
 import time
@@ -35,25 +37,8 @@ class Chain() :
         self.lock = Lock()
         self.kill = False
 
-        ##BEGIN: replace with code from DataManager
-        htmls = os.listdir(global_config["DATA_PATH"] + 'submit_website')
-        github_pages = os.listdir(global_config["DATA_PATH"] + 'github')
-
-        html_loaders = [BSHTMLLoader(global_config["DATA_PATH"] + "submit_website/" + file_name) for file_name in htmls]
-        github_loaders = [TextLoader(global_config["DATA_PATH"] + "github/" + file_name) for file_name in github_pages]
-        
-        loaders = html_loaders + github_loaders
-        docs = []
-        for loader in loaders:
-            docs.extend(loader.load())
-
-        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        documents = text_splitter.split_documents(docs)
-
-        embeddings = OpenAIEmbeddings()
-        self.vectorstore = Chroma.from_documents(documents, embeddings)
-
-        ##END: replace with code from DataManagerco
+        dataManager = DataManager()
+        self.vectorstore = dataManager.fetch_vectorstore()
 
         model_class_map = config["MODEL_CLASS_MAP"]
         model_name = config["MODEL_NAME"]
