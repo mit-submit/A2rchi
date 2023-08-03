@@ -152,12 +152,12 @@ class DataManager():
         self.update_vectorstore() #becomes aware that there is new data, will require adding it to the vectorstore
         return
 
-d = DataManager()
+# d = DataManager()
 # d.delete_vectorstore()
 # d.create_vectorstore()
 # print(d.fetch_vectorstore().get()["embeddings"])
 # d.update_vectorstore()
 # d.remove_file("Slurm_guide.html")
-print(d.fetch_vectorstore().get()) #does not update first shot
+# print(d.fetch_vectorstore().get()) #does not update first shot
 # os.system("sleep 5")
 # print(d.fetch_vectorstore().get()) #does not update first shot
