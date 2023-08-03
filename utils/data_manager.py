@@ -159,3 +159,5 @@ class DataManager():
 # d.update_vectorstore()
 # d.remove_file("Slurm_guide.html")
 # print(d.fetch_vectorstore().get()) #does not update first shot
+# os.system("sleep 5")
+# print(d.fetch_vectorstore().get()) #does not update first shot
