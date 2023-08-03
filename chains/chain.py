@@ -37,8 +37,8 @@ class Chain() :
         self.lock = Lock()
         self.kill = False
 
-        dataManager = DataManager()
-        self.vectorstore = dataManager.fetch_vectorstore()
+        self.dataManager = DataManager()
+        self.vectorstore = self.dataManager.fetch_vectorstore()
 
         model_class_map = config["MODEL_CLASS_MAP"]
         model_name = config["MODEL_NAME"]
@@ -57,7 +57,7 @@ class Chain() :
         while not self.kill:
             time.sleep(1000)
             self.lock.acquire()
-            #add code here that updates the vectorstore, can take existing vectorstore as input
+            self.vectorstore = self.dataManager.fetch_vectorstore()
             self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
             print("Updated chain with new vectorstore")
             self.lock.release()
