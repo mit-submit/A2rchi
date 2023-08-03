@@ -45,6 +45,7 @@ class DataManager():
 
         # control if files in vectorstore == files in data
         if set(files_in_data)==set(files_in_vstore):
+            print(files_in_data)
             print("Vectorstore is up to date")
         else:
             text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
@@ -67,6 +68,7 @@ class DataManager():
                     docs.extend(loader.load())
                 new_documents = text_splitter.split_documents(docs)
                 if new_documents: vstore.add_documents(new_documents) #
+            vstore.persist()
 
         return
     
@@ -152,12 +154,11 @@ class DataManager():
         self.update_vectorstore() #becomes aware that there is new data, will require adding it to the vectorstore
         return
 
-# d = DataManager()
+d = DataManager()
 # d.delete_vectorstore()
 # d.create_vectorstore()
 # print(d.fetch_vectorstore().get()["embeddings"])
+# d.add_file("/home/submit/mori25/Slurm_guide.html")
 # d.update_vectorstore()
-# d.remove_file("Slurm_guide.html")
-# print(d.fetch_vectorstore().get()) #does not update first shot
-# os.system("sleep 5")
+# d.add_file("/home/submit/mori25/Slurm_guide.html")
 # print(d.fetch_vectorstore().get()) #does not update first shot
