@@ -1,0 +1,7 @@
+Host submit
+  HostName submit.mit.edu
+  User mdrusso
+  IdentitiesOnly=yes
+  PreferredAuthentications publickey
+  PasswordAuthentication no
+  IdentityFile ~/.ssh/id_rsa_submit
