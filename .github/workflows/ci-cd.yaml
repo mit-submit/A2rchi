@@ -18,6 +18,7 @@ jobs:
           cp ${{ github.workspace}}/deploy/ssh_config /home/runner/.ssh/config
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/id_rsa_submit
+          cat /home/runner/.ssh/known_hosts
           ssh submit 'bash -s' < ${{ github.workspace }}/deploy/install.sh
 
       # - uses: webfactory/ssh-agent@v0.8.0
