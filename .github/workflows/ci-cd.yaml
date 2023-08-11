@@ -12,13 +12,12 @@ jobs:
       - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
       - run: |
           mkdir -p /home/runner/.ssh/
-          touch /home/runner/.ssh/config
-          echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" >> /home/runner/.ssh/id_rsa_submit
+          echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" > /home/runner/.ssh/id_rsa_submit
           chmod 600 /home/runner/.ssh/id_rsa_submit
+          echo "${{ secrets.SSH_SUBMIT_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           cp ${{ github.workspace}}/deploy/ssh_config /home/runner/.ssh/config
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/id_rsa_submit
-          cat /home/runner/.ssh/known_hosts
           ssh submit 'bash -s' < ${{ github.workspace }}/deploy/install.sh
 
       # - uses: webfactory/ssh-agent@v0.8.0
