@@ -14,6 +14,8 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" >> /home/runner/.ssh/id_rsa_submit
           chmod 600 /home/runner/.ssh/id_rsa_submit
           cp ${{ github.workspace}}/deploy/ssh_config /home/runner/.ssh/config
+          ssh-keyscan submit >> /home/runner/.ssh/known_hosts
+          ssh-add /home/runner/.ssh/id_rsa_submit
           ssh submit 'bash -s' < ${{ github.workspace }}/deploy/install.sh
 
       # - uses: webfactory/ssh-agent@v0.8.0
