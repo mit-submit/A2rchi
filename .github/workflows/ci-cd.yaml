@@ -4,9 +4,9 @@ on: [push]
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
+    env:
+      SSH_AUTH_SOCK: /tmp/ssh_agent.sock
     steps:
-      - env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
       - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
       - uses: actions/checkout@v3
       - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
