@@ -7,10 +7,14 @@ jobs:
     env:
       SSH_AUTH_SOCK: /tmp/ssh_agent.sock
     steps:
+      # boilerplate message and pull repository to CI runner
       - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
       - uses: actions/checkout@v3
       - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
-      - run: |
+
+      # setup SSH 
+      - name: Setup SSH
+        run: |
           mkdir -p /home/runner/.ssh/
           echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" > /home/runner/.ssh/id_rsa_submit
           chmod 600 /home/runner/.ssh/id_rsa_submit
@@ -18,14 +22,17 @@ jobs:
           cp ${{ github.workspace}}/deploy/ssh_config /home/runner/.ssh/config
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/id_rsa_submit
-          ssh submit 'bash -s' < ${{ github.workspace }}/deploy/install.sh
 
-      # - uses: webfactory/ssh-agent@v0.8.0
-      #   with:
-      #       ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}
-      # - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-      # - name: List files in the repository
-      #   run: |
-      #     ls ${{ github.workspace }}
+      # copy repository to machine
+      - name: Copy Repository
+        run: |
+          scp -r ${{ github.workspace}} submit:~/
+
+      # run deploy script
+      - name: Run Deploy Script
+        run: |
+          ssh submit 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
+
+      # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
 
