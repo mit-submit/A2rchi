@@ -1,3 +1,4 @@
+#!/bin/python
 import os
 from utils.scraper import Scraper
 

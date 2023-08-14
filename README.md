@@ -13,10 +13,14 @@ Once all the account credentials are loaded into the places they need to be, sim
 
 ```
 ./install.sh
-source `./setup.sh`
+source ./setup.sh
 ```
 
-The install will just generate the setup.sh script depending ont he directory where A2rchi has been installed. It can be easily repated when the software is moved. The setup.sh script will have to be executed anytime you want to work with A2rchi.
+The install will generate the setup.sh script depending on the directory where A2rchi has been installed. It can be easily repeated when the software is moved. The setup.sh script will have to be sourced anytime you want to work with A2rchi.
+
+```
+source ./setup.sh
+```
 
 ### Conda Environment
 
