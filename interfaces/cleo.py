@@ -196,7 +196,7 @@ class Cleo:
                 note = f"\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}"
                 addon = issue.description.replace("\n","\n > ")
                 self.smtp.send_message(to,cc,subject,f"{note}\n\nInitial request:\n > {addon}")
-                self.close_issue(issue.id)
+                self.close_issue(issue.id,note)
         print(" cleo.process_resolved_issues: %d"%(len(issue_ids)))
         return issue_ids
         
@@ -204,12 +204,12 @@ class Cleo:
         pattern = r"<%s>.*?</%s>"%(tag,tag)
         return re.sub(pattern,"",string,flags=re.DOTALL)
     
-    def close_issue(self,issue_id):
+    def close_issue(self,issue_id,answer):
         """
         Moving the issue in the 'closed' status
         """
         self.redmine.issue.update(issue_id,status_id=self.status_dict['Closed'],
-                                  notes=f'{a2rchi_pattern} Resolving email was sent.')
+                                  notes=f'{a2rchi_pattern} Resolving email was sent:\n{answer}')
         return
     
     def feedback_issue(self,issue_id):
