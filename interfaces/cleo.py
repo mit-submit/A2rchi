@@ -1,21 +1,10 @@
 import os,re,sys
 import datetime
 from utils import sender
-from redminelib import Redmine
-#from standalone import run
-
-import numpy as np ##TODO: remove this
-
 from chains.chain import Chain
+from redminelib import Redmine
 
 a2rchi_pattern = '-- A2rchi --'
-#new_status_id = 1        # (or 1 this is after first work)
-#inprogress_status_id = 2 # in progress
-#feedback_status_id = 4   # feedback
-#resolved_status_id = 3   # resolved
-#closed_status_id = 5     # closed
-normal_priority_id = 2   # normal priority
-support_tracker_id = 3   # tracker id for 'Support'
 
 class CleoAIWrapper:
     """
@@ -77,7 +66,7 @@ class Cleo:
             self.user = self.redmine.user.get('current')
             self.load()
 
-        #Load all the status, tracker, and priority ids
+        # Load all the status, tracker, and priority ids
         statuses = self.redmine.issue_status.all()
         self.status_dict = dict()     # keys = status name, values = status_id
         for s in statuses:
