@@ -1,22 +1,16 @@
 global:
-
   DATA_PATH: "./data/"
 
 chains:
-
   base:
-
     #Roles that A2rchi knows about
     ROLES: 
       - User
       - A2rchi
       - Expert 
-
   chain: 
-
     #Pick one of the models listed in the model class map below
     MODEL_NAME: OpenAILLM 
-
     #Map of all the class models and their keyword arguments
     MODEL_CLASS_MAP:
       OpenAILLM: 
@@ -31,8 +25,9 @@ chains:
         class: LlamaLLM
         kwargs:
           model_path: null 
+  input_lists:
+    - submit.list
 
 utils: 
-
   mailbox: 
     IMAP4_PORT: 143

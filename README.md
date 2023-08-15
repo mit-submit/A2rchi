@@ -9,7 +9,18 @@ A2rchi uses several other services in order to make it's operations possible. Th
 
 The `.imap`, `.sender`, and `.cleo ` file are only needed to run the mailbox/cleo service. The OpenAI key is needed to run the GPT-4 model which A2rchi is based on. However A2rchi is also able to run on other models (found in `chain/models.py`). The exact model to use can be changed in `config/config.yaml `. 
 
-Once all the account credentials are loaded into the places they need to be, simply run `./setup.sh`
+Once all the account credentials are loaded into the places they need to be, simply do a base install and setup
+
+```
+./install.sh
+source ./setup.sh
+```
+
+The install will generate the setup.sh script depending on the directory where A2rchi has been installed. It can be easily repeated when the software is moved. The setup.sh script will have to be sourced anytime you want to work with A2rchi.
+
+```
+source ./setup.sh
+```
 
 ### Conda Environment
 
