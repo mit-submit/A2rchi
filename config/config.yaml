@@ -45,3 +45,6 @@ chains:
 utils: 
   mailbox: 
     IMAP4_PORT: 143
+  data_manager:
+    CHUNK_SIZE: 1000
+    CHUNK_OVERLAP: 0
