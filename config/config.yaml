@@ -48,3 +48,24 @@ utils:
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
+  embeddings:
+    #Choose one embedding from list below
+    EMBEDDING_NAME: HuggingFaceEmbeddings
+    #List of possible embeddings to use in vectorstore
+    EMBEDDING_CLASS_MAP:
+      OpenAIEmbeddings:
+        class: OpenAIEmbeddings
+        kwargs: 
+          model: text-embedding-ada-002
+        similarity_score_reference: 0.4
+      HuggingFaceEmbeddings:
+        class: HuggingFaceEmbeddings
+        kwargs:
+          model_name: "sentence-transformers/all-mpnet-base-v2"
+          model_kwargs:
+            device: 'cpu'
+          encode_kwargs: 
+            normalize_embeddings: False
+        similarity_score_reference: 0.9
+        
+        

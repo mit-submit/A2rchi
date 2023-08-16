@@ -3,46 +3,38 @@ import hashlib
 import re
 import os
 import sys
+import yaml
 
 #clears the ssl certificates to allow web scraping
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 class Scraper():
-    
-    #urls to query from
-    urls =  {"home":"https://submit.mit.edu",
-             "about":"https://submit.mit.edu/?page_id=6",
-             "contact":"https://submit.mit.edu/?page_id=7",
-             "news":"https://submit.mit.edu/?page_id=8",
-             "people":"https://submit.mit.edu/?page_id=73"}
-    github_url = 'https://github.com/mit-submit/submit-users-guide/tree/main/source'
-    raw_url = "https://raw.githubusercontent.com/mit-submit/submit-users-guide/main/source"
-
 
     def __init__(self):
         from config_loader import Config_Loader
-        config = Config_Loader().config["chains"]["chain"]
-        global_config = Config_Loader().config["global"]
+        self.config = Config_Loader().config["chains"]["chain"]
+        self.global_config = Config_Loader().config["global"]
 
         # Check if target folders exist 
-        if not os.path.isdir(global_config["DATA_PATH"]):
-                os.mkdir(global_config["DATA_PATH"])
+        if not os.path.isdir(self.global_config["DATA_PATH"]):
+                os.mkdir(self.global_config["DATA_PATH"])
 
-        self.websites_dir = global_config["DATA_PATH"]+"websites/"
+        self.websites_dir = self.global_config["DATA_PATH"]+"websites/"
         if not os.path.isdir(self.websites_dir):
                 os.mkdir(self.websites_dir)
                 with open(self.websites_dir+"info.txt", 'w') as file:
                     file.write("This is the folder for uploading the information from websites")
 
-        self.github_dir = global_config["DATA_PATH"]+"github/"
-        if not os.path.isdir(self.github_dir):
-                os.mkdir(self.github_dir)
-                with open(self.github_dir+"info.txt", 'w') as file:
-                    file.write("This is the folder for uploading the users guide from github")
+        ### Not needed anymore but could be used in the future
+        # self.github_dir = self.global_config["DATA_PATH"]+"github/"
+        # if not os.path.isdir(self.github_dir):
+        #         os.mkdir(self.github_dir)
+        #         with open(self.github_dir+"info.txt", 'w') as file:
+        #             file.write("This is the folder for uploading the users guide from github")
 
         self.input_lists = Config_Loader().config["chains"]["input_lists"]
-        print(self.input_lists)
+        print("input lists: ", self.input_lists)
 
     def hard_scrape(self,verbose=False):
         """
@@ -50,7 +42,6 @@ class Scraper():
         
         """
         self.scrape_urls()
-        self.scrape_rst_files(self.github_url,self.raw_url)
         if verbose: print("Scraping was completed successfully")
 
     def collect_urls_from_lists(self):
@@ -65,6 +56,7 @@ class Scraper():
             
     def scrape_urls(self):
         urls = self.collect_urls_from_lists()
+        sources = {}
         for url in urls:
             # request web page
             resp = requests.get(url, verify=False)
@@ -76,10 +68,18 @@ class Scraper():
             file_name = str(int(identifier.hexdigest(),16))[0:12]
             with open(f"{self.websites_dir}/{file_name}.html", 'w') as file:
                 file.write(html)
+            sources[file_name] = url 
+
+        #store list of files with urls to file 
+        file_name = self.global_config["DATA_PATH"]+'sources.yml'
+        with open(file_name, 'w') as file:
+            yaml.dump(sources, file)
 
     def scrape_rst_files(self,url,raw_url):
         """
-        For now well suited for scraping github files. Will require generalization for other types of inputs
+        DEPRECATED
+         
+        Function suited for scraping github files. Will require generalization for other types of inputs
 
         """
         response = requests.get(url)
@@ -117,7 +117,7 @@ class Scraper():
 
 
 # Example usage
-s = Scraper()
-url,raw_url = s.github_url,s.raw_url
+# s = Scraper()
+# url,raw_url = s.github_url,s.raw_url
 # s.scrape_rst_files(url,raw_url)
 # s.scrape_all()
