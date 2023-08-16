@@ -16,20 +16,6 @@ global_config = config["global"]
 
 QUERY_LIMIT = 1000 #max number of queries 
 
-# TODO: not urgent, but there is a much better way to do this rather than a large dictionary inserted here
-source_dict = {
-    "backup.txt": "https://submit.mit.edu/submit-users-guide/backup.html",
-    "gpu.txt": "https://submit.mit.edu/submit-users-guide/gpu.html",
-    "index.txt": "https://submit.mit.edu/submit-users-guide/index.html",
-    "intro.txt": "https://submit.mit.edu/submit-users-guide/intro.html",
-    "monit.txt": "https://submit.mit.edu/submit-users-guide/monit.html",
-    "program.txt": "https://submit.mit.edu/submit-users-guide/program.html",
-    "running.txt": "https://submit.mit.edu/submit-users-guide/running.html",
-    "starting.txt": "https://submit.mit.edu/submit-users-guide/starting.html",
-    "storage.txt": "https://submit.mit.edu/submit-users-guide/storage.html",
-    "working.txt": "https://submit.mit.edu/submit-users-guide/working.html",
-    "about.html": "https://submit.mit.edu/?page_id=6",
-}
 
 class ChatWrapper:
     """Wrapper which holds functionality for the chatbot"""
@@ -136,7 +122,7 @@ class ChatWrapper:
             #Load the present list of sources
             with open(global_config["DATA_PATH"]+'sources.yml', 'r') as file:
                 sources = yaml.load(file, Loader=yaml.FullLoader)
-                
+
             #Get the closest source to the document
             source = result['source_documents'][0].metadata['source'].split('/')[-1].split('.')[0]
 
