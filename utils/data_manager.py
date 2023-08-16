@@ -165,8 +165,8 @@ class DataManager():
         self.update_vectorstore() #becomes aware that there is new data, will require adding it to the vectorstore
         return
 
-d = DataManager()
+# d = DataManager()
 # d.delete_vectorstore()
 # print(d.fetch_vectorstore().get())
 # d.add_file("/home/submit/mori25/Slurm_guide.html")
-d.update_vectorstore()
+# d.update_vectorstore()
