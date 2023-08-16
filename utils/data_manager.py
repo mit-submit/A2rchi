@@ -13,7 +13,7 @@ class DataManager():
 
     def __init__(self):
         from config_loader import Config_Loader
-        config = Config_Loader().config["chains"]["chain"]
+        self.config = Config_Loader().config["utils"]["data_manager"]
         self.global_config = Config_Loader().config["global"]
         self.data_path = self.global_config["DATA_PATH"]
         
@@ -48,7 +48,7 @@ class DataManager():
             print(files_in_data)
             print("Vectorstore is up to date")
         else:
-            text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+            text_splitter = CharacterTextSplitter(chunk_size=self.config["CHUNK_SIZE"], chunk_overlap=self.config["CHUNK_OVERLAP"])
             
             #remove obsolete files
             files_to_remove = list(set(files_in_vstore) - set(files_in_data))
@@ -98,7 +98,7 @@ class DataManager():
         for loader in loaders:
             docs.extend(loader.load())
 
-        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+        text_splitter = CharacterTextSplitter(chunk_size=self.config["CHUNK_SIZE"], chunk_overlap=self.config["CHUNK_OVERLAP"])
         documents = text_splitter.split_documents(docs)
 
         vectorstore = Chroma.from_documents(documents, OpenAIEmbeddings(), collection_name="OpenAI_Vstore", persist_directory=self.data_path+"vstore")
