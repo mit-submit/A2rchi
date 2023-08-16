@@ -4,16 +4,17 @@ from langchain.document_loaders import TextLoader
 from langchain.document_loaders import PyPDFLoader
 from langchain.memory import ConversationBufferMemory
 from langchain.document_loaders import BSHTMLLoader
-from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.text_splitter import CharacterTextSplitter
+
+from langchain.embeddings.openai import OpenAIEmbeddings
 
 
 class DataManager():
 
     def __init__(self):
         from config_loader import Config_Loader
-        self.config = Config_Loader().config["utils"]["data_manager"]
+        self.config = Config_Loader().config["utils"]
         self.global_config = Config_Loader().config["global"]
         self.data_path = self.global_config["DATA_PATH"]
         
@@ -48,7 +49,7 @@ class DataManager():
             print(files_in_data)
             print("Vectorstore is up to date")
         else:
-            text_splitter = CharacterTextSplitter(chunk_size=self.config["CHUNK_SIZE"], chunk_overlap=self.config["CHUNK_OVERLAP"])
+            text_splitter = CharacterTextSplitter(chunk_size=self.config["data_manager"]["CHUNK_SIZE"], chunk_overlap=self.config["data_manager"]["CHUNK_OVERLAP"])
             
             #remove obsolete files
             files_to_remove = list(set(files_in_vstore) - set(files_in_data))
@@ -81,7 +82,9 @@ class DataManager():
          else: print(file_path, " Error: format not supported")
 
     def create_vectorstore(self):
-        #probably already obsolete, update does the job
+        ###DEPRECATED METHOD
+        # Can just use update_vectorstore
+
         #Check if target folders exist 
         if not os.path.isdir(self.data_path+"vstore"):
                 os.mkdir(self.data_path+"vstore")
@@ -101,15 +104,23 @@ class DataManager():
         text_splitter = CharacterTextSplitter(chunk_size=self.config["CHUNK_SIZE"], chunk_overlap=self.config["CHUNK_OVERLAP"])
         documents = text_splitter.split_documents(docs)
 
-        vectorstore = Chroma.from_documents(documents, OpenAIEmbeddings(), collection_name="OpenAI_Vstore", persist_directory=self.data_path+"vstore")
+        embedding_class_map = self.config["embeddings"]["EMBEDDING_CLASS_MAP"]
+        embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
+        self.embedding = embedding_class_map[embedding_name]["class"](**embedding_class_map[embedding_name]["kwargs"])
+        vectorstore = Chroma.from_documents(documents, self.embedding, collection_name="OpenAI_Vstore", persist_directory=self.data_path+"vstore")
+
         return vectorstore
     
 
     def fetch_vectorstore(self):
         """
-        create a vectorstore instance from the path ./data/vstore
+        create a vectorstore instance from the path global_config["DATA_PATH"]
         """ 
-        vectorstore = Chroma(collection_name="OpenAI_Vstore", persist_directory=self.data_path+"vstore", embedding_function=OpenAIEmbeddings())
+        embedding_class_map = self.config["embeddings"]["EMBEDDING_CLASS_MAP"]
+        embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
+        self.embedding = embedding_class_map[embedding_name]["class"](**embedding_class_map[embedding_name]["kwargs"])
+
+        vectorstore = Chroma(collection_name=embedding_name, persist_directory=self.data_path+"vstore", embedding_function=self.embedding)
         return vectorstore
 
     def delete_vectorstore(self):
@@ -156,9 +167,6 @@ class DataManager():
 
 d = DataManager()
 # d.delete_vectorstore()
-# d.create_vectorstore()
-# print(d.fetch_vectorstore().get()["embeddings"])
+# print(d.fetch_vectorstore().get())
 # d.add_file("/home/submit/mori25/Slurm_guide.html")
-# d.update_vectorstore()
-# d.add_file("/home/submit/mori25/Slurm_guide.html")
-# print(d.fetch_vectorstore().get()) #does not update first shot
+d.update_vectorstore()

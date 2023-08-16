@@ -1,5 +1,6 @@
 import os
 from typing import Optional, Tuple
+import yaml
 
 import gradio as gr
 import numpy as np
@@ -10,7 +11,8 @@ from threading import Lock
 from chains.chain import Chain
 
 from utils.config_loader import Config_Loader
-global_config = Config_Loader().config["global"]
+config = Config_Loader().config
+global_config = config["global"]
 
 QUERY_LIMIT = 1000 #max number of queries 
 
@@ -26,7 +28,6 @@ source_dict = {
     "starting.txt": "https://submit.mit.edu/submit-users-guide/starting.html",
     "storage.txt": "https://submit.mit.edu/submit-users-guide/storage.html",
     "working.txt": "https://submit.mit.edu/submit-users-guide/working.html",
-
     "about.html": "https://submit.mit.edu/?page_id=6",
 }
 
@@ -125,19 +126,25 @@ class ChatWrapper:
                 history = ChatWrapper.convert_to_app_history(history)
                 return history, history, discussion_id
             self.number_of_queries += 1
-            print("number of queires is: ", self.number_of_queries)
+            print("number of queries is: ", self.number_of_queries)
 
             # Get similarity score to see how close the input is to the source
             # Low score means very close (it's a distance between embedding vectors approximated
             # by an approximate k-nearest neighbors algoirthm)
             score = self.chain.vectorstore.similarity_search_with_score(inp)[0][1]
 
+            #Load the present list of sources
+            with open(global_config["DATA_PATH"]+'sources.yml', 'r') as file:
+                sources = yaml.load(file, Loader=yaml.FullLoader)
+                
             #Get the closest source to the document
-            source = result['source_documents'][0].metadata['source'].split('/')[-1]
+            source = result['source_documents'][0].metadata['source'].split('/')[-1].split('.')[0]
 
             #If the score is low enough, include the source as a link, otherwise give just the answer
-            if score < .4 and source in source_dict.keys(): 
-                output = result["answer"] + "\n\n [<b>Click here to read more</b>](" +  source_dict[source] + ")"
+            embedding_name = config["utils"]["embeddings"]["EMBEDDING_NAME"]
+            similarity_score_reference = config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
+            if score < similarity_score_reference and source in sources.keys(): 
+                output = result["answer"] + "\n\n [<b>Click here to read more</b>](" + sources[source] + ")"
             else:
                 output = result["answer"]
 
