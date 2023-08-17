@@ -32,7 +32,7 @@ def run_data_manager():
     while not stop:
 
         #check to see if this function should only be run once or should be run indefinitely
-        if run_dynamically:
+        if not run_dynamically:
             stop = True 
 
         #Do updating of vectorstore

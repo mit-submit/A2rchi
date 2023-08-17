@@ -78,7 +78,7 @@ class DataManager():
 
         # control if files in vectorstore == files in data
         print("Files in data are: ", set(files_in_data.keys()))
-        print("Files in vstore are: ", files_in_vstore)
+        print("Files in vstore are: ", set(files_in_vstore))
         if set(files_in_data.keys())==set(files_in_vstore):
             print("Vectorstore is up to date")
         else:
