@@ -48,9 +48,14 @@ utils:
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
+    use_HTTP_chromadb_client: True
+    chromadb_port: 8000
+    chromadb_host: "localhost"
+    collection_name: "dev_collection"
+    reset_collection: True
   embeddings:
     #Choose one embedding from list below
-    EMBEDDING_NAME: HuggingFaceEmbeddings
+    EMBEDDING_NAME: OpenAIEmbeddings
     #List of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:

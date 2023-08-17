@@ -1,29 +1,21 @@
-from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.chat_models import ChatOpenAI
-
-from langchain.chains import ConversationalRetrievalChain
-
-from chains.base import BaseSubMITChain as BaseChain
-from chains.models import OpenAILLM, DumbLLM, LlamaLLM
-
-from langchain.document_loaders import TextLoader
-from langchain.document_loaders import PyPDFLoader
-from langchain.memory import ConversationBufferMemory
-from langchain.document_loaders import BSHTMLLoader
-from langchain.document_loaders import WebBaseLoader
-from langchain.docstore.document import Document
-
-from utils.data_manager import DataManager
+import chromadb
 
 import os
 from threading import Lock, Thread
 import time
 
+from chains.base import BaseSubMITChain as BaseChain
+from chains.models import OpenAILLM, DumbLLM, LlamaLLM
+
+chromadb_port = 8000
+chromadb_host = "localhost"
+COLLECTION_NAME = "dev_collection_with_HuggingFaceEmbeddings"
+
 from utils.config_loader import Config_Loader
 config = Config_Loader().config["chains"]["chain"]
 global_config = Config_Loader().config["global"]
+utils_config = Config_Loader().config["utils"]
 
 
 class Chain() :
@@ -37,8 +29,16 @@ class Chain() :
         self.lock = Lock()
         self.kill = False
 
-        self.dataManager = DataManager()
-        self.vectorstore = self.dataManager.fetch_vectorstore()
+        embedding_class_map = utils_config["embeddings"]["EMBEDDING_CLASS_MAP"]
+        embedding_name = utils_config["embeddings"]["EMBEDDING_NAME"]
+        self.embedding_model = embedding_class_map[embedding_name]["class"](**embedding_class_map[embedding_name]["kwargs"])
+
+        if utils_config["data_manager"]["use_HTTP_chromadb_client"]:
+            self.client = chromadb.HttpClient(host=utils_config["data_manager"]["chromadb_host"], port=utils_config["data_manager"]["chromadb_port"])
+        else:
+            self.client = chromadb.PersistentClient(path = global_config["DATA_PATH"])
+        collection_name = utils_config["data_manager"]["collection_name"] + "_with_" + embedding_name
+        self.vectorstore = Chroma(client=self.client, collection_name = collection_name, embedding_function = self.embedding_model)
 
         model_class_map = config["MODEL_CLASS_MAP"]
         model_name = config["MODEL_NAME"]
@@ -55,9 +55,9 @@ class Chain() :
 
     def update_vectorstore(self):
         while not self.kill:
-            time.sleep(1000)
+            time.sleep(10)
             self.lock.acquire()
-            self.vectorstore = self.dataManager.fetch_vectorstore()
+            self.vectorstore = Chroma(client=self.client, collection_name = COLLECTION_NAME, embedding_function = self.embedding_model)
             self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
             print("Updated chain with new vectorstore")
             self.lock.release()
