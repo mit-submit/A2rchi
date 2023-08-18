@@ -1,0 +1,12 @@
+services:
+  cleo:
+    build:
+      context: cleo
+      dockerfile: Dockerfile-cleo
+    environment:
+      - CLEO_URL
+      - CLEO_USER
+      - CLEO_PW
+      - CLEO_PROJECT
+    # ports:
+    #   - "8000:8000"

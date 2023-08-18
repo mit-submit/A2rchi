@@ -26,12 +26,12 @@ jobs:
       # copy repository to machine
       - name: Copy Repository
         run: |
-          scp -r ${{ github.workspace}} submit:~/
+          rsync -r ${{ github.workspace}} --exclude .git/ --delete submit:~/A2rchi/
 
       # run deploy script
       - name: Run Deploy Script
         run: |
-          ssh submit 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
+          ssh submit 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh wassup
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
