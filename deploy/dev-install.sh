@@ -10,8 +10,10 @@
 echo "Going into A2rchi directory"
 cd A2rchi
 echo "Starting docker compose"
+ls
 cp requirements.txt deploy/cleo/
 cp bin/service_cleo.py deploy/cleo/
+cd deploy
 docker compose up -d
 
 # # secrets file is created by CI pipeline and destroyed here
