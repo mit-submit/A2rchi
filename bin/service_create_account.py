@@ -7,9 +7,14 @@ while True:
         break
 
     password = getpass.getpass("Enter password: ")
-    print("Account created")
-    print()
+    password_2nd_time = getpass.getpass("Enter password again: ")
 
-    add_username_password(username, password)
+    if password == password_2nd_time:
+        add_username_password(username, password)
+        print("Account created")
+        print()
+    else:
+        print("Passwords did not match, please try again")
+        print()
 
 print("Exiting.")
