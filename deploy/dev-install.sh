@@ -10,5 +10,5 @@
 echo "Going into A2rchi directory"
 cd A2rchi
 echo "Starting docker compose"
-echo $SOME_VAR # | docker secret create my_external_secret -
+echo "var is: $SOME_VAR" # | docker secret create my_external_secret -
 # docker compose up -d
