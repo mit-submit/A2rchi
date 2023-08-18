@@ -7,3 +7,12 @@ Host submit
   IdentityFile ~/.ssh/id_rsa_submit
   StrictHostKeyChecking no
 
+Host submit-gpu
+  HostName t3desk019.mit.edu
+  User mdrusso
+  IdentitiesOnly=yes
+  PreferredAuthentications publickey
+  PasswordAuthentication no
+  IdentityFile /Users/matthewrusso/.ssh/id_rsa_submit
+  StrictHostKeyChecking no
+
