@@ -1,5 +1,9 @@
 global:
   DATA_PATH: "./data/"
+  ACCEPTED_FILES: 
+    -".txt"
+    -".html"
+    -".pdf"
 
 chains:
   base:
@@ -39,6 +43,7 @@ chains:
           repetition_penalty: 1.0 #The parameter for repetition penalty. 1.0 means no penalty.
           length_penalty: 1 #[optional] Exponential penalty to the length that is used with beam-based generation.
           max_padding_length: null # the max padding length to be used with tokenizer padding the prompts.
+    chain_update_time: 10 # the amount of time (in seconds) which passes between when the chain updates to the newest version of the vectorstore
   input_lists:
     - submit.list
 
@@ -48,9 +53,15 @@ utils:
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
+    use_HTTP_chromadb_client: True  #weather or not to use the http client for the chromadb vectorstore
+    vectordb_update_sleeptime: "10" #the amount of sleep time between each iteration of updating the vectore to the filesystem.
+    chromadb_port: 8000 # only relavent if use_HTTP_chromadb_client=True
+    chromadb_host: "localhost" # only relavent if use_HTTP_chromadb_client=True
+    collection_name: "dev_collection"
+    reset_collection: True #weather or not to reset the entire collection each time it is acsessed by a new data manager instance.
   embeddings:
     #Choose one embedding from list below
-    EMBEDDING_NAME: HuggingFaceEmbeddings
+    EMBEDDING_NAME: OpenAIEmbeddings
     #List of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:
@@ -65,7 +76,7 @@ utils:
           model_kwargs:
             device: 'cpu'
           encode_kwargs: 
-            normalize_embeddings: False
+            normalize_embeddings: True
         similarity_score_reference: 0.9
         
         

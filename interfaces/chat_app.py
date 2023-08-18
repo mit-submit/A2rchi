@@ -88,6 +88,10 @@ class ChatWrapper:
             # Add a new discussion if the discussion ID doesn't exist
             data[discussion_id] = discussion_contents
 
+        #Check if target folders exist 
+        if not os.path.isdir(global_config["DATA_PATH"]):
+                os.mkdir(global_config["DATA_PATH"])
+
         # Write the updated JSON data back to the file
         with open(global_config["DATA_PATH"] + json_file, 'w') as f:
             json.dump(data, f)
@@ -116,15 +120,26 @@ class ChatWrapper:
 
             # Get similarity score to see how close the input is to the source
             # Low score means very close (it's a distance between embedding vectors approximated
-            # by an approximate k-nearest neighbors algoirthm)
-            score = self.chain.vectorstore.similarity_search_with_score(inp)[0][1]
+            # by an approximate k-nearest neighbors algoirthm called hnsw)
+            similarity_result = self.chain.vectorstore.similarity_search_with_score(inp)
+            if len(similarity_result)>0:
+                score = self.chain.vectorstore.similarity_search_with_score(inp)[0][1]
+            else:
+                score = 1e10
 
             #Load the present list of sources
-            with open(global_config["DATA_PATH"]+'sources.yml', 'r') as file:
-                sources = yaml.load(file, Loader=yaml.FullLoader)
+            try:
+                with open(global_config["DATA_PATH"]+'sources.yml', 'r') as file:
+                    sources = yaml.load(file, Loader=yaml.FullLoader)
+            except FileNotFoundError:
+                sources = dict()
 
             #Get the closest source to the document
-            source = result['source_documents'][0].metadata['source'].split('/')[-1].split('.')[0]
+            source = None
+            if len(result['source_documents']) > 0:
+                source_hash = result['source_documents'][0].metadata['source']
+                if '/' in source_hash and '.' in source_hash:
+                    source = source_hash.split('/')[-1].split('.')[0]
 
             #If the score is low enough, include the source as a link, otherwise give just the answer
             embedding_name = config["utils"]["embeddings"]["EMBEDDING_NAME"]
