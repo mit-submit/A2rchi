@@ -26,7 +26,7 @@ jobs:
       # test ssh
       - name: Test SSH
         run: |
-          ssh submit-gpu 'bash -s' < "hello there"
+          ssh submit-gpu 'bash -s' < ${{ github.workspace }}/deploy/test.sh
 
       # create secrets file for docker-compose
       - name: Create Secrets file
