@@ -43,6 +43,7 @@ chains:
           repetition_penalty: 1.0 #The parameter for repetition penalty. 1.0 means no penalty.
           length_penalty: 1 #[optional] Exponential penalty to the length that is used with beam-based generation.
           max_padding_length: null # the max padding length to be used with tokenizer padding the prompts.
+    chain_update_time: 10 # the amount of time (in seconds) which passes between when the chain updates to the newest version of the vectorstore
   input_lists:
     - submit.list
 

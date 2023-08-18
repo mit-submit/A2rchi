@@ -51,7 +51,7 @@ class Chain() :
 
     def update_vectorstore(self):
         while not self.kill:
-            time.sleep(10)
+            time.sleep(int(config["chain_update_time"]))
             self.lock.acquire()
             self.vectorstore = Chroma(client=self.client, collection_name = self.collection_name, embedding_function = self.embedding_model)
             self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
