@@ -13,6 +13,6 @@ Host submit-gpu
   IdentitiesOnly=yes
   PreferredAuthentications publickey
   PasswordAuthentication no
-IdentityFile ~/.ssh/id_rsa_submit
+  IdentityFile ~/.ssh/id_rsa_submit
   StrictHostKeyChecking no
 
