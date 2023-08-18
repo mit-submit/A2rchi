@@ -12,7 +12,6 @@ from utils.config_loader import Config_Loader
 config = Config_Loader().config["chains"]["chain"]
 global_config = Config_Loader().config["global"]
 utils_config = Config_Loader().config["utils"]
-dataManager_config = Config_Loader().config["data_manager"]
 
 
 class Chain() :
@@ -48,7 +47,7 @@ class Chain() :
         self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
 
         #only run the update vectorstore thread if dynamic updating of the vectorstore is allow through usage of ssh client
-        if dataManager_config["use_HTTP_chromadb_client"]:
+        if utils_config["data_manager"]["use_HTTP_chromadb_client"]:
             update_vectorstore_thread = Thread(target=self.update_vectorstore)
             update_vectorstore_thread.start()
 
