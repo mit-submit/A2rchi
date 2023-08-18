@@ -88,6 +88,10 @@ class ChatWrapper:
             # Add a new discussion if the discussion ID doesn't exist
             data[discussion_id] = discussion_contents
 
+        #Check if target folders exist 
+        if not os.path.isdir(global_config["DATA_PATH"]):
+                os.mkdir(global_config["DATA_PATH"])
+
         # Write the updated JSON data back to the file
         with open(global_config["DATA_PATH"] + json_file, 'w') as f:
             json.dump(data, f)
