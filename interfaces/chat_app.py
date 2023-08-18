@@ -117,9 +117,7 @@ class ChatWrapper:
             # Get similarity score to see how close the input is to the source
             # Low score means very close (it's a distance between embedding vectors approximated
             # by an approximate k-nearest neighbors algoirthm)
-            print("Result is: ", result)
-            print()
-            score = 10 #self.chain.vectorstore.similarity_search_with_score(inp)[0][1]
+            score = self.chain.vectorstore.similarity_search_with_score(inp)[0][1]
 
             #Load the present list of sources
             with open(global_config["DATA_PATH"]+'sources.yml', 'r') as file:
