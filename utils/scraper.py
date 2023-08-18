@@ -26,13 +26,6 @@ class Scraper():
                 with open(self.websites_dir+"info.txt", 'w') as file:
                     file.write("This is the folder for uploading the information from websites")
 
-        ### Not needed anymore but could be used in the future
-        # self.github_dir = self.global_config["DATA_PATH"]+"github/"
-        # if not os.path.isdir(self.github_dir):
-        #         os.mkdir(self.github_dir)
-        #         with open(self.github_dir+"info.txt", 'w') as file:
-        #             file.write("This is the folder for uploading the users guide from github")
-
         self.input_lists = Config_Loader().config["chains"]["input_lists"]
         print("input lists: ", self.input_lists)
 
@@ -103,17 +96,6 @@ class Scraper():
                     print(f"Error downloading {file_url}: {file_response.status_code}")
         else:
             print(f"Error: {response.status_code}")
-
-# deprecated
-    def scrape_submit_files(self):
-        for web_title in self.urls.keys():
-            # request web page
-            resp = requests.get(self.urls[web_title], verify=False)
-            # get the response text. in this case it is HTML
-            html = resp.text
-            #write the html output to a file
-            with open(self.websites_dir+web_title+".html", 'w') as file:
-                file.write(html)
 
 
 # Example usage
