@@ -60,6 +60,8 @@ If you are not able to set up dynamic updating of the vectorstore, simply set `u
 
 All the excecutables are in the `bin/` directory. Simply run them with python. You will need to run the data management service before anything else, otherwise A2rchi will not have any information to reference for context. The data management dumps data into the path specified in the config file, then creates a vectorstore. If the vectorstore is dynamic, the service should be allowed to continue in the background as it deploys an uploader application to manually manage context as well as constantly refreshes the vectorstore. If the vectorstore is static, the service will halt after all the data has been scraped. 
 
+In order to acsess the uploading app, you will need to log in with a username and password. To create usernames and passwords, simply run the `create_account` service in the pip directory.
+
 
 ### Running Tests
 
