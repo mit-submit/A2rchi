@@ -4,9 +4,25 @@ services:
       context: cleo
       dockerfile: Dockerfile-cleo
     environment:
-      - CLEO_URL
-      - CLEO_USER
-      - CLEO_PW
-      - CLEO_PROJECT
+      - CLEO_URL: /run/secrets/cleo_url
+      - CLEO_USER: /run/secrets/cleo_user
+      - CLEO_PW: /run/secrets/cleo_pw
+      - CLEO_PROJECT: /run/secrets/cleo_project
+    secrets:
+      - cleo_url
+      - cleo_user
+      - cleo_pw
+      - cleo_project
+
     # ports:
     #   - "8000:8000"
+
+secrets:
+  cleo_url:
+    file: cleo_url.txt
+  cleo_user:
+    file: cleo_user.txt
+  cleo_pw:
+    file: cleo_pw.txt
+  cleo_project:
+    file: cleo_project.txt

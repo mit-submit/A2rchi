@@ -10,5 +10,12 @@
 echo "Going into A2rchi directory"
 cd A2rchi
 echo "Starting docker compose"
-echo "var is: $SOME_VAR" # | docker secret create my_external_secret -
-# docker compose up -d
+cp requirements.txt deploy/cleo/
+cp bin/service_cleo.py deploy/cleo/
+docker compose up -d
+
+# # secrets file is created by CI pipeline and destroyed here
+# rm cleo_url.txt
+# rm cleo_user.txt
+# rm cleo_pw.txt
+# rm cleo_project.txt

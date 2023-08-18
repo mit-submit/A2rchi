@@ -26,8 +26,18 @@ jobs:
       # create secrets file for docker-compose
       - name: Create Secrets file
         run: |
-          touch ${{ github.workspace }}/deploy/secrets.txt
-          chmod 400 ${{ github.workspace }}/deploy/secrets.txt
+          touch ${{ github.workspace }}/deploy/cleo_url.txt
+          echo "DEV_CLEO_URL=${{ secrets.DEV_CLEO_URL }}" >> ${{ github.workspace }}/deploy/cleo_url.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_url.txt
+          touch ${{ github.workspace }}/deploy/cleo_user.txt
+          echo "DEV_CLEO_USER=${{ secrets.DEV_CLEO_USER }}" >> ${{ github.workspace }}/deploy/cleo_user.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_user.txt
+          touch ${{ github.workspace }}/deploy/cleo_pw.txt
+          echo "DEV_CLEO_PW=${{ secrets.DEV_CLEO_PW }}" >> ${{ github.workspace }}/deploy/cleo_pw.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_pw.txt
+          touch ${{ github.workspace }}/deploy/cleo_project.txt
+          echo "DEV_CLEO_PROJECT=${{ secrets.DEV_CLEO_PROJECT }}" >> ${{ github.workspace }}/deploy/cleo_project.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_project.txt
 
       # copy repository to machine
       - name: Copy Repository
@@ -37,9 +47,7 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
-          export SOME_VAR='wassup'
           ssh submit 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
-
