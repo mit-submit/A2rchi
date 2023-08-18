@@ -23,6 +23,12 @@ jobs:
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/id_rsa_submit
 
+      # create secrets file for docker-compose
+      - name: Create Secrets file
+        run: |
+          touch ${{ github.workspace }}/deploy/secrets.txt
+          chmod 400 ${{ github.workspace }}/deploy/secrets.txt
+
       # copy repository to machine
       - name: Copy Repository
         run: |
@@ -31,7 +37,8 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
-          ssh submit 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh wassup
+          export SOME_VAR='wassup'
+          ssh submit 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
