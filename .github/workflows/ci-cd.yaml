@@ -23,10 +23,10 @@ jobs:
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/id_rsa_submit
 
-      # copy repository to machine
-      - name: Copy Repository
-        run: |
-          scp -r ${{ github.workspace}} submit:~/
+      # # copy repository to machine
+      # - name: Copy Repository
+      #   run: |
+      #     scp -r ${{ github.workspace}} submit:~/
 
       # run deploy script
       - name: Run Deploy Script
