@@ -27,20 +27,20 @@ class Scraper():
 
         #Check if target folders exist 
         if not os.path.isdir(global_config["DATA_PATH"]):
-                os.mkdir(global_config["DATA_PATH"])
+            os.mkdir(global_config["DATA_PATH"])
 
         self.submit_website_dir = global_config["DATA_PATH"]+"submit_website/"
         if not os.path.isdir(self.submit_website_dir):
-                os.mkdir(self.submit_website_dir)
-                with open(self.submit_website_dir+"info.txt", 'w') as file:
-                    file.write("This is the folder for uploading the information from submit.mit.edu")
+            os.mkdir(self.submit_website_dir)
+            with open(self.submit_website_dir+"info.txt", 'w') as file:
+                file.write("This is the folder for uploading the information from submit.mit.edu")
 
         self.github_dir = global_config["DATA_PATH"]+"github/"
         if not os.path.isdir(self.github_dir):
-                os.mkdir(self.github_dir)
-                with open(self.github_dir+"info.txt", 'w') as file:
-                    file.write("This is the folder for uploading the users guide from the subMIT github")
-    
+            os.mkdir(self.github_dir)
+            with open(self.github_dir+"info.txt", 'w') as file:
+                file.write("This is the folder for uploading the users guide from the subMIT github")
+
     def hard_scrape(self,verbose=False):
         """
         (Re)fills the data folder from scratch 

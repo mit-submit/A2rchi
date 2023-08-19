@@ -1,5 +1,5 @@
 import os
-from utils.scraper import Scraper
+from A2rchi.utils.scraper import Scraper
 
 scraper=Scraper()
 

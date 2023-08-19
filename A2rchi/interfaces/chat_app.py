@@ -7,9 +7,9 @@ import json
 import pickle
 from threading import Lock
 
-from chains.chain import Chain
+from A2rchi.chains.chain import Chain
 
-from utils.config_loader import Config_Loader
+from A2rchi.utils.config_loader import Config_Loader
 global_config = Config_Loader().config["global"]
 
 QUERY_LIMIT = 1000 #max number of queries 

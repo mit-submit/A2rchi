@@ -1,8 +1,8 @@
 services:
   cleo:
     build:
-      context: cleo
-      dockerfile: Dockerfile-cleo
+      context: ..
+      dockerfile: deploy/cleo/Dockerfile-cleo
     environment:
       CLEO_URL: /run/secrets/cleo_url
       CLEO_USER: /run/secrets/cleo_user

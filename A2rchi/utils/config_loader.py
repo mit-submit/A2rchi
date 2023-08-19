@@ -1,7 +1,7 @@
 import yaml
 
 #import models so their classes could directly be added to the config file
-from chains.models import OpenAILLM,DumbLLM,LlamaLLM
+from A2rchi.chains.models import OpenAILLM,DumbLLM,LlamaLLM
 
 class Config_Loader():
 

@@ -1,12 +1,12 @@
 import os,re,sys
 import datetime
-from utils import sender
+from A2rchi.utils import sender
 from redminelib import Redmine
 #from standalone import run
 
 import numpy as np ##TODO: remove this
 
-from chains.chain import Chain
+from A2rchi.chains.chain import Chain
 
 a2rchi_pattern = '-- A2rchi --'
 #new_status_id = 1        # (or 1 this is after first work)

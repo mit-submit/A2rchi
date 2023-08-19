@@ -1,6 +1,6 @@
 #!/bin/python
 import os
-from interfaces import cleo
+from A2rchi.interfaces import cleo
 
 cleo = cleo.Cleo('Cleo_Helpdesk')
 

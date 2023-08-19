@@ -27,9 +27,9 @@ from langchain.base_language import BaseLanguageModel
 from langchain.vectorstores.base import VectorStore
 
 from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
-from chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
+from A2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 
-from utils.config_loader import Config_Loader
+from A2rchi.utils.config_loader import Config_Loader
 config = Config_Loader().config["chains"]["base"]
 
 

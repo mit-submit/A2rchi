@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import csv
 import io
-from utils.embedding_utils import get_embedding
+from A2rchi.utils.embedding_utils import get_embedding
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 MAX_LENGTH = 1000

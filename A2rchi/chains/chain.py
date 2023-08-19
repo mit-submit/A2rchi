@@ -5,8 +5,8 @@ from langchain.chat_models import ChatOpenAI
 
 from langchain.chains import ConversationalRetrievalChain
 
-from chains.base import BaseSubMITChain as BaseChain
-from chains.models import OpenAILLM, DumbLLM, LlamaLLM
+from A2rchi.chains.base import BaseSubMITChain as BaseChain
+from A2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM
 
 from langchain.document_loaders import TextLoader
 from langchain.document_loaders import PyPDFLoader
@@ -15,13 +15,13 @@ from langchain.document_loaders import BSHTMLLoader
 from langchain.document_loaders import WebBaseLoader
 from langchain.docstore.document import Document
 
-from utils.data_manager import DataManager
+from A2rchi.utils.data_manager import DataManager
 
 import os
 from threading import Lock, Thread
 import time
 
-from utils.config_loader import Config_Loader
+from A2rchi.utils.config_loader import Config_Loader
 config = Config_Loader().config["chains"]["chain"]
 global_config = Config_Loader().config["global"]
 

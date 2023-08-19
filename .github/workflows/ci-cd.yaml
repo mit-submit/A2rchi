@@ -23,13 +23,8 @@ jobs:
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/id_rsa_submit
 
-      # test ssh
-      - name: Test SSH
-        run: |
-          ssh submit-gpu 'bash -s' < ${{ github.workspace }}/deploy/test.sh
-
-      # create secrets file for docker-compose
-      - name: Create Secrets file
+      # create secrets files for docker-compose
+      - name: Create Secrets Files
         run: |
           touch ${{ github.workspace }}/deploy/cleo_url.txt
           echo "${{ secrets.DEV_CLEO_URL }}" >> ${{ github.workspace }}/deploy/cleo_url.txt
@@ -54,7 +49,13 @@ jobs:
         run: |
           ssh submit-gpu 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
 
-      # TODO: clean up secret files
+      # clean up secret files
+      - name: Remove Secrets from Runner
+        run: |
+          rm ${{ github.workspace }}/deploy/cleo_url.txt
+          rm ${{ github.workspace }}/deploy/cleo_user.txt
+          rm ${{ github.workspace }}/deploy/cleo_pw.txt
+          rm ${{ github.workspace }}/deploy/cleo_project.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
