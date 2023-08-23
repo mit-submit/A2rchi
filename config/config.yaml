@@ -1,5 +1,6 @@
 global:
   DATA_PATH: "./data/"
+  ACCOUNTS_PATH: "~/.accounts/" #place to store account information
   ACCEPTED_FILES: 
     -".txt"
     -".html"

@@ -35,7 +35,7 @@ def simple_hash(input_string):
     identifier.update(input_string.encode('utf-8'))
     hash_value= str(int(identifier.hexdigest(),16))
 
-    return hash_value[0:12]
+    return hash_value
 
 def file_hash(filename):
     """
@@ -45,7 +45,7 @@ def file_hash(filename):
     at the end of the name
     """
 
-    return simple_hash(filename) + "." + filename.split(".")[-1]
+    return simple_hash(filename)[0:12] + "." + filename.split(".")[-1]
 
 ####################################################
 ####################################################
@@ -176,7 +176,7 @@ def add_username_password(username, password, file_name='accounts.yaml'):
     hash = simple_hash(password + os.environ["UPLOADER_SALT"])
     
     try:
-        with open(global_config["DATA_PATH"] + file_name, 'r') as file:
+        with open(global_config["ACCOUNTS_PATH"] + file_name, 'r') as file:
             accounts = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
     except FileNotFoundError:
         accounts = {}
@@ -190,9 +190,9 @@ def add_username_password(username, password, file_name='accounts.yaml'):
     accounts[username] = hash
 
     # Write the updated dictionary back to the YAML file
-    if not os.path.isdir(global_config["DATA_PATH"]):
-                os.mkdir(global_config["DATA_PATH"])
-    with open(global_config["DATA_PATH"] + file_name, 'w') as file:
+    if not os.path.isdir(global_config["ACCOUNTS_PATH"]):
+                os.mkdir(global_config["ACCOUNTS_PATH"])
+    with open(global_config["ACCOUNTS_PATH"] + file_name, 'w') as file:
         yaml.dump(accounts, file)
 
 
@@ -212,7 +212,7 @@ def check_credentials(username, password, file_name='accounts.yaml'):
 
     #open the accounts dictionary (if file exists, account dictionary is null)
     try:
-        with open(global_config["DATA_PATH"] + file_name, 'r') as file:
+        with open(global_config["ACCOUNTS_PATH"] + file_name, 'r') as file:
             accounts = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
     except FileNotFoundError:
         accounts = {}
