@@ -8,6 +8,7 @@ from utils.data_manager import DataManager
 
 from config_loader import Config_Loader
 config = Config_Loader().config["utils"]
+app_config = Config_Loader().config["interfaces"]["uploader_app"]
 
 # decision weather or not to run the vectorstore as a dynamic service or a static one
 #
@@ -47,4 +48,4 @@ data_manager_thread = Thread(target = run_data_manager)
 data_manager_thread.start()
 
 if run_dynamically:
-    uploader_app.run(debug=False, port=5003)
+    uploader_app.run(debug=False, port=app_config["PORT"], host=app_config["HOST"])
