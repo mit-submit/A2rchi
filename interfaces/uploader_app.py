@@ -190,6 +190,8 @@ def add_username_password(username, password, file_name='accounts.yaml'):
     accounts[username] = hash
 
     # Write the updated dictionary back to the YAML file
+    if not os.path.isdir(global_config["DATA_PATH"]):
+                os.mkdir(global_config["DATA_PATH"])
     with open(global_config["DATA_PATH"] + file_name, 'w') as file:
         yaml.dump(accounts, file)
 

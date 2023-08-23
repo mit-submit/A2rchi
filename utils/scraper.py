@@ -53,7 +53,7 @@ class Scraper():
     def scrape_urls(urls, upload_dir, sources_path):
         try:
             with open(sources_path, 'r') as file:
-                sources = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
+                sources = yaml.safe_load(file) or {}  # Load existing sources or initialize as empty dictionary
         except FileNotFoundError:
             sources = {}
             

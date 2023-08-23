@@ -1,11 +1,11 @@
-import os
-from typing import Optional, Tuple
-import yaml
-
-import gradio as gr
+from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS  # Import CORS from flask_cors
 import numpy as np
 import json
-import pickle
+import time
+import os
+import yaml
+from typing import Optional, Tuple, List
 from threading import Lock
 
 from chains.chain import Chain
@@ -15,7 +15,6 @@ config = Config_Loader().config
 global_config = config["global"]
 
 QUERY_LIMIT = 1000 #max number of queries 
-
 
 class ChatWrapper:
     """Wrapper which holds functionality for the chatbot"""
@@ -31,43 +30,23 @@ class ChatWrapper:
         Input: the history in the form of a list of tuples, where the first entry of each tuple is 
         the author of the text and the second entry is the text itself (native A2rchi history format)
 
-        Output: the history in the form of a list of tuples, where the first entry of each tuple is
-        a question and the second is the response texts (chat format).
+        Output: the history in the form of a list of lists, where the first entry of each tuple is 
+        the author of the text and the second entry is the text itself 
         """
 
-        app_history = []
-        i = 0
-        while i < len(history):
-            if i+1 < len(history) and  history[i][0] != "A2rchi" and history[i+1][0] == "A2rchi":
-                app_history.append((history[i][1], history[i+1][1]))
-                i += 2
-            elif history[i][0] != "A2rchi":
-                app_history.append((history[i][1], None))
-                i += 1
-            elif history[i][0] == "A2rchi":
-                app_history.append((None, history[i][1]))
-                i += 1
-        return app_history
+        return [list(entry) for entry in history]
 
     @staticmethod
     def convert_to_chain_history(history):
         """
-        Input: the history in the form of a list of tuples, where the first entry of each tuple is
-        a question and the second is the response texts (chat format).
+        Input: the history in the form of a list of lists, where the first entry of each tuple is 
+        the author of the text and the second entry is the text itself
 
         Output: the history in the form of a list of tuples, where the first entry of each tuple is 
         the author of the text and the second entry is the text itself (native A2rchi history format)
         """
 
-        if history is None:
-            return history
-
-        chain_history = []
-        i = 0
-        for entry in history:
-            chain_history.append(("User", entry[0]))
-            chain_history.append(("A2rchi", entry[1]))
-        return chain_history
+        return [tuple(entry) for entry in history]
 
     @staticmethod
     # TODO: not urgent, but there is a much better way to do this
@@ -96,13 +75,13 @@ class ChatWrapper:
         with open(global_config["DATA_PATH"] + json_file, 'w') as f:
             json.dump(data, f)
 
-    def __call__(self, inp: str, history: Optional[Tuple[str, str]], discussion_id: Optional[int]):
+    def __call__(self, history: Optional[list[str, str]], discussion_id: Optional[int]):
         """Execute the chat functionality."""
         self.lock.acquire()
         try:
-            #convert to a form that the chain can understand and add the most recent message
-            history = ChatWrapper.convert_to_chain_history(history) or []
-            history.append(("User", inp))
+
+            #convert the history to native A2rchi form (because javascript does not have tuples)
+            history = self.convert_to_chain_history(history)
 
             #get discussion ID so that the conversation can be saved
             discussion_id = discussion_id or np.random.randint(100000, 999999)
@@ -112,15 +91,15 @@ class ChatWrapper:
                 result = self.chain(history)
             else: 
             #the case where we have exceeded the QUERY LIMIT (built so that we don't overuse the chain)
-                history.append(("A2rchi", "Sorry, our service is currently down due to exceptional demand. Please come again later."))
-                history = ChatWrapper.convert_to_app_history(history)
-                return history, history, discussion_id
+                output = "Sorry, our service is currently down due to exceptional demand. Please come again later."
+                return output, discussion_id
             self.number_of_queries += 1
             print("number of queries is: ", self.number_of_queries)
 
             # Get similarity score to see how close the input is to the source
             # Low score means very close (it's a distance between embedding vectors approximated
             # by an approximate k-nearest neighbors algoirthm called hnsw)
+            inp = history[-1][1]
             similarity_result = self.chain.vectorstore.similarity_search_with_score(inp)
             if len(similarity_result)>0:
                 score = self.chain.vectorstore.similarity_search_with_score(inp)[0][1]
@@ -145,72 +124,70 @@ class ChatWrapper:
             embedding_name = config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
             if score < similarity_score_reference and source in sources.keys(): 
-                output = result["answer"] + "\n\n [<b>Click here to read more</b>](" + sources[source] + ")"
+                output = "<p>" + result["answer"] + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
             else:
-                output = result["answer"]
-
-            history.append(("A2rchi", output))
+                output = "<p>" + result["answer"] + "</p>"
 
             ChatWrapper.update_or_add_discussion("conversations_test.json", discussion_id, history)
-
-            history = ChatWrapper.convert_to_app_history(history)
 
         except Exception as e:
             raise e
         finally:
             self.lock.release()
-        return history, history, discussion_id
+        return output, discussion_id
 
-class Chat_UI:
+class FlaskAppWrapper(object):
 
-    def __init__(self):
+    def __init__(self, app, **configs):
+        self.app = app
+        self.configs(**configs)
+
+        #Create the chat from the wrapper
         self.chat = ChatWrapper()
-        self.block = gr.Blocks(css=".gradio-container {background-color: white}")
 
-    @staticmethod
-    def clear_last(history, chatbot, id_state):
-        """Clears the most recent response so that it may be regenerated"""
-        chatbot[-1][1] = None
-        id_state = None
-        return history[:-1], chatbot, id_state
+        #Enable CORS:
+        CORS(self.app)
 
+        #Add endpoints for flask app
+        self.add_endpoint('/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
+        self.add_endpoint('/', '', self.index)
 
-    def launch(self, _debug = True, _share = True):
+    def configs(self, **configs):
+        for config, value in configs:
+            self.app.config[config.upper()] = value
 
-        with self.block:
+    def add_endpoint(self, endpoint=None, endpoint_name=None, handler=None, methods=['GET'], *args, **kwargs):
+        self.app.add_url_rule(endpoint, endpoint_name, handler, methods=methods, *args, **kwargs)
 
-            introduction = "Hello! My name is A2rchi, your friendly guide to subMIT, the computing cluster. Whether you're a beginner or an expert, I'm here to help you navigate through the world of computing. Just ask away, and I'll do my best to assist you!"
+    def run(self, **kwargs):
+        self.app.run(**kwargs)
 
-            chatbot = gr.Chatbot([[None, introduction]]).style(height=370)
-            state = gr.State()
-            id_state = gr.State(None)
+    def get_chat_response(self):
+        """
+        Gets a response when prompted.Asks as an API to the main app, who's
+        functionality is carried through by javascript and html. Input is a 
+        requestion with
 
-            with gr.Row():
-                with gr.Column(scale=0.85):
-                    message = gr.Textbox(
-                        label="What's your question?",
-                        show_label = False,
-                        placeholder="Type your question here and press enter to ask A2rchi",
-                        lines=1,
-                    ).style(container=False)
-                with gr.Column(scale=0.15):
-                    regenerate = gr.Button("Regenerate Response")
+            Discussion_id: Either None or an integer
+            Conversation: List of length 2 lists, where the length 2
+                          lists have first element either "User" or 
+                          "A2rchi" and have second element of a message
+                          content.
 
-            clear = gr.Button("Clear")
+        Returns:
+            A json with a response (html formatted plain text string) and a
+            discussion ID (either None or an integer)
+        """
+        history = request.json.get('converstation')  # Get user input from the request
+        discussion_id = request.json.get('discussion_id')  # Get discussion_id from the request
 
-            gr.Examples(
-                examples=[
-                    "What is submit?",
-                    "How do I install an ssh key?",
-                    "How do I change to my work directory?"
-                ],
-                inputs=message,
-            )
-
-            clear.click(lambda: [None, None, "", None], inputs=None, outputs=[chatbot, state, message, id_state])
-
-            regenerate.click(fn = Chat_UI.clear_last, inputs=[state, chatbot, id_state], outputs=[state, chatbot, id_state]).then(fn = self.chat, inputs = [message, state, id_state], outputs=[chatbot, state, id_state])
-
-            message.submit(fn = self.chat, inputs = [message, state, id_state], outputs=[chatbot, state, id_state])
-
-        self.block.launch(debug=_debug, share=_share)
+        #Querey the chat and return the results. 
+        response, discussion_id = self.chat(history, discussion_id)
+        return jsonify({'response': response, 'discussion_id': discussion_id})
+    
+    def index(self):
+        return render_template('index.html')
+    
+if __name__ == '__main__':
+    app = FlaskAppWrapper(Flask(__name__))
+    app.run(debug=True, port=7680, host="0.0.0.0")
