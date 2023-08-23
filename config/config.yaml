@@ -5,6 +5,14 @@ global:
     -".html"
     -".pdf"
 
+interfaces:
+  chat_app:
+    PORT: 7680
+    HOST: "0.0.0.0" #Either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+  uploader_app:
+    PORT: 5003
+    HOST: "0.0.0.0" #Either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+
 chains:
   base:
     #Roles that A2rchi knows about
@@ -25,6 +33,7 @@ chains:
       DumbLLM:
         class: DumbLLM
         kwargs: 
+          filler: null
       LlamaLLM:
         class: LlamaLLM
         kwargs:
