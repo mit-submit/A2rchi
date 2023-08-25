@@ -43,7 +43,13 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["A2rchi"]
+packages = [
+    "A2rchi",
+    "A2rchi.bin",
+    "A2rchi.chains",
+    "A2rchi.interfaces",
+    "A2rchi.utils",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]
