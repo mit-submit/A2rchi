@@ -33,10 +33,10 @@ class Chain() :
         if self.utils_config["data_manager"]["use_HTTP_chromadb_client"]:
             self.client = chromadb.HttpClient(host=self.utils_config["data_manager"]["chromadb_host"], port=self.utils_config["data_manager"]["chromadb_port"])
         else:
-            self.client = chromadb.PersistentClient(path = self.global_config["DATA_PATH"])
+            self.client = chromadb.PersistentClient(path = self.global_config["local_vstore_path"])
         self.collection_name = self.utils_config["data_manager"]["collection_name"] + "_with_" + embedding_name
-        self.vectorstore = Chroma(client=self.client, collection_name = self.collection_name, embedding_function = self.embedding_model)
 
+        self.vectorstore = Chroma(client=self.client, collection_name = self.collection_name, embedding_function = self.embedding_model)
         model_class_map = self.config["MODEL_CLASS_MAP"]
         model_name = self.config["MODEL_NAME"]
         self.llm = model_class_map[model_name]["class"](**model_class_map[model_name]["kwargs"])

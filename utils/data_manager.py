@@ -32,7 +32,7 @@ class DataManager():
         if self.config["data_manager"]["use_HTTP_chromadb_client"]:
             self.client = chromadb.HttpClient(host=self.config["data_manager"]["chromadb_host"], port=self.config["data_manager"]["chromadb_port"], settings=Settings(allow_reset=True))
         else:
-            self.client = chromadb.PersistentClient(path = self.global_config["DATA_PATH"])
+            self.client = chromadb.PersistentClient(path = self.global_config["local_vstore_path"])
 
         #get the collection (reset it if it already exists and reset_collection=True)
         #the actial name of the collection is the name given by config with the embeddings specified
@@ -124,6 +124,10 @@ class DataManager():
             #create the chunks
             file = files_to_add[filename]
             loader = self.loader(file)
+            
+            #Treat case where file extension is not recognized 
+            if not loader: continue 
+            
             doc = loader.load()[0]
             chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
 
@@ -154,10 +158,13 @@ class DataManager():
             
             self.collection.add(embeddings = embeddings, ids = ids, documents = chunks, metadatas = metadatas)
     
-    def loader(self,file_path):
+    @staticmethod
+    def loader(file_path):
          #return the document loader from a path, with the correct loader given the extension 
          _, file_extension = os.path.splitext(file_path)
          if file_extension == ".txt" : return TextLoader(file_path)
          elif file_extension == ".html" : return BSHTMLLoader(file_path)
          elif file_extension == ".pdf" : return PyPDFLoader(file_path)
-         else: print(file_path, " Error: format not supported")
+         else: 
+              print(file_path, " Error: format not supported")
+              return None 

@@ -13,7 +13,7 @@ class Scraper():
 
     def __init__(self):
         from config_loader import Config_Loader
-        self.config = Config_Loader().config["chains"]["chain"]
+        self.config = Config_Loader().config["utils"]["scraper"]
         self.global_config = Config_Loader().config["global"]
 
         # Check if target folders exist 
@@ -23,8 +23,9 @@ class Scraper():
         self.websites_dir = self.global_config["DATA_PATH"]+"websites/"
         if not os.path.isdir(self.websites_dir):
                 os.mkdir(self.websites_dir)
-                with open(self.websites_dir+"info.txt", 'w') as file:
-                    file.write("This is the folder for uploading the information from websites")
+        if not os.path.isfile(self.websites_dir+"info.txt"):
+            with open(self.websites_dir+"info.txt", 'w') as file:
+                file.write("This is the folder for uploading the information from websites")
 
         ### Not needed anymore but could be used in the future
         # self.github_dir = self.global_config["DATA_PATH"]+"github/"
@@ -38,9 +39,13 @@ class Scraper():
 
     def hard_scrape(self,verbose=False):
         """
-        (Re)fills the data folder from scratch 
+        Fills the data folder from scratch 
         
         """
+        if self.config["reset_data"] :
+            for file in os.listdir(self.websites_dir):
+                if (file == "info.txt"): continue
+                os.remove(self.websites_dir + file)
         self.scrape_urls()
         if verbose: print("Scraping was completed successfully")
 
@@ -56,18 +61,26 @@ class Scraper():
             
     def scrape_urls(self):
         urls = self.collect_urls_from_lists()
+        print(urls)
         sources = {}
         for url in urls:
             # request web page
-            resp = requests.get(url, verify=False)
-            # get the response text. in this case it is HTML
-            html = resp.text
+            if not self.config["verbose"]:
+                import urllib3
+                urllib3.disable_warnings()
+            resp = requests.get(url, verify=self.config["verify_urls"])
             # write the html output to a file
             identifier = hashlib.md5()
             identifier.update(url.encode('utf-8'))
             file_name = str(int(identifier.hexdigest(),16))[0:12]
-            with open(f"{self.websites_dir}/{file_name}.html", 'w') as file:
-                file.write(html)
+
+            if (url.split('.')[-1] == 'pdf'):
+                with open(f"{self.websites_dir}{file_name}.pdf", 'wb') as file:
+                    file.write(resp.content)
+            else:
+                with open(f"{self.websites_dir}{file_name}.html", 'w') as file:
+                    file.write(resp.text)
+            
             sources[file_name] = url 
 
         #store list of files with urls to file 
