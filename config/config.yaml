@@ -1,5 +1,6 @@
 global:
   DATA_PATH: "./data/"
+  local_vstore_path: "./data/vstore/"
   ACCEPTED_FILES: 
     -".txt"
     -".html"
@@ -62,12 +63,12 @@ utils:
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
-    use_HTTP_chromadb_client: True  #weather or not to use the http client for the chromadb vectorstore
+    use_HTTP_chromadb_client: True  #Recommended: True, whether or not to use the http client for the chromadb vectorstore
     vectordb_update_sleeptime: "10" #the amount of sleep time between each iteration of updating the vectore to the filesystem.
     chromadb_port: 8000 # only relavent if use_HTTP_chromadb_client=True
     chromadb_host: "localhost" # only relavent if use_HTTP_chromadb_client=True
     collection_name: "dev_collection"
-    reset_collection: True #weather or not to reset the entire collection each time it is acsessed by a new data manager instance.
+    reset_collection: True #whether or not to reset the entire collection each time it is accessed by a new data manager instance.
   embeddings:
     #Choose one embedding from list below
     EMBEDDING_NAME: OpenAIEmbeddings
@@ -87,5 +88,8 @@ utils:
           encode_kwargs: 
             normalize_embeddings: True
         similarity_score_reference: 0.9
-        
+  scraper:
+    reset_data: True #Delete websites and sources.yml in data folder
+    verify_urls: False #Should be true when possible
+    enable_warnings: False #Keeps output clean if verify == False
         
