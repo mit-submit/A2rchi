@@ -10,7 +10,7 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 class Scraper():
-
+    
     def __init__(self):
         from config_loader import Config_Loader
         self.config = Config_Loader().config["utils"]["scraper"]
@@ -27,13 +27,6 @@ class Scraper():
             with open(self.websites_dir+"info.txt", 'w') as file:
                 file.write("This is the folder for uploading the information from websites")
 
-        ### Not needed anymore but could be used in the future
-        # self.github_dir = self.global_config["DATA_PATH"]+"github/"
-        # if not os.path.isdir(self.github_dir):
-        #         os.mkdir(self.github_dir)
-        #         with open(self.github_dir+"info.txt", 'w') as file:
-        #             file.write("This is the folder for uploading the users guide from github")
-
         self.input_lists = Config_Loader().config["chains"]["input_lists"]
         print("input lists: ", self.input_lists)
 
@@ -46,7 +39,12 @@ class Scraper():
             for file in os.listdir(self.websites_dir):
                 if (file == "info.txt"): continue
                 os.remove(self.websites_dir + file)
-        self.scrape_urls()
+                
+        Scraper.scrape_urls(urls = self.collect_urls_from_lists(),
+                            upload_dir= self.websites_dir,
+                            sources_path=self.global_config["DATA_PATH"]+'sources.yml',
+                            verify_urls=self.config["verify_urls"],
+                            enable_warnings=self.config["enable_warnings"])
         if verbose: print("Scraping was completed successfully")
 
     def collect_urls_from_lists(self):
@@ -58,33 +56,37 @@ class Scraper():
                 if len(line)>0 and line[0] != '#':
                     urls.append(line)
         return urls
+    
+    @staticmethod
+    def scrape_urls(urls, upload_dir, sources_path, verify_urls, enable_warnings):
+        try:
+            with open(sources_path, 'r') as file:
+                sources = yaml.safe_load(file) or {}  # Load existing sources or initialize as empty dictionary
+        except FileNotFoundError:
+            sources = {}
             
-    def scrape_urls(self):
-        urls = self.collect_urls_from_lists()
-        print(urls)
-        sources = {}
         for url in urls:
             # request web page
-            if not self.config["verbose"]:
+            if not enable_warnings:
                 import urllib3
                 urllib3.disable_warnings()
-            resp = requests.get(url, verify=self.config["verify_urls"])
+            resp = requests.get(url, verify=verify_urls)
             # write the html output to a file
             identifier = hashlib.md5()
             identifier.update(url.encode('utf-8'))
             file_name = str(int(identifier.hexdigest(),16))[0:12]
 
             if (url.split('.')[-1] == 'pdf'):
-                with open(f"{self.websites_dir}{file_name}.pdf", 'wb') as file:
+                with open(f"{upload_dir}{file_name}.pdf", 'wb') as file:
                     file.write(resp.content)
             else:
-                with open(f"{self.websites_dir}{file_name}.html", 'w') as file:
+                with open(f"{upload_dir}{file_name}.html", 'w') as file:
                     file.write(resp.text)
             
             sources[file_name] = url 
 
         #store list of files with urls to file 
-        file_name = self.global_config["DATA_PATH"]+'sources.yml'
+        file_name = sources_path
         with open(file_name, 'w') as file:
             yaml.dump(sources, file)
 
@@ -116,17 +118,6 @@ class Scraper():
                     print(f"Error downloading {file_url}: {file_response.status_code}")
         else:
             print(f"Error: {response.status_code}")
-
-# deprecated
-    def scrape_submit_files(self):
-        for web_title in self.urls.keys():
-            # request web page
-            resp = requests.get(self.urls[web_title], verify=False)
-            # get the response text. in this case it is HTML
-            html = resp.text
-            #write the html output to a file
-            with open(self.websites_dir+web_title+".html", 'w') as file:
-                file.write(html)
 
 
 # Example usage

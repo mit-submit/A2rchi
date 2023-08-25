@@ -3,6 +3,9 @@ import numpy as np
 import yaml
 import hashlib
 from flask import Flask, render_template, request, redirect, url_for, flash, session
+import urllib
+
+from utils.scraper import Scraper
 
 from config_loader import Config_Loader
 global_config = Config_Loader().config["global"]
@@ -13,7 +16,7 @@ app.secret_key = 'your_secret_key'  # Change this to a secure secret key
 # Directory where files will be stored
 app.config['UPLOAD_FOLDER'] = global_config["DATA_PATH"] + 'manual_uploads'
 
-
+##TODO: need to clean up this file
 
 
 ####################################################
@@ -133,6 +136,20 @@ def get_filename_from_hash(hash_string, filehashes_yaml_file = "/manual_file_has
 
     if hash_string in filenames_dict.keys():
         return filenames_dict[hash_string]
+    
+def remove_url_from_sources(url):
+    try:
+        with open(global_config["DATA_PATH"] +'sources.yml', 'r') as file:
+            sources = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
+    except FileNotFoundError:
+        sources = {}
+
+    # Check if the username already exists and remove if it does
+    sources = {k:v for k,v in sources.items() if v!=url}
+
+    # Write the updated dictionary back to the YAML file
+    with open(global_config["DATA_PATH"]  +'sources.yml', 'w') as file:
+        yaml.dump(sources, file)
 
 ####################################################
 ####################################################
@@ -173,6 +190,8 @@ def add_username_password(username, password, file_name='accounts.yaml'):
     accounts[username] = hash
 
     # Write the updated dictionary back to the YAML file
+    if not os.path.isdir(global_config["DATA_PATH"]):
+                os.mkdir(global_config["DATA_PATH"])
     with open(global_config["DATA_PATH"] + file_name, 'w') as file:
         yaml.dump(accounts, file)
 
@@ -273,9 +292,21 @@ def index():
 
     if not os.path.isdir(app.config['UPLOAD_FOLDER']):
                 os.mkdir(app.config['UPLOAD_FOLDER'])
-    files = os.listdir(app.config['UPLOAD_FOLDER'])
-    filenames = [get_filename_from_hash(file_hash) for file_hash in files]
-    return render_template('index.html', files=filenames)
+
+    file_hashes = os.listdir(app.config['UPLOAD_FOLDER'])
+    file_names = [get_filename_from_hash(file_hash) for file_hash in file_hashes]
+
+    if os.path.isdir(global_config["DATA_PATH"]+'manual_websites/') and os.path.exists(global_config["DATA_PATH"]+'sources.yml'):
+
+        with open(global_config["DATA_PATH"]+'sources.yml', 'r') as file:
+            sources = yaml.safe_load(file) or {}
+
+        url_hashes = os.listdir(global_config["DATA_PATH"]+'manual_websites/') 
+        url_names = [sources[url_hash.split(".")[0]] for url_hash in url_hashes]
+    else:
+        url_names = []
+
+    return render_template('index.html', files=file_names, urls = url_names)
 
 
 @app.route('/upload', methods=['POST'])
@@ -337,6 +368,53 @@ def delete(filename):
         flash('File deleted successfully')
     else:
         flash('File not found')
+
+    return redirect(url_for('index'))
+
+@app.route('/upload_url', methods=['POST'])
+def upload_url():
+    if not is_authenticated():
+        return redirect(url_for('login'))
+
+    url = request.form.get('url')
+
+    if url:
+        print("url is: ", url)
+        try:
+            if not os.path.exists(global_config["DATA_PATH"]+'manual_websites'):
+                os.mkdir(global_config["DATA_PATH"]+'manual_websites')
+            Scraper.scrape_urls(urls = [url],
+                                upload_dir = global_config["DATA_PATH"]+'manual_websites', #same as the scraper, though it doesn't need to be
+                                sources_path = global_config["DATA_PATH"]+'sources.yml')
+            added_to_urls = True
+        except Exception as e:
+            print(e)
+            added_to_urls = False
+        if added_to_urls:
+            flash('URL uploaded successfully')
+        else:
+            flash('Failed to add URL')
+    else:
+        flash('No URL provided')
+
+    return redirect(url_for('index'))
+
+@app.route('/delete_url/<path:encoded_url>')
+def delete_url(encoded_url):
+
+    url = urllib.parse.unquote(encoded_url)
+
+    if not os.path.isdir(global_config["DATA_PATH"]+'manual_websites/'):
+                os.mkdir(global_config["DATA_PATH"]+'manual_websites/')
+    file_path = os.path.join(global_config["DATA_PATH"]+'manual_websites/', simple_hash(url)[0:12] + ".html")
+
+    print(file_path)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        remove_url_from_sources(url)
+        flash('URL deleted successfully')
+    else:
+        flash('URL not found')
 
     return redirect(url_for('index'))
 

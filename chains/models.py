@@ -34,6 +34,8 @@ class DumbLLM(BaseCustomLLM):
     A simple Dumb LLM, perfect for testing
     """
 
+    filler: str = None
+
     def _call(
         self,
         prompt: str = None,
