@@ -8,11 +8,13 @@ services:
       CLEO_USER: /run/secrets/cleo_user
       CLEO_PW: /run/secrets/cleo_pw
       CLEO_PROJECT: /run/secrets/cleo_project
+      OPENAI_API_KEY: /run/secrets/openai_api_key
     secrets:
       - cleo_url
       - cleo_user
       - cleo_pw
       - cleo_project
+      - openai_api_key
 
     # ports:
     #   - "8000:8000"
@@ -26,3 +28,5 @@ secrets:
     file: cleo_pw.txt
   cleo_project:
     file: cleo_project.txt
+  openai_api_key:
+    file: openai_api_key.txt
