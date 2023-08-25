@@ -26,6 +26,7 @@ dependencies = [
     "lz4==4.3.2",
     "monotonic==1.6",
     "onnxruntime==1.15.1",
+    "openai==0.27.9",
     "overrides==7.3.1",
     "posthog==3.0.1",
     "pulsar-client==3.2.0",
