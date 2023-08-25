@@ -21,7 +21,7 @@ class Scraper():
 
 
     def __init__(self):
-        from config_loader import Config_Loader
+        from A2rchi.utils.config_loader import Config_Loader
         config = Config_Loader().config["chains"]["chain"]
         global_config = Config_Loader().config["global"]
 

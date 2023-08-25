@@ -12,7 +12,7 @@ from langchain.text_splitter import CharacterTextSplitter
 class DataManager():
 
     def __init__(self):
-        from config_loader import Config_Loader
+        from A2rchi.utils.config_loader import Config_Loader
         self.global_config = Config_Loader().config["global"]
         self.data_path = self.global_config["DATA_PATH"]
         
