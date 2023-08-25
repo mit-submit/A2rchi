@@ -4,11 +4,11 @@ RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
 # COPY requirements.txt requirements.txt
 # RUN pip install --upgrade pip && pip install -r requirements.txt
-RUN pip install --upgrade pip && pip install .
 COPY pyproject.toml pyproject.toml
 COPY README.md README.md
 COPY LICENSE LICENSE
 COPY config config
 COPY A2rchi A2rchi
+RUN pip install --upgrade pip && pip install .
 
 CMD ["python", "A2rchi/bin/service_cleo.py"]
