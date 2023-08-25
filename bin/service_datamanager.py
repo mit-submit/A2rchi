@@ -1,8 +1,9 @@
 #!/bin/python
 import os
 from threading import Thread
+from flask import Flask
 
-from interfaces.uploader_app import app as uploader_app
+from interfaces.uploader_app.app import FlaskAppWrapper
 from utils.scraper import Scraper
 from utils.data_manager import DataManager
 
@@ -48,4 +49,5 @@ data_manager_thread = Thread(target = run_data_manager)
 data_manager_thread.start()
 
 if run_dynamically:
-    uploader_app.run(debug=False, port=app_config["PORT"], host=app_config["HOST"])
+    app = FlaskAppWrapper(Flask(__name__, template_folder = "../interfaces/uploader_app/templates"))
+    app.run(debug=False, port=app_config["PORT"], host=app_config["HOST"])

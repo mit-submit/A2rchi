@@ -1,5 +1,5 @@
 import getpass
-from interfaces.uploader_app import add_username_password
+from interfaces.uploader_app.app import add_username_password
 
 while True:
     username = input("Enter username (or type 'STOP' to quit): ")
