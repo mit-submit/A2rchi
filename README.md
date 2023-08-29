@@ -1,5 +1,10 @@
 # A2rchi
+
 An AI Augmented Research Chat Intelligence for MIT's subMIT project in the physics department
+
+## Overview
+
+A2rchi is designed as a bunch of services that enables the user to conveniently build and use a highly customized AI. The basis to the AI starts from a Large Language Modal (LLM), like GPT-4 or LLama2, and refines its answers using the data the user has selected to upload. In its work on the given question and context she, A2rchi, will follow the prompts that the user can freely specify. A feedback loop using answers that the user can certify is available so to tune A2rchi's knowldege on the fly. 
 
 ## Setup
 
