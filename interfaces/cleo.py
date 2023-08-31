@@ -122,6 +122,8 @@ class Cleo:
         """
         Create a brand new issue in the cleo system
         """
+        if not subject.strip():
+            subject = 'EMPTY subject'
         issue = self.redmine.issue.new()
         issue.project_id = self.project.id
         issue.subject = subject
