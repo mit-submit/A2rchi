@@ -10,7 +10,6 @@ class Sender:
         """
         Give it a name and generate a conncetion to the database (should be a singleton).
         """
-
         print(f" Open smtp (SERVER:{os.getenv('SENDER_SERVER')} PORT:{os.getenv('SENDER_PORT')} U:{os.getenv('SENDER_USER')} P:*********)")
 
         self.server_name = os.getenv('SENDER_SERVER')
@@ -19,7 +18,7 @@ class Sender:
 
     def send_message(self,to,cc,subject,body):
 
-        #start and login to SMTP server 
+        # start and login to SMTP server 
         self.server = smtplib.SMTP(self.server_name,os.getenv('SENDER_PORT'))
         self.server.starttls()
         self.server.login(self.user,self.password)
@@ -41,7 +40,7 @@ class Sender:
         msg.attach(MIMEText(body,'plain'))
         self.server.sendmail(self.user,"%s,%s"%(to,cc),msg.as_string())
 
-        #finally, quit the server
+        # finally, quit the server
         self.server.quit()
 
         return

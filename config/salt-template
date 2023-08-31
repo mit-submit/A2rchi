@@ -1,1 +1,1 @@
-export UPLOADER_SALT = "yoursalthere"
+export UPLOADER_SALT="yoursalthere"

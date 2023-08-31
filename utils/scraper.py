@@ -16,7 +16,7 @@ class Scraper():
         self.config = Config_Loader().config["utils"]["scraper"]
         self.global_config = Config_Loader().config["global"]
 
-        # Check if target folders exist 
+        # check if target folders exist 
         if not os.path.isdir(self.global_config["DATA_PATH"]):
                 os.mkdir(self.global_config["DATA_PATH"])
 
@@ -45,7 +45,8 @@ class Scraper():
                             sources_path=self.global_config["DATA_PATH"]+'sources.yml',
                             verify_urls=self.config["verify_urls"],
                             enable_warnings=self.config["enable_warnings"])
-        if verbose: print("Scraping was completed successfully")
+        if verbose:
+            print("Scraping was completed successfully")
 
     def collect_urls_from_lists(self):
         urls = []
@@ -59,9 +60,10 @@ class Scraper():
     
     @staticmethod
     def scrape_urls(urls, upload_dir, sources_path, verify_urls, enable_warnings):
+        print(" SOURCE: ",sources_path)
         try:
             with open(sources_path, 'r') as file:
-                sources = yaml.safe_load(file) or {}  # Load existing sources or initialize as empty dictionary
+                sources = yaml.safe_load(file) or {}  # load existing sources or initialize as empty dictionary
         except FileNotFoundError:
             sources = {}
             
@@ -70,58 +72,23 @@ class Scraper():
             if not enable_warnings:
                 import urllib3
                 urllib3.disable_warnings()
-            resp = requests.get(url, verify=verify_urls)
+            resp = requests.get(url, verify = verify_urls)
             # write the html output to a file
             identifier = hashlib.md5()
             identifier.update(url.encode('utf-8'))
             file_name = str(int(identifier.hexdigest(),16))[0:12]
 
             if (url.split('.')[-1] == 'pdf'):
-                with open(f"{upload_dir}{file_name}.pdf", 'wb') as file:
+                with open(f"{upload_dir}/{file_name}.pdf : {url}", 'wb') as file:
                     file.write(resp.content)
             else:
-                with open(f"{upload_dir}{file_name}.html", 'w') as file:
+                print(f" Store: {upload_dir}/{file_name}.html : {url}")
+                with open(f"{upload_dir}/{file_name}.html", 'w') as file:
                     file.write(resp.text)
             
             sources[file_name] = url 
 
-        #store list of files with urls to file 
+        # store list of files with urls to file 
         file_name = sources_path
         with open(file_name, 'w') as file:
             yaml.dump(sources, file)
-
-    def scrape_rst_files(self,url,raw_url):
-        """
-        DEPRECATED
-         
-        Function suited for scraping github files. Will require generalization for other types of inputs
-
-        """
-        response = requests.get(url)
-        if response.status_code == 200:
-            #file_links = re.findall(r'<a[^>]*href="([^"]+\.rst)"[^>]*>', response.text)    
-            file_links = re.findall(r'/[^"]+\.rst', response.text)
-            # print("response is: ", response.text)
-            print("file links are: ", file_links)
-            for file_url in file_links:
-                file_url = (raw_url + file_url).replace('/blob', '')
-                print("file url is ", file_url)
-                file_response = requests.get(file_url)
-                if file_response.status_code == 200:
-                    file_content = file_response.text
-                    file_name = file_url.rsplit("/", 1)[-1]
-                    
-                    # write the file:
-                    with open(self.github_dir+file_name[:-4]+".txt", 'w') as file:
-                        file.write(file_content)
-                else:
-                    print(f"Error downloading {file_url}: {file_response.status_code}")
-        else:
-            print(f"Error: {response.status_code}")
-
-
-# Example usage
-# s = Scraper()
-# url,raw_url = s.github_url,s.raw_url
-# s.scrape_rst_files(url,raw_url)
-# s.scrape_all()

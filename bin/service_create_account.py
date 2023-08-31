@@ -1,3 +1,4 @@
+#!/bin/python
 import getpass
 from interfaces.uploader_app.app import add_username_password
 
