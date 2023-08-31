@@ -65,7 +65,7 @@ class DataManager():
         for dir in dirs: 
             files = [dir+"/"+file for file in os.listdir(dir) if file != "info.txt"]
             for filename in files:
-                print("Found file: ",filename)
+                #print("Found file: ",filename)
                 files_in_data_fullpath.append(filename)
 
         # files in data is a dictionary, with keys of the names of files and values with their full path.
@@ -79,6 +79,7 @@ class DataManager():
         if set(files_in_data.keys()) == set(files_in_vstore):
             print("Vectorstore is up to date")
         else:
+            print("Vectorstore needs to be updated")
             # creates a list of the file names to remove from vectorstore
             # Note: the full path of the files is not needed here.
             files_to_remove = list(set(files_in_vstore) - set(files_in_data.keys()))
@@ -93,6 +94,7 @@ class DataManager():
             # adds the files to the vectorstore
             print("Files to add: ",files_to_add)
             self._add_to_vectorstore(files_to_add,sources)
+            print("Vectorstore update has been completed")
             
         print(" N Coll: ",self.collection.count())
 
