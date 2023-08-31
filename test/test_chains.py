@@ -1,9 +1,8 @@
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
-
 from chains.chain import Chain
 from chains.models import DumbLLM, LlamaLLM, OpenAILLM
-
 from utils.config_loader import Config_Loader
+
 config = Config_Loader().config["chains"]["chain"]
 global_config = Config_Loader().config["global"]
 
@@ -72,5 +71,3 @@ def test_chain_call_prevhistory():
     result = c1([("User", question), ("A2rchi", answer), ("User", follow_up)])
     c1.kill = True
     assert result["answer"] is not None
-    
-

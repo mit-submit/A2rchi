@@ -1,7 +1,7 @@
 global:
   DATA_PATH: "./data/"
-  ACCOUNTS_PATH: "./.accounts/" #place to store account information
-  local_vstore_path: "./data/vstore/"
+  ACCOUNTS_PATH: "./.accounts/"
+  LOCAL_VSTORE_PATH: "./data/vstore/"
   ACCEPTED_FILES: 
     -".txt"
     -".html"
@@ -9,23 +9,27 @@ global:
 
 interfaces:
   chat_app:
-    PORT: 7685 
-    HOST: "0.0.0.0" #Either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+    PORT: 7681 
+    HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
   uploader_app:
-    PORT: 5005
-    HOST: "0.0.0.0" #Either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+    PORT: 5001
+    HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
 
 chains:
+  input_lists:
+    - empty.list
+    - submit.list
+    - miscellanea.list
   base:
-    #Roles that A2rchi knows about
+    # roles that A2rchi knows about
     ROLES: 
       - User
       - A2rchi
       - Expert 
   chain: 
-    #Pick one of the models listed in the model class map below
+    # pick one of the models listed in the model class map below
     MODEL_NAME: OpenAILLM 
-    #Map of all the class models and their keyword arguments
+    # map of all the class models and their keyword arguments
     MODEL_CLASS_MAP:
       OpenAILLM: 
         class: OpenAILLM
@@ -55,25 +59,26 @@ chains:
           length_penalty: 1 #[optional] Exponential penalty to the length that is used with beam-based generation.
           max_padding_length: null # the max padding length to be used with tokenizer padding the prompts.
     chain_update_time: 10 # the amount of time (in seconds) which passes between when the chain updates to the newest version of the vectorstore
-  input_lists:
-    - submit.list
-
 utils: 
+  cleo: 
+    cleo_update_time: 10
   mailbox: 
     IMAP4_PORT: 143
+    mailbox_update_time: 10
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
-    use_HTTP_chromadb_client: True  #Recommended: True, whether or not to use the http client for the chromadb vectorstore
-    vectordb_update_sleeptime: "10" #the amount of sleep time between each iteration of updating the vectore to the filesystem.
-    chromadb_port: 8000 # only relavent if use_HTTP_chromadb_client=True
-    chromadb_host: "localhost" # only relavent if use_HTTP_chromadb_client=True
+    use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
+    # use_HTTP_chromadb_client: False
+    vectordb_update_time: 10
+    chromadb_host: "localhost"
+    chromadb_port: 8000
     collection_name: "dev_collection"
-    reset_collection: True #whether or not to reset the entire collection each time it is accessed by a new data manager instance.
+    reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
-    #Choose one embedding from list below
+    # choose one embedding from list below
     EMBEDDING_NAME: OpenAIEmbeddings
-    #List of possible embeddings to use in vectorstore
+    # list of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:
         class: OpenAIEmbeddings
@@ -90,7 +95,6 @@ utils:
             normalize_embeddings: True
         similarity_score_reference: 0.9
   scraper:
-    reset_data: True #Delete websites and sources.yml in data folder
-    verify_urls: False #Should be true when possible
-    enable_warnings: False #Keeps output clean if verify == False
-        
+    reset_data: True         # delete websites and sources.yml in data folder
+    verify_urls: False       # should be true when possible
+    enable_warnings: False   # keeps output clean if verify == False

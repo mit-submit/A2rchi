@@ -49,44 +49,53 @@ You do not need to create the environment every time you log in, but you do need
 
 You can can live dangerously if for whatever reason you do not like conda. You can go python barebones (pip). No guarantees for success, but you can skip conda.
 
-    pip install wheel interfaces torch langchain chromadb tiktoken flask_cors 
+```
+pip install wheel interfaces torch langchain chromadb tiktoken flask_cors 
+```
 
 ### Vector Store (dynamic)
 
 A prerequisite for installing the chroma database and run it on your machine is to have docker installed and configured in such a way that you can use it as a non-root user. First docker has to be installed. For a newish (37) fedora this would be following the [instructions](https://docs.docker.com/engine/install/fedora/)
 
-   
-    sudo dnf remove docker \
-                  docker-client \
-                  docker-client-latest \
-                  docker-common \
-                  docker-latest \
-                  docker-latest-logrotate \
-                  docker-logrotate \
-                  docker-selinux \
-                  docker-engine-selinux \
-                  docker-engine
-    sudo dnf -y install dnf-plugins-core
-    sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-    sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-compose
-    sudo systemctl start docker
-    sudo systemctl enable docker
+```
+sudo dnf remove docker \
+              docker-client \
+              docker-client-latest \
+              docker-common \
+              docker-latest \
+              docker-latest-logrotate \
+              docker-logrotate \
+              docker-selinux \
+              docker-engine-selinux \
+              docker-engine
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-compose
+sudo systemctl start docker
+sudo systemctl enable docker
+```
 
 To run as rootless user a group called 'docker' has to exist:
 
-    sudo groupadd docker
+```
+sudo groupadd docker
+```
 
 and you have to be part of that group
 
-    sudo usermod -a -G docker $USER
+```
+sudo usermod -a -G docker $USER
+```
 
 Tests carefully whether this has already taken effect by using the 'groups' command to indicate your membership in the 'docker' group. You might have to logout or even reboot. These commands do work.
 
 The core of A2rchi's knowledge is stored in a vectorstore. A2rchi comes with the ability to dynamically update her vectorstore without having to interrupt the services. In order for this to work, there must be a http chromadb server set up. If you already have a http chromadb server running, simply add the host name and port of the server to the config. Clone the chromadb git repository, build the image and start the chroma db server:
    
-    git clone https://github.com/chroma-core/chroma
-    cd chroma
-    docker-compose up -d --build
+```
+git clone https://github.com/chroma-core/chroma
+cd chroma
+docker-compose up -d --build
+```
 
 This will create a server on localhost port 8000, the default.
 
@@ -104,7 +113,9 @@ All the excecutables are in the `bin/` directory. Simply run them with python. Y
 
 In order to access the uploading app, you will need to log in with a username and password. To create usernames and passwords, simply run the `create_account` service in the bin directory. If you change the `.salt` it will need to be redone because the passwords are salted.
 
-    ./bin/service_create_account.py
+```
+./bin/service_create_account.py
+```
 
 ### Running Tests
 

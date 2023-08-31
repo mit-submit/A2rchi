@@ -11,26 +11,17 @@ from config_loader import Config_Loader
 global_config = Config_Loader().config["global"]
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Change this to a secure secret key
+app.secret_key = 'your_secret_key'  # change this to a secure secret key
 
-# Directory where files will be stored
+# directory where files will be stored
 app.config['UPLOAD_FOLDER'] = global_config["DATA_PATH"] + 'manual_uploads'
-
-##TODO: need to clean up this file
-
-
-####################################################
-####################################################
-############### Methods for hashing ################
-####################################################
-####################################################
 
 def simple_hash(input_string):
     """
     Takes an input string and outputs a hash
     """
 
-    # Perform the hash operation using hashlib
+    # perform the hash operation using hashlib
     identifier = hashlib.md5()
     identifier.update(input_string.encode('utf-8'))
     hash_value= str(int(identifier.hexdigest(),16))
@@ -47,18 +38,6 @@ def file_hash(filename):
 
     return simple_hash(filename)[0:12] + "." + filename.split(".")[-1]
 
-####################################################
-####################################################
-
-
-
-####################################################
-####################################################
-####### Methods for maintaining map between ########
-#######         filenames and hashes         #######
-####################################################
-####################################################
-
 def add_filename_to_filehashes(filename, filehashes_yaml_file = "/manual_file_hashes.yaml"):
     """
     Adds a filename and its respective hash to the map between filenames and hashes
@@ -69,24 +48,22 @@ def add_filename_to_filehashes(filename, filehashes_yaml_file = "/manual_file_ha
     Returns true if hash was able to be added sucsessfully. Returns false if the hash (and thus likely)
     the filename already exists.
     """
-     
     hash_string = file_hash(filename)
-
     try:
         with open(global_config["DATA_PATH"] + filehashes_yaml_file, 'r') as file:
-            filenames_dict = yaml.safe_load(file) or {}  # Load existing hashes or initialize as empty dictionary
+            filenames_dict = yaml.safe_load(file) or {}  # load existing hashes or initialize as empty dictionary
     except FileNotFoundError:
         filenames_dict = {}
 
-    # Check if the username already exists
+    # check if the username already exists
     if hash_string in filenames_dict.keys():
         print(f"File '{filename}' already exists.")
         return False
 
-    # Add the new username and hashed password to the accounts dictionary
+    # add the new username and hashed password to the accounts dictionary
     filenames_dict[hash_string] = filename
 
-    # Write the updated dictionary back to the YAML file
+    # write the updated dictionary back to the YAML file
     with open(global_config["DATA_PATH"] + filehashes_yaml_file, 'w') as file:
         yaml.dump(filenames_dict, file)
 
@@ -101,20 +78,18 @@ def remove_filename_from_filehashes(filename, filehashes_yaml_file = "/manual_fi
 
     Always returns true
     """
-     
     hash_string = file_hash(filename)
-
     try:
         with open(global_config["DATA_PATH"]+ filehashes_yaml_file, 'r') as file:
-            filenames_dict = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
+            filenames_dict = yaml.safe_load(file) or {}  # load existing accounts or initialize as empty dictionary
     except FileNotFoundError:
         filenames_dict = {}
 
-    # Check if the username already exists and remove if it does
+    # check if the username already exists and remove if it does
     if hash_string in filenames_dict.keys():
         filenames_dict.pop(hash_string)
 
-    # Write the updated dictionary back to the YAML file
+    # write the updated dictionary back to the YAML file
     with open(global_config["DATA_PATH"] + filehashes_yaml_file, 'w') as file:
         yaml.dump(filenames_dict, file)
 
@@ -122,13 +97,11 @@ def remove_filename_from_filehashes(filename, filehashes_yaml_file = "/manual_fi
 
 def get_filename_from_hash(hash_string, filehashes_yaml_file = "/manual_file_hashes.yaml"):
     """
-    Given a file hash, returns the original file name from the map
-chat_app
+    Given a file hash, returns the original file name from the map chat_app
     """
-
     try:
         with open(global_config["DATA_PATH"] + filehashes_yaml_file, 'r') as file:
-            filenames_dict = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
+            filenames_dict = yaml.safe_load(file) or {}  # load existing accounts or initialize as empty dictionary
     except FileNotFoundError:
         filenames_dict = {}
 
@@ -138,27 +111,16 @@ chat_app
 def remove_url_from_sources(url):
     try:
         with open(global_config["DATA_PATH"] +'sources.yml', 'r') as file:
-            sources = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
+            sources = yaml.safe_load(file) or {}  # load existing accounts or initialize as empty dictionary
     except FileNotFoundError:
         sources = {}
 
-    # Check if the username already exists and remove if it does
+    # check if the username already exists and remove if it does
     sources = {k:v for k,v in sources.items() if v!=url}
 
-    # Write the updated dictionary back to the YAML file
+    # write the updated dictionary back to the YAML file
     with open(global_config["DATA_PATH"]  +'sources.yml', 'w') as file:
         yaml.dump(sources, file)
-
-####################################################
-####################################################
-
-
-    
-####################################################
-####################################################
-######### Methods for account management ###########
-####################################################
-####################################################
 
 def add_username_password(username, password, file_name='accounts.yaml'):
     """
@@ -172,22 +134,21 @@ def add_username_password(username, password, file_name='accounts.yaml'):
     Adding a username and password for an existing username will overwrite the password
     """
     hash = simple_hash(password + os.environ["UPLOADER_SALT"])
-    
     try:
         with open(global_config["ACCOUNTS_PATH"] + file_name, 'r') as file:
-            accounts = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
+            accounts = yaml.safe_load(file) or {}  # load existing accounts or initialize as empty dictionary
     except FileNotFoundError:
         accounts = {}
 
-    # Check if the username already exists
+    # check if the username already exists
     if username in accounts:
         print(f"Username '{username}' already exists.")
         return
 
-    # Add the new username and hashed password to the accounts dictionary
+    # add the new username and hashed password to the accounts dictionary
     accounts[username] = hash
 
-    # Write the updated dictionary back to the YAML file
+    # write the updated dictionary back to the YAML file
     if not os.path.isdir(global_config["ACCOUNTS_PATH"]):
                 os.mkdir(global_config["ACCOUNTS_PATH"])
     with open(global_config["ACCOUNTS_PATH"] + file_name, 'w') as file:
@@ -205,38 +166,27 @@ def check_credentials(username, password, file_name='accounts.yaml'):
     plus the salt.
     """
 
-    #create the hash
+    # create the hash
     hash = simple_hash(password + os.environ["UPLOADER_SALT"])
 
-    #open the accounts dictionary (if file exists, account dictionary is null)
+    # open the accounts dictionary (if file exists, account dictionary is null)
     try:
         with open(global_config["ACCOUNTS_PATH"] + file_name, 'r') as file:
-            accounts = yaml.safe_load(file) or {}  # Load existing accounts or initialize as empty dictionary
+            accounts = yaml.safe_load(file) or {}  # load existing accounts or initialize as empty dictionary
             print("accounts are: ", accounts)
     except FileNotFoundError:
         accounts = {}
 
-    #check if hash matches the hash in the accounts dictionary
+    # check if hash matches the hash in the accounts dictionary
     if username in accounts and accounts[username] == hash:
         return True
     else:
         return False
 
-####################################################
-####################################################
-
-
-
-####################################################
-####################################################
-############# Methods for app backend ##############
-####################################################
-####################################################
 
 """
 note: app frontend is in interfaces/templates
 """
-
 class FlaskAppWrapper(object):
 
     def __init__(self, app, **configs):
@@ -244,13 +194,13 @@ class FlaskAppWrapper(object):
 
         self.app = app
 
-        app.secret_key = 'your_secret_key'  # Change this to a secure secret key
+        app.secret_key = 'your_secret_key'  # change this to a secure secret key
 
-        # Set Configuration
+        # set Configuration
         self.configs(**configs)
         app.config['UPLOAD_FOLDER'] = global_config["DATA_PATH"] + 'manual_uploads'
 
-        #Add endpoints for flask app
+        # add endpoints for flask app
         self.add_endpoint('/', '', self.index)
         self.add_endpoint('/index', 'index', self.index)
         self.add_endpoint('/login', 'login', self.login, methods=['GET', 'POST'])
@@ -296,7 +246,6 @@ class FlaskAppWrapper(object):
 
         return render_template('login.html')
 
-
     #@app.route('/logout')
     def logout(self):
         """
@@ -307,7 +256,6 @@ class FlaskAppWrapper(object):
         """
         session.pop('logged_in', None)
         return redirect(url_for('login'))
-
 
     #@app.route('/')
     def index(self):
@@ -349,8 +297,7 @@ class FlaskAppWrapper(object):
         Does not allow uploading if the file is not of a valid file type or if the file
         already exists in the filesystem.
         """
-
-        #Check that there is a file selected and that the name is not null
+        # check that there is a file selected and that the name is not null
         if 'file' not in request.files:
             flash('No file part')
             return redirect(url_for('index'))
@@ -359,17 +306,17 @@ class FlaskAppWrapper(object):
             flash('No selected file')
             return redirect(url_for('index'))
 
-        #Check it is a valid file
+        # check it is a valid file
         file_extension = file.filename[file.filename.rfind("."):].lower()
         if file and file_extension in global_config["ACCEPTED_FILES"]:
 
-            #Get the file hash and see if it is already in the filesystem. If not, add it to the filesystem by its hash.
+            # get the file hash and see if it is already in the filesystem. If not, add it to the filesystem by its hash.
             filename = file.filename
-            added_to_hashes = add_filename_to_filehashes(filename) #True if there was not already a filename in the manual uploads under this name
+            added_to_hashes = add_filename_to_filehashes(filename) # True if there was not already a filename in the manual uploads under this name
             if added_to_hashes:
                 files_hash = file_hash(filename)
                 if not os.path.isdir(app.config['UPLOAD_FOLDER']):
-                        os.mkdir(app.config['UPLOAD_FOLDER'])
+                    os.mkdir(app.config['UPLOAD_FOLDER'])
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], files_hash))
                 flash('File uploaded successfully')
             else:
@@ -415,12 +362,17 @@ class FlaskAppWrapper(object):
             try:
                 if not os.path.exists(global_config["DATA_PATH"]+'manual_websites'):
                     os.mkdir(global_config["DATA_PATH"]+'manual_websites')
+                # same as the scraper, though it doesn't need to be
                 Scraper.scrape_urls(urls = [url],
-                                    upload_dir = global_config["DATA_PATH"]+'manual_websites', #same as the scraper, though it doesn't need to be
-                                    sources_path = global_config["DATA_PATH"]+'sources.yml')
+                                    upload_dir = global_config["DATA_PATH"]+'manual_websites',
+                                    sources_path = global_config["DATA_PATH"]+'sources.yml',
+                                    verify_urls = True,
+                                    enable_warnings = True)
+#                                    verify_urls = self.config["verify_urls"],
+#                                    enable_warnings = self.config["enable_warnings"])
                 added_to_urls = True
             except Exception as e:
-                print(e)
+                print(" EXCEPTION: ",e)
                 added_to_urls = False
             if added_to_urls:
                 flash('URL uploaded successfully')
@@ -449,6 +401,3 @@ class FlaskAppWrapper(object):
             flash('URL not found')
 
         return redirect(url_for('index'))
-
-####################################################
-####################################################

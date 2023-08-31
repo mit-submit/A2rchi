@@ -1,8 +1,6 @@
 import os
-
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 import openai
-
 
 def sliding_window(text, window_size, stride):
     tokens = text.split()
@@ -11,7 +9,6 @@ def sliding_window(text, window_size, stride):
         window_end = min(window_start + window_size, len(tokens))
         yield " ".join(tokens[window_start:window_end])
         window_start += stride
-
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
 def embedding_with_backoff(**kwargs):

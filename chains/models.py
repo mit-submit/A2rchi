@@ -8,13 +8,11 @@ from langchain.llms.base import LLM
 from langchain.chat_models import ChatOpenAI
 from langchain.llms import LlamaCpp
 
-
-
 class BaseCustomLLM(LLM):
     """
     Abstract class used to load a custom LLM
     """
-    n_tokens: int = 100 #this has to be here for parent LLM class
+    n_tokens: int = 100 # this has to be here for parent LLM class
 
     @property
     def _llm_type(self) -> str:
@@ -33,7 +31,6 @@ class DumbLLM(BaseCustomLLM):
     """
     A simple Dumb LLM, perfect for testing
     """
-
     filler: str = None
 
     def _call(
@@ -42,33 +39,33 @@ class DumbLLM(BaseCustomLLM):
         stop: Optional[List[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
-        return "I am just a dumb LLM who can't do anything except for give you a number: " + str(np.random.randint(10000, 99999))
+        return "I am just a dumb LLM, I will give you a number: " + str(np.random.randint(10000, 99999))
 
 class LlamaLLM(BaseCustomLLM):
     """
     Loading the Llama LLM from facebook. Make sure that the model
     is downloaded and the base_model_path is linked to correct model
     """
+    base_model_path: str = None     # location of the model (ex. meta-llama/Llama-2-70b)
+    peft_model: str = None          # location of the finetuning of the model 
+    enable_salesforce_content_safety: bool = True
+                                    # enable safety check with Salesforce safety flan t5
+    quantization: bool = True       # enables 8-bit quantization
+    max_new_tokens: int = 4096      # maximum numbers of tokens to generate
+    seed: int = None                # seed value for reproducibility
+    do_sample: bool = True          # use sampling; otherwise greedy decoding
+    min_length: int = None          # minimum length of sequence to generate, input prompt + min_new_tokens
+    use_cache: bool = True          # [optional] model uses past last key/values attentions
+    top_p: float = .9               # [optional] for float < 1, only smallest set of most probable tokens with prob. that add up to top_p or higher are kept for generation
+    temperature: float = .6         # [optional] value used to modulate next token probs
+    top_k: int = 50                 # [optional] number of highest prob. vocabulary tokens to keep for top-k-filtering
+    repetition_penalty: float = 1.0 # parameter for repetition penalty: 1.0 == no penalty
+    length_penalty: int = 1         # [optional] exponential penalty to length used with beam-based generation
+    max_padding_length: int = None  # the max padding length used with tokenizer padding prompts
 
-    base_model_path: str = None #the location of the model (ex. meta-llama/Llama-2-70b)
-    peft_model: str = None #the location of the finetuning of the model 
-    enable_salesforce_content_safety: bool=True # Enable safety check with Salesforce safety flan t5
-    quantization: bool=True #enables 8-bit quantization
-    max_new_tokens: int=4096 #The maximum numbers of tokens to generate
-    seed: int= None #seed value for reproducibility
-    do_sample: bool=True #Whether or not to use sampling ; use greedy decoding otherwise.
-    min_length: int=None #The minimum length of the sequence to be generated, input prompt + min_new_tokens
-    use_cache: bool=True  #[optional] Whether or not the model should use the past last key/values attentions Whether or not the model should use the past last key/values attentions (if applicable to the model) to speed up decoding.
-    top_p: float=.9# [optional] If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation.
-    temperature: float=.6 # [optional] The value used to modulate the next token probabilities.
-    top_k: int=50 # [optional] The number of highest probability vocabulary tokens to keep for top-k-filtering.
-    repetition_penalty: float=1.0 #The parameter for repetition penalty. 1.0 means no penalty.
-    length_penalty: int=1 #[optional] Exponential penalty to the length that is used with beam-based generation.
-    max_padding_length: int=None # the max padding length to be used with tokenizer padding the prompts.
-
-    tokenizer: Callable= None
-    llama_model: Callable= None
-    safety_checker: List= None
+    tokenizer: Callable = None
+    llama_model: Callable = None
+    safety_checker: List = None
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -84,7 +81,7 @@ class LlamaLLM(BaseCustomLLM):
             torch.cuda.manual_seed(self.seed)
             torch.manual_seed(self.seed)
 
-        #create tokenizer
+        # create tokenizer
         self.tokenizer = None
         self.tokenizer = LlamaTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model_path, local_files_only= True)
         base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model_path, local_files_only= True, load_in_8bit=self.quantization, device_map='auto', torch_dtype = torch.float16)
@@ -94,7 +91,7 @@ class LlamaLLM(BaseCustomLLM):
             self.llama_model = base_model
         self.llama_model.eval()
 
-        #create safety checker
+        # create safety checker
         self.safety_checker = []
         if self.enable_salesforce_content_safety:
             self.safety_checker.append(SalesforceSafetyChecker())
@@ -110,7 +107,7 @@ class LlamaLLM(BaseCustomLLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         
-        #check if input is safe:
+        # check if input is safe:
         safety_results = [check(prompt) for check in self.safety_checker]
         are_safe = all([r[1] for r in safety_results])
         if not are_safe:
@@ -147,7 +144,7 @@ class LlamaLLM(BaseCustomLLM):
             
         output_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        # Safety check of the model output
+        # safety check of the model output
         safety_results = [check(output_text) for check in self.safety_checker]
         are_safe = all([r[1] for r in safety_results])
         if not are_safe:
@@ -186,8 +183,7 @@ class SalesforceSafetyChecker():
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoConfig
         import torch
 
-        #Load the salesforce safety model from Huggingface: 
-        # https://huggingface.co/Salesforce/safety-flan-t5-base
+        # load the salesforce safety model from Huggingface: https://huggingface.co/Salesforce/safety-flan-t5-base
         config = AutoConfig.from_pretrained("Salesforce/safety-flan-t5-base")
         self.tokenizer = AutoTokenizer.from_pretrained("Salesforce/safety-flan-t5-base") 
         self.model = AutoModelForSeq2SeqLM.from_pretrained("Salesforce/safety-flan-t5-base", config=config)
@@ -199,20 +195,12 @@ class SalesforceSafetyChecker():
         input_ids = self.tokenizer(prefix + " <Text> " + output_text + " <Context> ", return_tensors="pt").input_ids
         
         if len(input_ids[0]) > 512:
-            print(
-                "Input length is > 512 token. Safety check result could be incorrect."
-            )
+            print("Input length is > 512 token. Safety check result could be incorrect.")
 
         with torch.no_grad():
-            outputs = self.model.generate(
-                input_ids,
-                output_scores=True,
-                return_dict_in_generate=True,
-                max_new_tokens=20,
-                )
+            outputs = self.model.generate(input_ids,output_scores = True,return_dict_in_generate = True,max_new_tokens = 20)
         
-        is_safe = self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True).split(" ")[0] == "safe"    
-            
+        is_safe = self.tokenizer.decode(outputs.sequences[0], skip_special_tokens=True).split(" ")[0] == "safe"
         report = ""
         if not is_safe:
             true_false_ids = self.tokenizer("true false").input_ids[:2]

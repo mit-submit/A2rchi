@@ -1,8 +1,5 @@
 import yaml
-
-#import models so their classes could directly be added to the config file
 from chains.models import OpenAILLM,DumbLLM,LlamaLLM
-# from utils.embeddings import OpenAIEmb,HuggingFaceEmb
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.embeddings import HuggingFaceEmbeddings
 
@@ -15,12 +12,11 @@ class Config_Loader():
         """
         Small function for loading the config.yaml file
         """
-
         try: 
             with open("config/config.yaml", "r") as f:
                 config = yaml.load(f, Loader=yaml.FullLoader)
 
-            #change the model class parameter from a string to an actual class
+            # change the model class parameter from a string to an actual class
             MODEL_MAPPING = {
                 "OpenAILLM":OpenAILLM,
                 "DumbLLM": DumbLLM,
