@@ -9,8 +9,9 @@ global:
 
 interfaces:
   chat_app:
-    PORT: 7681 
+    PORT: 7681
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+    HOSTNAME: "ppc.mit.edu"  # careful, this is used for the chat service
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)

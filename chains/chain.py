@@ -78,7 +78,13 @@ class Chain() :
         Output: a dictionary containing the answer and some meta data. 
         """
         # seperate out the history into past interaction and current question input
-        question = history[-1][1]
+        if len(history)>0 and len(history[-1])>1:
+            question = history[-1][1]
+        else:
+            print(" ERROR - no question found")
+            question = ""
+        print(f" INFO - question: {question}")
+            
         if history is not None:
             prev_history = history[:-1]
         else:
@@ -87,5 +93,6 @@ class Chain() :
         # make the request to the chain 
         self.lock.acquire()
         answer = self.chain({"question": question, "chat_history": prev_history})
+        print(f" INFO - answer: {answer}")
         self.lock.release()
         return answer
