@@ -15,6 +15,7 @@ services:
       - cleo_pw
       - cleo_project
       - openai_api_key
+    entrypoint: "/bin/sh -c 'CLEO_URL=`cat /run/secrets/cleo_url` && CLEO_USER=`cat /run/secrets/cleo_user` && CLEO_PW=`cat /run/secrets/cleo_pw` && CLEO_PROJECT=`cat /run/secrets/cleo_project` && OPENAI_API_KEY=`cat /run/secrets/openai_api_key`'"
 
     # ports:
     #   - "8000:8000"

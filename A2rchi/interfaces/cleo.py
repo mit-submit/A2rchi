@@ -60,7 +60,7 @@ class CleoAIWrapper:
 class Cleo:
     'A class to describe the cleo redmine system.'
 
-    def __init__(self,name):
+    def __init__(self, name):
         """
         Give it a name and generate a conncetion to the database (should be a singleton).
         """
@@ -72,7 +72,7 @@ class Cleo:
         self.ai_wrapper = CleoAIWrapper()
         
         # make sure to open redmine access
-        if self._verify:
+        if self._verify():
             self.redmine = self._connect()
             self.user = self.redmine.user.get('current')
             self.load()
