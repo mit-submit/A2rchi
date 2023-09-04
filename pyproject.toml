@@ -13,7 +13,7 @@ authors = [
 dependencies = [
     "backoff==2.2.1",
     "beautifulsoup4==4.12.2",
-    "chromadb==0.3.29",
+    "chromadb==0.4.8",
     "clickhouse-connect==0.6.6",
     "coloredlogs==15.0.1",
     "duckdb==0.8.1",
@@ -28,6 +28,7 @@ dependencies = [
     "onnxruntime==1.15.1",
     "openai==0.27.9",
     "overrides==7.3.1",
+    "pandas==2.1.0",
     "posthog==3.0.1",
     "pulsar-client==3.2.0",
     "python-dotenv==1.0.0",
