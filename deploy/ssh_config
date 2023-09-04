@@ -4,7 +4,7 @@ Host submit-a2rchi
   IdentitiesOnly=yes
   PreferredAuthentications publickey
   PasswordAuthentication no
-  IdentityFile /Users/matthewrusso/.ssh/id_rsa_submit
+  IdentityFile ~/.ssh/id_rsa_submit
   StrictHostKeyChecking no
 
 Host submit-gpu
