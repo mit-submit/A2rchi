@@ -17,7 +17,7 @@ dependencies = [
     "clickhouse-connect==0.6.6",
     "coloredlogs==15.0.1",
     "duckdb==0.8.1",
-    "fastapi==0.85.1",
+    "fastapi==0.99.1",
     "flatbuffers==23.5.26",
     "hnswlib==0.7.0",
     "httptools==0.6.0",
