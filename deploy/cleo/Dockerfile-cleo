@@ -8,3 +8,5 @@ COPY LICENSE LICENSE
 COPY config config
 COPY A2rchi A2rchi
 RUN pip install --upgrade pip && pip install .
+
+CMD ["python", "A2rchi/bin/service_cleo.py"]

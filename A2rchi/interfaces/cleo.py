@@ -7,6 +7,7 @@ from redminelib import Redmine
 import numpy as np ##TODO: remove this
 
 from A2rchi.chains.chain import Chain
+from A2rchi.utils.env import read_secret
 
 a2rchi_pattern = '-- A2rchi --'
 #new_status_id = 1        # (or 1 this is after first work)
@@ -70,7 +71,13 @@ class Cleo:
         self.user = None
         self.project = None
         self.ai_wrapper = CleoAIWrapper()
-        
+
+        # read environment variables from secrets
+        self.cleo_project = read_secret("CLEO_PROJECT")
+        self.cleo_url = read_secret("CLEO_URL")
+        self.cleo_user = read_secret("CLEO_USER")
+        self.cleo_pw = read_secret("CLEO_PW")
+
         # make sure to open redmine access
         if self._verify():
             self.redmine = self._connect()
@@ -126,7 +133,7 @@ class Cleo:
         """
         Load the project that is responsible to deal with email tickets.
         """
-        self.project = self.redmine.project.get(os.getenv('CLEO_PROJECT'))
+        self.project = self.redmine.project.get(self.cleo_project)
         return
 
     def new_issue(self,sender,cc,subject,description):
@@ -254,15 +261,15 @@ class Cleo:
         """
         Open the redmine web site called cleo
         """
-        print(f" Open redmine (URL:{os.getenv('CLEO_URL')} U:{os.getenv('CLEO_USER')} P:*********)")
-        rd = Redmine(os.getenv('CLEO_URL'),username=os.getenv('CLEO_USER'),password=os.getenv('CLEO_PW'))
+        print(f" Open redmine (URL:{self.cleo_url} U:{self.cleo_user} P:*********)")
+        rd = Redmine(self.cleo_url, username=self.cleo_user, password=self.cleo_pw)
         return rd
         
     def _verify(self):
         """
         Make sure the environment is setup
         """
-        if os.getenv('CLEO_URL') == None or os.getenv('CLEO_USER') == None or os.getenv('CLEO_PW') == None:
+        if self.cleo_url == None or self.cleo_user == None or self.cleo_pw == None:
             print(" Did not find all cleo configs: CLEO_URL, CLEO_USER, CLEO_PW (source ~/.cleo).")
             return False
         return True
