@@ -1,9 +1,7 @@
 #!/bin/bash
 
-echo "Going into A2rchi directory"
-cd A2rchi
 echo "Starting docker compose"
-cd deploy
+cd A2rchi/deploy/
 docker compose up -d --build
 
 # secrets files are created by CI pipeline and destroyed here
