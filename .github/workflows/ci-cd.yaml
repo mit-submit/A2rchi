@@ -45,12 +45,12 @@ jobs:
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}} --exclude .git/ --delete submit-gpu:~/
+          rsync -e ssh -r ${{ github.workspace}} --exclude .git/ --delete submit-a2rchi:~/
 
       # run deploy script
       - name: Run Deploy Script
         run: |
-          ssh submit-gpu 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
+          ssh submit-a2rchi 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
