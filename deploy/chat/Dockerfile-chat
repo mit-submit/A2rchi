@@ -9,4 +9,4 @@ COPY config config
 COPY A2rchi A2rchi
 RUN pip install --upgrade pip && pip install .
 
-CMD ["python", "A2rchi/bin/service_chat.py"]
+CMD ["python", "-u", "A2rchi/bin/service_chat.py"]
