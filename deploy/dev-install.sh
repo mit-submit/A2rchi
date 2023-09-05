@@ -2,7 +2,7 @@
 
 echo "Starting docker compose"
 cd A2rchi/deploy/
-docker compose up -d --build
+docker compose up -d --build --force-recreate
 
 # secrets files are created by CI pipeline and destroyed here
 rm cleo_url.txt
