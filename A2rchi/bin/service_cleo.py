@@ -7,6 +7,7 @@ cleo = cleo.Cleo('Cleo_Helpdesk')
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
+print("Starting Cleo Service")
 
 while True:
     cleo.load()
