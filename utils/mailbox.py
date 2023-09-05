@@ -54,14 +54,12 @@ class Mailbox:
                 if issue_id > 0:
                     note = f"ISSUE_ID:{issue_id} continued (leave for reference)\n\n"
                     note += f"{subject}: {description}"
-                    cleo.reopen_issue(issue_id,note)
-                    self.mailbox.store(num,'+FLAGS', '\\Deleted')
+                    cleo.reopen_issue(issue_id,note,attachments)
+                    self._cleanup_message(num,attachments)
                 else:
                     issue_id = cleo.new_issue(sender,cc,subject,description,attachments)
                     if issue_id > 0:
-                        self.mailbox.store(num,'+FLAGS', '\\Deleted')
-                        for a in attachments:              # remove temporary attachment copies
-                            os.system(f"rm /tmp/{a['filename']}")
+                        self._cleanup_message(num,attachments)
                     else:
                         print(f" ERROR - issue_id is not well defined: {issue_id}")
         return
@@ -80,6 +78,12 @@ class Mailbox:
         self.mailbox.logout()
         return
             
+    def _cleanup_message(self,num,attachments):
+        self.mailbox.store(num,'+FLAGS', '\\Deleted')
+        for a in attachments:              # remove temporary attachment copies
+            os.system(f"rm /tmp/{a['filename']}")
+        return
+        
     def _get_charsets(self,msg):
         charsets = set({})
         for c in msg.get_charsets():
