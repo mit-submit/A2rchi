@@ -118,7 +118,7 @@ class Cleo:
         self.project = self.redmine.project.get(os.getenv('CLEO_PROJECT'))
         return
 
-    def new_issue(self,sender,cc,subject,description):
+    def new_issue(self,sender,cc,subject,description,attachments):
         """
         Create a brand new issue in the cleo system
         """
@@ -142,7 +142,8 @@ class Cleo:
         #print(issue.custom_fields)
         #issue.custom_fields = []
         #issue.uploads = [{'path': '/abs/path/to/f1'}, {'path': '/abs/path/to/f2'}]
-        issue.uploads = []
+        print(attachments)
+        issue.uploads = attachments
         issue.save()
         return issue.id
 
