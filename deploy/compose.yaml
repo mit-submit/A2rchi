@@ -16,6 +16,15 @@ services:
       - cleo_project
       - openai_api_key
 
+  chat:
+    build:
+      context: ..
+      dockerfile: deploy/chat/Dockerfile-chat
+    environment:
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+    secrets:
+      - openai_api_key
+
     # ports:
     #   - "8000:8000"
 

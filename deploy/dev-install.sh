@@ -5,8 +5,5 @@ cd A2rchi/deploy/
 docker compose up -d --build --force-recreate --always-recreate-deps
 
 # secrets files are created by CI pipeline and destroyed here
-rm cleo_url.txt
-rm cleo_user.txt
-rm cleo_pw.txt
-rm cleo_project.txt
+rm cleo_*.txt
 rm openai_api_key.txt
