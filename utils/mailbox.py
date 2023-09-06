@@ -24,32 +24,13 @@ class Mailbox:
         typ, msg_data = self.mailbox.fetch(num, '(RFC822)')
         for response_part in msg_data:
             if isinstance(response_part, tuple):
-                # get the basic message
+                # get the basic message parameters (description = body)
                 msg = email.message_from_bytes(response_part[1])
                 sender, cc, subject, description = self._get_fields(msg)
                 # find the issue, if it exists already
                 issue_id = self._find_issue_id(description)
                 # make sure to deal with attachments correctly
-                
-                attachments = []
-                for part in msg.walk():
-                    if part.get_content_maintype() == 'multipart':
-                        continue
-                    if part.get('Content-Disposition') is None:
-                        continue
-                    file_name = part.get_filename()
-
-                    if bool(file_name):
-                        print(f" INFO - found attachement: {file_name}")
-                        file_path = os.path.join('/tmp/',file_name)
-                        if not os.path.isfile(file_path):
-                            with open(file_path,'wb') as f:
-                                f.write(part.get_payload(decode = True))
-                            #print(f" INFO - append: {file_path}")
-                            attachments.append({'path': file_path, 'filename': file_name})
-                        else:
-                            print(" ERROR - could not download attachment (file exists).")
-                            return
+                attachments = self._get_attachments(msg)
                 
                 if issue_id > 0:
                     note = f"ISSUE_ID:{issue_id} continued (leave for reference)\n\n"
@@ -103,7 +84,7 @@ class Mailbox:
         return issue_id
     
     def _get_attachments(self,msg):
-        # finding the body in an email message
+        # finding all attachments in an email
         attachments = []
         for part in msg.walk():
             if part.get_content_maintype() == 'multipart':
@@ -122,7 +103,9 @@ class Mailbox:
                     attachments.append({'path': file_path, 'filename': file_name})
                 else:
                     print(" ERROR - could not download attachment (file exists).")
-                    return
+                    return []
+
+        return attachments
 
     def _get_email_body(self,msg):
         # finding the body in an email message
