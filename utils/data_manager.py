@@ -31,7 +31,7 @@ class DataManager():
         else:
             self.client = chromadb.PersistentClient(path = self.global_config["LOCAL_VSTORE_PATH"])
 
-        # get the collection (reset it if it already exists and reset_collection=True)
+        # get the collection (reset it if it already exists and reset_collection = True)
         # the actial name of the collection is the name given by config with the embeddings specified
         embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
@@ -101,34 +101,39 @@ class DataManager():
         return
     
     def _remove_from_vectorstore(self, files_to_remove):
-         """
-         Method which takes as input a list of filenames to remove from the vectorstore,
-         then removes those filenames from the vectorstore.
-         """
-         for file in files_to_remove:
+        """
+        Method which takes as input a list of filenames to remove from the vectorstore,
+        then removes those filenames from the vectorstore.
+        """
+        for file in files_to_remove:
             filename = file.split("/")[-1]
             self.collection.delete(where = {"filename": filename})
 
     def _add_to_vectorstore(self, files_to_add, sources = {}):
         """
-         Method which takes as input:
+        Method which takes as input:
         
-            files_to_add: a dictionary with keys being the filenames and values being the file path
-            sources:      a dictionary, usually loaded from a yaml file, which has keys being the 
-                          file hash (everything in the file name except the file extension) and  has
-                          values of the url from which the source originated from. Not all files must
-                          be in the source dictionary.
+           files_to_add: a dictionary with keys being the filenames and values being the file path
+           sources:      a dictionary, usually loaded from a yaml file, which has keys being the 
+                         file hash (everything in the file name except the file extension) and  has
+                         values of the url from which the source originated from. Not all files must
+                         be in the source dictionary.
 
-            and adds these files to the vectorstore.
+        and adds these files to the vectorstore.
         """
         for filename in files_to_add.keys():
 
             # create the chunks
             file = files_to_add[filename]
-            loader = self.loader(file)
+            try:
+                loader = self.loader(file)
+            except:
+                print(f" ERROR - loading: {file} skip and move on.")
+                loader = None
             
-            # treat case where file extension is not recognized 
-            if not loader: continue 
+            # treat case where file extension is not recognized or is broken
+            if not loader:
+                continue 
             
             doc = loader.load()[0]
             chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
@@ -136,9 +141,9 @@ class DataManager():
             # explicityly get file metadata
             filehash = filename.split(".")[0]
             if filehash in sources.keys():
-                    url = sources[filehash]
+                url = sources[filehash]
             else:
-                    url = ""
+                url = ""
 
             # embed each chunk
             embeddings = self.embedding_model.embed_documents(chunks)
@@ -147,7 +152,7 @@ class DataManager():
             metadatas = [{"filename":filename, "url": url, "chunk_size":len(chunk)} for chunk in chunks]
             metadatas = [doc.metadata for chunk in chunks]
             for metadata in metadatas:
-                    metadata["filename"] = filename
+                metadata["filename"] = filename
             
             # create unique id for each chunk
             # the first 12 bits of the id being the filename and the other 6 based on the chunk itself

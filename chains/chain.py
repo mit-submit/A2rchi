@@ -38,7 +38,7 @@ class Chain() :
         self.vectorstore = Chroma(client = self.client, collection_name = self.collection_name,
                                   embedding_function = self.embedding_model)
 
-        print("Chroma N Colls: ",self.client.get_collection("dev_collection_with_OpenAIEmbeddings"))
+        print(" N Colls: ",self.client.get_collection(self.collection_name))
         
         model_class_map = self.config["MODEL_CLASS_MAP"]
         model_name = self.config["MODEL_NAME"]
@@ -62,7 +62,7 @@ class Chain() :
             self.vectorstore = Chroma(client = self.client, collection_name = self.collection_name,
                                       embedding_function = self.embedding_model)
             self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents = True)
-            print(" N Coll: ",self.client.get_collection("dev_collection_with_OpenAIEmbeddings").count())
+            print(" N Coll: ",self.client.get_collection(self.collection_name).count())
             print("Updated chain with new vectorstore")
             self.lock.release()
         return None

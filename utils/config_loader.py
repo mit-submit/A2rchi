@@ -13,7 +13,7 @@ class Config_Loader():
         Small function for loading the config.yaml file
         """
         try: 
-            with open("config/config.yaml", "r") as f:
+            with open("./config/config.yaml", "r") as f:
                 config = yaml.load(f, Loader=yaml.FullLoader)
 
             # change the model class parameter from a string to an actual class

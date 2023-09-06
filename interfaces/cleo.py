@@ -88,14 +88,15 @@ class Cleo:
         """
         Adding a note to an existing issue (and move to 'feedback' status)
         """
-        self.redmine.issue.update(issue_id,status_id=self.status_dict['Feedback'],notes=note)
+        self.redmine.issue.update(issue_id,status_id = self.status_dict['Feedback'],notes = note)
         return
 
-    def reopen_issue(self, issue_id, note):
+    def reopen_issue(self, issue_id, note,attachments):
         """
         Move an issues status to `In Progress` and add a note
         """
-        self.redmine.issue.update(issue_id,status_id=self.status_dict['In Progress'],notes=note)
+        self.redmine.issue.update(issue_id,status_id = self.status_dict['In Progress'],
+                                  notes = note,uploads = attachments)
         return
     
     def get_issue_history(self,issue_id):
@@ -118,7 +119,7 @@ class Cleo:
         self.project = self.redmine.project.get(os.getenv('CLEO_PROJECT'))
         return
 
-    def new_issue(self,sender,cc,subject,description):
+    def new_issue(self,sender,cc,subject,description,attachments):
         """
         Create a brand new issue in the cleo system
         """
@@ -142,7 +143,8 @@ class Cleo:
         #print(issue.custom_fields)
         #issue.custom_fields = []
         #issue.uploads = [{'path': '/abs/path/to/f1'}, {'path': '/abs/path/to/f2'}]
-        issue.uploads = []
+        #print(attachments)
+        issue.uploads = attachments
         issue.save()
         return issue.id
 
