@@ -22,7 +22,6 @@ class Scraper():
 
     def __init__(self):
         from A2rchi.utils.config_loader import Config_Loader
-        config = Config_Loader().config["chains"]["chain"]
         global_config = Config_Loader().config["global"]
 
         #Check if target folders exist 
@@ -47,7 +46,7 @@ class Scraper():
         
         """
         self.scrape_submit_files()
-        self.scrape_rst_files(self.github_url,self.raw_url)
+        self.scrape_rst_files(self.github_url, self.raw_url)
         if verbose: print("Scraping was completed successfully")
 
     def scrape_submit_files(self):
@@ -86,11 +85,3 @@ class Scraper():
                     print(f"Error downloading {file_url}: {file_response.status_code}")
         else:
             print(f"Error: {response.status_code}")
-
-
-
-# Example usage
-s = Scraper()
-url,raw_url = s.github_url,s.raw_url
-# s.scrape_rst_files(url,raw_url)
-# s.scrape_all()

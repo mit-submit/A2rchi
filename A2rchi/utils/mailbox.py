@@ -1,9 +1,10 @@
 #!/bin/python
-import os,sys
-import getpass, imaplib, email
-
 from A2rchi.utils.config_loader import Config_Loader
-config = Config_Loader().config["utils"]["mailbox"]
+from A2rchi.utils.env import read_secret
+
+import email
+import imaplib
+
 
 class Mailbox:
     'A class to describe the mailbox usage.'
@@ -13,8 +14,12 @@ class Mailbox:
         The mailbox (should be a singleton).
         """
         self.mailbox = None
+        self.user = read_secret('IMAP_USER')
+        self.password = read_secret('IMAP_PW')
+        self.config = Config_Loader().config["utils"]["mailbox"]
+
         # make sure to open the mailbox
-        if self._verify:
+        if self._verify():
             self.mailbox = self._connect()
 
     def find_issue_id(self,description):
@@ -27,7 +32,7 @@ class Mailbox:
             issue_id = int(description[index+9:].split()[0])
         return issue_id
     
-    def process_messages(self,cleo):
+    def process_messages(self, cleo):
         """
         Select all messages in the mailbx and process them.
         """
@@ -105,9 +110,9 @@ class Mailbox:
             try:
                 body = body.decode(charset)
             except UnicodeDecodeError:
-                handle_error("UnicodeDecodeError: encountered.",msg,charset)
+                self._handle_error("UnicodeDecodeError: encountered.",msg,charset)
             except AttributeError:
-                handle_error("AttributeError: encountered" ,msg,charset)
+                self._handle_error("AttributeError: encountered" ,msg,charset)
     
         return body, body_html
     
@@ -131,25 +136,27 @@ class Mailbox:
         """
         Open the mailbox
         """
-        print(f" Open mailbox (U:{os.getenv('IMAP_USER')} P:*********)")
-        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=config["IMAP4_PORT"], timeout=None)
-        mailbox.login(os.getenv('IMAP_USER'),os.getenv('IMAP_PW'))
+        print(f" Open mailbox (U:{self.user} P:*********)")
+        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=self.config["IMAP4_PORT"], timeout=None)
+        mailbox.login(self.user, self.password)
         return mailbox
             
-    def _handle_error(self,errmsg, emailmsg, cs):
+    def _handle_error(self, errmsg, emailmsg, cs):
         print()
         print(errmsg)
         print("This error occurred while decoding with ",cs," charset.")
         print("These charsets were found in this email.",self._get_charsets(emailmsg))
         print("This is the subject:",emailmsg['subject'])
         print("This is the sender:",emailmsg['From'])
+
         return
         
     def _verify(self):
         """
         Make sure the environment is setup
         """
-        if os.getenv('IMAP_USER') == None or os.getenv('IMAP_PW') == None:
+        if self.user == None or self.password == None:
             print(" Did not find all cleo configs: IMAP_USER, IMAP_PW (source ~/.imap).")
             return False
+
         return True
