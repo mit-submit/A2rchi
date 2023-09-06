@@ -51,6 +51,7 @@ services:
       SENDER_REPLYTO_FILE: /run/secrets/sender_replyto
       SENDER_USER_FILE: /run/secrets/sender_user
       SENDER_PW_FILE: /run/secrets/sender_pw
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
     secrets:
       - imap_user
       - imap_pw
@@ -63,6 +64,7 @@ services:
       - sender_replyto
       - sender_user
       - sender_pw
+      - openai_api_key
 
   # TODO: do mailbox, chat service, or cleo need ports open?
   # ports:
