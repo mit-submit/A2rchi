@@ -38,6 +38,8 @@ services:
       - openai_api_key
     volumes:
       - a2rchi-data:/root/data/
+    ports:
+      - 7860:7861
 
   mailbox:
     build:
