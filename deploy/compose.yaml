@@ -25,6 +25,8 @@ services:
       - sender_user
       - sender_pw
       - openai_api_key
+    volumes:
+      - a2rchi-data:/root/data/
 
   chat:
     build:
@@ -34,6 +36,8 @@ services:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
     secrets:
       - openai_api_key
+    volumes:
+      - a2rchi-data:/root/data/
 
   mailbox:
     build:
@@ -74,6 +78,12 @@ services:
     build:
       context: ..
       dockerfile: deploy/scraper/Dockerfile-scraper
+    volumes:
+      - a2rchi-data:/root/data/
+
+volumes:
+  a2rchi-data:
+    external: true
 
 secrets:
   imap_user:
