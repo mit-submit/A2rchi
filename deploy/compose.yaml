@@ -39,7 +39,7 @@ services:
     volumes:
       - a2rchi-data:/root/data/
     ports:
-      - 7860:7861
+      - 7861:7860
 
   mailbox:
     build:
