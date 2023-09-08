@@ -50,20 +50,26 @@ class Chain() :
 
         self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
 
-        update_vectorstore_thread = Thread(target=self.update_vectorstore)
-        update_vectorstore_thread.start()
+    #     update_vectorstore_thread = Thread(target=self.update_vectorstore)
+    #     update_vectorstore_thread.start()
+
+
+    # def update_vectorstore(self):
+    #     while not self.kill:
+    #         time.sleep(1000)
+    #         self.lock.acquire()
+    #         self.vectorstore = self.dataManager.fetch_vectorstore()
+    #         self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
+    #         print("Updated chain with new vectorstore")
+    #         self.lock.release()
+    #     return None
+
 
     def update_vectorstore(self):
-        while not self.kill:
-            time.sleep(1000)
-            self.lock.acquire()
-            self.vectorstore = self.dataManager.fetch_vectorstore()
-            self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
-            print("Updated chain with new vectorstore")
-            self.lock.release()
-        return None
-            
+        self.vectorstore = self.dataManager.fetch_vectorstore()
+        self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
 
+        return
 
 
     def __call__(self, history):
@@ -89,5 +95,3 @@ class Chain() :
         answer = self.chain({"question": question, "chat_history": prev_history})
         self.lock.release()
         return answer
-
-
