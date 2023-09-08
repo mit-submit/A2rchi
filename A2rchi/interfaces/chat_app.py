@@ -206,4 +206,4 @@ class Chat_UI:
 
             message.submit(fn = self.chat, inputs = [message, state, id_state], outputs=[chatbot, state, id_state])
 
-        self.block.launch(debug=_debug, share=_share)
+        self.block.launch(debug=_debug, share=_share, server_name="0.0.0.0")
