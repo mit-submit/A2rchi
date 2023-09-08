@@ -55,7 +55,8 @@ class DataManager():
             # remove obsolete files
             files_to_remove = list(set(files_in_vstore) - set(files_in_data))
             ids_to_remove = [id for id, file in zip(ids_in_vstore, files_in_vstore) if file in files_to_remove]
-            vstore._collection.delete(ids_to_remove)
+            if ids_to_remove:
+                vstore._collection.delete(ids_to_remove)
 
             # add new files to vectorstore; will do nothing if files_to_add is empty
             files_to_add = list(set(files_in_data) - set(files_in_vstore))
@@ -70,7 +71,7 @@ class DataManager():
          # return the document loader from a path, with the correct loader given the extension 
          _, file_extension = os.path.splitext(file_path)
          if file_extension == ".txt" : return TextLoader(file_path)
-         elif file_extension == ".html" : return BSHTMLLoader(file_path)
+         elif file_extension == ".html" : return BSHTMLLoader(file_path, bs_kwargs={"features": "html.parser"})
          elif file_extension == ".pdf" : return PyPDFLoader(file_path)
          else: print(file_path, " Error: format not supported")
 
