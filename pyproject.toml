@@ -18,6 +18,7 @@ dependencies = [
     "coloredlogs==15.0.1",
     "duckdb==0.8.1",
     "fastapi==0.99.1",
+    "flask=2.3.3",
     "flatbuffers==23.5.26",
     "gradio==3.42.0",
     "hnswlib==0.7.0",
