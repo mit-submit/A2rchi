@@ -58,7 +58,7 @@ class ChatWrapper:
             print(" INFO - json_file found.")
         except FileNotFoundError:
             data = {}  # if the file doesn't exist or is empty, initialize an empty dictionary
-            print(" ERROR - json_file not found.")
+            print(" ERROR - json_file not found. Creating a new one")
 
         discussion_id = str(discussion_id)
         # check if the discussion ID exists in the JSON data
