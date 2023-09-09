@@ -14,7 +14,8 @@ def generate_script(config):
     print(config["HOST"],config["PORT"])
     with open("./interfaces/chat_app/static/script.js-template","r") as f:
         data = f.read()
-    data = data.replace('XX-HTTP_HOSTNAME-XX',str(config["HOSTNAME"]))
+    #data = data.replace('XX-HTTP_HOSTNAME-XX',str(config["HOSTNAME"]))
+    data = data.replace('XX-HTTP_HOSTNAME-XX',str("127.0.0.1"))
     data = data.replace('XX-HTTP_PORT-XX',str(config["PORT"]))
     with open("./interfaces/chat_app/static/script.js","w") as f:
         f.write(data)
