@@ -1,35 +1,19 @@
 """Chain for chatting with a vector database."""
 from __future__ import annotations
 
-import inspect
-import warnings
-from abc import abstractmethod
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
-from pydantic import Extra, Field, root_validator
-
-from langchain.callbacks.manager import (
-    AsyncCallbackManagerForChainRun,
-    CallbackManagerForChainRun,
-    Callbacks,
-)
-from langchain.chains.base import Chain
-from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
-from langchain.chains.combine_documents.stuff import StuffDocumentsChain
-from langchain.chains.llm import LLMChain
-from langchain.chains.question_answering import load_qa_chain
-#from langchain.schema.prompt_template import BasePromptTemplate
-from langchain.schema import BaseRetriever
-from langchain.schema import Document
-from langchain.base_language import BaseLanguageModel
-#from langchain.schema import BaseMessage
-from langchain.vectorstores.base import VectorStore
-
-from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
 from A2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
-
 from A2rchi.utils.config_loader import Config_Loader
+
+from langchain.base_language import BaseLanguageModel
+from langchain.chains.combine_documents.stuff import StuffDocumentsChain
+from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
+from langchain.chains.llm import LLMChain
+from langchain.schema import BaseRetriever, Document
+from langchain.schema.prompt_template import BasePromptTemplate
+from typing import Any, Dict, List, Optional, Tuple
+
+
+# DEFINITIONS
 config = Config_Loader().config["chains"]["base"]
 
 
@@ -48,18 +32,16 @@ def _get_chat_history(chat_history: List[Tuple[str, str]]) -> str:
 
                 f" Full chat history: {chat_history} "
             )
+
     return buffer
 
+
 class BaseSubMITChain(BaseConversationalRetrievalChain):
-    """Chain for chatting with an index, specific for submit"""
-
-    retriever: BaseRetriever
-    """Index to connect to."""
-    
-    max_tokens_limit: Optional[int] = None
-    """If set, restricts the docs to return from store based on tokens, enforced only
-    for StuffDocumentChain"""
-
+    """
+    Chain for chatting with an index, specific for submit
+    """
+    retriever: BaseRetriever # Index to connect to
+    max_tokens_limit: Optional[int] = None # restrict doc length to return from store, enforced only for StuffDocumentChain
     get_chat_history: Optional[function] = _get_chat_history
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:
@@ -79,13 +61,16 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
 
         return docs[:num_docs]
 
+
     def _get_docs(self, question: str, inputs: Dict[str, Any]) -> List[Document]:
         docs = self.retriever.get_relevant_documents(question)
         return self._reduce_tokens_below_limit(docs)
 
+
     async def _aget_docs(self, question: str, inputs: Dict[str, Any]) -> List[Document]:
         docs = await self.retriever.aget_relevant_documents(question)
         return self._reduce_tokens_below_limit(docs)
+
 
     @classmethod
     def from_llm(
@@ -99,9 +84,8 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         combine_docs_chain_kwargs: Optional[Dict] = None,
         **kwargs: Any,
     ) -> BaseConversationalRetrievalChain:
-        """Load chain from LLM."""
+        # Load chain from LLM
         combine_docs_chain_kwargs = combine_docs_chain_kwargs or {}
-
         _prompt = QA_PROMPT
         document_variable_name = "context"
         llm_chain = LLMChain(
@@ -118,6 +102,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         condense_question_chain = LLMChain(
             llm=_llm, prompt=condense_question_prompt, verbose=verbose
         )
+
         return cls(
             retriever=retriever,
             combine_docs_chain=doc_chain,

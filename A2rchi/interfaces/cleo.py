@@ -1,22 +1,15 @@
-import os,re,sys
-import datetime
-from A2rchi.utils import sender
-from redminelib import Redmine
-#from standalone import run
-
-import numpy as np ##TODO: remove this
-
 from A2rchi.chains.chain import Chain
+from A2rchi.utils import sender
 from A2rchi.utils.env import read_secret
 
-a2rchi_pattern = '-- A2rchi --'
-#new_status_id = 1        # (or 1 this is after first work)
-#inprogress_status_id = 2 # in progress
-#feedback_status_id = 4   # feedback
-#resolved_status_id = 3   # resolved
-#closed_status_id = 5     # closed
-normal_priority_id = 2   # normal priority
-support_tracker_id = 3   # tracker id for 'Support'
+from redminelib import Redmine
+
+import re
+import datetime
+
+# DEFINITIONS
+A2RCHI_PATTERN = '-- A2rchi --'
+
 
 class CleoAIWrapper:
     """
@@ -84,7 +77,7 @@ class Cleo:
             self.user = self.redmine.user.get('current')
             self.load()
 
-        #Load all the status, tracker, and priority ids
+        # Load all the status, tracker, and priority ids
         statuses = self.redmine.issue_status.all()
         self.status_dict = dict()     # keys = status name, values = status_id
         for s in statuses:
@@ -106,14 +99,15 @@ class Cleo:
         """
         Adding a note to an existing issue (and move to 'feedback' status)
         """
-        self.redmine.issue.update(issue_id,status_id=self.status_dict['Feedback'],notes=note)
+        self.redmine.issue.update(issue_id,status_id = self.status_dict['Feedback'],notes = note)
         return
 
-    def reopen_issue(self, issue_id, note):
+    def reopen_issue(self, issue_id, note,attachments):
         """
         Move an issues status to `In Progress` and add a note
         """
-        self.redmine.issue.update(issue_id,status_id=self.status_dict['In Progress'],notes=note)
+        self.redmine.issue.update(issue_id,status_id = self.status_dict['In Progress'],
+                                  notes = note,uploads = attachments)
         return
     
     def get_issue_history(self,issue_id):
@@ -125,7 +119,7 @@ class Cleo:
         for record in issue.journals:
             user = self.redmine.user.get(record.user.id)
             note = record.notes
-            if note != '' and a2rchi_pattern not in note:
+            if note != '' and A2RCHI_PATTERN not in note:
                 history.append((user.login,note))
         return history
     
@@ -136,10 +130,12 @@ class Cleo:
         self.project = self.redmine.project.get(self.cleo_project)
         return
 
-    def new_issue(self,sender,cc,subject,description):
+    def new_issue(self,sender,cc,subject,description,attachments):
         """
         Create a brand new issue in the cleo system
         """
+        if not subject.strip():
+            subject = 'EMPTY subject'
         issue = self.redmine.issue.new()
         issue.project_id = self.project.id
         issue.subject = subject
@@ -158,7 +154,8 @@ class Cleo:
         #print(issue.custom_fields)
         #issue.custom_fields = []
         #issue.uploads = [{'path': '/abs/path/to/f1'}, {'path': '/abs/path/to/f2'}]
-        issue.uploads = []
+        #print(attachments)
+        issue.uploads = attachments
         issue.save()
         return issue.id
 
@@ -197,13 +194,13 @@ class Cleo:
                 cc = issue.custom_fields[1]['value']
                 note = ''
                 for record in issue.journals:
-                    if record.notes != '' and a2rchi_pattern not in record.notes:
+                    if record.notes != '' and A2RCHI_PATTERN not in record.notes:
                         note = record.notes
                 print(f"\n TO:{to}\n CC:{cc}\n SUBJECT:{subject}\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}\n\n> {issue.description}")
                 note = f"\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}"
                 addon = issue.description.replace("\n","\n > ")
                 self.smtp.send_message(to,cc,subject,f"{note}\n\nInitial request:\n > {addon}")
-                self.close_issue(issue.id)
+                self.close_issue(issue.id,note)
         print(" cleo.process_resolved_issues: %d"%(len(issue_ids)))
         return issue_ids
         
@@ -211,12 +208,12 @@ class Cleo:
         pattern = r"<%s>.*?</%s>"%(tag,tag)
         return re.sub(pattern,"",string,flags=re.DOTALL)
     
-    def close_issue(self,issue_id):
+    def close_issue(self,issue_id,answer):
         """
         Moving the issue in the 'closed' status
         """
         self.redmine.issue.update(issue_id,status_id=self.status_dict['Closed'],
-                                  notes=f'{a2rchi_pattern} Resolving email was sent.')
+                                  notes=f'{A2RCHI_PATTERN} Resolving email was sent:\n{answer}')
         return
     
     def feedback_issue(self,issue_id):
@@ -224,7 +221,7 @@ class Cleo:
         Moving the issue in the 'feedback' status
         """
         self.redmine.issue.update(issue_id,status_id=self.status_dict['Feedback'],
-                                  notes=f'{a2rchi_pattern} Moved into feedback.')
+                                  notes=f'{A2RCHI_PATTERN} Moved into feedback.')
         return
 
     def show_issue(self,issue_id):

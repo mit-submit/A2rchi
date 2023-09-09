@@ -27,6 +27,7 @@ services:
       - openai_api_key
     volumes:
       - a2rchi-data:/root/data/
+    restart: on-failure
 
   chat:
     build:
@@ -40,6 +41,7 @@ services:
       - a2rchi-data:/root/data/
     ports:
       - 7861:7860  # host:container
+    restart: on-failure
 
   mailbox:
     build:
@@ -71,6 +73,7 @@ services:
       - sender_user
       - sender_pw
       - openai_api_key
+    restart: on-failure
 
   # TODO: do mailbox, chat service, or cleo need ports open?
   # ports:
@@ -82,6 +85,7 @@ services:
       dockerfile: deploy/scraper/Dockerfile-scraper
     volumes:
       - a2rchi-data:/root/data/
+    restart: on-failure
 
 volumes:
   a2rchi-data:

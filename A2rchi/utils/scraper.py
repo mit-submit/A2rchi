@@ -1,87 +1,104 @@
-from bs4 import BeautifulSoup
-import requests
-import re
+import hashlib
 import os
+import re
+import requests
+import ssl
+import yaml
 
 #clears the ssl certificates to allow web scraping
-import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
+
 class Scraper():
-
-    #urls to query from
-    submit_urls =  {"home":"https://submit.mit.edu",
-            "about":"https://submit.mit.edu/?page_id=6",
-            "contact":"https://submit.mit.edu/?page_id=7",
-            "news":"https://submit.mit.edu/?page_id=8",
-            "people":"https://submit.mit.edu/?page_id=73"}
     
-    github_url = 'https://github.com/mit-submit/submit-users-guide/tree/main/source'
-    raw_url = "https://raw.githubusercontent.com/mit-submit/submit-users-guide/main/source"
-
-
     def __init__(self):
+        # fetch configs
         from A2rchi.utils.config_loader import Config_Loader
-        global_config = Config_Loader().config["global"]
+        self.config = Config_Loader().config["utils"]["scraper"]
+        self.global_config = Config_Loader().config["global"]
+        self.data_path = self.global_config["DATA_PATH"]
 
-        #Check if target folders exist 
-        if not os.path.isdir(global_config["DATA_PATH"]):
-            os.mkdir(global_config["DATA_PATH"])
+        # create data path if it doesn't exist
+        os.makedirs(self.data_path, exist_ok=True)
 
-        self.submit_website_dir = global_config["DATA_PATH"]+"submit_website/"
-        if not os.path.isdir(self.submit_website_dir):
-            os.mkdir(self.submit_website_dir)
-            with open(self.submit_website_dir+"info.txt", 'w') as file:
-                file.write("This is the folder for uploading the information from submit.mit.edu")
+        # create sub-directory for websites if it doesn't exist
+        self.websites_dir = os.path.join(self.data_path, "websites")
+        os.makedirs(self.websites_dir, exist_ok=True)
 
-        self.github_dir = global_config["DATA_PATH"]+"github/"
-        if not os.path.isdir(self.github_dir):
-            os.mkdir(self.github_dir)
-            with open(self.github_dir+"info.txt", 'w') as file:
-                file.write("This is the folder for uploading the users guide from the subMIT github")
+        self.input_lists = Config_Loader().config["chains"]["input_lists"]
+        print(f"input lists: {self.input_lists}")
 
-    def hard_scrape(self,verbose=False):
+
+    def hard_scrape(self, verbose=False):
         """
-        (Re)fills the data folder from scratch 
+        Fills the data folder from scratch 
         
         """
-        self.scrape_submit_files()
-        self.scrape_rst_files(self.github_url, self.raw_url)
-        if verbose: print("Scraping was completed successfully")
+        # clear website data if specified
+        if self.config["reset_data"] :
+            for file in os.listdir(self.websites_dir):
+                os.remove(os.path.join(self.websites_dir, file))
 
-    def scrape_submit_files(self):
-        for web_title in self.submit_urls.keys():
+        # scrape URLs
+        Scraper.scrape_urls(
+            urls=self.collect_urls_from_lists(),
+            upload_dir=self.websites_dir,
+            sources_path=os.path.join(self.data_path, 'sources.yml'),
+            verify_urls=self.config["verify_urls"],
+            enable_warnings=self.config["enable_warnings"],
+        )
+
+        if verbose:
+            print("Scraping was completed successfully")
+
+
+    def collect_urls_from_lists(self):
+        urls = []
+        for list_name in self.input_lists:
+            with open(f"config/{list_name}", "r") as f:
+                data = f.read()
+
+            for line in data.split("\n"):
+                if len(line) > 0 and line[0] != '#':
+                    urls.append(line)
+
+        return urls
+    
+    @staticmethod
+    def scrape_urls(urls, upload_dir, sources_path, verify_urls, enable_warnings):
+        print(f" SOURCE: {sources_path}")
+        try:
+            # load existing sources or initialize as empty dictionary
+            with open(sources_path, 'r') as file:
+                sources = yaml.safe_load(file) or {}
+        except FileNotFoundError:
+            sources = {}
+
+        for url in urls:
+            # disable warnings if not specified
+            if not enable_warnings:
+                import urllib3
+                urllib3.disable_warnings()
+
             # request web page
-            resp = requests.get(self.submit_urls[web_title], verify=False)
-            # get the response text. in this case it is HTML
-            html = resp.text
-            #write the html output to a file
-            with open(self.submit_website_dir+web_title+".html", 'w') as file:
-                file.write(html)
+            resp = requests.get(url, verify=verify_urls)
 
-    def scrape_rst_files(self,url,raw_url):
-        """
-        For now well suited for scraping github files. Will require generalization for other types of inputs
+            # write the html output to a file
+            identifier = hashlib.md5()
+            identifier.update(url.encode('utf-8'))
+            file_name = str(int(identifier.hexdigest(), 16))[0:12]
 
-        """
-        response = requests.get(url)
-        if response.status_code == 200:
-            #file_links = re.findall(r'<a[^>]*href="([^"]+\.rst)"[^>]*>', response.text)    
-            file_links = re.findall(r'/[^"]+\.rst', response.text)
-            # print("response is: ", response.text)
-            print("file links are: ", file_links)
-            for file_url in file_links:
-                file_url = (raw_url + file_url).replace('/blob', '')
-                print("file url is ", file_url)
-                file_response = requests.get(file_url)
-                if file_response.status_code == 200:
-                    file_content = file_response.text
-                    file_name = file_url.rsplit("/", 1)[-1]
-                    
-                    # write the file:
-                    with open(self.github_dir+file_name[:-4]+".txt", 'w') as file:
-                        file.write(file_content)
-                else:
-                    print(f"Error downloading {file_url}: {file_response.status_code}")
-        else:
-            print(f"Error: {response.status_code}")
+            if (url.split('.')[-1] == 'pdf'):
+                print(f" Store: {upload_dir}/{file_name}.pdf : {url}")
+                with open(f"{upload_dir}/{file_name}.pdf", 'wb') as file:
+                    file.write(resp.content)
+            else:
+                print(f" Store: {upload_dir}/{file_name}.html : {url}")
+                with open(f"{upload_dir}/{file_name}.html", 'w') as file:
+                    file.write(resp.text)
+
+            sources[file_name] = url 
+
+        # store list of files with urls to file 
+        with open(sources_path, 'w') as file:
+            yaml.dump(sources, file)
