@@ -90,9 +90,11 @@ services:
     environment:
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
     secrets:
       - flask_uploader_app_secret_key
       - uploader_salt
+      - openai_api_key
     volumes:
       - a2rchi-data:/root/data/
     restart: on-failure
