@@ -53,7 +53,7 @@ class Chain() :
 
         # only run update vectorstore thread if dynamic updating of vectorstore allowed with ssh client
         if self.utils_config["data_manager"]["use_HTTP_chromadb_client"]:
-            update_vectorstore_thread = Thread(target = self.update_vectorstore)
+            update_vectorstore_thread = Thread(target=self.update_vectorstore)
             update_vectorstore_thread.start()
 
     # def update_vectorstore(self):

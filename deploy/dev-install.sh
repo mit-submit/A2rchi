@@ -15,4 +15,6 @@ docker compose up -d --build --force-recreate --always-recreate-deps
 rm cleo_*.txt
 rm imap_*.txt
 rm sender_*.txt
+rm flask_uploader_app_secret_key.txt
+rm uploader_salt.txt
 rm openai_api_key.txt

@@ -4,7 +4,7 @@ from A2rchi.utils.config_loader import Config_Loader
 from flask import request, jsonify, render_template
 from flask_cors import CORS
 from threading import Lock
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import numpy as np
 
@@ -80,7 +80,7 @@ class ChatWrapper:
             json.dump(data, f)
 
 
-    def __call__(self, history: Optional[List[str, str]], discussion_id: Optional[int]):
+    def __call__(self, history: Optional[List[Tuple[str, str]]], discussion_id: Optional[int]):
         """
         Execute the chat functionality.
         """

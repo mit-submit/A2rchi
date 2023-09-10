@@ -59,6 +59,12 @@ jobs:
           touch ${{ github.workspace }}/deploy/sender_pw.txt
           echo "${{ secrets.DEV_SENDER_PW }}" >> ${{ github.workspace }}/deploy/sender_pw.txt
           chmod 400 ${{ github.workspace }}/deploy/sender_pw.txt
+          touch ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          echo "${{ secrets.DEV_FLASK_UPLOADER_APP_SECRET_KEY }}" >> ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          touch ${{ github.workspace }}/deploy/uploader_salt.txt
+          echo "${{ secrets.DEV_UPLOADER_SALT }}" >> ${{ github.workspace }}/deploy/uploader_salt.txt
+          chmod 400 ${{ github.workspace }}/deploy/uploader_salt.txt
           touch ${{ github.workspace }}/deploy/openai_api_key.txt
           echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/openai_api_key.txt
           chmod 400 ${{ github.workspace }}/deploy/openai_api_key.txt
@@ -84,6 +90,8 @@ jobs:
           rm ${{ github.workspace }}/deploy/cleo_*.txt
           rm ${{ github.workspace }}/deploy/imap_*.txt
           rm ${{ github.workspace }}/deploy/sender_*.txt
+          rm ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          rm ${{ github.workspace }}/deploy/uploader_salt.txt
           rm ${{ github.workspace }}/deploy/openai_api_key.txt
 
       # print job status

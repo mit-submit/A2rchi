@@ -1,14 +1,14 @@
 #!/bin/python
-import os
-import time
-from threading import Thread
+from A2rchi.interfaces.uploader_app.app import FlaskAppWrapper
+from A2rchi.utils.config_loader import Config_Loader
+from A2rchi.utils.data_manager import DataManager
+from A2rchi.utils.scraper import Scraper
+
 from flask import Flask
+from threading import Thread
 
-from interfaces.uploader_app.app import FlaskAppWrapper
-from utils.scraper import Scraper
-from utils.data_manager import DataManager
+import time
 
-from config_loader import Config_Loader
 
 data_manager_config = Config_Loader().config["utils"]["data_manager"]
 uploader_config = Config_Loader().config["interfaces"]["uploader_app"]
@@ -23,7 +23,7 @@ uploader_config = Config_Loader().config["interfaces"]["uploader_app"]
 #   is not run.
 
 run_dynamically = data_manager_config["use_HTTP_chromadb_client"]
-print(" Dynamic: ",run_dynamically)
+print(f" Dynamic: {run_dynamically}")
 
 # scrape data onto the filesystem
 scraper = Scraper()
@@ -50,9 +50,9 @@ def run_data_manager():
 
     return
 
-data_manager_thread = Thread(target = run_data_manager)
+data_manager_thread = Thread(target=run_data_manager)
 data_manager_thread.start()
 
 if run_dynamically:
-    app = FlaskAppWrapper(Flask(__name__, template_folder = "../interfaces/uploader_app/templates"))
+    app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))
     app.run(debug=False, port=uploader_config["PORT"], host=uploader_config["HOST"])

@@ -75,17 +75,38 @@ services:
       - openai_api_key
     restart: on-failure
 
-  # TODO: do mailbox, chat service, or cleo need ports open?
-  # ports:
-  #   - "8000:8000"
-
-  scraper:
+  data-manager:
     build:
       context: ..
-      dockerfile: deploy/scraper/Dockerfile-scraper
+      dockerfile: deploy/data-manager/Dockerfile-data-manager
+    environment:
+      FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
+      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+    secrets:
+      - flask_uploader_app_secret_key
+      - uploader_salt
     volumes:
       - a2rchi-data:/root/data/
     restart: on-failure
+
+  create-account:
+    build:
+      context: ..
+      dockerfile: deploy/create-account/Dockerfile-create-account
+    environment:
+      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+    secrets:
+      - uploader_salt
+    volumes:
+      - a2rchi-data:/root/data/
+    restart: on-failure
+
+
+  # TODO: do mailbox, cleo, data-manager, or create-account need ports open?
+  # ports:
+  #   - "8000:8000"
+
+  # TODO: remove scraper service?
 
 volumes:
   a2rchi-data:
@@ -114,5 +135,9 @@ secrets:
     file: sender_user.txt
   sender_pw:
     file: sender_pw.txt
+  flask_uploader_app_secret_key:
+    file: flask_uploader_app_secret_key.txt
+  uploader_salt:
+    file: uploader_salt.txt
   openai_api_key:
     file: openai_api_key.txt
