@@ -91,12 +91,11 @@ services:
 
   chromadb:
     image: ghcr.io/chroma-core/chroma:latest
-    command: uvicorn chromadb.app:app --workers 1 --host 0.0.0.0 --port 8001 --log-config log_config.yml
+    command: uvicorn chromadb.app:app --workers 1 --host 0.0.0.0 --port 8002 --log-config log_config.yml
     ports:
-      - 8001:8001  # host:container
+      - 8002:8002  # host:container
     volumes:
       - a2rchi-data:/chroma/chroma/
-    restart: on-failure
 
   # create-account:
   #   build:
