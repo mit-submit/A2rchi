@@ -3,6 +3,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/cleo/Dockerfile-cleo
+    depends_on:
+      - chromadb
     environment:
       CLEO_URL_FILE: /run/secrets/cleo_url
       CLEO_USER_FILE: /run/secrets/cleo_user
@@ -33,6 +35,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/chat/Dockerfile-chat
+    depends_on:
+      - chromadb
     environment:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
     secrets:
@@ -47,6 +51,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/mailbox/Dockerfile-mailbox
+    depends_on:
+      - chromadb
     environment:
       IMAP_USER_FILE: /run/secrets/imap_user
       IMAP_PW_FILE: /run/secrets/imap_pw
@@ -79,6 +85,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/data-manager/Dockerfile-data-manager
+    depends_on:
+      - chromadb
     environment:
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
@@ -89,24 +97,29 @@ services:
       - a2rchi-data:/root/data/
     restart: on-failure
 
-  create-account:
-    build:
-      context: ..
-      dockerfile: deploy/create-account/Dockerfile-create-account
-    environment:
-      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
-    secrets:
-      - uploader_salt
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    ports:
+      - 8000:8000  # host:container
     volumes:
-      - a2rchi-data:/root/data/
+      - a2rchi-data:/chroma/chroma/
     restart: on-failure
 
+  # create-account:
+  #   build:
+  #     context: ..
+  #     dockerfile: deploy/create-account/Dockerfile-create-account
+  #   environment:
+  #     UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+  #   secrets:
+  #     - uploader_salt
+  #   volumes:
+  #     - a2rchi-data:/root/data/
+  #   restart: on-failure
 
-  # TODO: do mailbox, cleo, data-manager, or create-account need ports open?
+  # TODO: do mailbox, cleo, or data-manager need ports open?
   # ports:
   #   - "8000:8000"
-
-  # TODO: remove scraper service?
 
 volumes:
   a2rchi-data:
