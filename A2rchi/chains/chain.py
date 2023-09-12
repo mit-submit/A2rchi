@@ -39,7 +39,7 @@ class Chain() :
         self.vectorstore = Chroma(client = self.client, collection_name = self.collection_name,
                                   embedding_function = self.embedding_model)
 
-        print(" N Collection: ",self.client.get_collection(self.collection_name))
+        print("Collection used: ", self.client.get_collection(self.collection_name))
         
         model_class_map = self.config["MODEL_CLASS_MAP"]
         model_name = self.config["MODEL_NAME"]
@@ -56,13 +56,6 @@ class Chain() :
             update_vectorstore_thread = Thread(target=self.update_vectorstore)
             update_vectorstore_thread.start()
 
-    # def update_vectorstore(self):
-    #     self.dataManager.update_vectorstore()
-    #     self.vectorstore = self.dataManager.fetch_vectorstore()
-    #     self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
-
-    #     return
-
     def update_vectorstore(self):
         while not self.kill:
             time.sleep(int(self.config["chain_update_time"]))
@@ -73,7 +66,7 @@ class Chain() :
                 embedding_function=self.embedding_model,
             )
             self.chain = BaseChain.from_llm(self.llm, self.vectorstore.as_retriever(), return_source_documents=True)
-            print(f" N Collection: {self.client.get_collection(self.collection_name).count()}")
+            print(f"N entries: {self.client.get_collection(self.collection_name).count()}")
             print("Updated chain with new vectorstore")
             self.lock.release()
 

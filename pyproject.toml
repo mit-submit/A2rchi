@@ -1,11 +1,12 @@
 [project]
 name = "A2rchi"
 version = "0.1.0"
-description = "An AI Augmented Research Chat Intelligence for MIT's subMIT project in the physics department"
+description = "An AI Augmented Research Chat Intelligence (A2rchi)"
 requires-python = ">=3.7"
 # sorted alphabetically by last name
 authors = [
     {name="Julius Heitkoetter", email="juliush@mit.edu"},
+    {name="Time Kraska", email="kraska@mit.edu"},
     {name="Ludovico Mori", email="mori25@mit.edu"},
     {name="Christoph Paus", email="paus@mit.edu"},
     {name="Matthew Russo", email="mdrusso@mit.edu"},
