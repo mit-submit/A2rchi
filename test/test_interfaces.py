@@ -1,5 +1,4 @@
-from interfaces.chat_app import Chat_UI
-from interfaces.cleo import Cleo
+from A2rchi.interfaces.cleo import Cleo
 
 from time import time
 import threading

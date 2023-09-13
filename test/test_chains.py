@@ -1,7 +1,9 @@
+from A2rchi.chains.chain import Chain
+from A2rchi.chains.models import DumbLLM, LlamaLLM, OpenAILLM
+from A2rchi.utils.config_loader import Config_Loader
+
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
-from chains.chain import Chain
-from chains.models import DumbLLM, LlamaLLM, OpenAILLM
-from utils.config_loader import Config_Loader
+
 
 config = Config_Loader().config["chains"]["chain"]
 global_config = Config_Loader().config["global"]

@@ -1,7 +1,7 @@
 global:
-  DATA_PATH: "./data/"
-  ACCOUNTS_PATH: "./.accounts/"
-  LOCAL_VSTORE_PATH: "./data/vstore/"
+  DATA_PATH: "/root/data/"
+  ACCOUNTS_PATH: "/root/.accounts/"
+  LOCAL_VSTORE_PATH: "/root/data/vstore/"
   ACCEPTED_FILES: 
     -".txt"
     -".html"
@@ -12,9 +12,12 @@ interfaces:
     PORT: 7681
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
     HOSTNAME: "ppc.mit.edu"  # careful, this is used for the chat service
+    template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
+    static_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/static"
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+    template_folder: "/root/A2rchi/A2rchi/interfaces/uploader_app/templates"
 
 chains:
   input_lists:
@@ -32,9 +35,9 @@ chains:
     MODEL_NAME: OpenAILLM 
     # map of all the class models and their keyword arguments
     MODEL_CLASS_MAP:
-      OpenAILLM: 
+      OpenAILLM:
         class: OpenAILLM
-        kwargs: 
+        kwargs:
           model_name: gpt-4
           temperature: 1
       DumbLLM:
@@ -72,8 +75,8 @@ utils:
     use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
     vectordb_update_time: 10
-    chromadb_host: "localhost"
-    chromadb_port: 8000
+    chromadb_host: chromadb
+    chromadb_port: 8002
     collection_name: "dev_collection"
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
