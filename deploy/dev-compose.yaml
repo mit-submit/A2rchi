@@ -110,12 +110,13 @@ services:
     restart: always
 
   chromadb:
-    image: ghcr.io/chroma-core/chroma:latest
-    command: apt-get update -y && apt-get install -y curl && uvicorn chromadb.app:app --workers 1 --host 0.0.0.0 --port 8002 --log-config log_config.yml
+    build:
+      context: ..
+      dockerfile: deploy/chroma/Dockerfile-chroma
     environment:
       PROD_OR_DEV: dev
     ports:
-      - 8002:8002  # host:container
+      - 8002:8000  # host:container
     volumes:
       - a2rchi-data:/chroma/chroma/
     restart: always
