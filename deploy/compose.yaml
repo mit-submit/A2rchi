@@ -29,7 +29,7 @@ services:
       - openai_api_key
     volumes:
       - a2rchi-data:/root/data/
-    restart: on-failure
+    restart: always
 
   chat:
     build:
@@ -45,7 +45,7 @@ services:
       - a2rchi-data:/root/data/
     ports:
       - 7861:7860  # host:container
-    restart: on-failure
+    restart: always
 
   mailbox:
     build:
@@ -79,7 +79,7 @@ services:
       - sender_user
       - sender_pw
       - openai_api_key
-    restart: on-failure
+    restart: always
 
   data-manager:
     build:
@@ -97,7 +97,7 @@ services:
       - openai_api_key
     volumes:
       - a2rchi-data:/root/data/
-    restart: on-failure
+    restart: always
 
   chromadb:
     image: ghcr.io/chroma-core/chroma:latest
@@ -106,6 +106,7 @@ services:
       - 8002:8002  # host:container
     volumes:
       - a2rchi-data:/chroma/chroma/
+    restart: always
 
   # create-account:
   #   build:
@@ -117,7 +118,7 @@ services:
   #     - uploader_salt
   #   volumes:
   #     - a2rchi-data:/root/data/
-  #   restart: on-failure
+  #   restart: always
 
 
 volumes:
