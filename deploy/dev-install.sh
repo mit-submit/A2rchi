@@ -11,10 +11,10 @@ echo "Starting docker compose"
 cd A2rchi/deploy/
 docker compose -f dev-compose.yaml up -d --build --force-recreate --always-recreate-deps
 
-# secrets files are created by CI pipeline and destroyed here
-rm cleo_*.txt
-rm imap_*.txt
-rm sender_*.txt
-rm flask_uploader_app_secret_key.txt
-rm uploader_salt.txt
-rm openai_api_key.txt
+# # secrets files are created by CI pipeline and destroyed here
+# rm secrets/cleo_*.txt
+# rm secrets/imap_*.txt
+# rm secrets/sender_*.txt
+# rm secrets/flask_uploader_app_secret_key.txt
+# rm secrets/uploader_salt.txt
+# rm secrets/openai_api_key.txt

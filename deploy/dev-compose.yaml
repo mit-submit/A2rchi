@@ -147,30 +147,30 @@ volumes:
 
 secrets:
   imap_user:
-    file: imap_user.txt
+    file: secrets/imap_user.txt
   imap_pw:
-    file: imap_pw.txt
+    file: secrets/imap_pw.txt
   cleo_url:
-    file: cleo_url.txt
+    file: secrets/cleo_url.txt
   cleo_user:
-    file: cleo_user.txt
+    file: secrets/cleo_user.txt
   cleo_pw:
-    file: cleo_pw.txt
+    file: secrets/cleo_pw.txt
   cleo_project:
-    file: cleo_project.txt
+    file: secrets/cleo_project.txt
   sender_server:
-    file: sender_server.txt
+    file: secrets/sender_server.txt
   sender_port:
-    file: sender_port.txt
+    file: secrets/sender_port.txt
   sender_replyto:
-    file: sender_replyto.txt
+    file: secrets/sender_replyto.txt
   sender_user:
-    file: sender_user.txt
+    file: secrets/sender_user.txt
   sender_pw:
-    file: sender_pw.txt
+    file: secrets/sender_pw.txt
   flask_uploader_app_secret_key:
-    file: flask_uploader_app_secret_key.txt
+    file: secrets/flask_uploader_app_secret_key.txt
   uploader_salt:
-    file: uploader_salt.txt
+    file: secrets/uploader_salt.txt
   openai_api_key:
-    file: openai_api_key.txt
+    file: secrets/openai_api_key.txt
