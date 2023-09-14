@@ -3,6 +3,7 @@ from A2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.embeddings import HuggingFaceEmbeddings
 
+import os
 import yaml
 
 
@@ -15,8 +16,9 @@ class Config_Loader:
         """
         Small function for loading the config.yaml file
         """
+        prod_or_dev = os.getenv("PROD_OR_DEV")
         try:
-            with open("./config/config.yaml", "r") as f:
+            with open(f"./config/{prod_or_dev}-config.yaml", "r") as f:
                 config = yaml.load(f, Loader=yaml.FullLoader)
 
             # change the model class parameter from a string to an actual class

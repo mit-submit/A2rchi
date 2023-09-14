@@ -6,6 +6,7 @@ services:
     depends_on:
       - chromadb
     environment:
+      PROD_OR_DEV: prod
       CLEO_URL_FILE: /run/secrets/cleo_url
       CLEO_USER_FILE: /run/secrets/cleo_user
       CLEO_PW_FILE: /run/secrets/cleo_pw
@@ -38,13 +39,14 @@ services:
     depends_on:
       - chromadb
     environment:
+      PROD_OR_DEV: prod
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
     secrets:
       - openai_api_key
     volumes:
       - a2rchi-data:/root/data/
     ports:
-      - 7861:7860  # host:container
+      - 7861:7861  # host:container
     restart: always
 
   mailbox:
@@ -54,6 +56,7 @@ services:
     depends_on:
       - chromadb
     environment:
+      PROD_OR_DEV: prod
       IMAP_USER_FILE: /run/secrets/imap_user
       IMAP_PW_FILE: /run/secrets/imap_pw
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -88,6 +91,7 @@ services:
     depends_on:
       - chromadb
     environment:
+      PROD_OR_DEV: prod
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
@@ -103,9 +107,11 @@ services:
 
   chromadb:
     image: ghcr.io/chroma-core/chroma:latest
-    command: uvicorn chromadb.app:app --workers 1 --host 0.0.0.0 --port 8002 --log-config log_config.yml
+    command: uvicorn chromadb.app:app --workers 1 --host 0.0.0.0 --port 8000 --log-config log_config.yml
+    environment:
+      PROD_OR_DEV: prod
     ports:
-      - 8002:8002  # host:container
+      - 8000:8000  # host:container
     volumes:
       - a2rchi-data:/chroma/chroma/
     restart: always

@@ -75,7 +75,7 @@ jobs:
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit-prod 'bash -s' < ${{ github.workspace }}/deploy/stop.sh
+          ssh submit-prod 'bash -s' < ${{ github.workspace }}/deploy/prod-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
@@ -85,7 +85,7 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
-          ssh submit-prod 'bash -s' < ${{ github.workspace }}/deploy/install.sh
+          ssh submit-prod 'bash -s' < ${{ github.workspace }}/deploy/prod-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner

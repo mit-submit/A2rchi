@@ -1,0 +1,164 @@
+services:
+  cleo:
+    build:
+      context: ..
+      dockerfile: deploy/cleo/Dockerfile-cleo
+    depends_on:
+      - chromadb
+    environment:
+      PROD_OR_DEV: dev
+      CLEO_URL_FILE: /run/secrets/cleo_url
+      CLEO_USER_FILE: /run/secrets/cleo_user
+      CLEO_PW_FILE: /run/secrets/cleo_pw
+      CLEO_PROJECT_FILE: /run/secrets/cleo_project
+      SENDER_SERVER_FILE: /run/secrets/sender_server
+      SENDER_PORT_FILE: /run/secrets/sender_port
+      SENDER_REPLYTO_FILE: /run/secrets/sender_replyto
+      SENDER_USER_FILE: /run/secrets/sender_user
+      SENDER_PW_FILE: /run/secrets/sender_pw
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+    secrets:
+      - cleo_url
+      - cleo_user
+      - cleo_pw
+      - cleo_project
+      - sender_server
+      - sender_port
+      - sender_replyto
+      - sender_user
+      - sender_pw
+      - openai_api_key
+    volumes:
+      - a2rchi-data:/root/data/
+    restart: always
+
+  chat:
+    build:
+      context: ..
+      dockerfile: deploy/chat/Dockerfile-chat
+    depends_on:
+      - chromadb
+    environment:
+      PROD_OR_DEV: dev
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+    secrets:
+      - openai_api_key
+    volumes:
+      - a2rchi-data:/root/data/
+    ports:
+      - 7861:7861  # host:container
+    restart: always
+
+  mailbox:
+    build:
+      context: ..
+      dockerfile: deploy/mailbox/Dockerfile-mailbox
+    depends_on:
+      - chromadb
+    environment:
+      PROD_OR_DEV: dev
+      IMAP_USER_FILE: /run/secrets/imap_user
+      IMAP_PW_FILE: /run/secrets/imap_pw
+      CLEO_URL_FILE: /run/secrets/cleo_url
+      CLEO_USER_FILE: /run/secrets/cleo_user
+      CLEO_PW_FILE: /run/secrets/cleo_pw
+      CLEO_PROJECT_FILE: /run/secrets/cleo_project
+      SENDER_SERVER_FILE: /run/secrets/sender_server
+      SENDER_PORT_FILE: /run/secrets/sender_port
+      SENDER_REPLYTO_FILE: /run/secrets/sender_replyto
+      SENDER_USER_FILE: /run/secrets/sender_user
+      SENDER_PW_FILE: /run/secrets/sender_pw
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+    secrets:
+      - imap_user
+      - imap_pw
+      - cleo_url
+      - cleo_user
+      - cleo_pw
+      - cleo_project
+      - sender_server
+      - sender_port
+      - sender_replyto
+      - sender_user
+      - sender_pw
+      - openai_api_key
+    restart: always
+
+  data-manager:
+    build:
+      context: ..
+      dockerfile: deploy/data-manager/Dockerfile-data-manager
+    depends_on:
+      - chromadb
+    environment:
+      PROD_OR_DEV: dev
+      FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
+      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+    secrets:
+      - flask_uploader_app_secret_key
+      - uploader_salt
+      - openai_api_key
+    ports:
+      - 5001:5001  # host:container
+    volumes:
+      - a2rchi-data:/root/data/
+    restart: always
+
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    command: uvicorn chromadb.app:app --workers 1 --host 0.0.0.0 --port 8002 --log-config log_config.yml
+    environment:
+      PROD_OR_DEV: dev
+    ports:
+      - 8002:8002  # host:container
+    volumes:
+      - a2rchi-data:/chroma/chroma/
+    restart: always
+
+  # create-account:
+  #   build:
+  #     context: ..
+  #     dockerfile: deploy/create-account/Dockerfile-create-account
+  #   environment:
+  #     UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+  #   secrets:
+  #     - uploader_salt
+  #   volumes:
+  #     - a2rchi-data:/root/data/
+  #   restart: always
+
+
+volumes:
+  a2rchi-data:
+    external: true
+
+secrets:
+  imap_user:
+    file: imap_user.txt
+  imap_pw:
+    file: imap_pw.txt
+  cleo_url:
+    file: cleo_url.txt
+  cleo_user:
+    file: cleo_user.txt
+  cleo_pw:
+    file: cleo_pw.txt
+  cleo_project:
+    file: cleo_project.txt
+  sender_server:
+    file: sender_server.txt
+  sender_port:
+    file: sender_port.txt
+  sender_replyto:
+    file: sender_replyto.txt
+  sender_user:
+    file: sender_user.txt
+  sender_pw:
+    file: sender_pw.txt
+  flask_uploader_app_secret_key:
+    file: flask_uploader_app_secret_key.txt
+  uploader_salt:
+    file: uploader_salt.txt
+  openai_api_key:
+    file: openai_api_key.txt

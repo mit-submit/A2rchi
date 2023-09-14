@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # create volume if it doesn't already exist
-exists=`docker volume ls | awk '{print $2}' | grep a2rchi-data`
-if [[ $exists != 'a2rchi-data' ]]; then
-    docker volume create --name a2rchi-data
+exists=`docker volume ls | awk '{print $2}' | grep a2rchi-dev-data`
+if [[ $exists != 'a2rchi-dev-data' ]]; then
+    docker volume create --name a2rchi-dev-data
 fi
 
 # start services
 echo "Starting docker compose"
 cd A2rchi/deploy/
-docker compose up -d --build --force-recreate --always-recreate-deps
+docker compose up -f dev-compose.yaml -d --build --force-recreate --always-recreate-deps
 
 # secrets files are created by CI pipeline and destroyed here
 rm cleo_*.txt
