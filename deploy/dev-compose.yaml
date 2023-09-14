@@ -93,7 +93,7 @@ services:
       dockerfile: deploy/data-manager/Dockerfile-data-manager
     depends_on:
       chromadb:
-        condition: service_healthy
+        condition: service_healthy #
     environment:
       PROD_OR_DEV: dev
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
