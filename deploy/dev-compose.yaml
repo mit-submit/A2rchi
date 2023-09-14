@@ -30,7 +30,7 @@ services:
       - sender_pw
       - openai_api_key
     volumes:
-      - a2rchi-data:/root/data/
+      - a2rchi-dev-data:/root/data/
     restart: always
 
   chat:
@@ -46,7 +46,7 @@ services:
     secrets:
       - openai_api_key
     volumes:
-      - a2rchi-data:/root/data/
+      - a2rchi-dev-data:/root/data/
     ports:
       - 7861:7861  # host:container
     restart: always
@@ -106,7 +106,7 @@ services:
     ports:
       - 5001:5001  # host:container
     volumes:
-      - a2rchi-data:/root/data/
+      - a2rchi-dev-data:/root/data/
     restart: always
 
   chromadb:
@@ -118,7 +118,7 @@ services:
     ports:
       - 8002:8000  # host:container
     volumes:
-      - a2rchi-data:/chroma/chroma/
+      - a2rchi-dev-data:/chroma/chroma/
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
@@ -137,12 +137,12 @@ services:
   #   secrets:
   #     - uploader_salt
   #   volumes:
-  #     - a2rchi-data:/root/data/
+  #     - a2rchi-dev-data:/root/data/
   #   restart: always
 
 
 volumes:
-  a2rchi-data:
+  a2rchi-dev-data:
     external: true
 
 secrets:
