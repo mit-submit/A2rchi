@@ -95,6 +95,8 @@ services:
       - flask_uploader_app_secret_key
       - uploader_salt
       - openai_api_key
+    ports:
+      - 5001:5001  # host:container
     volumes:
       - a2rchi-data:/root/data/
     restart: always
