@@ -4,8 +4,8 @@ services:
       context: ..
       dockerfile: deploy/cleo/Dockerfile-cleo
     depends_on:
-      - chromadb
-      - condition: service_healthy
+      chromadb:
+        condition: service_healthy
     environment:
       PROD_OR_DEV: prod
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -38,8 +38,8 @@ services:
       context: ..
       dockerfile: deploy/chat/Dockerfile-chat
     depends_on:
-      - chromadb
-      - condition: service_healthy
+      chromadb:
+        condition: service_healthy
     environment:
       PROD_OR_DEV: prod
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
@@ -56,8 +56,8 @@ services:
       context: ..
       dockerfile: deploy/mailbox/Dockerfile-mailbox
     depends_on:
-      - chromadb
-      - condition: service_healthy
+      chromadb:
+        condition: service_healthy
     environment:
       PROD_OR_DEV: prod
       IMAP_USER_FILE: /run/secrets/imap_user
@@ -92,8 +92,8 @@ services:
       context: ..
       dockerfile: deploy/data-manager/Dockerfile-data-manager
     depends_on:
-      - chromadb
-      - condition: service_healthy
+      chromadb:
+        condition: service_healthy
     environment:
       PROD_OR_DEV: prod
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
