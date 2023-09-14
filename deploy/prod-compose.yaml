@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: deploy/cleo/Dockerfile-cleo
     depends_on:
-      chromadb:
+      chromadb: {}
       condition: service_healthy
     environment:
       PROD_OR_DEV: prod
@@ -38,7 +38,7 @@ services:
       context: ..
       dockerfile: deploy/chat/Dockerfile-chat
     depends_on:
-      chromadb:
+      chromadb: {}
       condition: service_healthy
     environment:
       PROD_OR_DEV: prod
@@ -56,7 +56,7 @@ services:
       context: ..
       dockerfile: deploy/mailbox/Dockerfile-mailbox
     depends_on:
-      chromadb:
+      chromadb: {}
       condition: service_healthy
     environment:
       PROD_OR_DEV: prod
@@ -92,7 +92,7 @@ services:
       context: ..
       dockerfile: deploy/data-manager/Dockerfile-data-manager
     depends_on:
-      chromadb:
+      chromadb: {}
       condition: service_healthy
     environment:
       PROD_OR_DEV: prod
