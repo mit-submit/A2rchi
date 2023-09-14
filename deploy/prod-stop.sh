@@ -2,4 +2,4 @@
 
 echo "Stop running docker compose"
 cd A2rchi/deploy/
-docker compose down -f prod-compose.yaml
+docker compose -f prod-compose.yaml down

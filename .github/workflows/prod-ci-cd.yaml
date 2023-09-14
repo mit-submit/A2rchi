@@ -72,15 +72,15 @@ jobs:
           echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/openai_api_key.txt
           chmod 400 ${{ github.workspace }}/deploy/openai_api_key.txt
 
-      # stop any existing docker compose that's running
-      - name: Stop Docker Compose
-        run: |
-          ssh submit-prod 'bash -s' < ${{ github.workspace }}/deploy/prod-stop.sh
-
       # copy repository to machine
       - name: Copy Repository
         run: |
           rsync -e ssh -r ${{ github.workspace}} --exclude .git/ --delete submit-prod:~/
+
+      # stop any existing docker compose that's running
+      - name: Stop Docker Compose
+        run: |
+          ssh submit-prod 'bash -s' < ${{ github.workspace }}/deploy/prod-stop.sh
 
       # run deploy script
       - name: Run Deploy Script
