@@ -1,0 +1,98 @@
+name: Deploy A2rchi Dev
+run-name: ${{ github.actor }} deploys A2rchi to dev
+on: [push]
+jobs:
+  deploy-dev-system:
+    runs-on: ubuntu-latest
+    env:
+      SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+    steps:
+      # boilerplate message and pull repository to CI runner
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - uses: actions/checkout@v3
+      - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
+
+      # setup SSH 
+      - name: Setup SSH
+        run: |
+          mkdir -p /home/runner/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" > /home/runner/.ssh/id_rsa_submit
+          chmod 600 /home/runner/.ssh/id_rsa_submit
+          echo "${{ secrets.SSH_SUBMIT_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          cp ${{ github.workspace}}/deploy/ssh_config /home/runner/.ssh/config
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add /home/runner/.ssh/id_rsa_submit
+
+      # create secrets files for docker-compose
+      - name: Create Secrets Files
+        run: |
+          touch ${{ github.workspace }}/deploy/imap_user.txt
+          echo "${{ secrets.DEV_IMAP_USER }}" >> ${{ github.workspace }}/deploy/imap_user.txt
+          chmod 400 ${{ github.workspace }}/deploy/imap_user.txt
+          touch ${{ github.workspace }}/deploy/imap_pw.txt
+          echo "${{ secrets.DEV_IMAP_PW }}" >> ${{ github.workspace }}/deploy/imap_pw.txt
+          chmod 400 ${{ github.workspace }}/deploy/imap_pw.txt
+          touch ${{ github.workspace }}/deploy/cleo_url.txt
+          echo "${{ secrets.DEV_CLEO_URL }}" >> ${{ github.workspace }}/deploy/cleo_url.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_url.txt
+          touch ${{ github.workspace }}/deploy/cleo_user.txt
+          echo "${{ secrets.DEV_CLEO_USER }}" >> ${{ github.workspace }}/deploy/cleo_user.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_user.txt
+          touch ${{ github.workspace }}/deploy/cleo_pw.txt
+          echo "${{ secrets.DEV_CLEO_PW }}" >> ${{ github.workspace }}/deploy/cleo_pw.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_pw.txt
+          touch ${{ github.workspace }}/deploy/cleo_project.txt
+          echo "${{ secrets.DEV_CLEO_PROJECT }}" >> ${{ github.workspace }}/deploy/cleo_project.txt
+          chmod 400 ${{ github.workspace }}/deploy/cleo_project.txt
+          touch ${{ github.workspace }}/deploy/sender_server.txt
+          echo "${{ secrets.DEV_SENDER_SERVER }}" >> ${{ github.workspace }}/deploy/sender_server.txt
+          chmod 400 ${{ github.workspace }}/deploy/sender_server.txt
+          touch ${{ github.workspace }}/deploy/sender_port.txt
+          echo "${{ secrets.DEV_SENDER_PORT }}" >> ${{ github.workspace }}/deploy/sender_port.txt
+          chmod 400 ${{ github.workspace }}/deploy/sender_port.txt
+          touch ${{ github.workspace }}/deploy/sender_replyto.txt
+          echo "${{ secrets.DEV_SENDER_REPLYTO }}" >> ${{ github.workspace }}/deploy/sender_replyto.txt
+          chmod 400 ${{ github.workspace }}/deploy/sender_replyto.txt
+          touch ${{ github.workspace }}/deploy/sender_user.txt
+          echo "${{ secrets.DEV_SENDER_USER }}" >> ${{ github.workspace }}/deploy/sender_user.txt
+          chmod 400 ${{ github.workspace }}/deploy/sender_user.txt
+          touch ${{ github.workspace }}/deploy/sender_pw.txt
+          echo "${{ secrets.DEV_SENDER_PW }}" >> ${{ github.workspace }}/deploy/sender_pw.txt
+          chmod 400 ${{ github.workspace }}/deploy/sender_pw.txt
+          touch ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          echo "${{ secrets.DEV_FLASK_UPLOADER_APP_SECRET_KEY }}" >> ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          touch ${{ github.workspace }}/deploy/uploader_salt.txt
+          echo "${{ secrets.DEV_UPLOADER_SALT }}" >> ${{ github.workspace }}/deploy/uploader_salt.txt
+          chmod 400 ${{ github.workspace }}/deploy/uploader_salt.txt
+          touch ${{ github.workspace }}/deploy/openai_api_key.txt
+          echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/openai_api_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/openai_api_key.txt
+
+      # stop any existing docker compose that's running
+      - name: Stop Docker Compose
+        run: |
+          ssh submit-dev 'bash -s' < ${{ github.workspace }}/deploy/stop.sh
+
+      # copy repository to machine
+      - name: Copy Repository
+        run: |
+          rsync -e ssh -r ${{ github.workspace}} --exclude .git/ --delete submit-dev:~/
+
+      # run deploy script
+      - name: Run Deploy Script
+        run: |
+          ssh submit-dev 'bash -s' < ${{ github.workspace }}/deploy/install.sh
+
+      # clean up secret files
+      - name: Remove Secrets from Runner
+        run: |
+          rm ${{ github.workspace }}/deploy/cleo_*.txt
+          rm ${{ github.workspace }}/deploy/imap_*.txt
+          rm ${{ github.workspace }}/deploy/sender_*.txt
+          rm ${{ github.workspace }}/deploy/flask_uploader_app_secret_key.txt
+          rm ${{ github.workspace }}/deploy/uploader_salt.txt
+          rm ${{ github.workspace }}/deploy/openai_api_key.txt
+
+      # print job status
+      - run: echo "🍏 This job's status is ${{ job.status }}."

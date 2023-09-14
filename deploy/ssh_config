@@ -1,5 +1,5 @@
-Host submit-a2rchi
-  HostName submit05.mit.edu
+Host submit-prod
+  HostName submit06.mit.edu
   User a2rchi
   IdentitiesOnly=yes
   PreferredAuthentications publickey
@@ -7,9 +7,9 @@ Host submit-a2rchi
   IdentityFile ~/.ssh/id_rsa_submit
   StrictHostKeyChecking no
 
-Host submit-gpu
+Host submit-dev
   HostName t3desk019.mit.edu
-  User mdrusso
+  User a2rchi
   IdentitiesOnly=yes
   PreferredAuthentications publickey
   PasswordAuthentication no
