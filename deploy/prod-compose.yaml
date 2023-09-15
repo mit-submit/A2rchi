@@ -18,6 +18,7 @@ services:
       SENDER_USER_FILE: /run/secrets/sender_user
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HF_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - cleo_url
       - cleo_user
@@ -29,6 +30,7 @@ services:
       - sender_user
       - sender_pw
       - openai_api_key
+      - hf_token
     volumes:
       - a2rchi-prod-data:/root/data/
     restart: always
@@ -43,8 +45,10 @@ services:
     environment:
       PROD_OR_DEV: prod
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HF_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - openai_api_key
+      - hf_token
     volumes:
       - a2rchi-prod-data:/root/data/
     ports:
@@ -72,6 +76,7 @@ services:
       SENDER_USER_FILE: /run/secrets/sender_user
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HF_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - imap_user
       - imap_pw
@@ -85,6 +90,7 @@ services:
       - sender_user
       - sender_pw
       - openai_api_key
+      - hf_token
     restart: always
 
   data-manager:
@@ -99,10 +105,12 @@ services:
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HF_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - flask_uploader_app_secret_key
       - uploader_salt
       - openai_api_key
+      - hf_token
     ports:
       - 5001:5001  # host:container
     volumes:
@@ -174,3 +182,5 @@ secrets:
     file: secrets/uploader_salt.txt
   openai_api_key:
     file: secrets/openai_api_key.txt
+  hf_token:
+    file: secrets/hf_token.txt

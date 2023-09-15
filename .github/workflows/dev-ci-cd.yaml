@@ -69,6 +69,9 @@ jobs:
           touch ${{ github.workspace }}/deploy/secrets/openai_api_key.txt
           echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/secrets/openai_api_key.txt
           chmod 400 ${{ github.workspace }}/deploy/secrets/openai_api_key.txt
+          touch ${{ github.workspace }}/deploy/secrets/hf_token.txt
+          echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/secrets/hf_token.txt
+          chmod 400 ${{ github.workspace }}/deploy/secrets/hf_token.txt
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
@@ -94,6 +97,7 @@ jobs:
           rm ${{ github.workspace }}/deploy/secrets/flask_uploader_app_secret_key.txt
           rm ${{ github.workspace }}/deploy/secrets/uploader_salt.txt
           rm ${{ github.workspace }}/deploy/secrets/openai_api_key.txt
+          rm ${{ github.workspace }}/deploy/secrets/hf_token.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."

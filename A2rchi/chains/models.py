@@ -46,7 +46,7 @@ class LlamaLLM(BaseCustomLLM):
     Loading the Llama LLM from facebook. Make sure that the model
     is downloaded and the base_model_path is linked to correct model
     """
-    base_model_path: str = None     # location of the model (ex. meta-llama/Llama-2-70b)
+    base_model: str = None     # location of the model (ex. meta-llama/Llama-2-70b)
     peft_model: str = None          # location of the finetuning of the model 
     enable_salesforce_content_safety: bool = True
                                     # enable safety check with Salesforce safety flan t5
@@ -83,8 +83,8 @@ class LlamaLLM(BaseCustomLLM):
 
         # create tokenizer
         self.tokenizer = None
-        self.tokenizer = LlamaTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model_path, local_files_only= True)
-        base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model_path, local_files_only= True, load_in_8bit=self.quantization, device_map='auto', torch_dtype = torch.float16)
+        self.tokenizer = LlamaTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= True)
+        base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= True, load_in_8bit=self.quantization, device_map='auto', torch_dtype = torch.float16)
         if self.peft_model:
             self.llama_model = PeftModel.from_pretrained(base_model, self.peft_model)
         else:

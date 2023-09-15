@@ -18,3 +18,4 @@ docker compose -f prod-compose.yaml up -d --build --force-recreate --always-recr
 # rm secrets/flask_uploader_app_secret_key.txt
 # rm secrets/uploader_salt.txt
 # rm secrets/openai_api_key.txt
+# rm secrets/hf_token.txt
