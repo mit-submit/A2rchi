@@ -2,7 +2,7 @@
 FROM python:3.10
 RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
-EXPOSE 7860
+EXPOSE 7861
 COPY pyproject.toml pyproject.toml
 COPY README.md README.md
 COPY LICENSE LICENSE
