@@ -40,7 +40,7 @@ const refreshChat = async () => {
 }
 
 const getChatResponse = async (incomingChatDiv) => {
-    const API_URL = "http://127.0.0.1:7681/get_chat_response";
+    const API_URL = "http://0.0.0.0:7861/get_chat_response";
     const pElement = document.createElement("div");
 
      // Define the properties and data for the API request
