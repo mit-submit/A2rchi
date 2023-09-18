@@ -83,8 +83,8 @@ class LlamaLLM(BaseCustomLLM):
 
         # create tokenizer
         self.tokenizer = None
-        self.tokenizer = LlamaTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= True)
-        base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= True, load_in_8bit=self.quantization, device_map='auto', torch_dtype = torch.float16)
+        self.tokenizer = LlamaTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False)
+        base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False, load_in_8bit=self.quantization, device_map='auto', torch_dtype = torch.float16)
         if self.peft_model:
             self.llama_model = PeftModel.from_pretrained(base_model, self.peft_model)
         else:
