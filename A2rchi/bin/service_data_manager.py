@@ -14,6 +14,7 @@ import time
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
+os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 
 data_manager_config = Config_Loader().config["utils"]["data_manager"]
 uploader_config = Config_Loader().config["interfaces"]["uploader_app"]

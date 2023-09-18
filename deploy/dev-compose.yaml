@@ -18,7 +18,7 @@ services:
       SENDER_USER_FILE: /run/secrets/sender_user
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      HF_TOKEN_FILE: /run/secrets/hf_token
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - cleo_url
       - cleo_user
@@ -45,7 +45,7 @@ services:
     environment:
       PROD_OR_DEV: dev
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      HF_TOKEN_FILE: /run/secrets/hf_token
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - openai_api_key
       - hf_token
@@ -76,7 +76,7 @@ services:
       SENDER_USER_FILE: /run/secrets/sender_user
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      HF_TOKEN_FILE: /run/secrets/hf_token
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - imap_user
       - imap_pw
@@ -105,7 +105,7 @@ services:
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      HF_TOKEN_FILE: /run/secrets/hf_token
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - flask_uploader_app_secret_key
       - uploader_salt

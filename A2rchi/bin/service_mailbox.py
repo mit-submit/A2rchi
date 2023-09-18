@@ -9,6 +9,7 @@ import time
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
+os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 print("Starting Mailbox Service")
 
 config = Config_Loader().config["utils"]
