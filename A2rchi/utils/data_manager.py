@@ -144,8 +144,16 @@ class DataManager():
             if loader is None:
                 continue 
 
-            doc = loader.load()[0]
-            chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
+             # initialize lists for file chunks and metadata
+            chunks = []
+            metadatas = []
+            
+            # load documents from current file and add to docs and metadata
+            docs = loader.load()
+            for doc in docs:
+                new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
+                chunks += new_chunks
+                metadatas += [doc.metadata for chunk in new_chunks]
 
             # explicitly get file metadata
             filehash = filename.split(".")[0]
@@ -154,8 +162,7 @@ class DataManager():
             # embed each chunk
             embeddings = self.embedding_model.embed_documents(chunks)
 
-            # create the metadata for each chunk
-            metadatas = [doc.metadata for chunk in chunks]
+            # add filename as metadata for each chunk
             for metadata in metadatas:
                 metadata["filename"] = filename
             
