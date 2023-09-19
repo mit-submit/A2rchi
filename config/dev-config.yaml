@@ -32,7 +32,7 @@ chains:
       - Expert 
   chain: 
     # pick one of the models listed in the model class map below
-    MODEL_NAME: LlamaLLM 
+    MODEL_NAME: OpenAILLM # LlamaLLM 
     # map of all the class models and their keyword arguments
     MODEL_CLASS_MAP:
       OpenAILLM:
