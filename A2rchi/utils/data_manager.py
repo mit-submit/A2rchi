@@ -139,8 +139,8 @@ class DataManager():
             loader = None
             try:
                 loader = self.loader(file)
-            except:
-                print(f" ERROR - loading: {file} skip and move on.")
+            except Exception as e:
+                print(f" ERROR - loading: {file} skip and move on. \n Exception: ", e)
 
             # treat case where file extension is not recognized or is broken
             if loader is None:
