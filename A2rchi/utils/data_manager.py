@@ -89,7 +89,7 @@ class DataManager():
         else:
             print("Vectorstore needs to be updated")
 
-            # creates a list of the file names to remove from vectorstore
+            # Creates a list of the file names to remove from vectorstore
             # Note: the full path of the files is not needed here.
             files_to_remove = list(set(files_in_vstore) - set(files_in_data.keys()))
 
@@ -97,12 +97,14 @@ class DataManager():
             print(f"Files to remove: {files_to_remove}")
             self._remove_from_vectorstore(files_to_remove)
 
-            # create dictionary of the files to add, where the keys are the filenames and the values are the path of the file in data
+            # Create dictionary of the files to add, where the keys are the filenames and the values are the path of the file in data
             files_to_add = {filename: files_in_data[filename] for filename in list(set(files_in_data.keys()) - set(files_in_vstore))}
 
             # adds the files to the vectorstore
             print(f"Files to add: {files_to_add}")
             self._add_to_vectorstore(files_to_add, sources)
+
+            
             print("Vectorstore update has been completed")
 
         print(f" N Collection: {self.collection.count()}")
