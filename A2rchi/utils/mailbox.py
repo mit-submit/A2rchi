@@ -6,7 +6,9 @@ import email
 import imaplib
 import os
 
-# DEFINITIONS
+### DEFINITIONS
+# this constant defines an offset into the message description
+# which contains the Cleo issue id that a message refers to.
 ISSUE_ID_OFFSET = 9
 
 
@@ -43,7 +45,7 @@ class Mailbox:
 
                 # make sure to deal with attachments correctly
                 attachments = self._get_attachments(msg)
-                
+
                 if issue_id > 0:
                     note = f"ISSUE_ID:{issue_id} continued (leave for reference)\n\n"
                     note += f"{subject}: {description}"

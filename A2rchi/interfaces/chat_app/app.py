@@ -187,7 +187,7 @@ class FlaskAppWrapper(object):
             A json with a response (html formatted plain text string) and a
             discussion ID (either None or an integer)
         """
-        history = request.json.get('converstation')       # get user input from the request
+        history = request.json.get('conversation')        # get user input from the request
         discussion_id = request.json.get('discussion_id') # get discussion_id from the request
 
         # query the chat and return the results. 

@@ -9,6 +9,7 @@ import os
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
+os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 config = Config_Loader().config["interfaces"]["chat_app"]
 print(f"Starting Chat Service with (host, port): ({config['HOST']}, {config['PORT']})")
 
@@ -27,7 +28,7 @@ def generate_script(config):
         f.write(filled_template)
 
     return
-    
+
 generate_script(config)
 app = FlaskAppWrapper(Flask(
     __name__,

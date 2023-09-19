@@ -176,7 +176,7 @@ class Cleo:
                 answer = self.ai_wrapper(self.get_issue_history(issue.id))
                 self.add_note_to_issue(issue.id,answer)
                 print("A2rchi's response:\n",answer)
-                self.feedback_issue(issue.id)                        
+                self.feedback_issue(issue.id)
         print(" cleo.process_new_issues: %d"%(len(issue_ids)))
         return issue_ids
 

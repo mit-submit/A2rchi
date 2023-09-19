@@ -7,7 +7,7 @@ const refreshButton = document.querySelector("#refresh-btn");
 
 let userText = null;
 let discussion_id = null;
-let converstation = []
+let conversation = []
 
 const loadDataFromLocalstorage = () => {
     // Load saved chats and theme from local storage and apply/add on the page
@@ -34,7 +34,7 @@ const createChatElement = (content, className) => {
 }
 
 const refreshChat = async () => {
-    converstation.pop()
+    conversation.pop()
     chatContainer.removeChild(chatContainer.lastChild);
     showTypingAnimation();
 }
@@ -50,7 +50,7 @@ const getChatResponse = async (incomingChatDiv) => {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            converstation: converstation,
+            conversation: conversation,
             discussion_id: discussion_id,
         })
     }
@@ -60,7 +60,7 @@ const getChatResponse = async (incomingChatDiv) => {
         const response = await (await fetch(API_URL, requestOptions)).json();
         pElement.innerHTML = response.response;
         pElement.classList.add(".default-text");
-        converstation.push(["A2rchi", response.response]);
+        conversation.push(["A2rchi", response.response]);
         discussion_id = response.discussion_id ;
     } catch (error) {
         pElement.classList.add("error");
@@ -110,7 +110,7 @@ const showTypingAnimation = () => {
 const handleOutgoingChat = () => {
     userText = chatInput.value.trim(); // Get chatInput value and remove extra spaces
     if(!userText) return; // If chatInput is empty return from here
-    converstation.push(["User", userText])
+    conversation.push(["User", userText])
 
     // Clear the input field and reset its height
     chatInput.value = "";
@@ -134,7 +134,7 @@ const handleOutgoingChat = () => {
 deleteButton.addEventListener("click", () => {
     // Remove the chats from local storage and call loadDataFromLocalstorage function
     if(confirm("Are you sure you want to delete all the chats?")) {
-        converstation = []
+        conversation = []
         discussion_id = null
         localStorage.removeItem("all-chats");
         loadDataFromLocalstorage();
