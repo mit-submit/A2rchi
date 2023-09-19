@@ -12,7 +12,7 @@ authors = [
     {name="Matthew Russo", email="mdrusso@mit.edu"},
 ]
 dependencies = [
-    "accelerate==0.22.0",
+    "accelerate==0.23.0",
     "backoff==2.2.1",
     "beautifulsoup4==4.12.2",
     "bitsandbytes==0.41.1",
