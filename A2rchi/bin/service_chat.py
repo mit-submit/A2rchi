@@ -28,7 +28,7 @@ def generate_script(config):
         f.write(filled_template)
 
     return
-    
+
 generate_script(config)
 app = FlaskAppWrapper(Flask(
     __name__,
