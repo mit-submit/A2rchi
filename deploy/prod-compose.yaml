@@ -119,7 +119,7 @@ services:
 
   chromadb:
     build:
-      context: deploy/chroma/chroma/
+      context: chroma/chroma/
       dockerfile: deploy/chroma/chroma/Dockerfile
     environment:
       PROD_OR_DEV: prod
