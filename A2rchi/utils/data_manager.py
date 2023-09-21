@@ -24,26 +24,14 @@ class DataManager():
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
 
-        # connect to chromadb server
-        if self.config["data_manager"]["use_HTTP_chromadb_client"]:
-            self.client = chromadb.HttpClient(
-                host=self.config["data_manager"]["chromadb_host"],
-                port=self.config["data_manager"]["chromadb_port"],
-                settings=Settings(allow_reset=True),
-            )
-        else:
-            self.client = chromadb.PersistentClient(path=self.global_config["LOCAL_VSTORE_PATH"])
-
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
         embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
         print("Using collection: ", self.collection_name)
 
-        if self.config["data_manager"]["reset_collection"] and self.collection_name in [collection.name for collection in self.client.list_collections()]:
-            self.client.delete_collection(self.collection_name)
-        self.collection = self.client.get_or_create_collection(self.collection_name)
-        print(f" n in collection: {self.collection.count()}")
+        # delete the existing collection if specified
+        self.delete_existing_collection_if_reset()
 
         # get the embedding model
         embedding_class_map = self.config["embeddings"]["EMBEDDING_CLASS_MAP"]
@@ -57,12 +45,65 @@ class DataManager():
         )
 
 
+    def delete_existing_collection_if_reset(self):
+        """
+        Connect to ChromaDB and delete collection.
+        """
+        # return early if not resetting
+        if not self.config["data_manager"]["reset_collection"]:
+            return
+
+        # connect to chromadb server
+        client = None
+        if self.config["data_manager"]["use_HTTP_chromadb_client"]:
+            client = chromadb.HttpClient(
+                host=self.config["data_manager"]["chromadb_host"],
+                port=self.config["data_manager"]["chromadb_port"],
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+            )
+        else:
+            client = chromadb.PersistentClient(
+                path=self.global_config["LOCAL_VSTORE_PATH"],
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+            )
+
+        if self.collection_name in [collection.name for collection in client.list_collections()]:
+            client.delete_collection(self.collection_name)
+
+
+    def fetch_collection(self):
+        """
+        Connect to ChromaDB and fetch the collection.
+        """
+        # connect to chromadb server
+        client = None
+        if self.config["data_manager"]["use_HTTP_chromadb_client"]:
+            client = chromadb.HttpClient(
+                host=self.config["data_manager"]["chromadb_host"],
+                port=self.config["data_manager"]["chromadb_port"],
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+            )
+        else:
+            client = chromadb.PersistentClient(
+                path=self.global_config["LOCAL_VSTORE_PATH"],
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+            )
+
+        collection = client.get_or_create_collection(self.collection_name)
+        print(f" n in collection: {collection.count()}")
+
+        return collection
+
+
     def update_vectorstore(self):
         """
         Method which looks at the files in the data folder and syncs them to the vectors stored in the vectorstore
         """
+        # fetch the collection
+        collection = self.fetch_collection()
+
         # get current status of persistent vstore 
-        files_in_vstore = [metadata["filename"] for metadata in self.collection.get(include=["metadatas"])["metadatas"]]
+        files_in_vstore = [metadata["filename"] for metadata in collection.get(include=["metadatas"])["metadatas"]]
 
         # scan data folder and obtain list of files in data. Assumes max depth = 1
         dirs = [
@@ -95,36 +136,41 @@ class DataManager():
 
             # removes files from the vectorstore
             print(f"Files to remove: {files_to_remove}")
-            self._remove_from_vectorstore(files_to_remove)
+            collection = self._remove_from_vectorstore(collection, files_to_remove)
 
             # Create dictionary of the files to add, where the keys are the filenames and the values are the path of the file in data
             files_to_add = {filename: files_in_data[filename] for filename in list(set(files_in_data.keys()) - set(files_in_vstore))}
 
             # adds the files to the vectorstore
             print(f"Files to add: {files_to_add}")
-            self._add_to_vectorstore(files_to_add, sources)
-
+            collection = self._add_to_vectorstore(collection, files_to_add, sources)
             
             print("Vectorstore update has been completed")
 
-        print(f" N Collection: {self.collection.count()}")
+        print(f" N Collection: {collection.count()}")
+
+        # delete collection to release collection and client object as well for garbage collection
+        del collection
 
         return
 
 
-    def _remove_from_vectorstore(self, files_to_remove):
+    def _remove_from_vectorstore(self, collection, files_to_remove):
         """
         Method which takes as input a list of filenames to remove from the vectorstore,
         then removes those filenames from the vectorstore.
         """
         for filename in files_to_remove:
-            self.collection.delete(where={"filename": filename})
+            collection.delete(where={"filename": filename})
+
+        return collection
 
 
-    def _add_to_vectorstore(self, files_to_add, sources={}):
+    def _add_to_vectorstore(self, collection, files_to_add, sources={}):
         """
         Method which takes as input:
-        
+
+           collection:   a ChromaDB collection
            files_to_add: a dictionary with keys being the filenames and values being the file path
            sources:      a dictionary, usually loaded from a yaml file, which has keys being the 
                          file hash (everything in the file name except the file extension) and  has
@@ -178,7 +224,9 @@ class DataManager():
                 ids.append(str(filehash) + str(chunk_hash))
 
             print("Ids: ",ids)
-            self.collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
+            collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
+
+        return collection
 
 
     def loader(self, file_path):

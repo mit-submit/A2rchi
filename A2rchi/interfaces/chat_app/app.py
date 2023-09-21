@@ -105,7 +105,6 @@ class ChatWrapper:
             # get similarity score to see how close the input is to the source
             # - low score means very close (it's a distance between embedding vectors approximated
             #   by an approximate k-nearest neighbors algorithm called HNSW)
-            # self.chain.update_vectorstore()
             inp = history[-1][1]
             similarity_result = self.chain.vectorstore.similarity_search_with_score(inp)
             if len(similarity_result) > 0:
