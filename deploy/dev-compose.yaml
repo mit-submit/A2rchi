@@ -136,6 +136,21 @@ services:
       start_period: 10s
       start_interval: 5s
 
+  testapp:
+    build:
+      context: ..
+      dockerfile: deploy/test-flask-app/Dockerfile-test
+    environment:
+      PROD_OR_DEV: dev
+      GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
+      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
+    secrets:
+      - google_client_id
+      - google_client_secret
+    ports:
+      - 5002:5002
+    
+
   # create-account:
   #   build:
   #     context: ..
@@ -184,3 +199,7 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
+  google_client_id:
+    file: secrets/google_client_id.txt
+  google_client_secret:
+    file: secrets/google_client_secret.txt
