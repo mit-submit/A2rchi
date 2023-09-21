@@ -15,13 +15,13 @@ ISSUE_ID_OFFSET = 9
 class Mailbox:
     'A class to describe the mailbox usage.'
 
-    def __init__(self):
+    def __init__(self, user, password):
         """
         The mailbox (should be a singleton).
         """
         self.mailbox = None
-        self.user = read_secret('IMAP_USER')
-        self.password = read_secret('IMAP_PW')
+        self.user = user
+        self.password = password
         self.config = Config_Loader().config["utils"]["mailbox"]
 
         # make sure to open the mailbox
