@@ -52,7 +52,7 @@ services:
     volumes:
       - a2rchi-prod-data:/root/data/
     ports:
-      - 7861:7861  # host:container
+      - 7681:7861  # host:container
     restart: always
 
   mailbox:
