@@ -56,7 +56,24 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["chromadb"]
+packages = [
+  "chromadb",
+  "chromadb.api",
+  "chromadb.api.models",
+  "chromadb.auth",
+  "chromadb.auth.basic",
+  "chromadb.auth.token",
+  "chromadb.cli",
+  "chromadb.db",
+  "chromadb.db.impl",
+  "chromadb.ingest",
+  "chromadb.migrations",
+  "chromadb.segment",
+  "chromadb.server",
+  "chromadb.server.fastapi",
+  "chromadb.telemetry",
+  "chromadb.utils",
+]
 
 [tool.setuptools.package-data]
 chromadb = ["*.yml"]
