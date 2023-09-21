@@ -102,7 +102,11 @@ class Mailbox:
         Select all messages in the mailbx and process them.
         """
         issue_id = 0
-        index = description.find('ISSUE_ID:')
+        if description is not None:
+            index = description.find('ISSUE_ID:')
+        else:
+            index = -1
+            
         if index > 0:
             issue_id = int(description[index + ISSUE_ID_OFFSET:].split()[0])
         print(f" ISSUE_ID: {issue_id}")
