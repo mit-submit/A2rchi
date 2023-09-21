@@ -10,12 +10,15 @@ import time
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
+user = read_secret('IMAP_USER')
+password = read_secret('IMAP_PW')
+
 print("Starting Mailbox Service")
 
 config = Config_Loader().config["utils"]
 cleo = cleo.Cleo('Cleo_Helpdesk')
 
 while True:
-    mail = mailbox.Mailbox()
+    mail = mailbox.Mailbox(user = user, password = password)
     mail.process_messages(cleo)
     time.sleep(int(config["mailbox"]["mailbox_update_time"]))
