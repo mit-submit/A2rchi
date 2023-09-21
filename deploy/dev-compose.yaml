@@ -120,7 +120,7 @@ services:
   chromadb:
     build:
       context: chroma/chroma/
-      dockerfile: deploy/chroma/chroma/Dockerfile
+      dockerfile: Dockerfile
     environment:
       PROD_OR_DEV: dev
     ports:
