@@ -11,6 +11,6 @@ COPY A2rchi A2rchi
 RUN pip install --upgrade pip && pip install .
 
 # manually install 0.4.12 of chroma without telemetry
-RUN pip uninstall chromadb && cd deploy/chroma/chroma && pip install . && cd /root/A2rchi
+RUN pip uninstall chromadb && cd A2rchi/deploy/chroma/chroma && pip install . && cd /root/A2rchi
 
 CMD ["python", "-u", "A2rchi/bin/service_mailbox.py"]
