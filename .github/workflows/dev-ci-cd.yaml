@@ -79,17 +79,17 @@ jobs:
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit-dev 'bash -s' < ${{ github.workspace }}/deploy/dev-stop.sh
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/dev-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}} --exclude .git/ --delete submit-dev:~/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk:~/A2rchi-dev/
 
       # run deploy script
       - name: Run Deploy Script
         run: |
-          ssh submit-dev 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/dev-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner

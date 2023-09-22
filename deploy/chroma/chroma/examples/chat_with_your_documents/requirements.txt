@@ -1,3 +1,0 @@
-chromadb>=0.4.4
-openai
-tqdm

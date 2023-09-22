@@ -1,10 +1,10 @@
 services:
-  cleo:
+  cleo-prod:
     build:
       context: ..
       dockerfile: deploy/cleo/Dockerfile-cleo
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
       PROD_OR_DEV: prod
@@ -35,12 +35,12 @@ services:
       - a2rchi-prod-data:/root/data/
     restart: always
 
-  chat:
+  chat-prod:
     build:
       context: ..
       dockerfile: deploy/chat/Dockerfile-chat
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
       PROD_OR_DEV: prod
@@ -55,12 +55,12 @@ services:
       - 7681:7861  # host:container
     restart: always
 
-  mailbox:
+  mailbox-prod:
     build:
       context: ..
       dockerfile: deploy/mailbox/Dockerfile-mailbox
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
       PROD_OR_DEV: prod
@@ -93,12 +93,12 @@ services:
       - hf_token
     restart: always
 
-  data-manager:
+  data-manager-prod:
     build:
       context: ..
       dockerfile: deploy/data-manager/Dockerfile-data-manager
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
       PROD_OR_DEV: prod
@@ -117,10 +117,10 @@ services:
       - a2rchi-prod-data:/root/data/
     restart: always
 
-  chromadb:
+  chromadb-prod:
     build:
-      context: chroma/chroma/
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/chroma/Dockerfile-chroma
     environment:
       PROD_OR_DEV: prod
     ports:
@@ -128,6 +128,7 @@ services:
     volumes:
       - a2rchi-prod-data:/chroma/chroma/
     restart: always
+    # healthcheck originates from inside container; so use container port
     healthcheck:
       test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
       interval: 15s
@@ -135,19 +136,6 @@ services:
       retries: 3
       start_period: 10s
       start_interval: 5s
-
-  # create-account:
-  #   build:
-  #     context: ..
-  #     dockerfile: deploy/create-account/Dockerfile-create-account
-  #   environment:
-  #     UPLOADER_SALT_FILE: /run/secrets/uploader_salt
-  #   secrets:
-  #     - uploader_salt
-  #   volumes:
-  #     - a2rchi-prod-data:/root/data/
-  #   restart: always
-
 
 volumes:
   a2rchi-prod-data:

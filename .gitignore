@@ -5,3 +5,8 @@ key.py
 *.html
 *.ipynb
 __pycache__
+venv
+*.DS_Store
+*.egg-info
+*sqlite_db
+.vscode

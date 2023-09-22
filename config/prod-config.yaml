@@ -75,7 +75,7 @@ utils:
     use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
     vectordb_update_time: 10
-    chromadb_host: chromadb
+    chromadb_host: chromadb-prod
     chromadb_port: 8000
     collection_name: "prod_collection"
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
