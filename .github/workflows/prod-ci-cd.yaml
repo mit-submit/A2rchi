@@ -1,10 +1,9 @@
 name: Deploy A2rchi Prod
 run-name: ${{ github.actor }} deploys A2rchi to prod
-# on:
-#   push:
-#     branches:
-#       - release
-on: [push]
+on:
+  push:
+    branches:
+      - release
 jobs:
   deploy-prod-system:
     runs-on: ubuntu-latest
@@ -77,20 +76,20 @@ jobs:
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/secrets/hf_token.txt
 
-      # # stop any existing docker compose that's running
-      # - name: Stop Docker Compose
-      #   run: |
-      #     ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-stop.sh
+      # stop any existing docker compose that's running
+      - name: Stop Docker Compose
+        run: |
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
           rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk:~/A2rchi-prod/
 
-      # # run deploy script
-      # - name: Run Deploy Script
-      #   run: |
-      #     ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-install.sh
+      # run deploy script
+      - name: Run Deploy Script
+        run: |
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
