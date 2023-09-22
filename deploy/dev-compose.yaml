@@ -112,7 +112,7 @@ services:
       - openai_api_key
       - hf_token
     ports:
-      - 5002:5001  # host:container
+      - 5003:5001  # host:container
     volumes:
       - a2rchi-dev-data:/root/data/
     restart: always

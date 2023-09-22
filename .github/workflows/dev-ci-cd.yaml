@@ -85,7 +85,7 @@ jobs:
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}} --exclude .git/ --delete submit-t3desk:~/A2rchi-dev/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk:~/A2rchi-dev/
 
       # run deploy script
       - name: Run Deploy Script
