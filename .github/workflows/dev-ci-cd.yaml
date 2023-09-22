@@ -1,9 +1,10 @@
 name: Deploy A2rchi Dev
 run-name: ${{ github.actor }} deploys A2rchi to dev
-on:
-  push:
-    branches:
-      - main
+# on:
+#   push:
+#     branches:
+#       - main
+on: [push]
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
