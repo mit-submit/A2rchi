@@ -65,7 +65,7 @@ packages = [
 ]
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0.0"]
 build-backed = "setuptools.build_meta"
 
 [project.urls]
