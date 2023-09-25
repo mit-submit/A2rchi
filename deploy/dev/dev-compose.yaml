@@ -1,13 +1,13 @@
 services:
-  cleo-prod:
+  cleo-dev:
     build:
-      context: ..
-      dockerfile: deploy/cleo/Dockerfile-cleo
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-cleo
     depends_on:
-      chromadb-prod:
+      chromadb-dev:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      PROD_OR_DEV: dev
       CLEO_URL_FILE: /run/secrets/cleo_url
       CLEO_USER_FILE: /run/secrets/cleo_user
       CLEO_PW_FILE: /run/secrets/cleo_pw
@@ -32,38 +32,38 @@ services:
       - openai_api_key
       - hf_token
     volumes:
-      - a2rchi-prod-data:/root/data/
+      - a2rchi-dev-data:/root/data/
     restart: always
 
-  chat-prod:
+  chat-dev:
     build:
-      context: ..
-      dockerfile: deploy/chat/Dockerfile-chat
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chat
     depends_on:
-      chromadb-prod:
+      chromadb-dev:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      PROD_OR_DEV: dev
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - openai_api_key
       - hf_token
     volumes:
-      - a2rchi-prod-data:/root/data/
+      - a2rchi-dev-data:/root/data/
     ports:
-      - 7681:7861  # host:container
+      - 7682:7861  # host:container
     restart: always
 
-  mailbox-prod:
+  mailbox-dev:
     build:
-      context: ..
-      dockerfile: deploy/mailbox/Dockerfile-mailbox
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-mailbox
     depends_on:
-      chromadb-prod:
+      chromadb-dev:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      PROD_OR_DEV: dev
       IMAP_USER_FILE: /run/secrets/imap_user
       IMAP_PW_FILE: /run/secrets/imap_pw
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -93,15 +93,15 @@ services:
       - hf_token
     restart: always
 
-  data-manager-prod:
+  data-manager-dev:
     build:
-      context: ..
-      dockerfile: deploy/data-manager/Dockerfile-data-manager
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
     depends_on:
-      chromadb-prod:
+      chromadb-dev:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      PROD_OR_DEV: dev
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
@@ -112,21 +112,21 @@ services:
       - openai_api_key
       - hf_token
     ports:
-      - 5001:5001  # host:container
+      - 5003:5001  # host:container
     volumes:
-      - a2rchi-prod-data:/root/data/
+      - a2rchi-dev-data:/root/data/
     restart: always
 
-  chromadb-prod:
+  chromadb-dev:
     build:
-      context: ..
-      dockerfile: deploy/chroma/Dockerfile-chroma
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
-      PROD_OR_DEV: prod
+      PROD_OR_DEV: dev
     ports:
-      - 8000:8000  # host:container
+      - 8002:8000  # host:container
     volumes:
-      - a2rchi-prod-data:/chroma/chroma/
+      - a2rchi-dev-data:/chroma/chroma/
     restart: always
     # healthcheck originates from inside container; so use container port
     healthcheck:
@@ -138,12 +138,8 @@ services:
       start_interval: 5s
 
 volumes:
-  a2rchi-prod-data:
+  a2rchi-dev-data:
     external: true
-
-networks:
-  default:
-    name: network-prod
 
 secrets:
   imap_user:

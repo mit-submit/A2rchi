@@ -8,7 +8,7 @@ fi
 
 # start services
 echo "Starting docker compose"
-cd A2rchi-dev/deploy/
+cd A2rchi-dev/deploy/dev/
 docker compose -f dev-compose.yaml up -d --build --force-recreate --always-recreate-deps
 
 # # secrets files are created by CI pipeline and destroyed here
