@@ -1,8 +1,8 @@
 services:
   cleo-prod:
     build:
-      context: ..
-      dockerfile: deploy/cleo/Dockerfile-cleo
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-cleo
     depends_on:
       chromadb-prod:
         condition: service_healthy
@@ -37,8 +37,8 @@ services:
 
   chat-prod:
     build:
-      context: ..
-      dockerfile: deploy/chat/Dockerfile-chat
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chat
     depends_on:
       chromadb-prod:
         condition: service_healthy
@@ -57,8 +57,8 @@ services:
 
   mailbox-prod:
     build:
-      context: ..
-      dockerfile: deploy/mailbox/Dockerfile-mailbox
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-mailbox
     depends_on:
       chromadb-prod:
         condition: service_healthy
@@ -95,8 +95,8 @@ services:
 
   data-manager-prod:
     build:
-      context: ..
-      dockerfile: deploy/data-manager/Dockerfile-data-manager
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
     depends_on:
       chromadb-prod:
         condition: service_healthy
@@ -119,8 +119,8 @@ services:
 
   chromadb-prod:
     build:
-      context: ..
-      dockerfile: deploy/chroma/Dockerfile-chroma
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
       PROD_OR_DEV: prod
     ports:
