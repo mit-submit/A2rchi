@@ -159,6 +159,7 @@ class FlaskAppWrapper(object):
         # add endpoints for flask app
         self.add_endpoint('/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
         self.add_endpoint('/', '', self.index)
+        self.add_endpoint('/terms', 'terms', self.terms)
 
     def configs(self, **configs):
         for config, value in configs:
@@ -197,3 +198,6 @@ class FlaskAppWrapper(object):
 
     def index(self):
         return render_template('index.html')
+    
+    def terms(self):
+        return render_template('terms.html')
