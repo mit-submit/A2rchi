@@ -141,6 +141,10 @@ volumes:
   a2rchi-prod-data:
     external: true
 
+networks:
+  default:
+    name: network-prod
+
 secrets:
   imap_user:
     file: secrets/imap_user.txt
