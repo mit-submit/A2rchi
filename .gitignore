@@ -9,3 +9,4 @@ venv
 *.DS_Store
 *.egg-info
 sqlite_db
+.vscode/

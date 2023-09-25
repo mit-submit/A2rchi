@@ -18,7 +18,7 @@ class Config_Loader:
         """
         prod_or_dev = os.getenv("PROD_OR_DEV")
         try:
-            with open(f"./config/{prod_or_dev}-config.yaml", "r") as f:
+            with open(f"/Users/matthewrusso/A2rchi/config/{prod_or_dev}-config.yaml", "r") as f:
                 config = yaml.load(f, Loader=yaml.FullLoader)
 
             # change the model class parameter from a string to an actual class

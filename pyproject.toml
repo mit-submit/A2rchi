@@ -62,6 +62,7 @@ packages = [
     "A2rchi.interfaces.chat_app",
     "A2rchi.interfaces.uploader_app",
     "A2rchi.utils",
+    "A2rchi.app"
 ]
 
 [build-system]
