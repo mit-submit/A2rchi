@@ -33,6 +33,8 @@ services:
       - hf_token
     volumes:
       - a2rchi-dev-data:/root/data/
+    networks:
+      - network-dev
     restart: always
 
   chat-dev:
@@ -51,6 +53,8 @@ services:
       - hf_token
     volumes:
       - a2rchi-dev-data:/root/data/
+    networks:
+      - network-dev
     ports:
       - 7682:7861  # host:container
     restart: always
@@ -115,6 +119,8 @@ services:
       - 5003:5001  # host:container
     volumes:
       - a2rchi-dev-data:/root/data/
+    networks:
+      - network-dev
     restart: always
 
   chromadb-dev:
@@ -127,6 +133,8 @@ services:
       - 8002:8000  # host:container
     volumes:
       - a2rchi-dev-data:/chroma/chroma/
+    networks:
+      - network-dev
     restart: always
     # healthcheck originates from inside container; so use container port
     healthcheck:
