@@ -22,7 +22,7 @@ def generate_script(config):
     with open(script_template, "r") as f:
         template = f.read()
 
-    filled_template = template.replace('XX-HTTP_PORT-XX', str(config["PORT"]))
+    filled_template = template.replace('XX-HTTP_PORT-XX', str(config["EXTERNAL_PORT"]))
     filled_template = filled_template.replace('XX-TRAINED_ON-XX', str(global_config["TRAINED_ON"]))
 
     script_file = os.path.join(config["static_folder"], "script.js")
