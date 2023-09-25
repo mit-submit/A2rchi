@@ -55,7 +55,7 @@ class Chain() :
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
 
-        # acquire lock and 
+        # acquire lock and construct chain
         self.lock.acquire()
         vectorstore = Chroma(
             client=client,
@@ -68,6 +68,46 @@ class Chain() :
         self.lock.release()
 
         return chain
+
+
+    def similarity_search(self, input):
+        """
+        Perform similarity search with input against vectorstore.
+        """
+        # connect to chromadb server
+        client = None
+        if self.utils_config["data_manager"]["use_HTTP_chromadb_client"]:
+            client = chromadb.HttpClient(
+                host=self.utils_config["data_manager"]["chromadb_host"],
+                port=self.utils_config["data_manager"]["chromadb_port"],
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+            )
+        else:
+            client = chromadb.PersistentClient(
+                path=self.global_config["LOCAL_VSTORE_PATH"],
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+            )
+        
+        # construct vectorstore
+        vectorstore = Chroma(
+            client=client,
+            collection_name=self.collection_name,
+            embedding_function=self.embedding_model,
+        )
+
+        # perform similarity search
+        similarity_result = vectorstore.similarity_search_with_score(input)
+        score = (
+            vectorstore.similarity_search_with_score(input)[0][1]
+            if len(similarity_result) > 0
+            else 1e10
+        )
+
+        # clean up vectorstore and client
+        del vectorstore
+        del client
+
+        return score
 
 
     def __call__(self, history):
