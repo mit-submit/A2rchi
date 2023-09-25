@@ -9,7 +9,8 @@ global:
 
 interfaces:
   chat_app:
-    PORT: 7681
+    PORT: 7861
+    EXTERNAL_PORT: 7681
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
     HOSTNAME: "ppc.mit.edu"  # careful, this is used for the chat service
     template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
