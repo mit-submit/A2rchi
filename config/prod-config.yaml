@@ -1,4 +1,5 @@
 global:
+  TRAINED_ON: "subMIT"    #used to create name of the specific version of a2rchi we're using
   DATA_PATH: "/root/data/"
   ACCOUNTS_PATH: "/root/.accounts/"
   LOCAL_VSTORE_PATH: "/root/data/vstore/"

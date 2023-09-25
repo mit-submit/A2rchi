@@ -11,6 +11,7 @@ import os
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 config = Config_Loader().config["interfaces"]["chat_app"]
+global_config = Config_Loader().config["global"]
 print(f"Starting Chat Service with (host, port): ({config['HOST']}, {config['PORT']})")
 
 def generate_script(config):
@@ -22,6 +23,7 @@ def generate_script(config):
         template = f.read()
 
     filled_template = template.replace('XX-HTTP_PORT-XX', str(config["EXTERNAL_PORT"]))
+    filled_template = filled_template.replace('XX-TRAINED_ON-XX', str(global_config["TRAINED_ON"]))
 
     script_file = os.path.join(config["static_folder"], "script.js")
     with open(script_file, "w") as f:
