@@ -241,8 +241,8 @@ def index():
         #     )
         # )
     else:
-        return render_template('login.html')
-        # return '<a class="button" href="/login">Google Login</a>'
+        # return render_template('login.html')
+        return '<a class="button" href="/login">Google Login</a>'
 
 
 def login():
