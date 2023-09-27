@@ -34,7 +34,7 @@ chains:
       - Expert 
   prompts:
     CONDENSING_PROMPT: condense.prompt #name of the prompt (in config/prompts) that serves to condense a history and a question into a single question
-    MAIN_PROMPT: submit.prompt #name of the main prompt (in config/prompts) which takes in a single question and a context.
+    MAIN_PROMPT: 801.prompt #name of the main prompt (in config/prompts) which takes in a single question and a context.
   chain: 
     # pick one of the models listed in the model class map below
     MODEL_NAME: OpenAILLM 
