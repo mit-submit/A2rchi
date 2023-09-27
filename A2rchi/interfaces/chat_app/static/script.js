@@ -20,7 +20,7 @@ const loadDataFromLocalstorage = () => {
                             <h1>A2rchi</h1>
                             <p>Start a conversation and explore the power of A2rchi, specially trained on subMIT.<br> 
                             Your chat history will be displayed here. <br> <br>
-                            By using this website, you agree to the terms and conditions outlined in our <a href="/terms">Terms and Conditions</a> statement. Please take a moment to review them.</p>
+                            By using this website, you agree to the <a href="/terms">terms and conditions</a>.</p>
                         </div>`
 
     chatContainer.innerHTML = localStorage.getItem("all-chats") || defaultText;
