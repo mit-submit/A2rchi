@@ -25,6 +25,7 @@ chains:
   input_lists:
     - empty.list
     - miscellanea.list
+    - 801-textbook.list
   base:
     # roles that A2rchi knows about
     ROLES: 
