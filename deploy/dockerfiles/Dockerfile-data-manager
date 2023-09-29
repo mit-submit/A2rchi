@@ -9,4 +9,7 @@ COPY config config
 COPY A2rchi A2rchi
 RUN pip install --upgrade pip && pip install .
 
+# ensure this directory is present for prod-801 deployment
+RUN if [ "$BUILD_ENV" = "prod-801" ] ; then mkdir /root/data/801-content ; fi
+
 CMD ["python", "-u", "A2rchi/bin/service_data_manager.py"]
