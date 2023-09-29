@@ -146,7 +146,7 @@ class FlaskAppWrapper(object):
         print(" INFO - entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
-        self.global_config = self.config["global"]
+        self.global_config = Config_Loader().config["global"]
 
         # create the chat from the wrapper
         self.chat = ChatWrapper()
