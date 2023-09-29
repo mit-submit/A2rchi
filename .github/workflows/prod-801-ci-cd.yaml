@@ -1,0 +1,70 @@
+name: Deploy A2rchi Prod for 8.01
+run-name: ${{ github.actor }} deploys A2rchi for 8.01 to prod
+on:
+  push:
+    branches:
+      - release-8.01
+jobs:
+  deploy-prod-system:
+    runs-on: ubuntu-latest
+    env:
+      SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+    steps:
+      # boilerplate message and pull repository to CI runner
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - uses: actions/checkout@v3
+      - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
+
+      # setup SSH 
+      - name: Setup SSH
+        run: |
+          mkdir -p /home/runner/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" > /home/runner/.ssh/id_rsa_submit
+          chmod 600 /home/runner/.ssh/id_rsa_submit
+          echo "${{ secrets.SSH_SUBMIT_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          cp ${{ github.workspace }}/deploy/ssh_config /home/runner/.ssh/config
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add /home/runner/.ssh/id_rsa_submit
+
+      # create secrets files for docker-compose
+      - name: Create Secrets Files
+        run: |
+          mkdir -p ${{ github.workspace }}/deploy/prod-801/secrets/
+          touch ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
+          echo "${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
+          touch ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
+          echo "${{ secrets.PROD_UPLOADER_SALT }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
+          touch ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
+          echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
+          touch ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
+          echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
+
+      # stop any existing docker compose that's running
+      - name: Stop Docker Compose
+        run: |
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-801/prod-801-stop.sh
+
+      # copy repository to machine
+      - name: Copy Repository
+        run: |
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk:~/A2rchi-prod-801/
+
+      # run deploy script
+      - name: Run Deploy Script
+        run: |
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-801/prod-801-install.sh
+
+      # clean up secret files
+      - name: Remove Secrets from Runner
+        run: |
+          rm ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
+          rm ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
+          rm ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
+          rm ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
+
+      # print job status
+      - run: echo "🍏 This job's status is ${{ job.status }}."

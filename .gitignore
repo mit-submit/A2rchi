@@ -10,3 +10,4 @@ venv
 *.egg-info
 *sqlite_db
 .vscode
+801-content/
