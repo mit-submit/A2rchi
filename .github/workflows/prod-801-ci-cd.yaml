@@ -3,7 +3,6 @@ run-name: ${{ github.actor }} deploys A2rchi for 8.01 to prod
 on:
   push:
     branches:
-      - main
       - release-8.01
 jobs:
   deploy-prod-system:
@@ -44,10 +43,10 @@ jobs:
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
 
-      # # stop any existing docker compose that's running
-      # - name: Stop Docker Compose
-      #   run: |
-      #     ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-801/prod-801-stop.sh
+      # stop any existing docker compose that's running
+      - name: Stop Docker Compose
+        run: |
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-801/prod-801-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
