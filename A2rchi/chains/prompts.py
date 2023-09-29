@@ -1,27 +1,31 @@
 # flake8: noqa
 from langchain.prompts.prompt import PromptTemplate
+from A2rchi.utils.config_loader import Config_Loader
 
-condense_history_template = """Given the following conversation between you (the AI named A2rchi), a human user who needs help, and an expert, and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
+config = Config_Loader().config["chains"]["prompts"]
 
-Chat History:
-{chat_history}
-Follow Up Input: {question}
-Standalone question:"""
+def read_prompt(prompt_filepath, is_condense_prompt=False, is_main_prompt=False):
+    with open(prompt_filepath, "r") as f:
+        raw_prompt = f.read()
 
-prompt_template = """You are a conversational chatbot named A2rchi who helps people navigate a computing resource named subMIT. You will be provided context to help you answer their questions. 
-Using your linux and computing knowledge, answer the question at the end. Unless otherwise indicated, assume the users are not well versed computing.
- Please do not assume that subMIT machines have anything installed on top of native linux except if the context mentions it.
-If you don't know, say "I don't know", if you need to ask a follow up question, please do.
+    prompt = ""
+    for line in raw_prompt.split("\n"):
+        if len(line.lstrip())>0 and line.lstrip()[0:1] != "#":
+            prompt += line + "\n"
 
-Context: {context} Additionally, it is always preferred to use conda, if possible.
+    if is_condense_prompt and ("{chat_history}" not in prompt or "{question}" not in prompt):
+        raise ValueError("""Condensing prompt must contain \"{chat_history}\" and \"{question}\" tags. Instead, found prompt to be:
+                         """ + prompt)
+    if is_main_prompt and ("{context}" not in prompt or "{question}" not in prompt):
+        raise ValueError("""Condensing prompt must contain \"{context}\" and \"{question}\" tags. Instead, found prompt to be:
+                         """ + prompt)
 
-Question: {question}
-Helpful Answer:"""
+    return prompt
 
 QA_PROMPT = PromptTemplate(
-    template=prompt_template, input_variables=["context", "question"]
+    template=read_prompt(config["MAIN_PROMPT"], is_main_prompt=True), input_variables=["context", "question"]
 )
 
 CONDENSE_QUESTION_PROMPT = PromptTemplate(
-    template=condense_history_template, input_variables=["chat_history", "question"]
+    template=read_prompt(config["CONDENSING_PROMPT"], is_condense_prompt=True), input_variables=["chat_history", "question"]
 )
