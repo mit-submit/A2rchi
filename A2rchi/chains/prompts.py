@@ -4,8 +4,8 @@ from A2rchi.utils.config_loader import Config_Loader
 
 config = Config_Loader().config["chains"]["prompts"]
 
-def read_prompt(prompt_name, is_condense_prompt=False, is_main_prompt=False):
-    with open(f"config/prompts/{prompt_name}", "r") as f:
+def read_prompt(prompt_filepath, is_condense_prompt=False, is_main_prompt=False):
+    with open(prompt_filepath, "r") as f:
         raw_prompt = f.read()
 
     prompt = ""
