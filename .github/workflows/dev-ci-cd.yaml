@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/create_pdf_viewer
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
