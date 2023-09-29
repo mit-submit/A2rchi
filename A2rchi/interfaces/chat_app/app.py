@@ -233,7 +233,7 @@ class FlaskAppWrapper(object):
                 pdf_reader = PyPDF2.PdfReader(pdf_file)
                 
                 # Check if the requested page is within the valid range
-                if page >= 1 and page <= pdf_reader.numPages:
+                if page >= 1 and page <= len(pdf_reader.pages):
                     return render_template('view_pdf_page.html', pdf_path=pdf_path, page=page)
                 else:
                     return "Page not found.", 404
