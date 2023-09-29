@@ -217,7 +217,7 @@ class FlaskAppWrapper(object):
         try:
             # Open the PDF file
             with open(pdf_path, 'rb') as pdf_file:
-                pdf_reader = PyPDF2.PdfFileReader(pdf_file)
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
                 
                 # Check if the requested page is within the valid range
                 if page >= 1 and page <= pdf_reader.numPages:
