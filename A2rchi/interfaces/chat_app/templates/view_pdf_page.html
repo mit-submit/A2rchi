@@ -4,7 +4,7 @@
     <title>View PDF</title>
 </head>
 <body>
-    <embed src="{{ file_path }}#page={{ page }}" type="application/pdf" width="100%" height="800px"></embed>
+    <embed src="{{ pdf_path }}#page={{ page }}" type="application/pdf" width="100%" height="800px"></embed>
     <script>
         // Scroll to the desired page when the PDF is loaded
         document.addEventListener('DOMContentLoaded', function () {
