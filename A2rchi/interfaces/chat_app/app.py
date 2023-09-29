@@ -1,10 +1,11 @@
 from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
 
-from flask import request, jsonify, render_template
+from flask import request, jsonify, render_template, make_response
 from flask_cors import CORS
 from threading import Lock
 from typing import Optional, List, Tuple
+import PyPDF2
 
 import numpy as np
 
@@ -145,6 +146,7 @@ class FlaskAppWrapper(object):
         print(" INFO - entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
+        self.global_config = self.config["global"]
 
         # create the chat from the wrapper
         self.chat = ChatWrapper()
@@ -197,3 +199,29 @@ class FlaskAppWrapper(object):
     
     def terms(self):
         return render_template('terms.html')
+    
+    def view_pdf_page(self, file_name, page):
+        """
+        Creates a template to view a specific file starting at a specific page
+
+        Inputs:
+            file_name: a string which denotes the file path relative to the data directory.
+                       i.e if the file is /data/submit_files/users_guide.pdf, the file_name
+                       should be "submit_files/users_guide.pdf"
+            page:      an int which descirbes what page to direct to.
+        """
+
+        pdf_path = os.path.join(self.global_config["DATA_PATH"], file_name)
+
+        try:
+            # Open the PDF file
+            with open(pdf_path, 'rb') as pdf_file:
+                pdf_reader = PyPDF2.PdfFileReader(pdf_file)
+                
+                # Check if the requested page is within the valid range
+                if page >= 1 and page <= pdf_reader.numPages:
+                    return render_template('view_pdf_page.html', pdf_path=pdf_path, page=page)
+                else:
+                    return "Page not found.", 404
+        except FileNotFoundError:
+            return "File not found.", 404

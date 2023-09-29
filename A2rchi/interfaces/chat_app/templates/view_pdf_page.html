@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>View PDF</title>
+</head>
+<body>
+    <embed src="{{ file_path }}#page={{ page }}" type="application/pdf" width="100%" height="800px"></embed>
+    <script>
+        // Scroll to the desired page when the PDF is loaded
+        document.addEventListener('DOMContentLoaded', function () {
+            const pageToScroll = {{ page }};
+            const pdfEmbed = document.querySelector('embed[type="application/pdf"]');
+            if (pdfEmbed) {
+                pdfEmbed.onload = function () {
+                    pdfEmbed.contentDocument.defaultView.scrollTo(0, (pageToScroll - 1) * pdfEmbed.clientHeight);
+                };
+            }
+        });
+    </script>
+</body>
+</html>
