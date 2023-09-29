@@ -56,7 +56,7 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
-          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod/prod-801-install.sh
+          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-801/prod-801-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner

@@ -24,7 +24,6 @@ interfaces:
 chains:
   input_lists:
     - empty.list
-    - submit.list
     - miscellanea.list
   base:
     # roles that A2rchi knows about
@@ -33,8 +32,10 @@ chains:
       - A2rchi
       - Expert 
   prompts:
-    CONDENSING_PROMPT: condense.prompt #name of the prompt (in config/prompts) that serves to condense a history and a question into a single question
-    MAIN_PROMPT: 801.prompt #name of the main prompt (in config/prompts) which takes in a single question and a context.
+  # prompt that serves to condense a history and a question into a single question
+    CONDENSING_PROMPT: config/prompts/condense.prompt
+    # main prompt which takes in a single question and a context.
+    MAIN_PROMPT: config/prompts/801.prompt
   chain: 
     # pick one of the models listed in the model class map below
     MODEL_NAME: OpenAILLM 

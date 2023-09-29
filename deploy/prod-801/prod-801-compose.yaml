@@ -7,7 +7,7 @@ services:
       chromadb-prod-801:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod-801
+      RUNTIME_ENV: prod-801
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
@@ -23,11 +23,13 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-data-manager
+      args:
+        BUILD_ENV: prod-801
     depends_on:
       chromadb-prod-801:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod-801
+      RUNTIME_ENV: prod-801
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
@@ -41,6 +43,7 @@ services:
       - 5004:5001  # host:container
     volumes:
       - a2rchi-prod-801-data:/root/data/
+      - /home/tier3/a2rchi/801-content/:/root/data/801-content/
     restart: always
 
   chromadb-prod-801:
@@ -48,7 +51,7 @@ services:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
-      PROD_OR_DEV: prod-801
+      RUNTIME_ENV: prod-801
     ports:
       - 8003:8000  # host:container
     volumes:

@@ -7,7 +7,7 @@ services:
       chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      RUNTIME_ENV: prod
       CLEO_URL_FILE: /run/secrets/cleo_url
       CLEO_USER_FILE: /run/secrets/cleo_user
       CLEO_PW_FILE: /run/secrets/cleo_pw
@@ -43,7 +43,7 @@ services:
       chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      RUNTIME_ENV: prod
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
@@ -63,7 +63,7 @@ services:
       chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      RUNTIME_ENV: prod
       IMAP_USER_FILE: /run/secrets/imap_user
       IMAP_PW_FILE: /run/secrets/imap_pw
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -101,7 +101,7 @@ services:
       chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: prod
+      RUNTIME_ENV: prod
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
@@ -122,7 +122,7 @@ services:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
-      PROD_OR_DEV: prod
+      RUNTIME_ENV: prod
     ports:
       - 8000:8000  # host:container
     volumes:
