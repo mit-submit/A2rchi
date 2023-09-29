@@ -153,7 +153,7 @@ class FlaskAppWrapper(object):
         CORS(self.app)
 
         # add endpoints for flask app
-        self.add_endpoint('/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
+        self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
         self.add_endpoint('/', '', self.index)
         self.add_endpoint('/terms', 'terms', self.terms)
 
