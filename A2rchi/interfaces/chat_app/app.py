@@ -201,18 +201,31 @@ class FlaskAppWrapper(object):
     def terms(self):
         return render_template('terms.html')
     
+    def find_file_in_folder(self, folder_path, file_name):
+        # Walk through the folder and its subfolders
+        for root, _, files in os.walk(folder_path):
+            if file_name in files:
+                # If the file is found, return its full path
+                return os.path.join(root, file_name)
+        
+        # If the file is not found, return None
+        return None
+    
     def view_pdf_page(self, file_name, page):
         """
         Creates a template to view a specific file starting at a specific page
 
         Inputs:
-            file_name: a string which denotes the file path relative to the data directory.
+            file_name: a string which denotes the file name for a file sitting in the data directory.
                        i.e if the file is /data/submit_files/users_guide.pdf, the file_name
-                       should be "submit_files/users_guide.pdf"
+                       should be "users_guide.pdf"
             page:      an int which descirbes what page to direct to.
         """
 
-        pdf_path = os.path.join(self.global_config["DATA_PATH"], file_name)
+        relative_file_path = self.find_file_in_folder(self.global_config["DATA_PATH"], file_name)
+        if relative_file_path is None:
+            return "File not found.", 404
+        pdf_path = os.path.join(self.global_config["DATA_PATH"], relative_file_path)
 
         try:
             # Open the PDF file
