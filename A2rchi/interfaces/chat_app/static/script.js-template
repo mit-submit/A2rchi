@@ -78,7 +78,7 @@ const getChatResponse = async (incomingChatDiv) => {
 
 const copyResponse = (copyBtn) => {
     // Copy the text content of the response to the clipboard
-    const reponseTextElement = copyBtn.parentElement.querySelector("p");
+    const reponseTextElement = copyBtn.parentElement.previousElementSibling.querySelector("p");
     navigator.clipboard.writeText(reponseTextElement.textContent);
 }
 
@@ -94,10 +94,10 @@ const showTypingAnimation = () => {
                         </div>
                     </div>
                     <div class="button-container">
-                        <button onclick="copyResponse()" class="material-button">
+                        <button onclick="copyResponse(this)" class="material-button">
                             <img src="/static/images/thumbs_up.png" alt="Like" width="30" height="30">
                         </button>
-                        <button onclick="copyResponse()" class="material-button">
+                        <button onclick="copyResponse(this)" class="material-button">
                             <img src="/static/images/thumbs_down.png" alt="Dislike" width="30" height="30">
                         </button>
                     <div>
