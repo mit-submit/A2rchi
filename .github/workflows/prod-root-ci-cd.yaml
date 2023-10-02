@@ -3,7 +3,7 @@ run-name: ${{ github.actor }} deploys A2rchi for root to prod
 on:
   push:
     branches:
-      - release-root
+      - release-ROOT
 jobs:
   deploy-prod-system:
     runs-on: ubuntu-latest
