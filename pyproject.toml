@@ -43,7 +43,7 @@ dependencies = [
     "regex==2023.6.3",
     "requests==2.31.0",
     "scipy==1.11.2",
-    "sentence-transformers==2.2.2"
+    "sentence-transformers==2.2.2",
     "sentencepiece==0.1.99",
     "sympy==1.12",
     "tiktoken==0.4.0",
