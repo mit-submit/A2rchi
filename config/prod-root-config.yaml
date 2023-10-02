@@ -1,5 +1,5 @@
 global:
-  TRAINED_ON: "ROOT"    #used to create name of the specific version of a2rchi we're using
+  TRAINED_ON: "root"    #used to create name of the specific version of a2rchi we're using
   DATA_PATH: "/root/data/"
   ACCOUNTS_PATH: "/root/.accounts/"
   LOCAL_VSTORE_PATH: "/root/data/vstore/"
@@ -25,7 +25,7 @@ chains:
   input_lists:
     - empty.list
     - miscellanea.list
-    - ROOT-docs.list
+    - root-docs.list
   base:
     # roles that A2rchi knows about
     ROLES: 
@@ -36,7 +36,7 @@ chains:
   # prompt that serves to condense a history and a question into a single question
     CONDENSING_PROMPT: config/prompts/condense.prompt
     # main prompt which takes in a single question and a context.
-    MAIN_PROMPT: config/prompts/ROOT.prompt
+    MAIN_PROMPT: config/prompts/root.prompt
   chain: 
     # pick one of the models listed in the model class map below
     MODEL_NAME: OpenAILLM 
@@ -82,9 +82,9 @@ utils:
     use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
     vectordb_update_time: 10
-    chromadb_host: chromadb-prod-ROOT
+    chromadb_host: chromadb-prod-root
     chromadb_port: 8000
-    collection_name: "prod_ROOT_collection" #unique in case vector stores are ever combined.
+    collection_name: "prod_root_collection" #unique in case vector stores are ever combined.
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
     # choose one embedding from list below

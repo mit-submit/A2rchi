@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # create volume if it doesn't already exist
-exists=`docker volume ls | awk '{print $2}' | grep a2rchi-prod-ROOT-data`
-if [[ $exists != 'a2rchi-prod-ROOT-data' ]]; then
-    docker volume create --name a2rchi-prod-ROOT-data
+exists=`docker volume ls | awk '{print $2}' | grep a2rchi-prod-root-data`
+if [[ $exists != 'a2rchi-prod-root-data' ]]; then
+    docker volume create --name a2rchi-prod-root-data
 fi
 
 # start services
 echo "Starting docker compose"
-cd A2rchi-prod-ROOT/deploy/prod-ROOT/
-docker compose -f prod-ROOT-compose.yaml up -d --build --force-recreate --always-recreate-deps
+cd A2rchi-prod-root/deploy/prod-root/
+docker compose -f prod-root-compose.yaml up -d --build --force-recreate --always-recreate-deps
 
 # # secrets files are created by CI pipeline and destroyed here
 # rm secrets/cleo_*.txt
