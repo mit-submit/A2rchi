@@ -230,7 +230,7 @@ class FlaskAppWrapper(object):
                 "chat_content" :  chat_content,
                 "feedback"     :  "like",
             }
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test2.json", discussion_id, discussion_feedback = feedback)
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_feedback = feedback)
 
             response = {'message': 'Liked', 'content': chat_content}
             return jsonify(response), 200
@@ -269,7 +269,7 @@ class FlaskAppWrapper(object):
                 "unhelpful"    :  unhelpful,
                 "inappropriate":  inappropriate,
             }
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test2.json", discussion_id, discussion_feedback = feedback)
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_feedback = feedback)
 
             response = {'message': 'Disliked', 'content': chat_content}
             return jsonify(response), 200

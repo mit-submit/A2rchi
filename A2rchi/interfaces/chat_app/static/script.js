@@ -15,6 +15,7 @@ popupForm.style.display = "none";
 let userText = null;
 let discussion_id = null;
 let conversation = []
+let num_responses_since_last_rating = 0;
 
 const loadDataFromLocalstorage = () => {
     // Load saved chats and theme from local storage and apply/add on the page
@@ -90,6 +91,8 @@ const copyResponse = (copyBtn) => {
 }
 
 const likeResponse = (likeBtn) => {
+    num_responses_since_last_rating = 0;
+
     const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
     // fill the image
@@ -117,6 +120,8 @@ const likeResponse = (likeBtn) => {
 }
 
 const dislikeResponse = (dislikeBtn) => {
+    num_responses_since_last_rating = 0;
+
     const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
     // fill the image
@@ -187,6 +192,30 @@ const showTypingAnimation = () => {
     chatContainer.appendChild(incomingChatDiv);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
     getChatResponse(incomingChatDiv);
+    showFeedbackRequest();
+}
+
+const showFeedbackRequest = () => {
+    // Display a message from A2rchi to ask the user to give feedback
+
+    num_responses_since_last_rating = num_responses_since_last_rating + 1;
+
+    const html = `<div class="chat-content">
+                    <div class="chat-details">
+                        <img src="/static/images/a2rchi.png" alt="chatbot-img">
+                        <div class=".default-text">
+                            <p>I've noticed you haven't rated any of my responses in awhile. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
+                        </div>
+                    </div>
+                </div>`;
+    
+    // Create an incoming chat div with feedback request and append it to chat container
+    if (num_responses_since_last_rating > 2) {
+        const incomingChatDiv = createChatElement(html, "incoming");
+        chatContainer.appendChild(incomingChatDiv);
+        chatContainer.scrollTo(0, chatContainer.scrollHeight);
+        num_responses_since_last_rating = 0;
+    }
 }
 
 const handleOutgoingChat = () => {
