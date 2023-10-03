@@ -156,6 +156,8 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
         self.add_endpoint('/', '', self.index)
         self.add_endpoint('/terms', 'terms', self.terms)
+        self.add_endpoint('/api/like', 'like', self.like)
+        self.add_endpoint('/api/dislike', 'dislike', self.dislike)
 
     def configs(self, **configs):
         for config, value in configs:
@@ -197,3 +199,47 @@ class FlaskAppWrapper(object):
     
     def terms(self):
         return render_template('terms.html')
+    
+    def like(self):
+        try:
+            # Get the JSON data from the request body
+            data = request.json
+
+            # Extract the HTML content and any other data you need
+            chat_content = data.get('content')
+            discussion_id = data.get('discussion_id')
+
+
+            #TODO: implement the logging here
+            print(chat_content)
+            print(discussion_id)
+
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        
+    def dislike(self):
+        try:
+            # Get the JSON data from the request body
+            data = request.json
+
+            # Extract the HTML content and any other data you need
+            chat_content = data.get('content')
+            discussion_id = data.get('discussion_id')
+            message = data.get('message')
+            incorrect = data.get('incorrect')
+            unhelpful = data.get('unhelpful')
+            inappropriate = data.get('inappropriate')
+
+
+            #TODO: implement the logging here
+            print(chat_content)
+            print(discussion_id)
+            print(message)
+            print(incorrect)
+            print(unhelpful)
+            print(inappropriate)
+
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500

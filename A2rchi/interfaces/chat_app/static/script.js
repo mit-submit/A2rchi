@@ -4,6 +4,13 @@ const chatContainer = document.querySelector(".chat-container");
 const themeButton = document.querySelector("#theme-btn");
 const deleteButton = document.querySelector("#delete-btn");
 const refreshButton = document.querySelector("#refresh-btn");
+const popupForm = document.getElementById("popup-form");
+const additionalThoughtsInput = document.getElementById("dislike-additional-thoughts");
+const submitButton = document.getElementById("dislike-submit-button");
+const correct_checkbox= document.getElementById("correct_checkbox");
+const helpful_checkbox = document.getElementById("helpful_checkbox");
+const appropriate_checkbox = document.getElementById("appropriate_checkbox");
+popupForm.style.display = "none";
 
 let userText = null;
 let discussion_id = null;
@@ -82,6 +89,61 @@ const copyResponse = (copyBtn) => {
     navigator.clipboard.writeText(reponseTextElement.textContent);
 }
 
+const likeResponse = (likeBtn) => {
+    const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p");
+
+    const API_URL = "http://t3desk019.mit.edu:7861/api/like";
+
+     // Send an API request with the chat content and discussion ID
+     fetch(API_URL, {
+        method: "POST", // You may need to adjust the HTTP method
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+            content: chatContent,
+            discussion_id: discussion_id,
+        }),
+    })
+}
+
+const dislikeResponse = (dislikeBtn) => {
+    const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p");
+
+    const API_URL = "http://t3desk019.mit.edu:7861/api/dislike";
+
+    // Show pop-up form
+    popupForm.style.display = "block";
+
+    //wait for user to submit response
+    submitButton.addEventListener("click", function () {
+        const additionalThoughts = additionalThoughtsInput.value;
+
+        fetch(API_URL, {
+            method: "POST", // You may need to adjust the HTTP method
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ 
+                content: chatContent,
+                discussion_id: discussion_id,
+                message: additionalThoughts,
+                incorrect: correct_checkbox.checked,
+                unhelpful: helpful_checkbox.checked,
+                inappropriate: appropriate_checkbox.checked,
+            }),
+        });
+
+        //hide pop up formi
+        popupForm.style.display = "none";
+    })
+}
+
+const closeFeedback = (closeBtn) => {
+    //hide pop up formi
+    popupForm.style.display = "none";
+}
+
 const showTypingAnimation = () => {
     // Display the typing animation and call the getChatResponse function
     const html = `<div class="chat-content">
@@ -94,10 +156,10 @@ const showTypingAnimation = () => {
                         </div>
                     </div>
                     <div class="button-container">
-                        <button onclick="copyResponse(this)" class="material-button">
+                        <button onclick="likeResponse(this)" class="material-button">
                             <img src="/static/images/thumbs_up.png" alt="Like" width="30" height="30">
                         </button>
-                        <button onclick="copyResponse(this)" class="material-button">
+                        <button onclick="dislikeResponse(this)" class="material-button">
                             <img src="/static/images/thumbs_down.png" alt="Dislike" width="30" height="30">
                         </button>
                     <div>
