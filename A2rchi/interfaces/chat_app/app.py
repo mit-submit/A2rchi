@@ -155,6 +155,8 @@ class FlaskAppWrapper(object):
         print(" INFO - entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
+        self.global_config = Config_Loader().config["global"]
+        self.data_path = self.global_config["DATA_PATH"]
 
         # create the chat from the wrapper
         self.chat = ChatWrapper()
@@ -224,6 +226,12 @@ class FlaskAppWrapper(object):
             print(chat_content)
             print(discussion_id)
 
+            feedback = {
+                "chat_content" :  chat_content,
+                "feedback"     :  "like",
+            }
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test2.json", discussion_id, discussion_feedback = feedback)
+
             response = {'message': 'Liked', 'content': chat_content}
             return jsonify(response), 200
 
@@ -252,6 +260,16 @@ class FlaskAppWrapper(object):
             print(incorrect)
             print(unhelpful)
             print(inappropriate)
+
+            feedback = {
+                "chat_content" :  chat_content,
+                "feedback"     :  "dislike",
+                "message"      :  message,
+                "incorrect"    :  incorrect,
+                "unhelpful"    :  unhelpful,
+                "inappropriate":  inappropriate,
+            }
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test2.json", discussion_id, discussion_feedback = feedback)
 
             response = {'message': 'Disliked', 'content': chat_content}
             return jsonify(response), 200
