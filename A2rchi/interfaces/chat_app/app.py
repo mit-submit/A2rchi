@@ -224,6 +224,9 @@ class FlaskAppWrapper(object):
             print(chat_content)
             print(discussion_id)
 
+            response = {'message': 'Liked', 'content': chat_content}
+            return jsonify(response), 200
+
 
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -249,6 +252,9 @@ class FlaskAppWrapper(object):
             print(incorrect)
             print(unhelpful)
             print(inappropriate)
+
+            response = {'message': 'Disliked', 'content': chat_content}
+            return jsonify(response), 200
 
 
         except Exception as e:
