@@ -56,7 +56,7 @@ class ChatWrapper:
 
 
     @staticmethod
-    def update_or_add_discussion(data_path, json_file, discussion_id, discussion_contents):
+    def update_or_add_discussion(data_path, json_file, discussion_id, discussion_contents = None, discussion_feedback = None):
         print(" INFO - entered update_or_add_discussion.")
 
         # read the existing JSON data from the file
@@ -70,7 +70,17 @@ class ChatWrapper:
             print(" ERROR - json_file not found. Creating a new one")
 
         # update or add discussion
-        data[str(discussion_id)] = discussion_contents
+        if str(discussion_id) in data.keys():
+            discussion_dict = data[str(discussion_id)]
+        else:
+            discussion_dict = dict()
+
+        if discussion_contents is not None:
+            discussion_dict["contents"] = discussion_contents
+        if discussion_feedback is not None:
+            discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if isinstance(discussion_dict["feedback"], List) else [discussion_feedback]
+        
+        data[str(discussion_id)] = discussion_dict
 
         # create data path if it doesn't exist
         os.makedirs(data_path, exist_ok=True)
@@ -130,7 +140,7 @@ class ChatWrapper:
             else:
                 output = "<p>" + result["answer"] + "</p>"
 
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, history)
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history)
 
         except Exception as e:
             raise e
