@@ -92,6 +92,14 @@ const copyResponse = (copyBtn) => {
 const likeResponse = (likeBtn) => {
     const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p");
 
+    // fill the image
+    const image = likeBtn.querySelector("img");
+    image.src = "/static/images/thumbs_up_filled.png"
+
+    // make sure other image is not filled
+    const other_image = likeBtn.nextElementSibling.querySelector("img");
+    other_image.src = "/static/images/thumbs_down.png";
+
     const API_URL = "http://t3desk019.mit.edu:7861/api/like";
 
      // Send an API request with the chat content and discussion ID
@@ -99,6 +107,7 @@ const likeResponse = (likeBtn) => {
         method: "POST", // You may need to adjust the HTTP method
         headers: {
             "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
         },
         body: JSON.stringify({ 
             content: chatContent,
@@ -109,6 +118,14 @@ const likeResponse = (likeBtn) => {
 
 const dislikeResponse = (dislikeBtn) => {
     const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p");
+
+    // fill the image
+    const image = dislikeBtn.querySelector("img");
+    image.src = "/static/images/thumbs_down_filled.png";
+
+    // make sure other image is not filled
+    const other_image = dislikeBtn.previousElementSibling.querySelector("img");
+    other_image.src = "/static/images/thumbs_up.png";
 
     const API_URL = "http://t3desk019.mit.edu:7861/api/dislike";
 
@@ -123,6 +140,7 @@ const dislikeResponse = (dislikeBtn) => {
             method: "POST", // You may need to adjust the HTTP method
             headers: {
                 "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
             },
             body: JSON.stringify({ 
                 content: chatContent,
