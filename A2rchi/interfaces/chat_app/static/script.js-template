@@ -90,7 +90,7 @@ const copyResponse = (copyBtn) => {
 }
 
 const likeResponse = (likeBtn) => {
-    const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p");
+    const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
     // fill the image
     const image = likeBtn.querySelector("img");
@@ -117,7 +117,7 @@ const likeResponse = (likeBtn) => {
 }
 
 const dislikeResponse = (dislikeBtn) => {
-    const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p");
+    const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
     // fill the image
     const image = dislikeBtn.querySelector("img");
