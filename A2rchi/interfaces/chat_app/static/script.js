@@ -7,6 +7,7 @@ const refreshButton = document.querySelector("#refresh-btn");
 const popupForm = document.getElementById("popup-form");
 const additionalThoughtsInput = document.getElementById("dislike-additional-thoughts");
 const submitButton = document.getElementById("dislike-submit-button");
+const closeButton = document.getElementById("dislike-close-button");
 const correct_checkbox= document.getElementById("correct_checkbox");
 const helpful_checkbox = document.getElementById("helpful_checkbox");
 const appropriate_checkbox = document.getElementById("appropriate_checkbox");
@@ -148,8 +149,8 @@ const dislikeResponse = (dislikeBtn) => {
     // Show pop-up form
     popupForm.style.display = "block";
 
-    //wait for user to submit response
-    submitButton.addEventListener("click", function () {
+    // Function which handles sending the information in the pop up form to the backend API
+    function handleSubmitToAPI() {
         const additionalThoughts = additionalThoughtsInput.value;
 
         fetch(API_URL, {
@@ -171,7 +172,11 @@ const dislikeResponse = (dislikeBtn) => {
 
         //hide pop up formi
         popupForm.style.display = "none";
-    })
+    }
+
+    //wait for user to submit response or close the additional feedback window
+    submitButton.addEventListener("click", handleSubmitToAPI);
+    closeButton.addEventListener("click", handleSubmitToAPI);
 }
 
 const closeFeedback = (closeBtn) => {
