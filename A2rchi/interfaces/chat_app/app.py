@@ -222,9 +222,11 @@ class FlaskAppWrapper(object):
             # Extract the HTML content and any other data you need
             chat_content = data.get('content')
             discussion_id = data.get('discussion_id')
+            message_id = data.get('message_id')
 
             feedback = {
                 "chat_content" :  chat_content,
+                "message_id"   :  message_id,
                 "feedback"     :  "like",
             }
             ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_feedback = feedback)
@@ -244,6 +246,7 @@ class FlaskAppWrapper(object):
             # Extract the HTML content and any other data you need
             chat_content = data.get('content')
             discussion_id = data.get('discussion_id')
+            message_id = data.get('message_id')
             message = data.get('message')
             incorrect = data.get('incorrect')
             unhelpful = data.get('unhelpful')
@@ -251,6 +254,7 @@ class FlaskAppWrapper(object):
 
             feedback = {
                 "chat_content" :  chat_content,
+                "message_id"   :  message_id,
                 "feedback"     :  "dislike",
                 "message"      :  message,
                 "incorrect"    :  incorrect,

@@ -14,6 +14,7 @@ popupForm.style.display = "none";
 
 let userText = null;
 let discussion_id = null;
+let next_message_id = 0;
 let conversation = []
 let num_responses_since_last_rating = 0;
 
@@ -44,7 +45,10 @@ const createChatElement = (content, className) => {
 }
 
 const refreshChat = async () => {
-    conversation.pop()
+    conversation.pop();
+    if (next_message_id > 0) {
+        next_message_id = next_message_id -1;
+    }
     chatContainer.removeChild(chatContainer.lastChild);
     showTypingAnimation();
 }
@@ -52,6 +56,10 @@ const refreshChat = async () => {
 const getChatResponse = async (incomingChatDiv) => {
     const API_URL = "http://t3desk019.mit.edu:7861/api/get_chat_response";
     const pElement = document.createElement("div");
+
+    // Give the p element of the response an id which is equal to the message id
+    pElement.setAttribute('id',next_message_id.toString());
+    next_message_id = next_message_id + 1
 
      // Define the properties and data for the API request
      const requestOptions = {
@@ -95,6 +103,8 @@ const likeResponse = (likeBtn) => {
 
     const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
+    alert(likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id);
+
     // fill the image
     const image = likeBtn.querySelector("img");
     image.src = "/static/images/thumbs_up_filled.png"
@@ -115,6 +125,7 @@ const likeResponse = (likeBtn) => {
         body: JSON.stringify({ 
             content: chatContent,
             discussion_id: discussion_id,
+            message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
         }),
     })
 }
@@ -150,6 +161,7 @@ const dislikeResponse = (dislikeBtn) => {
             body: JSON.stringify({ 
                 content: chatContent,
                 discussion_id: discussion_id,
+                message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
                 message: additionalThoughts,
                 incorrect: correct_checkbox.checked,
                 unhelpful: helpful_checkbox.checked,
@@ -247,6 +259,7 @@ deleteButton.addEventListener("click", () => {
     if(confirm("Are you sure you want to delete all the chats?")) {
         conversation = []
         discussion_id = null
+        next_message_id = 0;
         localStorage.removeItem("all-chats");
         loadDataFromLocalstorage();
     }
