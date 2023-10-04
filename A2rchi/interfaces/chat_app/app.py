@@ -70,10 +70,7 @@ class ChatWrapper:
             print(" ERROR - json_file not found. Creating a new one")
 
         # update or add discussion
-        if str(discussion_id) in data.keys():
-            discussion_dict = data[str(discussion_id)]
-        else:
-            discussion_dict = dict()
+        discussion_dict = data.get(str(discussion_id), {})
 
         if discussion_contents is not None:
             print(" INFO - found contents.")
