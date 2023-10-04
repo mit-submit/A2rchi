@@ -104,8 +104,6 @@ const likeResponse = (likeBtn) => {
 
     const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
-    alert(likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id);
-
     // fill the image
     const image = likeBtn.querySelector("img");
     image.src = "/static/images/thumbs_up_filled.png"
