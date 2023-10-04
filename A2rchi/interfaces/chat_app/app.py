@@ -76,9 +76,13 @@ class ChatWrapper:
             discussion_dict = dict()
 
         if discussion_contents is not None:
+            print(" INFO - found contents.")
+            print(discussion_contents)
             discussion_dict["contents"] = discussion_contents
         if discussion_feedback is not None:
-            discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if isinstance(discussion_dict["feedback"], List) else [discussion_feedback]
+            print(" INFO - found feedback.")
+            print(discussion_feedback)
+            discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if ("feedback" in discussion_dict.keys() and isinstance(discussion_dict["feedback"], List)) else [discussion_feedback]
         
         data[str(discussion_id)] = discussion_dict
 
