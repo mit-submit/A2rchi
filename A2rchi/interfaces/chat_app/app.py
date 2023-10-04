@@ -77,11 +77,9 @@ class ChatWrapper:
 
         if discussion_contents is not None:
             print(" INFO - found contents.")
-            print(discussion_contents)
             discussion_dict["contents"] = discussion_contents
         if discussion_feedback is not None:
             print(" INFO - found feedback.")
-            print(discussion_feedback)
             discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if ("feedback" in discussion_dict.keys() and isinstance(discussion_dict["feedback"], List)) else [discussion_feedback]
         
         data[str(discussion_id)] = discussion_dict
@@ -225,11 +223,6 @@ class FlaskAppWrapper(object):
             chat_content = data.get('content')
             discussion_id = data.get('discussion_id')
 
-
-            #TODO: implement the logging here
-            print(chat_content)
-            print(discussion_id)
-
             feedback = {
                 "chat_content" :  chat_content,
                 "feedback"     :  "like",
@@ -255,15 +248,6 @@ class FlaskAppWrapper(object):
             incorrect = data.get('incorrect')
             unhelpful = data.get('unhelpful')
             inappropriate = data.get('inappropriate')
-
-
-            #TODO: implement the logging here
-            print(chat_content)
-            print(discussion_id)
-            print(message)
-            print(incorrect)
-            print(unhelpful)
-            print(inappropriate)
 
             feedback = {
                 "chat_content" :  chat_content,
