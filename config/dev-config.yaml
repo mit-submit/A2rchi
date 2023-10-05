@@ -6,6 +6,10 @@ global:
     -".txt"
     -".html"
     -".pdf"
+  USE_LOGIN: True
+  USER_EMAILS:
+    - russomatthewd@gmail.com
+    - russomatthewd.spam@gmail.com
 
 interfaces:
   chat_app:

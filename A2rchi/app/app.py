@@ -171,37 +171,45 @@ class ChatWrapper:
 app = Flask("test-app")
 app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(24)
 
-# User session management setup
-# https://flask-login.readthedocs.io/en/latest
-login_manager = LoginManager()
-login_manager.init_app(app)
-
-# Flask-Login helper to retrieve a user from our db
-@login_manager.user_loader
-def load_user(user_id):
-    return User.get(user_id)
-
 app.config["TEMPLATE_FOLDER"] = "A2rchi/app/templates"
 app.config["STATIC_FOLDER"] = "A2rchi/app/static"
 
 # create the chat from the wrapper
 # chat = ChatWrapper()
 
+# determine whether we're configuring login or guest access
+global_config = Config_Loader().config["global"]
+USE_LOGIN = global_config["USE_LOGIN"]
+if USE_LOGIN:
+    # get set of valid users
+    VALID_USER_EMAILS = global_config["USER_EMAILS"] if USE_LOGIN else []
+
+    # User session management setup
+    # https://flask-login.readthedocs.io/en/latest
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+
+    # Flask-Login helper to retrieve a user from our db
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.get(user_id)
+    
+    # Naive database setup
+    try:
+        init_db_command()
+    except sqlite3.OperationalError:
+        # Assume it's already been created
+        pass
+
+    # OAuth 2 client setup
+    client = WebApplicationClient(GOOGLE_CLIENT_ID)
+
+    def get_google_provider_cfg():
+        return requests.get(GOOGLE_DISCOVERY_URL).json()
+
 # enable CORS:
 CORS(app)
 
-# Naive database setup
-try:
-    init_db_command()
-except sqlite3.OperationalError:
-    # Assume it's already been created
-    pass
-
-# OAuth 2 client setup
-client = WebApplicationClient(GOOGLE_CLIENT_ID)
-
-def get_google_provider_cfg():
-    return requests.get(GOOGLE_DISCOVERY_URL).json()
 
 def get_chat_response():
     """
@@ -229,47 +237,48 @@ def get_chat_response():
 
     return jsonify({'response': response, 'discussion_id': discussion_id})
 
+
 def index():
-    if current_user.is_authenticated:
+    if not USE_LOGIN:
+        print("WE ARE HERE1")
         return render_template('index.html')
-        # return (
-        #     "<p>Hello, {}! You're logged in! Email: {}</p>"
-        #     "<div><p>Google Profile Picture:</p>"
-        #     '<img src="{}" alt="Google profile pic"></img></div>'
-        #     '<a class="button" href="/logout">Logout</a>'.format(
-        #         current_user.name, current_user.email, current_user.profile_pic
-        #     )
-        # )
+
+    elif USE_LOGIN and current_user.is_authenticated:
+        print("WE ARE HERE2")
+        return render_template('index.html')
+
     else:
+        print(f"what is use_login: {USE_LOGIN}")
+        print("WE ARE HERE3")
         # return render_template('login.html')
         return '<a class="button" href="/login">Google Login</a>'
 
 
 def login():
-    # Find out what URL to hit for Google login
+    # fetch URL for Google login
     google_provider_cfg = get_google_provider_cfg()
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
 
-    # Use library to construct the request for Google login and provide
+    # use library to construct the request for Google login and provide
     # scopes that let you retrieve user's profile from Google
     request_uri = client.prepare_request_uri(
         authorization_endpoint,
         redirect_uri=request.base_url + "/callback",
-        scope=["openid", "email", "profile"],
+        scope=["openid", "email"],
     )
+
     return redirect(request_uri)
 
 
 def callback():
-    # Get authorization code Google sent back to you
+    # get authorization code Google sent back
     code = request.args.get("code")
 
-    # Find out what URL to hit to get tokens that allow you to ask for
-    # things on behalf of a user
+    # fetch URL to get tokens that allow us to ask for user's email + info from Google
     google_provider_cfg = get_google_provider_cfg()
     token_endpoint = google_provider_cfg["token_endpoint"]
 
-    # Prepare and send a request to get tokens! Yay tokens!
+    # Prepare and send a request to get access token(s)
     token_url, headers, body = client.prepare_token_request(
         token_endpoint,
         authorization_response=request.url,
@@ -283,41 +292,41 @@ def callback():
         auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
     )
 
-    # Parse the tokens!
+    # parse access token(s)
     client.parse_request_body_response(json.dumps(token_response.json()))
 
-    # Now that you have tokens (yay) let's find and hit the URL
-    # from Google that gives you the user's profile information,
-    # including their Google profile image and email
+    # fetch user's profile information from Google; we will only keep unique_id and user_email
+    google_provider_cfg = get_google_provider_cfg()
     userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
     uri, headers, body = client.add_token(userinfo_endpoint)
     userinfo_response = requests.get(uri, headers=headers, data=body)
 
-    # You want to make sure their email is verified.
-    # The user authenticated with Google, authorized your
-    # app, and now you've verified their email through Google!
+    # parse info if user email is verified
     if userinfo_response.json().get("email_verified"):
         unique_id = userinfo_response.json()["sub"]
-        users_email = userinfo_response.json()["email"]
-        picture = userinfo_response.json()["picture"]
-        users_name = userinfo_response.json()["given_name"]
+        user_email = userinfo_response.json()["email"]
     else:
         return "User email not available or not verified by Google.", 400
 
-    # Create a user in your db with the information provided
-    # by Google
-    user = User(
-        id_=unique_id, name=users_name, email=users_email, profile_pic=picture
-    )
+    # if owner of this application has not green-light email; reject user
+    if user_email not in VALID_USER_EMAILS:
+        return "User email not authorized for this application.", 401
 
-    # Doesn't exist? Add it to the database.
+        # TODO: we could send them to a different landing page w/a link back to index
+        #       so they can retry with a diff. email
+        # return redirect(url_for('index'))
+
+    # create a user with the information provided by Google
+    user = User(id_=unique_id, email=user_email)
+
+    # add user to db if they don't already exist
     if not User.get(unique_id):
-        User.create(unique_id, users_name, users_email, picture)
+        User.create(unique_id, user_email)
 
-    # Begin user session by logging the user in
+    # begin user session by logging the user in
     login_user(user)
 
-    # Send user back to homepage
+    # send user back to homepage
     return redirect(url_for("index"))
 
 
@@ -332,105 +341,12 @@ def add_endpoint(endpoint = None, endpoint_name = None, handler = None, methods 
 
 # add endpoints for flask app
 add_endpoint('/', 'index', index)
-add_endpoint('/login', 'login', login, methods=["GET", "POST"])
-add_endpoint('/login/callback', 'login/callback', callback, methods=["GET", "POST"])
-add_endpoint('/logout', 'logout', logout, methods=["POST"])
 add_endpoint('/get_chat_response', 'get_chat_response', get_chat_response, methods=["POST"])
+if USE_LOGIN:
+    add_endpoint('/login', 'login', login, methods=["GET", "POST"])
+    add_endpoint('/login/callback', 'login/callback', callback, methods=["GET", "POST"])
+    add_endpoint('/logout', 'logout', logout, methods=["POST"])
 
-
-
-################################################################
-# @app.route("/")
-# def index():
-#     if current_user.is_authenticated:
-#         return (
-#             "<p>Hello, {}! You're logged in! Email: {}</p>"
-#             "<div><p>Google Profile Picture:</p>"
-#             '<img src="{}" alt="Google profile pic"></img></div>'
-#             '<a class="button" href="/logout">Logout</a>'.format(
-#                 current_user.name, current_user.email, current_user.profile_pic
-#             )
-#         )
-#     else:
-#         return '<a class="button" href="/login">Google Login</a>'
-
-
-# @app.route("/login")
-# def login():
-#     # Find out what URL to hit for Google login
-#     google_provider_cfg = get_google_provider_cfg()
-#     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
-
-#     # Use library to construct the request for Google login and provide
-#     # scopes that let you retrieve user's profile from Google
-#     request_uri = client.prepare_request_uri(
-#         authorization_endpoint,
-#         redirect_uri=request.base_url + "/callback",
-#         scope=["openid", "email", "profile"],
-#     )
-#     return redirect(request_uri)
-
-
-# @app.route("/login/callback")
-# def callback():
-#     # Get authorization code Google sent back to you
-#     code = request.args.get("code")
-
-#     # Find out what URL to hit to get tokens that allow you to ask for
-#     # things on behalf of a user
-#     google_provider_cfg = get_google_provider_cfg()
-#     token_endpoint = google_provider_cfg["token_endpoint"]
-
-#     # Prepare and send a request to get tokens! Yay tokens!
-#     token_url, headers, body = client.prepare_token_request(
-#         token_endpoint,
-#         authorization_response=request.url,
-#         redirect_url=request.base_url,
-#         code=code
-#     )
-#     token_response = requests.post(
-#         token_url,
-#         headers=headers,
-#         data=body,
-#         auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
-#     )
-
-#     # Parse the tokens!
-#     client.parse_request_body_response(json.dumps(token_response.json()))
-
-#     # Now that you have tokens (yay) let's find and hit the URL
-#     # from Google that gives you the user's profile information,
-#     # including their Google profile image and email
-#     userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
-#     uri, headers, body = client.add_token(userinfo_endpoint)
-#     userinfo_response = requests.get(uri, headers=headers, data=body)
-
-#     # You want to make sure their email is verified.
-#     # The user authenticated with Google, authorized your
-#     # app, and now you've verified their email through Google!
-#     if userinfo_response.json().get("email_verified"):
-#         unique_id = userinfo_response.json()["sub"]
-#         users_email = userinfo_response.json()["email"]
-#         picture = userinfo_response.json()["picture"]
-#         users_name = userinfo_response.json()["given_name"]
-#     else:
-#         return "User email not available or not verified by Google.", 400
-
-#     # Create a user in your db with the information provided
-#     # by Google
-#     user = User(
-#         id_=unique_id, name=users_name, email=users_email, profile_pic=picture
-#     )
-
-#     # Doesn't exist? Add it to the database.
-#     if not User.get(unique_id):
-#         User.create(unique_id, users_name, users_email, picture)
-
-#     # Begin user session by logging the user in
-#     login_user(user)
-
-#     # Send user back to homepage
-#     return redirect(url_for("index"))
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="localhost", ssl_context="adhoc")
