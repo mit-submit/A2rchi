@@ -7,6 +7,7 @@ global:
     -".html"
     -".pdf"
   USE_LOGIN: True
+  ALLOW_GUEST_LOGIN: True
   USER_EMAILS:
     - russomatthewd@gmail.com
     - russomatthewd.spam@gmail.com

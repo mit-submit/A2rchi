@@ -24,11 +24,13 @@ import numpy as np
 import json
 import os
 import requests
+import secrets
 import sqlite3
 import yaml
 
 # DEFINITIONS
-QUERY_LIMIT = 1000 # max number of queries 
+QUERY_LIMIT = 1000 # max number of queries
+UUID_BYTES = 8
 
 # Configuration
 # GOOGLE_CLIENT_ID = read_secret("GOOGLE_CLIENT_ID")
@@ -180,6 +182,7 @@ app.config["STATIC_FOLDER"] = "A2rchi/app/static"
 # determine whether we're configuring login or guest access
 global_config = Config_Loader().config["global"]
 USE_LOGIN = global_config["USE_LOGIN"]
+ALLOW_GUEST_LOGIN = global_config["ALLOW_GUEST_LOGIN"]
 if USE_LOGIN:
     # get set of valid users
     VALID_USER_EMAILS = global_config["USER_EMAILS"] if USE_LOGIN else []
@@ -239,19 +242,39 @@ def get_chat_response():
 
 
 def index():
+    # anyone can access chat service
     if not USE_LOGIN:
-        print("WE ARE HERE1")
         return render_template('index.html')
 
+    # user is logged in (note: guest users still "log in")
     elif USE_LOGIN and current_user.is_authenticated:
-        print("WE ARE HERE2")
         return render_template('index.html')
 
+    # if we're doing login and allowing guests; provide separate login buttons
+    elif USE_LOGIN and ALLOW_GUEST_LOGIN:
+        # return render_template('login.html')
+        return '<a class="button" href="/login">Google Login</a><br><br><a class="button" href="/guest_login">Guest Login</a>'
+
+    # if we're only logging in google users; provide google login button
     else:
-        print(f"what is use_login: {USE_LOGIN}")
-        print("WE ARE HERE3")
         # return render_template('login.html')
         return '<a class="button" href="/login">Google Login</a>'
+
+
+def guest_login():
+    # create a guest user with a unique session
+    unique_id = f"{secrets.token_hex(UUID_BYTES)}"
+    email = f"guest-{unique_id}"
+    user = User(id_=unique_id, email=email)
+
+    # since we generate a unique user each time for guests there should not be a collision
+    User.create(unique_id, email)
+
+    # begin user session by logging the user in
+    login_user(user)
+
+    # send user back to homepage
+    return redirect(url_for("index"))
 
 
 def login():
@@ -345,7 +368,9 @@ add_endpoint('/get_chat_response', 'get_chat_response', get_chat_response, metho
 if USE_LOGIN:
     add_endpoint('/login', 'login', login, methods=["GET", "POST"])
     add_endpoint('/login/callback', 'login/callback', callback, methods=["GET", "POST"])
-    add_endpoint('/logout', 'logout', logout, methods=["POST"])
+    add_endpoint('/logout', 'logout', logout, methods=["GET", "POST"])
+if USE_LOGIN and ALLOW_GUEST_LOGIN:
+    add_endpoint('/guest_login', 'guest_login', guest_login, methods=["GET", "POST"])
 
 
 if __name__ == "__main__":
