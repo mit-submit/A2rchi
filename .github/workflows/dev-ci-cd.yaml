@@ -75,6 +75,18 @@ jobs:
           touch ${{ github.workspace }}/deploy/secrets/hf_token.txt
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/secrets/hf_token.txt
+          touch ${{ github.workspace }}/deploy/secrets/google_client_id.txt
+          echo "${{ secrets.DEV_GOOGLE_CLIENT_ID }}" >> ${{ github.workspace }}/deploy/secrets/google_client_id.txt
+          chmod 400 ${{ github.workspace }}/deploy/secrets/google_client_id.txt
+          touch ${{ github.workspace }}/deploy/secrets/google_client_secret.txt
+          echo "${{ secrets.DEV_GOOGLE_CLIENT_SECRET }}" >> ${{ github.workspace }}/deploy/secrets/google_client_secret.txt
+          chmod 400 ${{ github.workspace }}/deploy/secrets/google_client_secret.txt
+          touch ${{ github.workspace }}/deploy/secrets/google_client_id.txt
+          echo "${{ secrets.DEV_MIT_CLIENT_ID }}" >> ${{ github.workspace }}/deploy/secrets/mit_client_id.txt
+          chmod 400 ${{ github.workspace }}/deploy/secrets/mit_client_id.txt
+          touch ${{ github.workspace }}/deploy/secrets/mit_client_secret.txt
+          echo "${{ secrets.DEV_MIT_CLIENT_SECRET }}" >> ${{ github.workspace }}/deploy/secrets/mit_client_secret.txt
+          chmod 400 ${{ github.workspace }}/deploy/secrets/mit_client_secret.txt
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
@@ -101,6 +113,8 @@ jobs:
           rm ${{ github.workspace }}/deploy/secrets/uploader_salt.txt
           rm ${{ github.workspace }}/deploy/secrets/openai_api_key.txt
           rm ${{ github.workspace }}/deploy/secrets/hf_token.txt
+          rm ${{ github.workspace }}/deploy/secrets/google_client_*.txt
+          rm ${{ github.workspace }}/deploy/secrets/mit_client_*.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."

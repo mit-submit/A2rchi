@@ -4,6 +4,7 @@ from A2rchi.app.db import init_db_command
 from A2rchi.app.user import User
 from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
+from A2rchi.utils.env import read_secret
 
 # Third-party libraries
 from flask import Flask, g, jsonify, redirect, render_template, request, url_for
@@ -15,6 +16,7 @@ from flask_login import (
     logout_user,
 )
 from flask_cors import CORS
+from functools import partial
 from oauthlib.oauth2 import WebApplicationClient
 from threading import Lock
 from typing import Optional, List, Tuple
@@ -33,13 +35,14 @@ QUERY_LIMIT = 1000 # max number of queries
 UUID_BYTES = 8
 
 # Configuration
-# GOOGLE_CLIENT_ID = read_secret("GOOGLE_CLIENT_ID")
-# GOOGLE_CLIENT_SECRET = read_secret("GOOGLE_CLIENT_SECRET")
-GOOGLE_CLIENT_ID = "121261345687-r7u7p26i3ou47mvpnp9260fcj9ivo6bp.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
-GOOGLE_DISCOVERY_URL = (
-    "https://accounts.google.com/.well-known/openid-configuration"
-)
+MIT_CLIENT_ID = read_secret("MIT_CLIENT_ID")
+MIT_CLIENT_SECRET = read_secret("MIT_CLIENT_SECRET")
+MIT_DISCOVERY_URL = "https://oidc.mit.edu/.well-known/openid-configuration"
+
+GOOGLE_CLIENT_ID = read_secret("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = read_secret("GOOGLE_CLIENT_SECRET")
+GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+
 
 class ChatWrapper:
     """
@@ -183,6 +186,8 @@ app.config["STATIC_FOLDER"] = "A2rchi/app/static"
 global_config = Config_Loader().config["global"]
 USE_LOGIN = global_config["USE_LOGIN"]
 ALLOW_GUEST_LOGIN = global_config["ALLOW_GUEST_LOGIN"]
+GOOGLE_LOGIN = global_config["GOOGLE_LOGIN"]
+MIT_LOGIN = global_config["MIT_LOGIN"]
 if USE_LOGIN:
     # get set of valid users
     VALID_USER_EMAILS = global_config["USER_EMAILS"] if USE_LOGIN else []
@@ -205,10 +210,17 @@ if USE_LOGIN:
         pass
 
     # OAuth 2 client setup
-    client = WebApplicationClient(GOOGLE_CLIENT_ID)
+    google_client, mit_client = None, None
+    if GOOGLE_LOGIN:
+        google_client = WebApplicationClient(GOOGLE_CLIENT_ID)
+    if MIT_LOGIN:
+        mit_client = WebApplicationClient(MIT_CLIENT_ID)
 
     def get_google_provider_cfg():
         return requests.get(GOOGLE_DISCOVERY_URL).json()
+
+    def get_mit_provider_cfg():
+        return requests.get(MIT_DISCOVERY_URL).json()
 
 # enable CORS:
 CORS(app)
@@ -250,15 +262,20 @@ def index():
     elif USE_LOGIN and current_user.is_authenticated:
         return render_template('index.html')
 
-    # if we're doing login and allowing guests; provide separate login buttons
-    elif USE_LOGIN and ALLOW_GUEST_LOGIN:
-        # return render_template('login.html')
-        return '<a class="button" href="/login">Google Login</a><br><br><a class="button" href="/guest_login">Guest Login</a>'
-
-    # if we're only logging in google users; provide google login button
+    # otherwise, return appropriate login buttons
     else:
         # return render_template('login.html')
-        return '<a class="button" href="/login">Google Login</a>'
+        login_buttons = ""
+        if MIT_LOGIN:
+            login_buttons += '<a class="button" href="/login?provider=mit">MIT Login</a><br><br>'
+
+        if GOOGLE_LOGIN:
+            login_buttons += '<a class="button" href="/login?provider=google">Google Login</a><br><br>'
+
+        if ALLOW_GUEST_LOGIN:
+            login_buttons += '<a class="button" href="/guest_login">Guest Login</a><br><br>'
+
+        return login_buttons
 
 
 def guest_login():
@@ -278,28 +295,41 @@ def guest_login():
 
 
 def login():
-    # fetch URL for Google login
-    google_provider_cfg = get_google_provider_cfg()
-    authorization_endpoint = google_provider_cfg["authorization_endpoint"]
+    # parse query parameter specifying OAuth provider
+    provider = request.args.get('provider')
 
-    # use library to construct the request for Google login and provide
-    # scopes that let you retrieve user's profile from Google
+    # set config, client, and callback based on provider
+    provider_cfg, client, callback = None, None, None
+    if provider == "google":
+        provider_cfg = get_google_provider_cfg()
+        client = google_client
+        callback = "/google-callback"
+
+    elif provider == "mit":
+        provider_cfg = get_mit_provider_cfg()
+        client = mit_client
+        callback = "/mit-callback"
+
+    # get authorization endpoint from provider config
+    authorization_endpoint = provider_cfg["authorization_endpoint"]
+
+    # get client and construct request URI w/scopes for openid, email, and profile
     request_uri = client.prepare_request_uri(
         authorization_endpoint,
-        redirect_uri=request.base_url + "/callback",
-        scope=["openid", "email"],
+        redirect_uri=request.base_url + callback,
+        scope=["openid", "email", "profile"],
     )
 
     return redirect(request_uri)
 
 
-def callback():
-    # get authorization code Google sent back
+def callback(get_provider_cfg, client, client_id, client_secret):
+    # get authorization code provider sent back
     code = request.args.get("code")
 
-    # fetch URL to get tokens that allow us to ask for user's email + info from Google
-    google_provider_cfg = get_google_provider_cfg()
-    token_endpoint = google_provider_cfg["token_endpoint"]
+    # fetch URL to get tokens that allow us to ask for user's email + info from provider
+    provider_cfg = get_provider_cfg()
+    token_endpoint = provider_cfg["token_endpoint"]
 
     # Prepare and send a request to get access token(s)
     token_url, headers, body = client.prepare_token_request(
@@ -312,15 +342,15 @@ def callback():
         token_url,
         headers=headers,
         data=body,
-        auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
+        auth=(client_id, client_secret),
     )
 
     # parse access token(s)
     client.parse_request_body_response(json.dumps(token_response.json()))
 
-    # fetch user's profile information from Google; we will only keep unique_id and user_email
-    google_provider_cfg = get_google_provider_cfg()
-    userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
+    # fetch user's profile information from provider; we will only keep unique_id and user_email
+    provider_cfg = get_provider_cfg()
+    userinfo_endpoint = provider_cfg["userinfo_endpoint"]
     uri, headers, body = client.add_token(userinfo_endpoint)
     userinfo_response = requests.get(uri, headers=headers, data=body)
 
@@ -329,7 +359,7 @@ def callback():
         unique_id = userinfo_response.json()["sub"]
         user_email = userinfo_response.json()["email"]
     else:
-        return "User email not available or not verified by Google.", 400
+        return "User email not available or not verified by provider.", 400
 
     # if owner of this application has not green-light email; reject user
     if user_email not in VALID_USER_EMAILS:
@@ -339,7 +369,7 @@ def callback():
         #       so they can retry with a diff. email
         # return redirect(url_for('index'))
 
-    # create a user with the information provided by Google
+    # create a user with the information provided by provider
     user = User(id_=unique_id, email=user_email)
 
     # add user to db if they don't already exist
@@ -359,18 +389,38 @@ def logout():
     return redirect(url_for("index"))
 
 
-def add_endpoint(endpoint = None, endpoint_name = None, handler = None, methods = ['GET'], *args, **kwargs):
-    app.add_url_rule(endpoint, endpoint_name, handler, methods = methods, *args, **kwargs)
+def add_endpoint(endpoint=None, endpoint_name=None, handler=None, methods=['GET'], *args, **kwargs):
+    app.add_url_rule(endpoint, endpoint_name, handler, methods=methods, *args, **kwargs)
 
 # add endpoints for flask app
 add_endpoint('/', 'index', index)
 add_endpoint('/get_chat_response', 'get_chat_response', get_chat_response, methods=["POST"])
 if USE_LOGIN:
     add_endpoint('/login', 'login', login, methods=["GET", "POST"])
-    add_endpoint('/login/callback', 'login/callback', callback, methods=["GET", "POST"])
     add_endpoint('/logout', 'logout', logout, methods=["GET", "POST"])
+
 if USE_LOGIN and ALLOW_GUEST_LOGIN:
     add_endpoint('/guest_login', 'guest_login', guest_login, methods=["GET", "POST"])
+
+if GOOGLE_LOGIN:
+    google_callback = partial(
+        callback,
+        get_provider_cfg=get_google_provider_cfg,
+        client=google_client,
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+    )
+    add_endpoint('/login/google-callback', 'login/google-callback', google_callback, methods=["GET", "POST"])
+
+if MIT_LOGIN:
+    mit_callback = partial(
+        callback,
+        get_provider_cfg=get_mit_provider_cfg,
+        client=mit_client,
+        client_id=MIT_CLIENT_ID,
+        client_secret=MIT_CLIENT_SECRET,
+    )
+    add_endpoint('/login/mit-callback', 'login/mit-callback', mit_callback, methods=["GET", "POST"])
 
 
 if __name__ == "__main__":

@@ -8,9 +8,12 @@ global:
     -".pdf"
   USE_LOGIN: True
   ALLOW_GUEST_LOGIN: True
+  GOOGLE_LOGIN: True
+  MIT_LOGIN: True
   USER_EMAILS:
     - russomatthewd@gmail.com
     - russomatthewd.spam@gmail.com
+    - mdrusso@mit.edu
 
 interfaces:
   chat_app:

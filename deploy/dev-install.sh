@@ -19,3 +19,5 @@ docker compose -f dev-compose.yaml up -d --build --force-recreate --always-recre
 # rm secrets/uploader_salt.txt
 # rm secrets/openai_api_key.txt
 # rm secrets/hf_token.txt
+# rm secrets/google_client_*.txt
+# rm secrets/mit_client_*.txt
