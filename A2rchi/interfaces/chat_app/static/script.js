@@ -4,10 +4,20 @@ const chatContainer = document.querySelector(".chat-container");
 const themeButton = document.querySelector("#theme-btn");
 const deleteButton = document.querySelector("#delete-btn");
 const refreshButton = document.querySelector("#refresh-btn");
+const popupForm = document.getElementById("popup-form");
+const additionalThoughtsInput = document.getElementById("dislike-additional-thoughts");
+const submitButton = document.getElementById("dislike-submit-button");
+const closeButton = document.getElementById("dislike-close-button");
+const correct_checkbox= document.getElementById("correct_checkbox");
+const helpful_checkbox = document.getElementById("helpful_checkbox");
+const appropriate_checkbox = document.getElementById("appropriate_checkbox");
+popupForm.style.display = "none";
 
 let userText = null;
 let discussion_id = null;
+let next_message_id = 0;
 let conversation = []
+let num_responses_since_last_rating = 0;
 
 const loadDataFromLocalstorage = () => {
     // Load saved chats and theme from local storage and apply/add on the page
@@ -36,7 +46,10 @@ const createChatElement = (content, className) => {
 }
 
 const refreshChat = async () => {
-    conversation.pop()
+    conversation.pop();
+    if (next_message_id > 0) {
+        next_message_id = next_message_id -1;
+    }
     chatContainer.removeChild(chatContainer.lastChild);
     showTypingAnimation();
 }
@@ -44,6 +57,10 @@ const refreshChat = async () => {
 const getChatResponse = async (incomingChatDiv) => {
     const API_URL = "http://t3desk019.mit.edu:7861/api/get_chat_response";
     const pElement = document.createElement("div");
+
+    // Give the p element of the response an id which is equal to the message id
+    pElement.setAttribute('id',next_message_id.toString());
+    next_message_id = next_message_id + 1
 
      // Define the properties and data for the API request
      const requestOptions = {
@@ -78,8 +95,91 @@ const getChatResponse = async (incomingChatDiv) => {
 
 const copyResponse = (copyBtn) => {
     // Copy the text content of the response to the clipboard
-    const reponseTextElement = copyBtn.parentElement.querySelector("p");
+    const reponseTextElement = copyBtn.parentElement.previousElementSibling.querySelector("p");
     navigator.clipboard.writeText(reponseTextElement.textContent);
+}
+
+const likeResponse = (likeBtn) => {
+    num_responses_since_last_rating = 0;
+
+    const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
+
+    // fill the image
+    const image = likeBtn.querySelector("img");
+    image.src = "/static/images/thumbs_up_filled.png"
+
+    // make sure other image is not filled
+    const other_image = likeBtn.nextElementSibling.querySelector("img");
+    other_image.src = "/static/images/thumbs_down.png";
+
+    const API_URL = "http://t3desk019.mit.edu:7861/api/like";
+
+     // Send an API request with the chat content and discussion ID
+     fetch(API_URL, {
+        method: "POST", // You may need to adjust the HTTP method
+        headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({ 
+            content: chatContent,
+            discussion_id: discussion_id,
+            message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+        }),
+    })
+}
+
+const dislikeResponse = (dislikeBtn) => {
+    num_responses_since_last_rating = 0;
+
+    const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
+
+    // fill the image
+    const image = dislikeBtn.querySelector("img");
+    image.src = "/static/images/thumbs_down_filled.png";
+
+    // make sure other image is not filled
+    const other_image = dislikeBtn.previousElementSibling.querySelector("img");
+    other_image.src = "/static/images/thumbs_up.png";
+
+    const API_URL = "http://t3desk019.mit.edu:7861/api/dislike";
+
+    // Show pop-up form
+    popupForm.style.display = "block";
+
+    // Function which handles sending the information in the pop up form to the backend API
+    function handleSubmitToAPI() {
+        const additionalThoughts = additionalThoughtsInput.value;
+
+        fetch(API_URL, {
+            method: "POST", // You may need to adjust the HTTP method
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({ 
+                content: chatContent,
+                discussion_id: discussion_id,
+                message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+                message: additionalThoughts,
+                incorrect: correct_checkbox.checked,
+                unhelpful: helpful_checkbox.checked,
+                inappropriate: appropriate_checkbox.checked,
+            }),
+        });
+
+        //hide pop up formi
+        popupForm.style.display = "none";
+    }
+
+    //wait for user to submit response or close the additional feedback window
+    submitButton.addEventListener("click", handleSubmitToAPI);
+    closeButton.addEventListener("click", handleSubmitToAPI);
+}
+
+const closeFeedback = (closeBtn) => {
+    //hide pop up formi
+    popupForm.style.display = "none";
 }
 
 const showTypingAnimation = () => {
@@ -94,10 +194,10 @@ const showTypingAnimation = () => {
                         </div>
                     </div>
                     <div class="button-container">
-                        <button onclick="copyResponse()" class="material-button">
+                        <button onclick="likeResponse(this)" class="material-button">
                             <img src="/static/images/thumbs_up.png" alt="Like" width="30" height="30">
                         </button>
-                        <button onclick="copyResponse()" class="material-button">
+                        <button onclick="dislikeResponse(this)" class="material-button">
                             <img src="/static/images/thumbs_down.png" alt="Dislike" width="30" height="30">
                         </button>
                     <div>
@@ -107,6 +207,30 @@ const showTypingAnimation = () => {
     chatContainer.appendChild(incomingChatDiv);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
     getChatResponse(incomingChatDiv);
+    showFeedbackRequest();
+}
+
+const showFeedbackRequest = () => {
+    // Display a message from A2rchi to ask the user to give feedback
+
+    num_responses_since_last_rating = num_responses_since_last_rating + 1;
+
+    const html = `<div class="chat-content">
+                    <div class="chat-details">
+                        <img src="/static/images/a2rchi.png" alt="chatbot-img">
+                        <div class=".default-text">
+                            <p>I've noticed you haven't rated any of my responses in awhile. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
+                        </div>
+                    </div>
+                </div>`;
+    
+    // Create an incoming chat div with feedback request and append it to chat container
+    if (num_responses_since_last_rating > 2) {
+        const incomingChatDiv = createChatElement(html, "incoming");
+        chatContainer.appendChild(incomingChatDiv);
+        chatContainer.scrollTo(0, chatContainer.scrollHeight);
+        num_responses_since_last_rating = 0;
+    }
 }
 
 const handleOutgoingChat = () => {
@@ -138,6 +262,7 @@ deleteButton.addEventListener("click", () => {
     if(confirm("Are you sure you want to delete all the chats?")) {
         conversation = []
         discussion_id = null
+        next_message_id = 0;
         localStorage.removeItem("all-chats");
         loadDataFromLocalstorage();
     }

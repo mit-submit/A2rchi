@@ -28,5 +28,27 @@
       </div>
     </div>
 
+    <!-- Pop-up form for dislikes-->
+    <div id="popup-form" style="display: none;">
+      <div id="popup-content">
+        <div id="popup-heading-container" >
+          <h2>Additional Feedback</h2>
+          <button id="dislike-close-button" onclick="closeFeedback(this)">
+            <img src="/static/images/close.png" alt="Close" width="30" height="30">
+          </button>
+        </div>
+        <textarea id="dislike-additional-thoughts" rows="4" cols="50" placeholder="Why did you dislike the response?" ></textarea>
+        <br>
+        <input type="checkbox" id="correct_checkbox">
+        <label for="correct_checkbox"> The answer is not correct</label><br>
+        <input type="checkbox" id="helpful_checkbox">
+        <label for="helpful_checkbox"> The answer is not helpful</label><br>
+        <input type="checkbox" id="appropriate_checkbox">
+        <label for="appropriate_checkbox"> The answer is not appropriate</label><br>
+        <br>
+        <button id="dislike-submit-button">Submit</button>
+      </div>
+    </div>
+
   </body>
 </html>
