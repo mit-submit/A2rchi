@@ -146,11 +146,15 @@ services:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
       GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
       MIT_CLIENT_ID_FILE: /run/secrets/mit_client_id
       MIT_CLIENT_SECRET_FILE: /run/secrets/mit_client_secret
     secrets:
+      - openai_api_key
+      - hf_token
       - google_client_id
       - google_client_secret
       - mit_client_id
