@@ -23,7 +23,7 @@ DB_PATH = os.path.join(global_config['DATA_PATH'], "flask_sqlite_db")
 # read sql script
 sql_script = None
 with open(global_config['DB_INIT_SCRIPT'], 'r') as f:
-    sql_script = f.read().decode('utf8')
+    sql_script = f.read()
 
 # connect to db, create user table if it doesn't exist, and commit
 db = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
