@@ -213,7 +213,7 @@ class FlaskAppWrapper(object):
 
         # add endpoints for flask app
         self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
-        self.add_endpoint('/', '', self.index)
+        self.add_endpoint('/', 'index', self.index)
         self.add_endpoint('/terms', 'terms', self.terms)
         self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
