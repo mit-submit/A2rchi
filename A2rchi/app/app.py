@@ -232,6 +232,7 @@ class FlaskAppWrapper(object):
                 client=self.google_client,
                 client_id=GOOGLE_CLIENT_ID,
                 client_secret=GOOGLE_CLIENT_SECRET,
+                valid_user_emails=self.VALID_USER_EMAILS,
             )
             self.add_endpoint('/api/login/google-callback', 'api/login/google-callback', google_callback, methods=["GET", "POST"])
 
@@ -242,6 +243,7 @@ class FlaskAppWrapper(object):
                 client=self.mit_client,
                 client_id=MIT_CLIENT_ID,
                 client_secret=MIT_CLIENT_SECRET,
+                valid_user_emails=self.VALID_USER_EMAILS,
             )
             self.add_endpoint('/api/login/mit-callback', 'api/login/mit-callback', mit_callback, methods=["GET", "POST"])
 
