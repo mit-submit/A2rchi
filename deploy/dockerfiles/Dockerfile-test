@@ -2,11 +2,13 @@
 FROM python:3.10
 RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
+EXPOSE 7861
 COPY pyproject.toml pyproject.toml
 COPY README.md README.md
 COPY LICENSE LICENSE
 COPY config config
 COPY A2rchi A2rchi
 RUN pip install --upgrade pip && pip install .
+RUN pip install requests Flask oauthlib pyOpenSSL Flask-Login
 
-CMD ["python", "-u", "A2rchi/bin/service_create_account.py"]
+CMD ["python", "-u", "A2rchi/bin/service_app.py"]

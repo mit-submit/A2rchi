@@ -16,9 +16,9 @@ class Config_Loader:
         """
         Small function for loading the config.yaml file
         """
-        prod_or_dev = os.getenv("PROD_OR_DEV")
+        env = os.getenv("RUNTIME_ENV")
         try:
-            with open(f"./config/{prod_or_dev}-config.yaml", "r") as f:
+            with open(f"./config/{env}-config.yaml", "r") as f:
                 config = yaml.load(f, Loader=yaml.FullLoader)
 
             # change the model class parameter from a string to an actual class

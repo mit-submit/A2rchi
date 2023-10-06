@@ -59,7 +59,7 @@ class Scraper():
                 data = f.read()
 
             for line in data.split("\n"):
-                if len(line) > 0 and line[0] != '#':
+                if len(line.lstrip())>0 and line.lstrip()[0:1] != "#":
                     urls.append(line)
 
         return urls

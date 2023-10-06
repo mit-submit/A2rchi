@@ -1,4 +1,4 @@
-Host submit-prod
+Host submit06
   HostName submit06.mit.edu
   User a2rchi
   IdentitiesOnly=yes
@@ -7,7 +7,7 @@ Host submit-prod
   IdentityFile ~/.ssh/id_rsa_submit
   StrictHostKeyChecking no
 
-Host submit-dev
+Host submit-t3desk
   HostName t3desk019.mit.edu
   User a2rchi
   IdentitiesOnly=yes

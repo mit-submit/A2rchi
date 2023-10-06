@@ -1,13 +1,13 @@
 services:
-  cleo:
+  cleo-prod:
     build:
-      context: ..
-      dockerfile: deploy/cleo/Dockerfile-cleo
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-cleo
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: dev
+      RUNTIME_ENV: prod
       CLEO_URL_FILE: /run/secrets/cleo_url
       CLEO_USER_FILE: /run/secrets/cleo_user
       CLEO_PW_FILE: /run/secrets/cleo_pw
@@ -32,38 +32,38 @@ services:
       - openai_api_key
       - hf_token
     volumes:
-      - a2rchi-dev-data:/root/data/
+      - a2rchi-prod-data:/root/data/
     restart: always
 
-  chat:
+  chat-prod:
     build:
-      context: ..
-      dockerfile: deploy/chat/Dockerfile-chat
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chat
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: dev
+      RUNTIME_ENV: prod
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
       - openai_api_key
       - hf_token
     volumes:
-      - a2rchi-dev-data:/root/data/
+      - a2rchi-prod-data:/root/data/
     ports:
-      - 7861:7861  # host:container
+      - 7681:7861  # host:container
     restart: always
 
-  mailbox:
+  mailbox-prod:
     build:
-      context: ..
-      dockerfile: deploy/mailbox/Dockerfile-mailbox
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-mailbox
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: dev
+      RUNTIME_ENV: prod
       IMAP_USER_FILE: /run/secrets/imap_user
       IMAP_PW_FILE: /run/secrets/imap_pw
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -93,15 +93,15 @@ services:
       - hf_token
     restart: always
 
-  data-manager:
+  data-manager-prod:
     build:
-      context: ..
-      dockerfile: deploy/data-manager/Dockerfile-data-manager
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
     depends_on:
-      chromadb:
+      chromadb-prod:
         condition: service_healthy
     environment:
-      PROD_OR_DEV: dev
+      RUNTIME_ENV: prod
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
@@ -114,20 +114,21 @@ services:
     ports:
       - 5001:5001  # host:container
     volumes:
-      - a2rchi-dev-data:/root/data/
+      - a2rchi-prod-data:/root/data/
     restart: always
 
-  chromadb:
+  chromadb-prod:
     build:
-      context: ..
-      dockerfile: deploy/chroma/Dockerfile-chroma
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
-      PROD_OR_DEV: dev
+      RUNTIME_ENV: prod
     ports:
-      - 8002:8000  # host:container
+      - 8000:8000  # host:container
     volumes:
-      - a2rchi-dev-data:/chroma/chroma/
+      - a2rchi-prod-data:/chroma/chroma/
     restart: always
+    # healthcheck originates from inside container; so use container port
     healthcheck:
       test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
       interval: 15s
@@ -136,36 +137,8 @@ services:
       start_period: 10s
       start_interval: 5s
 
-  testapp:
-    build:
-      context: ..
-      dockerfile: deploy/test-flask-app/Dockerfile-test
-    environment:
-      PROD_OR_DEV: dev
-      GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
-      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
-    secrets:
-      - google_client_id
-      - google_client_secret
-    ports:
-      - 5002:5002
-    
-
-  # create-account:
-  #   build:
-  #     context: ..
-  #     dockerfile: deploy/create-account/Dockerfile-create-account
-  #   environment:
-  #     UPLOADER_SALT_FILE: /run/secrets/uploader_salt
-  #   secrets:
-  #     - uploader_salt
-  #   volumes:
-  #     - a2rchi-dev-data:/root/data/
-  #   restart: always
-
-
 volumes:
-  a2rchi-dev-data:
+  a2rchi-prod-data:
     external: true
 
 secrets:
@@ -199,7 +172,3 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
-  google_client_id:
-    file: secrets/google_client_id.txt
-  google_client_secret:
-    file: secrets/google_client_secret.txt

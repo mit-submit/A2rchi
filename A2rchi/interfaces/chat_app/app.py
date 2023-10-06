@@ -56,7 +56,7 @@ class ChatWrapper:
 
 
     @staticmethod
-    def update_or_add_discussion(data_path, json_file, discussion_id, discussion_contents):
+    def update_or_add_discussion(data_path, json_file, discussion_id, discussion_contents = None, discussion_feedback = None):
         print(" INFO - entered update_or_add_discussion.")
 
         # read the existing JSON data from the file
@@ -70,7 +70,16 @@ class ChatWrapper:
             print(" ERROR - json_file not found. Creating a new one")
 
         # update or add discussion
-        data[str(discussion_id)] = discussion_contents
+        discussion_dict = data.get(str(discussion_id), {})
+
+        if discussion_contents is not None:
+            print(" INFO - found contents.")
+            discussion_dict["contents"] = discussion_contents
+        if discussion_feedback is not None:
+            print(" INFO - found feedback.")
+            discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if ("feedback" in discussion_dict.keys() and isinstance(discussion_dict["feedback"], List)) else [discussion_feedback]
+        
+        data[str(discussion_id)] = discussion_dict
 
         # create data path if it doesn't exist
         os.makedirs(data_path, exist_ok=True)
@@ -105,13 +114,8 @@ class ChatWrapper:
             # get similarity score to see how close the input is to the source
             # - low score means very close (it's a distance between embedding vectors approximated
             #   by an approximate k-nearest neighbors algorithm called HNSW)
-            # self.chain.update_vectorstore()
             inp = history[-1][1]
-            similarity_result = self.chain.vectorstore.similarity_search_with_score(inp)
-            if len(similarity_result) > 0:
-                score = self.chain.vectorstore.similarity_search_with_score(inp)[0][1]
-            else:
-                score = 1e10
+            score = self.chain.similarity_search(inp)
 
             # load the present list of sources
             try:
@@ -135,7 +139,7 @@ class ChatWrapper:
             else:
                 output = "<p>" + result["answer"] + "</p>"
 
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, history)
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history)
 
         except Exception as e:
             raise e
@@ -150,6 +154,8 @@ class FlaskAppWrapper(object):
         print(" INFO - entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
+        self.global_config = Config_Loader().config["global"]
+        self.data_path = self.global_config["DATA_PATH"]
 
         # create the chat from the wrapper
         self.chat = ChatWrapper()
@@ -158,8 +164,11 @@ class FlaskAppWrapper(object):
         CORS(self.app)
 
         # add endpoints for flask app
-        self.add_endpoint('/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
+        self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
         self.add_endpoint('/', '', self.index)
+        self.add_endpoint('/terms', 'terms', self.terms)
+        self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
+        self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
 
     def configs(self, **configs):
         for config, value in configs:
@@ -198,3 +207,62 @@ class FlaskAppWrapper(object):
 
     def index(self):
         return render_template('index.html')
+    
+    def terms(self):
+        return render_template('terms.html')
+    
+    def like(self):
+        try:
+            # Get the JSON data from the request body
+            data = request.json
+
+            # Extract the HTML content and any other data you need
+            chat_content = data.get('content')
+            discussion_id = data.get('discussion_id')
+            message_id = data.get('message_id')
+
+            feedback = {
+                "chat_content" :  chat_content,
+                "message_id"   :  message_id,
+                "feedback"     :  "like",
+            }
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_feedback = feedback)
+
+            response = {'message': 'Liked', 'content': chat_content}
+            return jsonify(response), 200
+
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        
+    def dislike(self):
+        try:
+            # Get the JSON data from the request body
+            data = request.json
+
+            # Extract the HTML content and any other data you need
+            chat_content = data.get('content')
+            discussion_id = data.get('discussion_id')
+            message_id = data.get('message_id')
+            message = data.get('message')
+            incorrect = data.get('incorrect')
+            unhelpful = data.get('unhelpful')
+            inappropriate = data.get('inappropriate')
+
+            feedback = {
+                "chat_content" :  chat_content,
+                "message_id"   :  message_id,
+                "feedback"     :  "dislike",
+                "message"      :  message,
+                "incorrect"    :  incorrect,
+                "unhelpful"    :  unhelpful,
+                "inappropriate":  inappropriate,
+            }
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_feedback = feedback)
+
+            response = {'message': 'Disliked', 'content': chat_content}
+            return jsonify(response), 200
+
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
