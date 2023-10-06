@@ -139,7 +139,7 @@ services:
 
   testapp-dev:
     build:
-      context: ..
+      context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-test
     depends_on:
       chromadb-dev:
