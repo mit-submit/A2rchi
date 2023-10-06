@@ -9,6 +9,6 @@ COPY LICENSE LICENSE
 COPY config config
 COPY A2rchi A2rchi
 RUN pip install --upgrade pip && pip install .
-RUN pip install requests Flask oauthlib pyOpenSSL Flask-Login
+RUN pip install requests Flask oauthlib pyOpenSSL Flask-Login==0.6.2 werkzeug==2.3.0
 
 CMD ["python", "-u", "A2rchi/bin/service_app.py"]
