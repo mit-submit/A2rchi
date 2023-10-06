@@ -300,13 +300,13 @@ class FlaskAppWrapper(object):
             # return render_template('login.html')
             login_buttons = ""
             if self.MIT_LOGIN:
-                login_buttons += '<a class="button" href="/login?provider=mit">MIT Login</a><br><br>'
+                login_buttons += '<a class="button" href="/api/login?provider=mit">MIT Login</a><br><br>'
 
             if self.GOOGLE_LOGIN:
-                login_buttons += '<a class="button" href="/login?provider=google">Google Login</a><br><br>'
+                login_buttons += '<a class="button" href="/api/login?provider=google">Google Login</a><br><br>'
 
             if self.ALLOW_GUEST_LOGIN:
-                login_buttons += '<a class="button" href="/guest_login">Guest Login</a><br><br>'
+                login_buttons += '<a class="button" href="/api/guest_login">Guest Login</a><br><br>'
 
             return login_buttons
         
