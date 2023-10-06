@@ -55,7 +55,7 @@ const refreshChat = async () => {
 }
 
 const getChatResponse = async (incomingChatDiv) => {
-    const API_URL = "http://t3desk019.mit.edu:7861/api/get_chat_response";
+    const API_URL = "https://t3desk019.mit.edu:7861/api/get_chat_response";
     const pElement = document.createElement("div");
 
     // Give the p element of the response an id which is equal to the message id
@@ -112,7 +112,7 @@ const likeResponse = (likeBtn) => {
     const other_image = likeBtn.nextElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_down.png";
 
-    const API_URL = "http://t3desk019.mit.edu:7861/api/like";
+    const API_URL = "https://t3desk019.mit.edu:7861/api/like";
 
      // Send an API request with the chat content and discussion ID
      fetch(API_URL, {
@@ -142,7 +142,7 @@ const dislikeResponse = (dislikeBtn) => {
     const other_image = dislikeBtn.previousElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_up.png";
 
-    const API_URL = "http://t3desk019.mit.edu:7861/api/dislike";
+    const API_URL = "https://t3desk019.mit.edu:7861/api/dislike";
 
     // Show pop-up form
     popupForm.style.display = "block";
