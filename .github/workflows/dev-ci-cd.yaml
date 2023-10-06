@@ -76,7 +76,7 @@ jobs:
           touch ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
-          touch ${{ github.workspace }}/deploy/secrets/google_client_id.txt
+          touch ${{ github.workspace }}/deploy/dev/secrets/google_client_id.txt
           echo "${{ secrets.DEV_GOOGLE_CLIENT_ID }}" >> ${{ github.workspace }}/deploy/dev/secrets/google_client_id.txt
           chmod 400 ${{ github.workspace }}/deploy/dev/secrets/google_client_id.txt
           touch ${{ github.workspace }}/deploy/dev/secrets/google_client_secret.txt
