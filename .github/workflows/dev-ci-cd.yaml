@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/logging
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
