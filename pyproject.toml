@@ -28,6 +28,7 @@ dependencies = [
     "httptools==0.6.0",
     "humanfriendly==10.0",
     "langchain==0.0.268",
+    "loguru==0.7.2",
     "lz4==4.3.2",
     "monotonic==1.6",
     "onnxruntime==1.15.1",
