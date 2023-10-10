@@ -1,5 +1,7 @@
 """Chain for chatting with a vector database."""
 from __future__ import annotations
+from loguru import logger
+from langchain.callbacks import FileCallbackHandler
 
 from A2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from A2rchi.utils.config_loader import Config_Loader
@@ -15,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # DEFINITIONS
 config = Config_Loader().config["chains"]["base"]
+data_path = Config_Loader().config["global"]["DATA_PATH"]
 
 
 def _get_chat_history(chat_history: List[Tuple[str, str]]) -> str:
@@ -88,19 +91,27 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         combine_docs_chain_kwargs = combine_docs_chain_kwargs or {}
         _prompt = QA_PROMPT
         document_variable_name = "context"
+
+        logfile = data_path+"chain_input_output.log"
+
+        logger.add(logfile, colorize=True, enqueue=True)
+        handler = FileCallbackHandler(logfile)  
+
         llm_chain = LLMChain(
             llm=llm,
             prompt=_prompt,
+            callbacks = [handler],
             verbose=verbose,
         )
         doc_chain = StuffDocumentsChain(
             llm_chain=llm_chain,
             document_variable_name=document_variable_name,
+            callbacks = [handler],
             verbose=verbose)
 
         _llm = condense_question_llm or llm
         condense_question_chain = LLMChain(
-            llm=_llm, prompt=condense_question_prompt, verbose=verbose
+            llm=_llm, prompt=condense_question_prompt, callbacks = [handler], verbose=verbose
         )
 
         return cls(
@@ -109,3 +120,4 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
             question_generator=condense_question_chain,
             **kwargs,
         )
+    
