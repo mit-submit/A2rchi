@@ -47,7 +47,7 @@ jobs:
           echo "${{ secrets.PROD_CLEO_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
           chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
           touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
-          echo "${{ secrets.PROD_CLEO_PROJECT }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
+          echo "${{ secrets.PROD_META_CLEO_PROJECT }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
           chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
           touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
           echo "${{ secrets.PROD_SENDER_SERVER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
@@ -56,7 +56,7 @@ jobs:
           echo "${{ secrets.PROD_SENDER_PORT }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
           chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
           touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
-          echo "${{ secrets.PROD_SENDER_REPLYTO }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
+          echo "${{ secrets.PROD_META_SENDER_REPLYTO }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
           chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
           touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
           echo "${{ secrets.PROD_SENDER_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
