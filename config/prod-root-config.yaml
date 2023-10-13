@@ -89,7 +89,7 @@ utils:
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
     # choose one embedding from list below
-    EMBEDDING_NAME: OpenAIEmbeddings
+    EMBEDDING_NAME: HuggingFaceEmbeddings
     # list of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:
@@ -105,7 +105,7 @@ utils:
             device: 'cpu'
           encode_kwargs: 
             normalize_embeddings: True
-        similarity_score_reference: 0.9
+        similarity_score_reference: 2
   scraper:
     reset_data: True         # delete websites and sources.yml in data folder
     verify_urls: False       # should be true when possible
