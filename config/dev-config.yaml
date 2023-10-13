@@ -33,6 +33,10 @@ chains:
       - User
       - A2rchi
       - Expert 
+    #logging within base chain
+    logging:
+      #name of .log logfile to be saved in data folder.  
+      input_output_filename: chain_input_output.log
   prompts:
     # prompt that serves to condense a history and a question into a single question
     CONDENSING_PROMPT: config/prompts/condense.prompt
@@ -71,6 +75,7 @@ chains:
           length_penalty: 1 #[optional] Exponential penalty to the length that is used with beam-based generation.
           max_padding_length: null # the max padding length to be used with tokenizer padding the prompts.
     chain_update_time: 10 # the amount of time (in seconds) which passes between when the chain updates to the newest version of the vectorstore
+ 
 utils: 
   cleo: 
     cleo_update_time: 10
