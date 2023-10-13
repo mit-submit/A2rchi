@@ -14,6 +14,7 @@ hnswlib==0.7.0
 httptools==0.6.0
 humanfriendly==10.0
 langchain==0.0.268
+loguru==0.7.2
 lz4==4.3.2
 monotonic==1.6
 onnxruntime==1.15.1
@@ -29,6 +30,7 @@ python-redmine==2.4.0
 regex==2023.6.3
 requests==2.31.0
 scipy==1.11.2
+sentence-transformers==2.2.2
 sentencepiece==0.1.99
 sympy==1.12
 tiktoken==0.4.0

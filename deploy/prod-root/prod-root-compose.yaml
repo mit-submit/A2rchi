@@ -1,0 +1,81 @@
+services:
+  chat-prod-root:
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chat
+    depends_on:
+      chromadb-prod-root:
+        condition: service_healthy
+    environment:
+      RUNTIME_ENV: prod-root
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+    secrets:
+      - openai_api_key
+      - hf_token
+    volumes:
+      - a2rchi-prod-root-data:/root/data/
+    ports:
+      - 7684:7861  # host:container
+    restart: always
+
+  data-manager-prod-root:
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
+      args:
+        BUILD_ENV: prod-root
+    depends_on:
+      chromadb-prod-root:
+        condition: service_healthy
+    environment:
+      RUNTIME_ENV: prod-root
+      FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
+      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+    secrets:
+      - flask_uploader_app_secret_key
+      - uploader_salt
+      - openai_api_key
+      - hf_token
+    ports:
+      - 5005:5001  # host:container
+    volumes:
+      - a2rchi-prod-root-data:/root/data/
+      - /home/tier3/a2rchi/root-content/:/root/data/root-content/
+    restart: always
+
+  chromadb-prod-root:
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chroma
+    environment:
+      RUNTIME_ENV: prod-root
+    ports:
+      - 8004:8000  # host:container
+    volumes:
+      - a2rchi-prod-root-data:/chroma/chroma/
+    restart: always
+    # healthcheck originates from inside container; so use container port
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+      start_interval: 5s
+
+volumes:
+  a2rchi-prod-root-data:
+    external: true
+
+secrets:
+  flask_uploader_app_secret_key:
+    file: secrets/flask_uploader_app_secret_key.txt
+  uploader_salt:
+    file: secrets/uploader_salt.txt
+  openai_api_key:
+    file: secrets/openai_api_key.txt
+  hf_token:
+    file: secrets/hf_token.txt
