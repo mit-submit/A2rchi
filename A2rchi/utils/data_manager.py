@@ -227,7 +227,7 @@ class DataManager():
                 time_hash = str(int(identifier.hexdigest(),16))[0:6]
                 while str(filehash) + str(chunk_hash) + str(time_hash) in ids:
                     print("INFO: Found conflict with hash: " + str(filehash) + str(chunk_hash) + str(time_hash) + ". Trying again")
-                    time_hash += 1
+                    time_hash = str(int(time_hash) + 1)
                 ids.append(str(filehash) + str(chunk_hash) + str(time_hash))
 
             print("Ids: ",ids)
