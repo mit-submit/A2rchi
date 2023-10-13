@@ -140,7 +140,7 @@ class Chain() :
         print(f" INFO - answer: {answer}")
         self.lock.release()
 
-        # delet echain object to release chain, vectorstore, and client for garbage collection
+        # delete chain object to release chain, vectorstore, and client for garbage collection
         del chain
 
         return answer
