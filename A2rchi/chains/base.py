@@ -13,6 +13,7 @@ from langchain.chains.llm import LLMChain
 from langchain.schema import BaseRetriever, Document
 from langchain.schema.prompt_template import BasePromptTemplate
 from typing import Any, Dict, List, Optional, Tuple
+import os 
 
 
 # DEFINITIONS
@@ -92,8 +93,8 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         _prompt = QA_PROMPT
         document_variable_name = "context"
 
-        logfile = data_path+"chain_input_output.log"
-
+        #Add logger for storing input to the QA chain, ie filled QA template 
+        logfile = os.path.join(data_path,config["logging"]["input_output_filename"])
         logger.add(logfile, colorize=True, enqueue=True)
         handler = FileCallbackHandler(logfile)  
 
