@@ -27,6 +27,7 @@ chains:
     - empty.list
     - miscellanea.list
     - root-docs.list
+    # - root-forum.list
   base:
     # roles that A2rchi knows about
     ROLES: 
@@ -105,7 +106,7 @@ utils:
             device: 'cpu'
           encode_kwargs: 
             normalize_embeddings: True
-        similarity_score_reference: 2
+        similarity_score_reference: 1.2
   scraper:
     reset_data: True         # delete websites and sources.yml in data folder
     verify_urls: False       # should be true when possible
