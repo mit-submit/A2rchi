@@ -32,7 +32,7 @@ services:
       - a2rchi-prod-meta-data:/root/data/
     restart: always
 
-  mailbox-prod:
+  mailbox-prod-meta:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-mailbox
