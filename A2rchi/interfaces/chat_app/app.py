@@ -212,6 +212,7 @@ class FlaskAppWrapper(object):
         return render_template('terms.html')
     
     def like(self):
+        self.chat.lock.acquire()
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -231,11 +232,16 @@ class FlaskAppWrapper(object):
             response = {'message': 'Liked', 'content': chat_content}
             return jsonify(response), 200
 
-
         except Exception as e:
             return jsonify({'error': str(e)}), 500
-        
+
+        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
+        # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()
+
     def dislike(self):
+        self.chat.lock.acquire()
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -263,6 +269,10 @@ class FlaskAppWrapper(object):
             response = {'message': 'Disliked', 'content': chat_content}
             return jsonify(response), 200
 
-
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
+        # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()

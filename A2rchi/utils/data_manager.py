@@ -225,6 +225,9 @@ class DataManager():
                 time_identifier = hashlib.md5()
                 time_identifier.update(str(time.time()).encode('utf-8'))
                 time_hash = str(int(identifier.hexdigest(),16))[0:6]
+                while str(filehash) + str(chunk_hash) + str(time_hash) in ids:
+                    print("INFO: Found conflict with hash: " + str(filehash) + str(chunk_hash) + str(time_hash) + ". Trying again")
+                    time_hash = str(int(time_hash) + 1)
                 ids.append(str(filehash) + str(chunk_hash) + str(time_hash))
 
             print("Ids: ",ids)
