@@ -73,7 +73,7 @@ class ChatWrapper:
         # update or add discussion
         discussion_dict = data.get(str(discussion_id), {})
 
-        discussion_dict["meta"] = {"time_last_used", time.time()}
+        discussion_dict["meta"] = {"time_last_used": time.time()}
 
         if discussion_contents is not None:
             print(" INFO - found contents.")
