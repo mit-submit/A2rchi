@@ -11,6 +11,7 @@ import numpy as np
 import json
 import os
 import yaml
+import time
 
 # DEFINITIONS
 QUERY_LIMIT = 1000 # max number of queries 
@@ -72,9 +73,15 @@ class ChatWrapper:
         # update or add discussion
         discussion_dict = data.get(str(discussion_id), {})
 
+        discussion_dict["meta"] = discussion_dict.get("meta", {})
+        if str(discussion_id) not in data.keys(): #first time in discusssion
+            discussion_dict["meta"]["time_first_used"] = time.time()
+        discussion_dict["meta"]["time_last_used"] = time.time()
+
         if discussion_contents is not None:
             print(" INFO - found contents.")
             discussion_dict["contents"] = discussion_contents
+            discussion_dict["meta"]["times_chain_was_called"] = discussion_dict["meta"]["times_chain_was_called"] + [time.time()] if ("times_chain_was_called" in discussion_dict["meta"].keys()) else [time.time()]
         if discussion_feedback is not None:
             print(" INFO - found feedback.")
             discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if ("feedback" in discussion_dict.keys() and isinstance(discussion_dict["feedback"], List)) else [discussion_feedback]
@@ -139,7 +146,7 @@ class ChatWrapper:
             else:
                 output = "<p>" + result["answer"] + "</p>"
 
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history)
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
 
         except Exception as e:
             raise e
