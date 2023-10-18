@@ -25,6 +25,7 @@ interfaces:
 chains:
   input_lists:
     - empty.list
+    - a2rchi_source.list
   base:
     # roles that A2rchi knows about
     ROLES: 
