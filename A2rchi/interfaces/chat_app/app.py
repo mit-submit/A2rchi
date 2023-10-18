@@ -74,7 +74,7 @@ class ChatWrapper:
         discussion_dict = data.get(str(discussion_id), {})
 
         discussion_dict["meta"] = discussion_dict.get("meta", {})
-        if str(discussion_id) not in discussion_dict.keys(): #first time in discusssion
+        if str(discussion_id) not in data.keys(): #first time in discusssion
             discussion_dict["meta"]["time_first_used"] = time.time()
         discussion_dict["meta"]["time_last_used"] = time.time()
 
