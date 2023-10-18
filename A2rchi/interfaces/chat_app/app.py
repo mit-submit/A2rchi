@@ -142,7 +142,7 @@ class ChatWrapper:
             else:
                 output = "<p>" + result["answer"] + "</p>"
 
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history)
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
 
         except Exception as e:
             raise e
