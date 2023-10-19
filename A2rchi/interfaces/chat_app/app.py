@@ -119,7 +119,7 @@ class ChatWrapper:
         for language, code_block in code_blocks:
             language_out = language if (language in allowed_languages) else "default"
             # Add syntax highlighting CSS classes based on the specified language
-            code_block_highlighted = highlight(code_block, RENDERING_LEXER_MAPPING[language_out](), HtmlFormatter())
+            code_block_highlighted = highlight(code_block, RENDERING_LEXER_MAPPING[language_out](stripall=True), HtmlFormatter())
             code_block_boxed = f"""
                 <div class="code-box">
 
