@@ -329,7 +329,6 @@ td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5
 span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; } */
 .highlight .hll { background-color: #ffffcc }
 .highlight { 
-  background: #f8f8f8; 
   font-family: Consolas,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier New;
 }
 .highlight .c { color: #3D7B7B; font-style: italic } /* Comment */
