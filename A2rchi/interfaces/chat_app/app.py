@@ -116,6 +116,12 @@ class ChatWrapper:
         # Find all code blocks in the text
         code_blocks = re.findall(code_pattern, text, re.DOTALL)
 
+
+
+
+
+
+
         # Iterate through code blocks and format them
         for language, code_block in code_blocks:
             language_out = language if (language in allowed_languages) else "default"
