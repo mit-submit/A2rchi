@@ -134,12 +134,6 @@ span.material-symbols-rounded {
   user-select: none;
   cursor: pointer;
 }
-.chat .chat-content span {
-  cursor: pointer;
-  font-size: 1.3rem;
-  color: var(--icon-color);
-  visibility: hidden;
-}
 .chat:hover .chat-content:not(:has(.typing-animation), :has(.error)) span {
   visibility: visible;
 }
@@ -334,7 +328,10 @@ span.linenos { color: inherit; background-color: transparent; padding-left: 5px;
 td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
 span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; } */
 .highlight .hll { background-color: #ffffcc }
-.highlight { background: #f8f8f8; }
+.highlight { 
+  background: #f8f8f8; 
+  font-family: Consolas,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier New;
+}
 .highlight .c { color: #3D7B7B; font-style: italic } /* Comment */
 .highlight .err { border: 1px solid #FF0000 } /* Error */
 .highlight .k { color: #008000; font-weight: bold } /* Keyword */
@@ -408,7 +405,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 	background: #e8e8e8;
     margin-bottom: 1rem;
     border-radius: .375rem;
-    
+    color: black;
 }
 .code-box-header {
 	background: #c8c8c8;
@@ -439,6 +436,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
     display: flex;
     align-items: center;
     margin-left: auto;
+    color: rgb(51, 51, 51);
 }
 
 .hightlight .pre {
