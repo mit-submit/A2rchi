@@ -222,6 +222,7 @@ span.material-symbols-rounded {
   overflow-y: auto;
   background: var(--incoming-chat-bg);
   outline: 1px solid var(--incoming-chat-border);
+  font-family:  "Poppins", sans-serif;
 }
 .typing-textarea textarea::placeholder {
   color: var(--placeholder-color);
@@ -423,6 +424,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 .code-box-body {
     margin-bottom: 1rem;
     padding-bottom: .5rem;
+    margin-top: -1rem;
 	padding-top: .5rem;
     padding-left: 1rem;
 	padding-right: 1rem;
