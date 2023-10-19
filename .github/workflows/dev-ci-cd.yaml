@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - quick/move_dev_to_submit06
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
