@@ -1,5 +1,6 @@
 services:
   cleo-prod-meta:
+    image: cleo-prod-meta:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-cleo
@@ -30,9 +31,13 @@ services:
       - hf_token
     volumes:
       - a2rchi-prod-meta-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   mailbox-prod:
+    image: mailbox-prod-meta:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-mailbox
@@ -65,6 +70,9 @@ services:
       - sender_pw
       - openai_api_key
       - hf_token
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
 volumes:
