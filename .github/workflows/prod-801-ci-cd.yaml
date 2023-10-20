@@ -47,7 +47,7 @@ jobs:
       - name: Create Env File
         run: |
           touch ${{ github.workspace }}/deploy/prod-801/.env
-          export tag="${GITHUB_REF#refs/heads/}
+          export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-801/.env
 
