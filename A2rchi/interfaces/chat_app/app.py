@@ -101,6 +101,7 @@ class ChatWrapper:
         Execute the chat functionality.
         """
         self.lock.acquire()
+        print("INFO - acquired lock file")
         try:
             # convert the history to native A2rchi form (because javascript does not have tuples)
             history = self.convert_to_chain_history(history)
@@ -152,6 +153,7 @@ class ChatWrapper:
             raise e
         finally:
             self.lock.release()
+            print("INFO - released lock file")
         return output, discussion_id
 
 
@@ -220,6 +222,7 @@ class FlaskAppWrapper(object):
     
     def like(self):
         self.chat.lock.acquire()
+        print("INFO - acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -246,9 +249,11 @@ class FlaskAppWrapper(object):
         # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
+            print("INFO - released lock file")
 
     def dislike(self):
         self.chat.lock.acquire()
+        print("INFO - acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -283,3 +288,4 @@ class FlaskAppWrapper(object):
         # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
+            print("INFO - released lock file")
