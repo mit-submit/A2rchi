@@ -101,7 +101,7 @@ class ChatWrapper:
         Execute the chat functionality.
         """
         self.lock.acquire()
-        print("INFO - aquired lock file")
+        print("INFO - acquired lock file")
         try:
             # convert the history to native A2rchi form (because javascript does not have tuples)
             history = self.convert_to_chain_history(history)
@@ -222,7 +222,7 @@ class FlaskAppWrapper(object):
     
     def like(self):
         self.chat.lock.acquire()
-        print("INFO - aquired lock file")
+        print("INFO - acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -253,6 +253,7 @@ class FlaskAppWrapper(object):
 
     def dislike(self):
         self.chat.lock.acquire()
+        print("INFO - acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
