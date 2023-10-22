@@ -9,6 +9,8 @@ services:
     depends_on:
       chromadb-dev:
         condition: service_healthy
+      postgres-dev:
+        condition: service_healthy
     environment:
       RUNTIME_ENV: dev
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -22,6 +24,7 @@ services:
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
     secrets:
       - cleo_url
       - cleo_user
@@ -34,6 +37,7 @@ services:
       - sender_pw
       - openai_api_key
       - hf_token
+      - pg_password
     volumes:
       - a2rchi-dev-data:/root/data/
     logging:
@@ -51,13 +55,17 @@ services:
     depends_on:
       chromadb-dev:
         condition: service_healthy
+      postgres-dev:
+        condition: service_healthy
     environment:
       RUNTIME_ENV: dev
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
     secrets:
       - openai_api_key
       - hf_token
+      - pg_password
     volumes:
       - a2rchi-dev-data:/root/data/
     logging:
@@ -76,6 +84,8 @@ services:
         TAG: ${TAG}
     depends_on:
       chromadb-dev:
+        condition: service_healthy
+      postgres-dev:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -121,6 +131,8 @@ services:
     depends_on:
       chromadb-dev:
         condition: service_healthy
+      postgres-dev:
+        condition: service_healthy
     environment:
       RUNTIME_ENV: dev
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
@@ -165,6 +177,31 @@ services:
       start_period: 10s
       start_interval: 5s
 
+  postgres-dev:
+    image: postgres:16
+    environment:
+      RUNTIME_ENV: dev
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_USER: a2rchi
+      POSTGRES_DB: a2rchi-db
+    secrets:
+      - pg_password
+    ports:
+      - 5432:5432  # host:container
+    volumes:
+      - ./dev-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - a2rchi-dev-data:/var/lib/postgresql/data
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    # healthcheck originates from inside container; so use container port
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   a2rchi-dev-data:
     external: true
@@ -200,3 +237,5 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
+  pg_password:
+    file: secrets/pg_password.txt
