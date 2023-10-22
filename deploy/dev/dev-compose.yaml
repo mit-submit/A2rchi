@@ -4,6 +4,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-cleo
+      args:
+        TAG: ${TAG}
     depends_on:
       chromadb-dev:
         condition: service_healthy
@@ -44,6 +46,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chat
+      args:
+        TAG: ${TAG}
     depends_on:
       chromadb-dev:
         condition: service_healthy
@@ -68,6 +72,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-mailbox
+      args:
+        TAG: ${TAG}
     depends_on:
       chromadb-dev:
         condition: service_healthy
@@ -105,11 +111,13 @@ services:
         max-size: 10m
     restart: always
 
-  data-manager-dev:
-    image: data-manager-dev:${TAG}
+  uploader-dev:
+    image: uploader-dev:${TAG}
     build:
       context: ../..
-      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
+      dockerfile: deploy/dockerfiles/Dockerfile-uploader
+      args:
+        TAG: ${TAG}
     depends_on:
       chromadb-dev:
         condition: service_healthy

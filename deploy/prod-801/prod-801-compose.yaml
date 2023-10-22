@@ -4,6 +4,9 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chat
+      args:
+        BUILD_ENV: prod-801
+        TAG: ${TAG}
     depends_on:
       chromadb-prod-801:
         condition: service_healthy
@@ -23,13 +26,13 @@ services:
       - 7683:7861  # host:container
     restart: always
 
-  data-manager-prod-801:
-    image: data-manager-prod-801:${TAG}
+  uploader-prod-801:
+    image: uploader-prod-801:${TAG}
     build:
       context: ../..
-      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
+      dockerfile: deploy/dockerfiles/Dockerfile-uploader
       args:
-        BUILD_ENV: prod-801
+        TAG: ${TAG}
     depends_on:
       chromadb-prod-801:
         condition: service_healthy

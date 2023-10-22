@@ -4,6 +4,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chat
+      args:
+        TAG: ${TAG}
     depends_on:
       chromadb-prod-root:
         condition: service_healthy
@@ -23,13 +25,13 @@ services:
         max-size: 10m
     restart: always
 
-  data-manager-prod-root:
-    image: data-manager-prod-root:${TAG}
+  uploader-prod-root:
+    image: uploader-prod-root:${TAG}
     build:
       context: ../..
-      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
+      dockerfile: deploy/dockerfiles/Dockerfile-uploader
       args:
-        BUILD_ENV: prod-root
+        TAG: ${TAG}
     depends_on:
       chromadb-prod-root:
         condition: service_healthy
