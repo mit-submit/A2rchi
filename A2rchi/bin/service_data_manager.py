@@ -31,33 +31,33 @@ uploader_config = Config_Loader().config["interfaces"]["uploader_app"]
 run_dynamically = data_manager_config["use_HTTP_chromadb_client"]
 print(f" Dynamic: {run_dynamically}")
 
-# scrape data onto the filesystem
-scraper = Scraper()
-scraper.hard_scrape(verbose=True)
+# # scrape data onto the filesystem
+# scraper = Scraper()
+# scraper.hard_scrape(verbose=True)
 
-def run_data_manager():
-    """
-    function which runs the data manager
-    """
-    data_manager = DataManager()
-    stop = False
-    while not stop:
+# def run_data_manager():
+#     """
+#     function which runs the data manager
+#     """
+#     data_manager = DataManager()
+#     stop = False
+#     while not stop:
 
-        # check to see if this function should only be run once or should be run indefinitely
-        if not run_dynamically:
-            stop = True 
+#         # check to see if this function should only be run once or should be run indefinitely
+#         if not run_dynamically:
+#             stop = True
 
-        # do updating of vectorstore
-        print("Starting update vectorstore")
-        data_manager.update_vectorstore()
+#         # do updating of vectorstore
+#         print("Starting update vectorstore")
+#         data_manager.update_vectorstore()
 
-        print(f"Completed vectorstore update (sleep {data_manager_config['vectordb_update_time']} seconds)\n")
-        time.sleep(int(data_manager_config["vectordb_update_time"]))
+#         print(f"Completed vectorstore update (sleep {data_manager_config['vectordb_update_time']} seconds)\n")
+#         time.sleep(int(data_manager_config["vectordb_update_time"]))
 
-    return
+#     return
 
-data_manager_thread = Thread(target=run_data_manager)
-data_manager_thread.start()
+# data_manager_thread = Thread(target=run_data_manager)
+# data_manager_thread.start()
 
 if run_dynamically:
     app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))
