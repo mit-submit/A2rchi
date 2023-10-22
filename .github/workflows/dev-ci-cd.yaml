@@ -103,7 +103,7 @@ jobs:
         run: |
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
-          sed -i "s/BASE_TAG/${tag}" ${{ github.workspace }}/deploy/dev/dev-install.sh
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/dev/dev-install.sh
           ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-install.sh
 
       # clean up secret files
