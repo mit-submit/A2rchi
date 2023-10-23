@@ -187,7 +187,7 @@ services:
     secrets:
       - pg_password
     ports:
-      - 5432:5433  # host:container
+      - 5433:5432  # host:container
     volumes:
       - ./dev-init.sql:/docker-entrypoint-initdb.d/init.sql
       - a2rchi-dev-pg-data:/var/lib/postgresql/data
