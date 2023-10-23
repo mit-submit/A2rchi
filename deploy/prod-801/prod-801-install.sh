@@ -8,7 +8,7 @@ fi
 
 # build base image; try to reuse previously built image
 cd A2rchi-prod-801/deploy/prod-801/
-docker build -f dockerfiles/Dockerfile-base -t a2rchi-base:BASE_TAG ../..
+docker build -f ../dockerfiles/Dockerfile-base -t a2rchi-base:BASE_TAG ../..
 
 # start services
 echo "Starting docker compose"
