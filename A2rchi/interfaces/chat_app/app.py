@@ -310,10 +310,10 @@ class FlaskAppWrapper(object):
             self.chat.lock.release()
             print("INFO - released lock file")
 
-            if self.cursor is not None:
-                self.cursor.close()
-            if self.conn is not None:
-                self.conn.close()
+            if self.chat.cursor is not None:
+                self.chat.cursor.close()
+            if self.chat.conn is not None:
+                self.chat.conn.close()
 
     def dislike(self):
         self.chat.lock.acquire()
@@ -355,7 +355,7 @@ class FlaskAppWrapper(object):
             self.chat.lock.release()
             print("INFO - released lock file")
 
-            if self.cursor is not None:
-                self.cursor.close()
-            if self.conn is not None:
-                self.conn.close()
+            if self.chat.cursor is not None:
+                self.chat.cursor.close()
+            if self.chat.conn is not None:
+                self.chat.conn.close()
