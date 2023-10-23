@@ -190,7 +190,7 @@ services:
       - 5432:5432  # host:container
     volumes:
       - ./dev-init.sql:/docker-entrypoint-initdb.d/init.sql
-      - a2rchi-dev-data:/var/lib/postgresql/data
+      - a2rchi-dev-pg-data:/var/lib/postgresql/data
     logging:
       options:
         max-size: 10m
@@ -204,6 +204,8 @@ services:
 
 volumes:
   a2rchi-dev-data:
+    external: true
+  a2rchi-dev-pg-data:
     external: true
 
 secrets:
