@@ -1,7 +1,10 @@
 from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
 from A2rchi.utils.data_manager import DataManager
+from A2rchi.utils.env import read_secret
+from A2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK
 
+from datetime import datetime
 from flask import request, jsonify, render_template
 from flask_cors import CORS
 from threading import Lock
@@ -9,13 +12,12 @@ from typing import Optional, List, Tuple
 
 import numpy as np
 
-import json
 import os
+import psycopg2
 import yaml
-import time
 
 # DEFINITIONS
-QUERY_LIMIT = 1000 # max number of queries 
+QUERY_LIMIT = 1000 # max number of queries
 
 
 class ChatWrapper:
@@ -26,12 +28,22 @@ class ChatWrapper:
         # load configs
         self.config = Config_Loader().config
         self.global_config = self.config["global"]
+        self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # initialize data manager
         self.data_manager = DataManager()
         self.data_manager.update_vectorstore()
 
+        # store postgres connection info
+        self.pg_config = {
+            "password": read_secret("POSTGRES_PASSWORD"),
+            **self.utils_config["postgres"],
+        }
+        self.conn = None
+        self.cursor = None
+
+        # initialize lock and chain
         self.lock = Lock()
         self.chain = Chain()
         self.number_of_queries = 0
@@ -61,48 +73,64 @@ class ChatWrapper:
         return [tuple(entry) for entry in history]
 
 
-    # TODO: make this an insert into DB table
-    @staticmethod
-    def update_or_add_discussion(data_path, json_file, discussion_id, discussion_contents = None, discussion_feedback = None):
-        print(" INFO - entered update_or_add_discussion.")
+    def insert_feedback(self, conversation_id, feedback):
+        """
+        """
+        # construct insert_tup (cid, mid, feedback_ts, feedback, message, incorrect, unhelpful, inappropriate)
+        insert_tup = (
+            conversation_id,
+            feedback['message_id'],
+            feedback['feedback_ts'],
+            feedback['feedback'],
+            feedback['message'],
+            feedback['incorrect'],
+            feedback['unhelpful'],
+            feedback['inappropriate'],
+        )
 
-        # read the existing JSON data from the file
-        data = {}
-        try:
-            with open(os.path.join(data_path, json_file), 'r') as f:
-                data = json.load(f)
-            print(" INFO - json_file found.")
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_INSERT_FEEDBACK, insert_tup)
+        self.conn.commit()
 
-        except FileNotFoundError:
-            print(" ERROR - json_file not found. Creating a new one")
-
-        # update or add discussion
-        discussion_dict = data.get(str(discussion_id), {})
-
-        discussion_dict["meta"] = discussion_dict.get("meta", {})
-        if str(discussion_id) not in data.keys(): #first time in discusssion
-            discussion_dict["meta"]["time_first_used"] = time.time()
-        discussion_dict["meta"]["time_last_used"] = time.time()
-
-        if discussion_contents is not None:
-            print(" INFO - found contents.")
-            discussion_dict["contents"] = discussion_contents
-            discussion_dict["meta"]["times_chain_was_called"] = discussion_dict["meta"]["times_chain_was_called"] + [time.time()] if ("times_chain_was_called" in discussion_dict["meta"].keys()) else [time.time()]
-        if discussion_feedback is not None:
-            print(" INFO - found feedback.")
-            discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if ("feedback" in discussion_dict.keys() and isinstance(discussion_dict["feedback"], List)) else [discussion_feedback]
-        
-        data[str(discussion_id)] = discussion_dict
-
-        # create data path if it doesn't exist
-        os.makedirs(data_path, exist_ok=True)
-
-        # write the updated JSON data back to the file
-        with open(os.path.join(data_path, json_file), 'w') as f:
-            json.dump(data, f)
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
 
 
-    def __call__(self, history: Optional[List[Tuple[str, str]]], discussion_id: Optional[int]):
+    # TODO: modify discussion_id --> conversation_id everywhere
+    def insert_conversation(self, conversation_id, user_message, a2rchi_message) -> List[int]:
+        print(" INFO - entered insert_conversation.")
+
+        # parse user message / a2rchi message if not None
+        user_sender, user_content, user_msg_ts = user_message
+        a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
+
+        # construct insert_tups
+        insert_tups = [
+            # (conversation_id, sender, content, ts)
+            (conversation_id, user_sender, user_content, user_msg_ts),
+            (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts),
+        ]
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONVO, insert_tups)
+        self.conn.commit()
+        message_ids = list(map(lambda tup: tup[0], self.cursor.fetchall()))
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+        return message_ids
+
+
+    def __call__(self, history: Optional[List[Tuple[str, str]]], discussion_id: Optional[int], msg_ts: Optional[datetime]):
         """
         Execute the chat functionality.
         """
@@ -115,13 +143,15 @@ class ChatWrapper:
             # convert the history to native A2rchi form (because javascript does not have tuples)
             history = self.convert_to_chain_history(history)
 
+            # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
             discussion_id = discussion_id or np.random.randint(100000, 999999)
 
+            # TODO: we likely want to change this logic to queries/day as we may actually hit 1000 queries in a few days
             # run chain to get result
             if self.number_of_queries < QUERY_LIMIT:
                 result = self.chain(history)
-            else: 
+            else:
                 # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
                 output = "Sorry, our service is currently down due to exceptional demand. Please come again later."
                 return output, discussion_id
@@ -156,14 +186,24 @@ class ChatWrapper:
             else:
                 output = "<p>" + result["answer"] + "</p>"
 
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
+            # write user message and A2rchi response to database
+            user_message = (history[-1][0], history[-1][1], msg_ts)
+            a2rchi_message = ("A2rchi", output, datetime.now())
+
+            message_ids = self.insert_conversation(discussion_id, user_message, a2rchi_message)
 
         except Exception as e:
             raise e
         finally:
             self.lock.release()
             print("INFO - released lock file")
-        return output, discussion_id
+
+            if self.cursor is not None:
+                self.cursor.close()
+            if self.conn is not None:
+                self.conn.close()
+
+        return output, discussion_id, message_ids
 
 
 class FlaskAppWrapper(object):
@@ -214,14 +254,18 @@ class FlaskAppWrapper(object):
             A json with a response (html formatted plain text string) and a
             discussion ID (either None or an integer)
         """
-        history = request.json.get('conversation')        # get user input from the request
-        discussion_id = request.json.get('discussion_id') # get discussion_id from the request
+        # compute timestamp at which message was received by server
+        msg_ts = datetime.now()
 
-        # query the chat and return the results. 
+        # get user input and discussion_id from the request
+        history = request.json.get('conversation')
+        discussion_id = request.json.get('discussion_id')
+
+        # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
-        response, discussion_id = self.chat(history, discussion_id)
+        response, discussion_id, message_ids = self.chat(history, discussion_id, msg_ts)
 
-        return jsonify({'response': response, 'discussion_id': discussion_id})
+        return jsonify({'response': response, 'discussion_id': discussion_id, 'a2rchi_msg_id': message_ids[1]})
 
     def index(self):
         return render_template('index.html')
@@ -242,11 +286,16 @@ class FlaskAppWrapper(object):
             message_id = data.get('message_id')
 
             feedback = {
-                "chat_content" :  chat_content,
-                "message_id"   :  message_id,
-                "feedback"     :  "like",
+                "chat_content" : chat_content,
+                "message_id"   : message_id,
+                "feedback"     : "like",
+                "feedback_ts"  : datetime.now(),
+                "message"      : None,
+                "incorrect"    : None,
+                "unhelpful"    : None,
+                "inappropriate": None,
             }
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_feedback = feedback)
+            self.chat.insert_feedback(discussion_id, feedback)
 
             response = {'message': 'Liked', 'content': chat_content}
             return jsonify(response), 200
@@ -259,6 +308,11 @@ class FlaskAppWrapper(object):
         finally:
             self.chat.lock.release()
             print("INFO - released lock file")
+
+            if self.cursor is not None:
+                self.cursor.close()
+            if self.conn is not None:
+                self.conn.close()
 
     def dislike(self):
         self.chat.lock.acquire()
@@ -277,15 +331,16 @@ class FlaskAppWrapper(object):
             inappropriate = data.get('inappropriate')
 
             feedback = {
-                "chat_content" :  chat_content,
-                "message_id"   :  message_id,
-                "feedback"     :  "dislike",
-                "message"      :  message,
-                "incorrect"    :  incorrect,
-                "unhelpful"    :  unhelpful,
-                "inappropriate":  inappropriate,
+                "chat_content" : chat_content,
+                "message_id"   : message_id,
+                "feedback"     : "dislike",
+                "feedback_ts"  : datetime.now(),
+                "message"      : message,
+                "incorrect"    : incorrect,
+                "unhelpful"    : unhelpful,
+                "inappropriate": inappropriate,
             }
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_feedback = feedback)
+            self.chat.insert_feedback(discussion_id, feedback)
 
             response = {'message': 'Disliked', 'content': chat_content}
             return jsonify(response), 200
@@ -298,3 +353,8 @@ class FlaskAppWrapper(object):
         finally:
             self.chat.lock.release()
             print("INFO - released lock file")
+
+            if self.cursor is not None:
+                self.cursor.close()
+            if self.conn is not None:
+                self.conn.close()
