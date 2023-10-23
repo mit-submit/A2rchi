@@ -187,7 +187,7 @@ services:
     secrets:
       - pg_password
     ports:
-      - 5432:5432  # host:container
+      - 5432:5433  # host:container
     volumes:
       - ./dev-init.sql:/docker-entrypoint-initdb.d/init.sql
       - a2rchi-dev-pg-data:/var/lib/postgresql/data
@@ -195,9 +195,8 @@ services:
       options:
         max-size: 10m
     restart: always
-    # healthcheck originates from inside container; so use container port
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
+      test: ["CMD-SHELL", "pg_isready -U a2rchi"]
       interval: 10s
       timeout: 5s
       retries: 5

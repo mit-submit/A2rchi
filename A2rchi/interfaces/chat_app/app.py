@@ -61,6 +61,7 @@ class ChatWrapper:
         return [tuple(entry) for entry in history]
 
 
+    # TODO: make this an insert into DB table
     @staticmethod
     def update_or_add_discussion(data_path, json_file, discussion_id, discussion_contents = None, discussion_feedback = None):
         print(" INFO - entered update_or_add_discussion.")
