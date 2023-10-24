@@ -144,10 +144,6 @@ const dislikeResponse = (dislikeBtn) => {
     function handleSubmitToAPI() {
         const additionalThoughts = additionalThoughtsInput.value;
 
-        // TODO: console log chatContent to determine if this is being called for each incomingChat w/button
-        // TODO: console log message_id to determine if messages from previous session are failing b/c their message_ids are strings?
-        console.log(chatContent)
-        console.log(dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id)
         fetch(API_URL, {
             method: "POST", // You may need to adjust the HTTP method
             headers: {
@@ -170,8 +166,8 @@ const dislikeResponse = (dislikeBtn) => {
     }
 
     //wait for user to submit response or close the additional feedback window
-    submitButton.addEventListener("click", handleSubmitToAPI);
-    closeButton.addEventListener("click", handleSubmitToAPI);
+    submitButton.addEventListener("click", handleSubmitToAPI, {once: true});
+    closeButton.addEventListener("click", handleSubmitToAPI, {once: true});
 }
 
 const closeFeedback = (closeBtn) => {

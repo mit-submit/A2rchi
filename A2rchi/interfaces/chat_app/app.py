@@ -270,10 +270,10 @@ class FlaskAppWrapper(object):
 
     def index(self):
         return render_template('index.html')
-    
+
     def terms(self):
         return render_template('terms.html')
-    
+
     def like(self):
         self.chat.lock.acquire()
         print("INFO - acquired lock file")
