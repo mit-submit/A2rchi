@@ -302,6 +302,7 @@ class FlaskAppWrapper(object):
             return jsonify(response), 200
 
         except Exception as e:
+            print(f"ERROR: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
         # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
@@ -347,6 +348,7 @@ class FlaskAppWrapper(object):
             return jsonify(response), 200
 
         except Exception as e:
+            print(f"ERROR: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
         # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
