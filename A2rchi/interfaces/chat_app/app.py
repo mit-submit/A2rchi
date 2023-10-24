@@ -74,16 +74,15 @@ class ChatWrapper:
         return [tuple(entry) for entry in history]
 
 
-    def insert_feedback(self, conversation_id, feedback):
+    def insert_feedback(self, feedback):
         """
         """
-        # construct insert_tup (cid, mid, feedback_ts, feedback, message, incorrect, unhelpful, inappropriate)
+        # construct insert_tup (mid, feedback_ts, feedback, feedback_msg, incorrect, unhelpful, inappropriate)
         insert_tup = (
-            conversation_id,
             feedback['message_id'],
             feedback['feedback_ts'],
             feedback['feedback'],
-            feedback['message'],
+            feedback['feedback_msg'],
             feedback['incorrect'],
             feedback['unhelpful'],
             feedback['inappropriate'],
@@ -282,23 +281,20 @@ class FlaskAppWrapper(object):
             data = request.json
 
             # Extract the HTML content and any other data you need
-            chat_content = data.get('content')
-            discussion_id = data.get('discussion_id')
             message_id = data.get('message_id')
 
             feedback = {
-                "chat_content" : chat_content,
                 "message_id"   : message_id,
                 "feedback"     : "like",
                 "feedback_ts"  : datetime.now(),
-                "message"      : None,
+                "feedback_msg" : None,
                 "incorrect"    : None,
                 "unhelpful"    : None,
                 "inappropriate": None,
             }
-            self.chat.insert_feedback(discussion_id, feedback)
+            self.chat.insert_feedback(feedback)
 
-            response = {'message': 'Liked', 'content': chat_content}
+            response = {'message': 'Liked'}
             return jsonify(response), 200
 
         except Exception as e:
@@ -324,27 +320,24 @@ class FlaskAppWrapper(object):
             data = request.json
 
             # Extract the HTML content and any other data you need
-            chat_content = data.get('content')
-            discussion_id = data.get('discussion_id')
             message_id = data.get('message_id')
-            message = data.get('message')
+            feedback_msg = data.get('feedback_msg')
             incorrect = data.get('incorrect')
             unhelpful = data.get('unhelpful')
             inappropriate = data.get('inappropriate')
 
             feedback = {
-                "chat_content" : chat_content,
                 "message_id"   : message_id,
                 "feedback"     : "dislike",
                 "feedback_ts"  : datetime.now(),
-                "message"      : message,
+                "feedback_msg" : feedback_msg,
                 "incorrect"    : incorrect,
                 "unhelpful"    : unhelpful,
                 "inappropriate": inappropriate,
             }
-            self.chat.insert_feedback(discussion_id, feedback)
+            self.chat.insert_feedback(feedback)
 
-            response = {'message': 'Disliked', 'content': chat_content}
+            response = {'message': 'Disliked'}
             return jsonify(response), 200
 
         except Exception as e:

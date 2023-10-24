@@ -95,8 +95,6 @@ const copyResponse = (copyBtn) => {
 const likeResponse = (likeBtn) => {
     num_responses_since_last_rating = 0;
 
-    const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
-
     // fill the image
     const image = likeBtn.querySelector("img");
     image.src = "/static/images/thumbs_up_filled.png"
@@ -114,9 +112,7 @@ const likeResponse = (likeBtn) => {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        body: JSON.stringify({ 
-            content: chatContent,
-            discussion_id: discussion_id,
+        body: JSON.stringify({
             message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
         }),
     })
@@ -124,8 +120,6 @@ const likeResponse = (likeBtn) => {
 
 const dislikeResponse = (dislikeBtn) => {
     num_responses_since_last_rating = 0;
-
-    const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
     // fill the image
     const image = dislikeBtn.querySelector("img");
@@ -151,10 +145,8 @@ const dislikeResponse = (dislikeBtn) => {
                 "Access-Control-Allow-Origin": "*",
             },
             body: JSON.stringify({ 
-                content: chatContent,
-                discussion_id: discussion_id,
                 message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
-                message: additionalThoughts,
+                feedback_msg: additionalThoughts,
                 incorrect: correct_checkbox.checked,
                 unhelpful: helpful_checkbox.checked,
                 inappropriate: appropriate_checkbox.checked,
@@ -171,7 +163,7 @@ const dislikeResponse = (dislikeBtn) => {
 }
 
 const closeFeedback = (closeBtn) => {
-    //hide pop up formi
+    //hide pop up form
     popupForm.style.display = "none";
 }
 

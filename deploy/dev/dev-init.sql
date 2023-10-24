@@ -4,17 +4,16 @@ CREATE TABLE IF NOT EXISTS conversations (
     sender TEXT NOT NULL, -- eventually put foreign key constraint on users table
     content TEXT NOT NULL,
     ts TIMESTAMP NOT NULL,
-    PRIMARY KEY (conversation_id, message_id)
+    PRIMARY KEY message_id
 );
 CREATE TABLE IF NOT EXISTS feedback (
-    cid INTEGER NOT NULL,
     mid INTEGER NOT NULL,
     feedback_ts TIMESTAMP NOT NULL,
     feedback TEXT NOT NULL,
-    message TEXT,
+    feedback_msg TEXT,
     incorrect BOOLEAN,
     unhelpful BOOLEAN,
     inappropriate BOOLEAN,
-    PRIMARY KEY (cid, mid, feedback_ts),
-    FOREIGN KEY (cid, mid) REFERENCES conversations(conversation_id, message_id) 
+    PRIMARY KEY (mid, feedback_ts),
+    FOREIGN KEY mid REFERENCES conversations(message_id)
 );
