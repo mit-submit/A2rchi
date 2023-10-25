@@ -14,7 +14,7 @@ import yaml
 import time
 
 # DEFINITIONS
-QUERY_LIMIT = 1000 # max number of queries 
+QUERY_LIMIT = 10000 # max number of queries 
 
 
 class ChatWrapper:
@@ -122,6 +122,12 @@ class ChatWrapper:
             # get similarity score to see how close the input is to the source
             # - low score means very close (it's a distance between embedding vectors approximated
             #   by an approximate k-nearest neighbors algorithm called HNSW)
+
+            # TODO: temporary hotfix to prevent error on line 131; need to do RCA to understand why history can be []
+            if len(history) == 0:
+                print("Returning abbreviated message b/c len(history) == 0")
+                return "<p>Please provide a question for A2rchi to respond to.</p>", discussion_id
+
             inp = history[-1][1]
             score = self.chain.similarity_search(inp)
 
