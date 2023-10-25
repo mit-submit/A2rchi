@@ -292,6 +292,7 @@ class FlaskAppWrapper(object):
         # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
+            print("INFO - released lock file")
 
 class AnswerRenderer(mt.HTMLRenderer):
     RENDERING_LEXER_MAPPING = {
