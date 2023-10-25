@@ -9,7 +9,7 @@ fi
 # start services
 echo "Starting docker compose"
 cd A2rchi-prod-root/deploy/prod-root/
-docker compose -f prod-root-compose.yaml up -d --build --force-recreate --always-recreate-deps
+docker compose -f prod-root-compose.yaml up -d --build --force-recreate --always-recreate-deps --no-cache
 
 # # secrets files are created by CI pipeline and destroyed here
 # rm secrets/cleo_*.txt
