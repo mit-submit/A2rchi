@@ -14,6 +14,7 @@
   --incoming-chat-bg: #444654;
   --outgoing-chat-border: #343541;
   --incoming-chat-border: #444654;
+  --incoming-chat-code-snippet: #545764;
 }
 .light-mode {
   --text-color: #343541;
@@ -24,10 +25,15 @@
   --incoming-chat-bg: #F7F7F8;
   --outgoing-chat-border: #FFFFFF;
   --incoming-chat-border: #D9D9E3;
+  --incoming-chat-code-snippet: #FFFFFF;
 }
 body {
   background: var(--outgoing-chat-bg);
   font-family: "Poppins", sans-serif;
+}
+
+ul {
+  margin: 0px 3.5rem;
 }
 
 /* Pop up container styling */
@@ -404,9 +410,13 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 
 .code-box {
 	background: #e8e8e8;
-    margin-bottom: 1rem;
     border-radius: .375rem;
     color: black;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    margin-left: 2rem;
+    margin-right: 2rem;
+    
 }
 .code-box-header {
 	background: #c8c8c8;
@@ -444,7 +454,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 .code-snippet {
   font-weight: bold;
   font-family: monospace;
-  background-color: #f2f2f2; /* Background color for the code block */
+  background-color: var(--incoming-chat-code-snippet);
   padding: 2px 4px; /* Add padding for spacing around the code */
   border: 1px solid #d1d1d1; /* Add a border for a visual separation */
   border-radius: 4px; /* Rounded corners for aesthetics */
