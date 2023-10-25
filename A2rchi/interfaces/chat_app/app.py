@@ -32,7 +32,6 @@ class ChatWrapper:
         self.config = Config_Loader().config
         self.global_config = self.config["global"]
         self.data_path = self.global_config["DATA_PATH"]
-        self.allowed_languages = self.config["interfaces"]["chat_app"]["rendering"]["allowed_languages"]
 
         self.lock = Lock()
         self.chain = Chain()
@@ -152,9 +151,9 @@ class ChatWrapper:
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
             if score < similarity_score_reference and source in sources.keys(): 
-                output = "<p>" + self.format_code_in_text(result["answer"], self.allowed_languages) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
             else:
-                output = "<p>" + self.format_code_in_text(result["answer"],self.allowed_languages) + "</p>"
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
             ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history)
 
