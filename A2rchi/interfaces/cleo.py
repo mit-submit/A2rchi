@@ -1,5 +1,6 @@
 from A2rchi.chains.chain import Chain
 from A2rchi.utils import sender
+from A2rchi.utils.data_manager import DataManager
 from A2rchi.utils.env import read_secret
 
 from redminelib import Redmine
@@ -21,8 +22,12 @@ class CleoAIWrapper:
         self.chain = Chain()
         self.number_of_queries = 0 #TODO: finish installing this safegaurd.
 
+        # initialize data manager
+        self.data_manager = DataManager()
+        self.data_manager.update_vectorstore()
+
     def __call__(self, history):
-        
+        # create formatted history
         reformatted_history = []
         for entry in history:
             if "ISSUE_ID:" in entry[1]:
@@ -33,6 +38,11 @@ class CleoAIWrapper:
             reformatted_history.append((role,message))
         reformatted_history[0] = ("Expert", reformatted_history[0][1])
         reformatted_history[-1] = ("User", reformatted_history[-1][1])
+
+        # update vectorstore
+        self.data_manager.update_vectorstore()
+
+        # execute chain and return answer
         return self.chain(reformatted_history)["answer"]
 
     @staticmethod
