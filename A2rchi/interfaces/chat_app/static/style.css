@@ -36,6 +36,10 @@ ul {
   margin: 0px 3.5rem;
 }
 
+ol {
+  margin: 1rem 3.5rem;
+}
+
 /* Pop up container styling */
 #popup-form {
   display: none;

@@ -2,7 +2,7 @@ from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
 
 from pygments import highlight
-from pygments.lexers import BashLexer,PythonLexer,JavaLexer,JavascriptLexer,BashLexer,CppLexer,CLexer,TypeScriptLexer,HtmlLexer
+from pygments.lexers import BashLexer,PythonLexer,JavaLexer,JavascriptLexer,BashLexer,CppLexer,CLexer,TypeScriptLexer,HtmlLexer,FortranLexer,JuliaLexer,MathematicaLexer,MatlabLexer
 from pygments.formatters import HtmlFormatter
 
 from flask import request, jsonify, render_template
@@ -303,7 +303,11 @@ class AnswerRenderer(mt.HTMLRenderer):
             "cpp": CppLexer,
             "c": CLexer,
             "typescript": TypeScriptLexer,
-            "html": HtmlLexer
+            "html": HtmlLexer,
+            "Fortran" : FortranLexer,
+            "Julia" : JuliaLexer,
+            "Mathematica" : MathematicaLexer,
+            "MATLAB": MatlabLexer
         }
     
     def __init__(self):
