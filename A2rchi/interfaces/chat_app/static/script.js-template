@@ -93,6 +93,12 @@ const getChatResponse = async (incomingChatDiv) => {
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
 }
 
+const copyCode = (copyCodeBtn) => {
+    // Copy the text content of the response to the clipboard
+    const reponseTextElement = copyCodeBtn.parentElement.nextElementSibling.querySelector(".code-box-body");
+    navigator.clipboard.writeText(reponseTextElement.innerText);
+}
+
 const copyResponse = (copyBtn) => {
     // Copy the text content of the response to the clipboard
     const reponseTextElement = copyBtn.parentElement.previousElementSibling.querySelector("p");
