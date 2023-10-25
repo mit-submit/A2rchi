@@ -11,6 +11,7 @@ import numpy as np
 import json
 import os
 import yaml
+import time
 
 # DEFINITIONS
 QUERY_LIMIT = 1000 # max number of queries 
@@ -72,9 +73,15 @@ class ChatWrapper:
         # update or add discussion
         discussion_dict = data.get(str(discussion_id), {})
 
+        discussion_dict["meta"] = discussion_dict.get("meta", {})
+        if str(discussion_id) not in data.keys(): #first time in discusssion
+            discussion_dict["meta"]["time_first_used"] = time.time()
+        discussion_dict["meta"]["time_last_used"] = time.time()
+
         if discussion_contents is not None:
             print(" INFO - found contents.")
             discussion_dict["contents"] = discussion_contents
+            discussion_dict["meta"]["times_chain_was_called"] = discussion_dict["meta"]["times_chain_was_called"] + [time.time()] if ("times_chain_was_called" in discussion_dict["meta"].keys()) else [time.time()]
         if discussion_feedback is not None:
             print(" INFO - found feedback.")
             discussion_dict["feedback"] = discussion_dict["feedback"] + [discussion_feedback] if ("feedback" in discussion_dict.keys() and isinstance(discussion_dict["feedback"], List)) else [discussion_feedback]
@@ -94,6 +101,7 @@ class ChatWrapper:
         Execute the chat functionality.
         """
         self.lock.acquire()
+        print("INFO - acquired lock file")
         try:
             # convert the history to native A2rchi form (because javascript does not have tuples)
             history = self.convert_to_chain_history(history)
@@ -139,12 +147,13 @@ class ChatWrapper:
             else:
                 output = "<p>" + result["answer"] + "</p>"
 
-            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history)
+            ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
 
         except Exception as e:
             raise e
         finally:
             self.lock.release()
+            print("INFO - released lock file")
         return output, discussion_id
 
 
@@ -212,6 +221,8 @@ class FlaskAppWrapper(object):
         return render_template('terms.html')
     
     def like(self):
+        self.chat.lock.acquire()
+        print("INFO - acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -231,11 +242,18 @@ class FlaskAppWrapper(object):
             response = {'message': 'Liked', 'content': chat_content}
             return jsonify(response), 200
 
-
         except Exception as e:
             return jsonify({'error': str(e)}), 500
-        
+
+        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
+        # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()
+            print("INFO - released lock file")
+
     def dislike(self):
+        self.chat.lock.acquire()
+        print("INFO - acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -263,6 +281,11 @@ class FlaskAppWrapper(object):
             response = {'message': 'Disliked', 'content': chat_content}
             return jsonify(response), 200
 
-
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
+        # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()
+            print("INFO - released lock file")

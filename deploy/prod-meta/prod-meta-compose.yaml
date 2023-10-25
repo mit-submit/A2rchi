@@ -1,14 +1,11 @@
 services:
-  cleo-dev:
-    image: cleo-dev:${TAG}
+  cleo-prod-meta:
+    image: cleo-prod-meta:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-cleo
-    depends_on:
-      chromadb-dev:
-        condition: service_healthy
     environment:
-      RUNTIME_ENV: dev
+      RUNTIME_ENV: prod-meta
       CLEO_URL_FILE: /run/secrets/cleo_url
       CLEO_USER_FILE: /run/secrets/cleo_user
       CLEO_PW_FILE: /run/secrets/cleo_pw
@@ -33,46 +30,19 @@ services:
       - openai_api_key
       - hf_token
     volumes:
-      - a2rchi-dev-data:/root/data/
+      - a2rchi-prod-meta-data:/root/data/
     logging:
       options:
         max-size: 10m
     restart: always
 
-  chat-dev:
-    image: chat-dev:${TAG}
-    build:
-      context: ../..
-      dockerfile: deploy/dockerfiles/Dockerfile-chat
-    depends_on:
-      chromadb-dev:
-        condition: service_healthy
-    environment:
-      RUNTIME_ENV: dev
-      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
-    secrets:
-      - openai_api_key
-      - hf_token
-    volumes:
-      - a2rchi-dev-data:/root/data/
-    logging:
-      options:
-        max-size: 10m
-    ports:
-      - 7682:7861  # host:container
-    restart: always
-
-  mailbox-dev:
-    image: mailbox-dev:${TAG}
+  mailbox-prod:
+    image: mailbox-prod-meta:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-mailbox
-    depends_on:
-      chromadb-dev:
-        condition: service_healthy
     environment:
-      RUNTIME_ENV: dev
+      RUNTIME_ENV: prod-meta
       IMAP_USER_FILE: /run/secrets/imap_user
       IMAP_PW_FILE: /run/secrets/imap_pw
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -105,60 +75,8 @@ services:
         max-size: 10m
     restart: always
 
-  data-manager-dev:
-    image: data-manager-dev:${TAG}
-    build:
-      context: ../..
-      dockerfile: deploy/dockerfiles/Dockerfile-data-manager
-    depends_on:
-      chromadb-dev:
-        condition: service_healthy
-    environment:
-      RUNTIME_ENV: dev
-      FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
-      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
-      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
-    secrets:
-      - flask_uploader_app_secret_key
-      - uploader_salt
-      - openai_api_key
-      - hf_token
-    ports:
-      - 5003:5001  # host:container
-    volumes:
-      - a2rchi-dev-data:/root/data/
-    logging:
-      options:
-        max-size: 10m
-    restart: always
-
-  chromadb-dev:
-    image: chromadb-dev:${TAG}
-    build:
-      context: ../..
-      dockerfile: deploy/dockerfiles/Dockerfile-chroma
-    environment:
-      RUNTIME_ENV: dev
-    ports:
-      - 8002:8000  # host:container
-    volumes:
-      - a2rchi-dev-data:/chroma/chroma/
-    logging:
-      options:
-        max-size: 10m
-    restart: always
-    # healthcheck originates from inside container; so use container port
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-      start_interval: 5s
-
 volumes:
-  a2rchi-dev-data:
+  a2rchi-prod-meta-data:
     external: true
 
 secrets:
@@ -184,10 +102,6 @@ secrets:
     file: secrets/sender_user.txt
   sender_pw:
     file: secrets/sender_pw.txt
-  flask_uploader_app_secret_key:
-    file: secrets/flask_uploader_app_secret_key.txt
-  uploader_salt:
-    file: secrets/uploader_salt.txt
   openai_api_key:
     file: secrets/openai_api_key.txt
   hf_token:

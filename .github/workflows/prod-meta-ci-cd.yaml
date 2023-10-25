@@ -1,0 +1,103 @@
+name: Deploy A2rchi Meta
+run-name: ${{ github.actor }} deploys A2rchi Meta to prod
+on:
+  push:
+    branches:
+      - release-meta
+jobs:
+  deploy-prod-system:
+    runs-on: ubuntu-latest
+    env:
+      SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+    steps:
+      # boilerplate message and pull repository to CI runner
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - uses: actions/checkout@v3
+      - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
+
+      # setup SSH 
+      - name: Setup SSH
+        run: |
+          mkdir -p /home/runner/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" > /home/runner/.ssh/id_rsa_submit
+          chmod 600 /home/runner/.ssh/id_rsa_submit
+          echo "${{ secrets.SSH_SUBMIT_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          cp ${{ github.workspace }}/deploy/ssh_config /home/runner/.ssh/config
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add /home/runner/.ssh/id_rsa_submit
+
+      # TODO: update variables to be A2rchi meta-specific if need be
+      # create secrets files for docker-compose
+      - name: Create Secrets Files
+        run: |
+          mkdir -p ${{ github.workspace }}/deploy/prod-meta/secrets/
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
+          echo "${{ secrets.PROD_IMAP_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
+          echo "${{ secrets.PROD_IMAP_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_url.txt
+          echo "${{ secrets.PROD_CLEO_URL }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_url.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_url.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_user.txt
+          echo "${{ secrets.PROD_CLEO_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_user.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_user.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
+          echo "${{ secrets.PROD_CLEO_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
+          echo "${{ secrets.PROD_META_CLEO_PROJECT }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
+          echo "${{ secrets.PROD_SENDER_SERVER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
+          echo "${{ secrets.PROD_SENDER_PORT }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
+          echo "${{ secrets.PROD_META_SENDER_REPLYTO }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
+          echo "${{ secrets.PROD_SENDER_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_pw.txt
+          echo "${{ secrets.PROD_SENDER_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_pw.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_pw.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/openai_api_key.txt
+          echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/openai_api_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/openai_api_key.txt
+          touch ${{ github.workspace }}/deploy/prod-meta/secrets/hf_token.txt
+          echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/hf_token.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/hf_token.txt
+
+      # create env file to set tag(s) for docker-compose
+      - name: Create Env File
+        run: |
+          touch ${{ github.workspace }}/deploy/prod-meta/.env
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-meta/.env
+
+      # stop any existing docker compose that's running
+      - name: Stop Docker Compose
+        run: |
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-meta/prod-meta-stop.sh
+
+      # copy repository to machine
+      - name: Copy Repository
+        run: |
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-meta/
+
+      # run deploy script
+      - name: Run Deploy Script
+        run: |
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-meta/prod-meta-install.sh
+
+      # clean up secret files
+      - name: Remove Secrets from Runner
+        run: |
+          rm ${{ github.workspace }}/deploy/prod-meta/secrets/*.txt
+
+      # print job status
+      - run: echo "🍏 This job's status is ${{ job.status }}."

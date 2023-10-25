@@ -1,5 +1,5 @@
 global:
-  TRAINED_ON: "subMIT (development)"    #used to create name of the specific version of a2rchi we're using
+  TRAINED_ON: "meta"    #used to create name of the specific version of a2rchi we're using
   DATA_PATH: "/root/data/"
   ACCOUNTS_PATH: "/root/.accounts/"
   LOCAL_VSTORE_PATH: "/root/data/vstore/"
@@ -11,9 +11,9 @@ global:
 interfaces:
   chat_app:
     PORT: 7861
-    EXTERNAL_PORT: 7682
+    EXTERNAL_PORT: 7685
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
-    HOSTNAME: "t3desk019.mit.edu"  # careful, this is used for the chat service
+    HOSTNAME: "submit06.mit.edu"  # careful, this is used for the chat service
     template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
     static_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
@@ -25,26 +25,20 @@ interfaces:
 chains:
   input_lists:
     - empty.list
-    - submit.list
-    - miscellanea.list
   base:
     # roles that A2rchi knows about
     ROLES: 
       - User
       - A2rchi
       - Expert 
-    #logging within base chain
-    logging:
-      #name of .log logfile to be saved in data folder.  
-      input_output_filename: chain_input_output.log
   prompts:
-    # prompt that serves to condense a history and a question into a single question
+  # prompt that serves to condense a history and a question into a single question
     CONDENSING_PROMPT: config/prompts/condense.prompt
     # main prompt which takes in a single question and a context.
-    MAIN_PROMPT: config/prompts/submit.prompt
+    MAIN_PROMPT: config/prompts/meta.prompt
   chain: 
     # pick one of the models listed in the model class map below
-    MODEL_NAME: OpenAILLM # LlamaLLM
+    MODEL_NAME: OpenAILLM 
     # map of all the class models and their keyword arguments
     MODEL_CLASS_MAP:
       OpenAILLM:
@@ -75,9 +69,8 @@ chains:
           length_penalty: 1 #[optional] Exponential penalty to the length that is used with beam-based generation.
           max_padding_length: null # the max padding length to be used with tokenizer padding the prompts.
     chain_update_time: 10 # the amount of time (in seconds) which passes between when the chain updates to the newest version of the vectorstore
- 
-utils: 
-  cleo: 
+utils:
+  cleo:
     cleo_update_time: 10
   mailbox: 
     IMAP4_PORT: 143
@@ -85,12 +78,12 @@ utils:
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
-    use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
+    use_HTTP_chromadb_client: False   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
     vectordb_update_time: 10
-    chromadb_host: chromadb-dev
+    chromadb_host: chromadb-prod-meta
     chromadb_port: 8000
-    collection_name: "dev_collection"
+    collection_name: "prod_meta_collection" #unique in case vector stores are ever combined.
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
     # choose one embedding from list below

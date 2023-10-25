@@ -11,6 +11,7 @@ import chromadb
 import hashlib
 import os
 import yaml
+import time
 
 
 class DataManager():
@@ -215,13 +216,19 @@ class DataManager():
                 metadata["filename"] = filename
             
             # create unique id for each chunk
-            # the first 12 bits of the id being the filename and the other 6 based on the chunk itself
+            # the first 12 bits of the id being the filename, 6 more based on the chunk itself, and the last 6 hashing the time
             ids = []
             for chunk in chunks:
                 identifier = hashlib.md5()
                 identifier.update(chunk.encode('utf-8'))
                 chunk_hash = str(int(identifier.hexdigest(),16))[0:6]
-                ids.append(str(filehash) + str(chunk_hash))
+                time_identifier = hashlib.md5()
+                time_identifier.update(str(time.time()).encode('utf-8'))
+                time_hash = str(int(identifier.hexdigest(),16))[0:6]
+                while str(filehash) + str(chunk_hash) + str(time_hash) in ids:
+                    print("INFO: Found conflict with hash: " + str(filehash) + str(chunk_hash) + str(time_hash) + ". Trying again")
+                    time_hash = str(int(time_hash) + 1)
+                ids.append(str(filehash) + str(chunk_hash) + str(time_hash))
 
             print("Ids: ",ids)
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
