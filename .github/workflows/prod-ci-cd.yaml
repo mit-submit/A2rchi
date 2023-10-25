@@ -76,6 +76,14 @@ jobs:
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/prod/secrets/hf_token.txt
 
+      # create env file to set tag(s) for docker-compose
+      - name: Create Env File
+        run: |
+          touch ${{ github.workspace }}/deploy/prod/.env
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod/.env
+
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |

@@ -1,5 +1,6 @@
 services:
   cleo-dev:
+    image: cleo-dev:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-cleo
@@ -33,9 +34,13 @@ services:
       - hf_token
     volumes:
       - a2rchi-dev-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   chat-dev:
+    image: chat-dev:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chat
@@ -51,11 +56,15 @@ services:
       - hf_token
     volumes:
       - a2rchi-dev-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
     ports:
       - 7682:7861  # host:container
     restart: always
 
   mailbox-dev:
+    image: mailbox-dev:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-mailbox
@@ -91,9 +100,13 @@ services:
       - sender_pw
       - openai_api_key
       - hf_token
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   data-manager-dev:
+    image: data-manager-dev:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-data-manager
@@ -115,9 +128,13 @@ services:
       - 5003:5001  # host:container
     volumes:
       - a2rchi-dev-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   chromadb-dev:
+    image: chromadb-dev:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
@@ -127,6 +144,9 @@ services:
       - 8002:8000  # host:container
     volumes:
       - a2rchi-dev-data:/chroma/chroma/
+    logging:
+      options:
+        max-size: 10m
     restart: always
     # healthcheck originates from inside container; so use container port
     healthcheck:

@@ -1,5 +1,6 @@
 services:
   chat-prod-root:
+    image: chat-prod-root:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chat
@@ -17,9 +18,13 @@ services:
       - a2rchi-prod-root-data:/root/data/
     ports:
       - 7684:7861  # host:container
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   data-manager-prod-root:
+    image: data-manager-prod-root:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-data-manager
@@ -44,9 +49,13 @@ services:
     volumes:
       - a2rchi-prod-root-data:/root/data/
       - /home/tier3/a2rchi/root-content/:/root/data/root-content/
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   chromadb-prod-root:
+    image: chromadb-prod-root:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
@@ -56,6 +65,9 @@ services:
       - 8004:8000  # host:container
     volumes:
       - a2rchi-prod-root-data:/chroma/chroma/
+    logging:
+      options:
+        max-size: 10m
     restart: always
     # healthcheck originates from inside container; so use container port
     healthcheck:

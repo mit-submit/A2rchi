@@ -1,5 +1,6 @@
 services:
   cleo-prod:
+    image: cleo-prod:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-cleo
@@ -33,9 +34,13 @@ services:
       - hf_token
     volumes:
       - a2rchi-prod-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   chat-prod:
+    image: chat-prod:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chat
@@ -51,11 +56,15 @@ services:
       - hf_token
     volumes:
       - a2rchi-prod-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
     ports:
       - 7681:7861  # host:container
     restart: always
 
   mailbox-prod:
+    image: mailbox-prod:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-mailbox
@@ -91,9 +100,13 @@ services:
       - sender_pw
       - openai_api_key
       - hf_token
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   data-manager-prod:
+    image: data-manager-prod:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-data-manager
@@ -115,9 +128,13 @@ services:
       - 5001:5001  # host:container
     volumes:
       - a2rchi-prod-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
     restart: always
 
   chromadb-prod:
+    image: chromadb-prod:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
@@ -127,6 +144,9 @@ services:
       - 8000:8000  # host:container
     volumes:
       - a2rchi-prod-data:/chroma/chroma/
+    logging:
+      options:
+        max-size: 10m
     restart: always
     # healthcheck originates from inside container; so use container port
     healthcheck:
