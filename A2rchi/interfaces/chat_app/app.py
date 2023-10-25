@@ -14,6 +14,7 @@ import numpy as np
 
 import json
 import re
+import mistune as mt
 
 import os
 import yaml
@@ -97,40 +98,12 @@ class ChatWrapper:
 
 
     @staticmethod
-    def format_code_in_text(text, allowed_languages):
-        RENDERING_LEXER_MAPPING = {
-            "default":  BashLexer, #default rendering for other languages
-            "python": PythonLexer,
-            "java": JavaLexer,
-            "javascript": JavascriptLexer,
-            "bash": BashLexer,
-            "cpp": CppLexer,
-            "c": CLexer,
-            "typescript": TypeScriptLexer,
-            "html": HtmlLexer
-        }
-        # Regular expression pattern to match code blocks enclosed in triple backticks
-        code_pattern = r'```([a-zA-Z]+)(.*?)```'
-
-        # Find all code blocks in the text
-        code_blocks = re.findall(code_pattern, text, re.DOTALL)
-
-        # Iterate through code blocks and format them
-        for language, code_block in code_blocks:
-            language_out = language if (language in allowed_languages) else "default"
-            # Add syntax highlighting CSS classes based on the specified language
-            code_block_highlighted = highlight(code_block, RENDERING_LEXER_MAPPING[language_out](stripall=True), HtmlFormatter()).strip()
-            code_block_boxed = f"""</p><div class="code-box">
-                <div class="code-box-header"> 
-                    <span>{language}</span> <button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>
-                </div>
-                <div class="code-box-body">{code_block_highlighted}
-                </div>
-                </div><p>"""
-            # Replace the original code block with the formatted version
-            text = text.replace(f'```{language}{code_block}```', code_block_boxed)
-
-        return text
+    def format_code_in_text(text):
+        markdown = mt.create_markdown(renderer=AnswerRenderer())
+        try:
+            return markdown(text)
+        except: 
+             return text
 
 
     def __call__(self, history: Optional[List[Tuple[str, str]]], discussion_id: Optional[int]):
@@ -320,3 +293,39 @@ class FlaskAppWrapper(object):
         # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
+
+class AnswerRenderer(mt.HTMLRenderer):
+    RENDERING_LEXER_MAPPING = {
+            "python": PythonLexer,
+            "java": JavaLexer,
+            "javascript": JavascriptLexer,
+            "bash": BashLexer,
+            "c++": CppLexer,
+            "cpp": CppLexer,
+            "c": CLexer,
+            "typescript": TypeScriptLexer,
+            "html": HtmlLexer
+        }
+    
+    def __init__(self):
+        super().__init__()
+
+    def block_text(self,text):
+         return f"""<p>{text}</p>"""
+
+    def block_code(self, code, info=None):
+        # Handle code blocks (triple backticks)
+        if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash'
+        code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
+        return f"""<div class="code-box">
+                <div class="code-box-header"> 
+                <span>{info}</span> <button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>
+                </div>
+                <div class="code-box-body">{code_block_highlighted}
+                </div>
+                </div>"""
+        
+    def codespan(self, text):
+        # Handle inline code snippets (single backticks)
+        return f"""<code class="code-snippet">{text}</code>"""
+

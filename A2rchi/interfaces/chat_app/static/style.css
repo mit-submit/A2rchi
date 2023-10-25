@@ -441,7 +441,16 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
     color: rgb(51, 51, 51);
 }
 
-.hightlight .pre {
+.code-snippet {
+  font-weight: bold;
+  font-family: monospace;
+  background-color: #f2f2f2; /* Background color for the code block */
+  padding: 2px 4px; /* Add padding for spacing around the code */
+  border: 1px solid #d1d1d1; /* Add a border for a visual separation */
+  border-radius: 4px; /* Rounded corners for aesthetics */
+}
+
+.highlight .pre {
   background-color: transparent;
   border-radius: .375rem;
   color: currentColor;
