@@ -6,11 +6,6 @@ from A2rchi.utils.env import read_secret
 from flask import Flask
 
 import os
-import time
-
-# sleep for 5 minutes
-print("SLEEPING")
-time.sleep(300)
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")

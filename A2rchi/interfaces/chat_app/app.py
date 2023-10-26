@@ -166,6 +166,10 @@ class ChatWrapper:
 class FlaskAppWrapper(object):
 
     def __init__(self, app, **configs):
+        # sleep for 5 minutes
+        print("SLEEPING")
+        time.sleep(300)
+
         print(" INFO - entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
