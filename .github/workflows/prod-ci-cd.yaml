@@ -97,6 +97,9 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          sed -i -e "s/BASE_TAG/${tag}" ${{ github.workspace }}/deploy/prod/prod-install.sh
           ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod/prod-install.sh
 
       # clean up secret files

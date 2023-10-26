@@ -4,6 +4,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-cleo
+      args:
+        TAG: ${TAG}
     environment:
       RUNTIME_ENV: prod-meta
       CLEO_URL_FILE: /run/secrets/cleo_url
@@ -41,6 +43,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-mailbox
+      args:
+        TAG: ${TAG}
     environment:
       RUNTIME_ENV: prod-meta
       IMAP_USER_FILE: /run/secrets/imap_user

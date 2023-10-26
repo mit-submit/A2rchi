@@ -1,5 +1,6 @@
 from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
+from A2rchi.utils.data_manager import DataManager
 
 from flask import request, jsonify, render_template
 from flask_cors import CORS
@@ -26,6 +27,10 @@ class ChatWrapper:
         self.config = Config_Loader().config
         self.global_config = self.config["global"]
         self.data_path = self.global_config["DATA_PATH"]
+
+        # initialize data manager
+        self.data_manager = DataManager()
+        self.data_manager.update_vectorstore()
 
         self.lock = Lock()
         self.chain = Chain()
@@ -103,6 +108,9 @@ class ChatWrapper:
         self.lock.acquire()
         print("INFO - acquired lock file")
         try:
+            # update vector store through data manager; will only do something if new files have been added
+            self.data_manager.update_vectorstore()
+
             # convert the history to native A2rchi form (because javascript does not have tuples)
             history = self.convert_to_chain_history(history)
 
