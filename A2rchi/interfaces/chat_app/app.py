@@ -105,10 +105,16 @@ class ChatWrapper:
 
     @staticmethod
     def format_code_in_text(text):
+        """
+        Takes in input plain text (the output from A2rchi); 
+        Recognizes structures in canonical Markdown format, and processes according to the custom renderer; 
+        Returns it formatted in HTML 
+        """
         markdown = mt.create_markdown(renderer=AnswerRenderer())
         try:
             return markdown(text)
         except: 
+             print("Rendering error: markdown formatting failed")
              return text
 
 
@@ -308,6 +314,10 @@ class FlaskAppWrapper(object):
 
 
 class AnswerRenderer(mt.HTMLRenderer):
+    """
+    Class for custom rendering of A2rchi output. Child of mistune's HTMLRenderer, with custom overrides.
+    Code blocks are structured and colored according to pygment lexers
+    """
     RENDERING_LEXER_MAPPING = {
             "python": PythonLexer,
             "java": JavaLexer,
@@ -328,11 +338,12 @@ class AnswerRenderer(mt.HTMLRenderer):
         super().__init__()
 
     def block_text(self,text):
+         #Handle blocks of text (the negatives of blocks of code) and sets them in paragraphs
          return f"""<p>{text}</p>"""
 
     def block_code(self, code, info=None):
         # Handle code blocks (triple backticks)
-        if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash'
+        if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
         code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
         return f"""<div class="code-box">
                 <div class="code-box-header"> 
