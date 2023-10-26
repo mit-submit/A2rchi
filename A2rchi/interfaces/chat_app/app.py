@@ -15,7 +15,8 @@ import yaml
 import time
 
 # DEFINITIONS
-QUERY_LIMIT = 1000 # max number of queries 
+# TODO: remove this logic and eventually replace with per-user (or per-conversation) rate limits
+QUERY_LIMIT = 10000 # max number of queries 
 
 
 class ChatWrapper:
@@ -73,7 +74,9 @@ class ChatWrapper:
             print(" INFO - json_file found.")
 
         except FileNotFoundError:
+            # create data path if it doesn't exist
             print(" ERROR - json_file not found. Creating a new one")
+            os.makedirs(data_path, exist_ok=True)
 
         # update or add discussion
         discussion_dict = data.get(str(discussion_id), {})
@@ -93,9 +96,6 @@ class ChatWrapper:
         
         data[str(discussion_id)] = discussion_dict
 
-        # create data path if it doesn't exist
-        os.makedirs(data_path, exist_ok=True)
-
         # write the updated JSON data back to the file
         with open(os.path.join(data_path, json_file), 'w') as f:
             json.dump(data, f)
@@ -105,63 +105,79 @@ class ChatWrapper:
         """
         Execute the chat functionality.
         """
-        self.lock.acquire()
-        print("INFO - acquired lock file")
         try:
             # update vector store through data manager; will only do something if new files have been added
+            self.lock.acquire()
+            print("INFO - acquired lock file update vectorstore")
+
             self.data_manager.update_vectorstore()
 
-            # convert the history to native A2rchi form (because javascript does not have tuples)
-            history = self.convert_to_chain_history(history)
+            self.lock.release()
+            print("INFO - released lock file update vectorstore")
+        except Exception as e:
+            print(f"ERROR - {str(e)}")
+        finally:
+            self.lock.release()
+            print("INFO - released lock file update vectorstore")
 
-            # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
-            discussion_id = discussion_id or np.random.randint(100000, 999999)
+        # convert the history to native A2rchi form (because javascript does not have tuples)
+        history = self.convert_to_chain_history(history)
 
-            # run chain to get result
-            if self.number_of_queries < QUERY_LIMIT:
-                result = self.chain(history)
-            else: 
-                # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
-                output = "Sorry, our service is currently down due to exceptional demand. Please come again later."
-                return output, discussion_id
-            self.number_of_queries += 1
-            print(f"number of queries is: {self.number_of_queries}")
+        # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
+        discussion_id = discussion_id or np.random.randint(100000, 999999)
 
-            # get similarity score to see how close the input is to the source
-            # - low score means very close (it's a distance between embedding vectors approximated
-            #   by an approximate k-nearest neighbors algorithm called HNSW)
-            inp = history[-1][1]
-            score = self.chain.similarity_search(inp)
+        # run chain to get result
+        if self.number_of_queries < QUERY_LIMIT:
+            result = self.chain(history)
+        else: 
+            # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
+            output = "Sorry, our service is currently down due to exceptional demand. Please come again later."
+            return output, discussion_id
+        self.number_of_queries += 1
+        print(f"number of queries is: {self.number_of_queries}")
 
-            # load the present list of sources
-            try:
-                with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
-                    sources = yaml.load(file, Loader=yaml.FullLoader)
-            except FileNotFoundError:
-                sources = dict()
+        # get similarity score to see how close the input is to the source
+        # - low score means very close (it's a distance between embedding vectors approximated
+        #   by an approximate k-nearest neighbors algorithm called HNSW)
+        inp = history[-1][1]
+        score = self.chain.similarity_search(inp)
 
-            # get the closest source to the document
-            source = None
-            if len(result['source_documents']) > 0:
-                source_hash = result['source_documents'][0].metadata['source']
-                if '/' in source_hash and '.' in source_hash:
-                    source = source_hash.split('/')[-1].split('.')[0]
+        # load the present list of sources
+        try:
+            with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
+                sources = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            sources = dict()
 
-            # if the score is low enough, include the source as a link, otherwise give just the answer
-            embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
-            similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
-            if score < similarity_score_reference and source in sources.keys(): 
-                output = "<p>" + result["answer"] + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
-            else:
-                output = "<p>" + result["answer"] + "</p>"
+        # get the closest source to the document
+        source = None
+        if len(result['source_documents']) > 0:
+            source_hash = result['source_documents'][0].metadata['source']
+            if '/' in source_hash and '.' in source_hash:
+                source = source_hash.split('/')[-1].split('.')[0]
+
+        # if the score is low enough, include the source as a link, otherwise give just the answer
+        embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
+        similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
+        if score < similarity_score_reference and source in sources.keys(): 
+            output = "<p>" + result["answer"] + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
+        else:
+            output = "<p>" + result["answer"] + "</p>"
+
+        try:
+            self.lock.acquire()
+            print("INFO - acquired lock file write json")
 
             ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
 
+            self.lock.release()
+            print("INFO - released lock file write json")
         except Exception as e:
-            raise e
+            print(f"ERROR - {str(e)}")
         finally:
             self.lock.release()
-            print("INFO - released lock file")
+            print("INFO - released lock file write json")
+        
         return output, discussion_id
 
 
