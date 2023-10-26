@@ -14,7 +14,7 @@ import yaml
 import time
 
 # DEFINITIONS
-QUERY_LIMIT = 1000 # max number of queries 
+QUERY_LIMIT = 10000 # max number of queries 
 
 
 class ChatWrapper:
