@@ -20,7 +20,7 @@ services:
       options:
         max-size: 10m
     ports:
-      - 7684:7861  # host:container
+      - 7683:7861  # host:container
     restart: always
 
   data-manager-prod-801:
