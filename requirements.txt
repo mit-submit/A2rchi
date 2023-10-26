@@ -16,6 +16,7 @@ humanfriendly==10.0
 langchain==0.0.268
 loguru==0.7.2
 lz4==4.3.2
+mistune==3.0.1
 monotonic==1.6
 onnxruntime==1.15.1
 openai==0.27.9
@@ -24,6 +25,7 @@ pandas==2.1.0
 peft==0.5.0
 posthog==3.0.1
 pulsar-client==3.2.0
+pygments==2.16.1
 pypdf==3.16.1
 python-dotenv==1.0.0
 python-redmine==2.4.0
