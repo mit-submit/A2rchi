@@ -13,7 +13,7 @@ interfaces:
     PORT: 7861
     EXTERNAL_PORT: 7683
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
-    HOSTNAME: "t3desk019.mit.edu"  # careful, this is used for the chat service
+    HOSTNAME: "submit06.mit.edu"  # careful, this is used for the chat service
     template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
     static_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
