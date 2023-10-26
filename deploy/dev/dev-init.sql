@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     sender TEXT NOT NULL, -- eventually put foreign key constraint on users table
     content TEXT NOT NULL,
     ts TIMESTAMP NOT NULL,
-    PRIMARY KEY message_id
+    PRIMARY KEY (message_id)
 );
 CREATE TABLE IF NOT EXISTS feedback (
     mid INTEGER NOT NULL,
