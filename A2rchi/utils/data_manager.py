@@ -99,7 +99,6 @@ class DataManager():
 
         collection = client.get_or_create_collection(self.collection_name)
         print(f" n in collection: {collection.count()}")
-        print(collection)
 
         return collection
 
