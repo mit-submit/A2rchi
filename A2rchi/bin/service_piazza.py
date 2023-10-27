@@ -16,7 +16,7 @@ import requests
 import time
 
 # DEFINITIONS
-SLACK_URL = "https://hooks.slack.com/services/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"
+SLACK_URL = "" # TODO: read from secret
 SLACK_HEADERS = {'content-type': 'application/json'}
 MIN_NEXT_POST_FILE = "/root/data/min_next_post.json"
 
