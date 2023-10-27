@@ -33,7 +33,7 @@ class DumbLLM(BaseCustomLLM):
     A simple Dumb LLM, perfect for testing
     """
     filler: str = None
-    sleep_time_mean: 3
+    sleep_time_mean: int = 3
 
     def _call(
         self,
