@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS conversations (
     conversation_id INTEGER NOT NULL,
     message_id SERIAL,
-    sender TEXT NOT NULL, -- eventually put foreign key constraint on users table
+    sender TEXT NOT NULL,
     content TEXT NOT NULL,
     ts TIMESTAMP NOT NULL,
     PRIMARY KEY (message_id)
