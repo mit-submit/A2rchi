@@ -94,6 +94,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         document_variable_name = "context"
 
         #Add logger for storing input to the QA chain, ie filled QA template 
+        print("config keys" , config.keys())
         logfile = os.path.join(data_path,config["logging"]["input_output_filename"])
         logger.add(logfile, colorize=True, enqueue=True)
         handler = FileCallbackHandler(logfile)  
