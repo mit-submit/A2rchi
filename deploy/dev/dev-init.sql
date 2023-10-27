@@ -15,5 +15,5 @@ CREATE TABLE IF NOT EXISTS feedback (
     unhelpful BOOLEAN,
     inappropriate BOOLEAN,
     PRIMARY KEY (mid, feedback_ts),
-    FOREIGN KEY mid REFERENCES conversations(message_id)
+    FOREIGN KEY (mid) REFERENCES conversations(message_id)
 );
