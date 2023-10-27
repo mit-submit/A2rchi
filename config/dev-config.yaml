@@ -44,7 +44,7 @@ chains:
     MAIN_PROMPT: config/prompts/submit.prompt
   chain: 
     # pick one of the models listed in the model class map below
-    MODEL_NAME: OpenAILLM # LlamaLLM
+    MODEL_NAME: DumbLLM # LlamaLLM
     # map of all the class models and their keyword arguments
     MODEL_CLASS_MAP:
       OpenAILLM:
@@ -54,7 +54,8 @@ chains:
           temperature: 1
       DumbLLM:
         class: DumbLLM
-        kwargs: 
+        kwargs:
+          sleep_time_mean: 3
           filler: null
       LlamaLLM:
         class: LlamaLLM
@@ -93,7 +94,7 @@ utils:
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
     # choose one embedding from list below
-    EMBEDDING_NAME: OpenAIEmbeddings
+    EMBEDDING_NAME: HuggingFaceEmbeddings
     # list of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:
