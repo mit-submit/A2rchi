@@ -1,5 +1,10 @@
 from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
+from A2rchi.utils.data_manager import DataManager
+
+from pygments import highlight
+from pygments.lexers import BashLexer,PythonLexer,JavaLexer,JavascriptLexer,BashLexer,CppLexer,CLexer,TypeScriptLexer,HtmlLexer,FortranLexer,JuliaLexer,MathematicaLexer,MatlabLexer
+from pygments.formatters import HtmlFormatter
 
 from flask import request, jsonify, render_template
 from flask_cors import CORS
@@ -9,6 +14,9 @@ from typing import Optional, List, Tuple
 import numpy as np
 
 import json
+import re
+import mistune as mt
+
 import os
 import yaml
 import time
@@ -26,6 +34,10 @@ class ChatWrapper:
         self.config = Config_Loader().config
         self.global_config = self.config["global"]
         self.data_path = self.global_config["DATA_PATH"]
+
+        # initialize data manager
+        self.data_manager = DataManager()
+        self.data_manager.update_vectorstore()
 
         self.lock = Lock()
         self.chain = Chain()
@@ -96,6 +108,21 @@ class ChatWrapper:
             json.dump(data, f)
 
 
+    @staticmethod
+    def format_code_in_text(text):
+        """
+        Takes in input plain text (the output from A2rchi); 
+        Recognizes structures in canonical Markdown format, and processes according to the custom renderer; 
+        Returns it formatted in HTML 
+        """
+        markdown = mt.create_markdown(renderer=AnswerRenderer())
+        try:
+            return markdown(text)
+        except: 
+             print("Rendering error: markdown formatting failed")
+             return text
+
+
     def __call__(self, history: Optional[List[Tuple[str, str]]], discussion_id: Optional[int]):
         """
         Execute the chat functionality.
@@ -103,6 +130,9 @@ class ChatWrapper:
         self.lock.acquire()
         print("INFO - acquired lock file")
         try:
+            # update vector store through data manager; will only do something if new files have been added
+            self.data_manager.update_vectorstore()
+
             # convert the history to native A2rchi form (because javascript does not have tuples)
             history = self.convert_to_chain_history(history)
 
@@ -143,9 +173,9 @@ class ChatWrapper:
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
             if score < similarity_score_reference and source in sources.keys(): 
-                output = "<p>" + result["answer"] + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
             else:
-                output = "<p>" + result["answer"] + "</p>"
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
             ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
 
@@ -289,3 +319,49 @@ class FlaskAppWrapper(object):
         finally:
             self.chat.lock.release()
             print("INFO - released lock file")
+
+
+class AnswerRenderer(mt.HTMLRenderer):
+    """
+    Class for custom rendering of A2rchi output. Child of mistune's HTMLRenderer, with custom overrides.
+    Code blocks are structured and colored according to pygment lexers
+    """
+    RENDERING_LEXER_MAPPING = {
+            "python": PythonLexer,
+            "java": JavaLexer,
+            "javascript": JavascriptLexer,
+            "bash": BashLexer,
+            "c++": CppLexer,
+            "cpp": CppLexer,
+            "c": CLexer,
+            "typescript": TypeScriptLexer,
+            "html": HtmlLexer,
+            "Fortran" : FortranLexer,
+            "Julia" : JuliaLexer,
+            "Mathematica" : MathematicaLexer,
+            "MATLAB": MatlabLexer
+        }
+    
+    def __init__(self):
+        super().__init__()
+
+    def block_text(self,text):
+         #Handle blocks of text (the negatives of blocks of code) and sets them in paragraphs
+         return f"""<p>{text}</p>"""
+
+    def block_code(self, code, info=None):
+        # Handle code blocks (triple backticks)
+        if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
+        code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
+        return f"""<div class="code-box">
+                <div class="code-box-header"> 
+                <span>{info}</span> <button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>
+                </div>
+                <div class="code-box-body">{code_block_highlighted}
+                </div>
+                </div>"""
+        
+    def codespan(self, text):
+        # Handle inline code snippets (single backticks)
+        return f"""<code class="code-snippet">{text}</code>"""
+

@@ -64,6 +64,9 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
           ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
 
       # clean up secret files

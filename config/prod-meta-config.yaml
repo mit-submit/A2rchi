@@ -25,6 +25,7 @@ interfaces:
 chains:
   input_lists:
     - empty.list
+    - a2rchi_source.list
   base:
     # roles that A2rchi knows about
     ROLES: 
@@ -80,7 +81,6 @@ utils:
     CHUNK_OVERLAP: 0
     use_HTTP_chromadb_client: False   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
-    vectordb_update_time: 10
     chromadb_host: chromadb-prod-meta
     chromadb_port: 8000
     collection_name: "prod_meta_collection" #unique in case vector stores are ever combined.

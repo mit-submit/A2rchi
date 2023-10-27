@@ -1,3 +1,5 @@
+from A2rchi.utils.scraper import Scraper
+
 from chromadb.config import Settings
 from langchain.document_loaders import TextLoader
 from langchain.document_loaders import PyPDFLoader
@@ -24,6 +26,11 @@ class DataManager():
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
+
+        # scrape data onto the filesystem
+        print("Scraping documents onto filesystem")
+        scraper = Scraper()
+        scraper.hard_scrape(verbose=True)
 
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
