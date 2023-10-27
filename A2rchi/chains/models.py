@@ -42,8 +42,8 @@ class DumbLLM(BaseCustomLLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         sleep_time = np.random.normal(self.sleep_time_mean, 1)
-        time.sleep(sleep_time)
         print(f"DumbLLM: sleeping {sleep_time}")
+        time.sleep(sleep_time)
         return "I am just a dumb LLM, I will give you a number: " + str(np.random.randint(10000, 99999))
 
 class LlamaLLM(BaseCustomLLM):
