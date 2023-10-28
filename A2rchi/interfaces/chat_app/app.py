@@ -152,7 +152,9 @@ class ChatWrapper:
             self.data_manager.update_vectorstore()
 
             # convert the message to native A2rchi form (because javascript does not have tuples)
-            sender, content, is_refresh = tuple(message)
+            message = tuple(message)
+            print(message)
+            sender, content, is_refresh = message
 
             # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
