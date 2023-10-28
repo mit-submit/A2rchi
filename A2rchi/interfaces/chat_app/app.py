@@ -99,7 +99,7 @@ class ChatWrapper:
         self.cursor = self.conn.cursor()
 
         # query conversation history
-        self.cursor.execute(SQL_QUERY_CONVO, conversation_id)
+        self.cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
         history = self.cursor.fetchall()
 
         # clean up database connection state
