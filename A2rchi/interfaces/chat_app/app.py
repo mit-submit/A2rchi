@@ -152,8 +152,7 @@ class ChatWrapper:
             self.data_manager.update_vectorstore()
 
             # convert the message to native A2rchi form (because javascript does not have tuples)
-            print(message)
-            sender, content = tuple(message[0])
+            sender, content = tuple(message[0])            
 
             # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
@@ -173,7 +172,8 @@ class ChatWrapper:
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
-                result = self.chain(history)
+                full_history = history.append([(sender, content)])
+                result = self.chain(full_history)
             else:
                 # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
                 output = "Sorry, our service is currently down due to exceptional demand. Please come again later."
