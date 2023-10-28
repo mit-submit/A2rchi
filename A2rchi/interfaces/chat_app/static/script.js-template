@@ -14,7 +14,7 @@ const appropriate_checkbox = document.getElementById("appropriate_checkbox");
 popupForm.style.display = "none";
 
 let userText = null;
-let discussion_id = null;
+let conversation_id = null;
 let conversation = []
 let num_responses_since_last_rating = 0;
 
@@ -45,12 +45,17 @@ const createChatElement = (content, className) => {
 }
 
 const refreshChat = async () => {
+    // if the conversation is empty; this is a no-op
+    if (conversation.length == 0) {
+        return;
+    }
+
     conversation.pop();
     chatContainer.removeChild(chatContainer.lastChild);
-    showTypingAnimation();
+    showTypingAnimation(isRefresh=true);
 }
 
-const getChatResponse = async (incomingChatDiv) => {
+const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/get_chat_response";
     const pElement = document.createElement("div");
 
@@ -61,8 +66,9 @@ const getChatResponse = async (incomingChatDiv) => {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            conversation: conversation,
-            discussion_id: discussion_id,
+            last_message: conversation.slice(-1),
+            conversation_id: conversation_id,
+            is_refresh: isRefresh,
         })
     }
 
@@ -73,7 +79,7 @@ const getChatResponse = async (incomingChatDiv) => {
         pElement.setAttribute('id', response.a2rchi_msg_id.toString());
         pElement.classList.add(".default-text");
         conversation.push(["A2rchi", response.response]);
-        discussion_id = response.discussion_id ;
+        conversation_id = response.conversation_id;
     } catch (error) {
         pElement.classList.add("error");
         pElement.textContent = "Oops! Something went wrong while retrieving the response. Please try again.";
@@ -167,7 +173,7 @@ const closeFeedback = (closeBtn) => {
     popupForm.style.display = "none";
 }
 
-const showTypingAnimation = () => {
+const showTypingAnimation = (isRefresh=false) => {
     // Display the typing animation and call the getChatResponse function
     const html = `<div class="chat-content">
                     <div class="chat-details">
@@ -191,7 +197,7 @@ const showTypingAnimation = () => {
     const incomingChatDiv = createChatElement(html, "incoming");
     chatContainer.appendChild(incomingChatDiv);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
-    getChatResponse(incomingChatDiv);
+    getChatResponse(incomingChatDiv, isRefresh);
     showFeedbackRequest();
 }
 
@@ -246,7 +252,7 @@ deleteButton.addEventListener("click", () => {
     // Remove the chats from local storage and call loadDataFromLocalstorage function
     if(confirm("Are you sure you want to delete all the chats?")) {
         conversation = []
-        discussion_id = null
+        conversation_id = null
         localStorage.removeItem("all-chats");
         loadDataFromLocalstorage();
     }

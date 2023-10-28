@@ -2,7 +2,7 @@ from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
 from A2rchi.utils.data_manager import DataManager
 from A2rchi.utils.env import read_secret
-from A2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK
+from A2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_QUERY_CONVO
 
 from datetime import datetime
 from flask import request, jsonify, render_template
@@ -18,7 +18,7 @@ import psycopg2.extras
 import yaml
 
 # DEFINITIONS
-QUERY_LIMIT = 1000 # max number of queries
+QUERY_LIMIT = 1000 # max number of queries per conversation
 
 
 class ChatWrapper:
@@ -62,18 +62,6 @@ class ChatWrapper:
         return [list(entry) for entry in history]
 
 
-    @staticmethod
-    def convert_to_chain_history(history):
-        """
-        Input: the history in the form of a list of lists, where the first entry of each tuple is 
-        the author of the text and the second entry is the text itself
-
-        Output: the history in the form of a list of tuples, where the first entry of each tuple is 
-        the author of the text and the second entry is the text itself (native A2rchi history format)
-        """
-        return [tuple(entry) for entry in history]
-
-
     def insert_feedback(self, feedback):
         """
         """
@@ -100,8 +88,31 @@ class ChatWrapper:
         self.cursor, self.conn = None, None
 
 
-    # TODO: modify discussion_id --> conversation_id everywhere
+    def query_conversation_history(self, conversation_id):
+        """
+        Return the conversation history as an ordered list of tuples. The order
+        is determined by ascending message_id. Each tuple contains the sender and
+        the message content
+        """
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+
+        # query conversation history
+        self.cursor.execute(SQL_QUERY_CONVO, conversation_id)
+        history = self.cursor.fetchall()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+        return history
+
+
     def insert_conversation(self, conversation_id, user_message, a2rchi_message) -> List[int]:
+        """
+        """
         print(" INFO - entered insert_conversation.")
 
         # parse user message / a2rchi message if not None
@@ -130,7 +141,7 @@ class ChatWrapper:
         return message_ids
 
 
-    def __call__(self, history: Optional[List[Tuple[str, str]]], discussion_id: Optional[int], msg_ts: Optional[datetime]):
+    def __call__(self, message: Optional[List[str]], conversation_id: Optional[int], msg_ts: Optional[datetime]):
         """
         Execute the chat functionality.
         """
@@ -140,29 +151,37 @@ class ChatWrapper:
             # update vector store through data manager; will only do something if new files have been added
             self.data_manager.update_vectorstore()
 
-            # convert the history to native A2rchi form (because javascript does not have tuples)
-            history = self.convert_to_chain_history(history)
+            # convert the message to native A2rchi form (because javascript does not have tuples)
+            sender, content, is_refresh = tuple(message)
 
             # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
-            discussion_id = discussion_id or np.random.randint(100000, 999999)
+            conversation_id = conversation_id or np.random.randint(100000, 999999)
 
-            # TODO: we likely want to change this logic to queries/day as we may actually hit 1000 queries in a few days
-            # run chain to get result
-            if self.number_of_queries < QUERY_LIMIT:
+            # fetch history given conversation_id
+            history = self.query_conversation_history(conversation_id)
+
+            # if this is a chat refresh / message regeneration; remove previous contiguous non-A2rchi message(s)
+            if is_refresh:
+                while history[-1][0] == "A2rchi":
+                    _ = history.pop(-1)
+
+            # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
+            if len(history) < QUERY_LIMIT:
                 result = self.chain(history)
             else:
                 # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
                 output = "Sorry, our service is currently down due to exceptional demand. Please come again later."
-                return output, discussion_id
+                return output, conversation_id
+
+            # keep track of total number of queries and log this amount
             self.number_of_queries += 1
             print(f"number of queries is: {self.number_of_queries}")
 
             # get similarity score to see how close the input is to the source
             # - low score means very close (it's a distance between embedding vectors approximated
             #   by an approximate k-nearest neighbors algorithm called HNSW)
-            inp = history[-1][1]
-            score = self.chain.similarity_search(inp)
+            score = self.chain.similarity_search(content)
 
             # load the present list of sources
             try:
@@ -187,10 +206,10 @@ class ChatWrapper:
                 output = "<p>" + result["answer"] + "</p>"
 
             # write user message and A2rchi response to database
-            user_message = (history[-1][0], history[-1][1], msg_ts)
+            user_message = (sender, content, msg_ts)
             a2rchi_message = ("A2rchi", output, datetime.now())
 
-            message_ids = self.insert_conversation(discussion_id, user_message, a2rchi_message)
+            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message)
 
         except Exception as e:
             raise e
@@ -203,7 +222,7 @@ class ChatWrapper:
             if self.conn is not None:
                 self.conn.close()
 
-        return output, discussion_id, message_ids
+        return output, conversation_id, message_ids
 
 
 class FlaskAppWrapper(object):
@@ -244,11 +263,9 @@ class FlaskAppWrapper(object):
         functionality is carried through by javascript and html. Input is a 
         requestion with
 
-            Discussion_id: Either None or an integer
-            Conversation: List of length 2 lists, where the length 2
-                          lists have first element either "User" or 
-                          "A2rchi" and have second element of a message
-                          content.
+            conversation_id: Either None or an integer
+            last_message:    list of length 2, where the first element is "User"
+                             and the second element contains their message.
 
         Returns:
             A json with a response (html formatted plain text string) and a
@@ -257,15 +274,15 @@ class FlaskAppWrapper(object):
         # compute timestamp at which message was received by server
         msg_ts = datetime.now()
 
-        # get user input and discussion_id from the request
-        history = request.json.get('conversation')
-        discussion_id = request.json.get('discussion_id')
+        # get user input and conversation_id from the request
+        message = request.json.get('last_message')
+        conversation_id = request.json.get('conversation_id')
 
         # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
-        response, discussion_id, message_ids = self.chat(history, discussion_id, msg_ts)
+        response, conversation_id, message_ids = self.chat(message, conversation_id, msg_ts)
 
-        return jsonify({'response': response, 'discussion_id': discussion_id, 'a2rchi_msg_id': message_ids[1]})
+        return jsonify({'response': response, 'conversation_id': conversation_id, 'a2rchi_msg_id': message_ids[1]})
 
     def index(self):
         return render_template('index.html')

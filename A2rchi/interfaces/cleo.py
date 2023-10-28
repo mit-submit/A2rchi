@@ -19,7 +19,6 @@ class CleoAIWrapper:
 
     def __init__(self):
         self.chain = Chain()
-        self.number_of_queries = 0 #TODO: finish installing this safegaurd.
 
     def __call__(self, history):
         
