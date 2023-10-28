@@ -141,7 +141,7 @@ class ChatWrapper:
         return message_ids
 
 
-    def __call__(self, message: Optional[List[str]], conversation_id: Optional[int], msg_ts: Optional[datetime]):
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, msg_ts: datetime):
         """
         Execute the chat functionality.
         """
@@ -152,9 +152,7 @@ class ChatWrapper:
             self.data_manager.update_vectorstore()
 
             # convert the message to native A2rchi form (because javascript does not have tuples)
-            message = tuple(message)
-            print(message)
-            sender, content, is_refresh = message
+            sender, content = message[0], message[1]
 
             # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
@@ -279,10 +277,11 @@ class FlaskAppWrapper(object):
         # get user input and conversation_id from the request
         message = request.json.get('last_message')
         conversation_id = request.json.get('conversation_id')
+        is_refresh = request.json.get('is_refresh')
 
         # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
-        response, conversation_id, message_ids = self.chat(message, conversation_id, msg_ts)
+        response, conversation_id, message_ids = self.chat(message, conversation_id, is_refresh, msg_ts)
 
         return jsonify({'response': response, 'conversation_id': conversation_id, 'a2rchi_msg_id': message_ids[1]})
 
