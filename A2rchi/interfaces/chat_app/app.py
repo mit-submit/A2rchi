@@ -5,11 +5,29 @@ from A2rchi.utils.env import read_secret
 from A2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_QUERY_CONVO
 
 from datetime import datetime
+from pygments import highlight
+from pygments.lexers import (
+    BashLexer,
+    PythonLexer,
+    JavaLexer,
+    JavascriptLexer,
+    CppLexer,
+    CLexer,
+    TypeScriptLexer,
+    HtmlLexer,
+    FortranLexer,
+    JuliaLexer,
+    MathematicaLexer,
+    MatlabLexer
+)
+from pygments.formatters import HtmlFormatter
+
 from flask import request, jsonify, render_template
 from flask_cors import CORS
 from threading import Lock
-from typing import Optional, List, Tuple
+from typing import List
 
+import mistune as mt
 import numpy as np
 
 import os
@@ -19,6 +37,51 @@ import yaml
 
 # DEFINITIONS
 QUERY_LIMIT = 1000 # max number of queries per conversation
+
+
+class AnswerRenderer(mt.HTMLRenderer):
+    """
+    Class for custom rendering of A2rchi output. Child of mistune's HTMLRenderer, with custom overrides.
+    Code blocks are structured and colored according to pygment lexers
+    """
+    RENDERING_LEXER_MAPPING = {
+            "python": PythonLexer,
+            "java": JavaLexer,
+            "javascript": JavascriptLexer,
+            "bash": BashLexer,
+            "c++": CppLexer,
+            "cpp": CppLexer,
+            "c": CLexer,
+            "typescript": TypeScriptLexer,
+            "html": HtmlLexer,
+            "Fortran" : FortranLexer,
+            "Julia" : JuliaLexer,
+            "Mathematica" : MathematicaLexer,
+            "MATLAB": MatlabLexer
+        }
+    
+    def __init__(self):
+        super().__init__()
+
+    def block_text(self,text):
+         #Handle blocks of text (the negatives of blocks of code) and sets them in paragraphs
+         return f"""<p>{text}</p>"""
+
+    def block_code(self, code, info=None):
+        # Handle code blocks (triple backticks)
+        if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
+        code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
+        return f"""<div class="code-box">
+                <div class="code-box-header"> 
+                <span>{info}</span> <button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>
+                </div>
+                <div class="code-box-body">{code_block_highlighted}
+                </div>
+                </div>"""
+        
+    def codespan(self, text):
+        # Handle inline code snippets (single backticks)
+        return f"""<code class="code-snippet">{text}</code>"""
 
 
 class ChatWrapper:
@@ -60,6 +123,21 @@ class ChatWrapper:
         the author of the text and the second entry is the text itself 
         """
         return [list(entry) for entry in history]
+    
+
+    @staticmethod
+    def format_code_in_text(text):
+        """
+        Takes in input plain text (the output from A2rchi); 
+        Recognizes structures in canonical Markdown format, and processes according to the custom renderer; 
+        Returns it formatted in HTML 
+        """
+        markdown = mt.create_markdown(renderer=AnswerRenderer())
+        try:
+            return markdown(text)
+        except: 
+             print("Rendering error: markdown formatting failed")
+             return text
 
 
     def insert_feedback(self, feedback):
@@ -214,9 +292,9 @@ class ChatWrapper:
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
             if score < similarity_score_reference and source in sources.keys(): 
-                output = "<p>" + result["answer"] + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
             else:
-                output = "<p>" + result["answer"] + "</p>"
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
             # write user message and A2rchi response to database
             user_message = (sender, content, msg_ts)

@@ -38,7 +38,7 @@ services:
         max-size: 10m
     restart: always
 
-  mailbox-prod:
+  mailbox-prod-meta:
     image: mailbox-prod-meta:${TAG}
     build:
       context: ../..

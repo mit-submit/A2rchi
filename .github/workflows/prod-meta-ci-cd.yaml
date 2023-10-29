@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/deploy/prod-meta/secrets/
           touch ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
-          echo "${{ secrets.PROD_IMAP_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
+          echo "${{ secrets.PROD_META_IMAP_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
           chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
           touch ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
           echo "${{ secrets.PROD_IMAP_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
@@ -78,7 +78,7 @@ jobs:
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-meta/.env
-
+          
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
@@ -94,7 +94,7 @@ jobs:
         run: |
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
-          sed -i -e "s/BASE_TAG/${tag}" ${{ github.workspace }}/deploy/prod-meta/prod-meta-install.sh
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-meta/prod-meta-install.sh
           ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-meta/prod-meta-install.sh
 
       # clean up secret files
