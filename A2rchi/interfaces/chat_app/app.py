@@ -152,6 +152,7 @@ class ChatWrapper:
             self.data_manager.update_vectorstore()
 
             # convert the message to native A2rchi form (because javascript does not have tuples)
+            print(message)
             sender, content = tuple(message[0])            
 
             # TODO: incr. from 0?
