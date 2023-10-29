@@ -75,6 +75,9 @@ jobs:
           touch ${{ github.workspace }}/deploy/prod/secrets/hf_token.txt
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/prod/secrets/hf_token.txt
+          touch ${{ github.workspace }}/deploy/prod/secrets/pg_password.txt
+          echo "${{ secrets.PROD_PG_PASSWORD }}" >> ${{ github.workspace }}/deploy/prod/secrets/pg_password.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod/secrets/pg_password.txt
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
@@ -105,13 +108,7 @@ jobs:
       # clean up secret files
       - name: Remove Secrets from Runner
         run: |
-          rm ${{ github.workspace }}/deploy/prod/secrets/cleo_*.txt
-          rm ${{ github.workspace }}/deploy/prod/secrets/imap_*.txt
-          rm ${{ github.workspace }}/deploy/prod/secrets/sender_*.txt
-          rm ${{ github.workspace }}/deploy/prod/secrets/flask_uploader_app_secret_key.txt
-          rm ${{ github.workspace }}/deploy/prod/secrets/uploader_salt.txt
-          rm ${{ github.workspace }}/deploy/prod/secrets/openai_api_key.txt
-          rm ${{ github.workspace }}/deploy/prod/secrets/hf_token.txt
+          rm ${{ github.workspace }}/deploy/prod/secrets/*.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
