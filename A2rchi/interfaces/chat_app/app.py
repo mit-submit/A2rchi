@@ -172,7 +172,7 @@ class ChatWrapper:
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
-                full_history = history.append([(sender, content)])
+                full_history = history.append([(sender, content)]) if not is_refresh else history
                 result = self.chain(full_history)
             else:
                 # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
