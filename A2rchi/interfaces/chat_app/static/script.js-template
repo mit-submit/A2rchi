@@ -104,7 +104,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
 
     // ask user for feedback if it's been too many messages w/out any feedback
-    showFeedbackRequest();
+    setTimeout(showFeedbackRequest, 500);
 }
 
 const copyResponse = (copyBtn) => {
