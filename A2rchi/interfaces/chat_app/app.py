@@ -298,7 +298,7 @@ class FlaskAppWrapper(object):
         print(" INFO - Calling the ChatWrapper()")
         response, conversation_id, message_ids = self.chat(message, conversation_id, is_refresh, msg_ts)
 
-        return jsonify({'response': response, 'conversation_id': conversation_id, 'a2rchi_msg_id': message_ids[1]})
+        return jsonify({'response': response, 'conversation_id': conversation_id, 'a2rchi_msg_id': message_ids[-1]})
 
     def index(self):
         return render_template('index.html')
