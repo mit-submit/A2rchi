@@ -110,7 +110,7 @@ class ChatWrapper:
         return history
 
 
-    def insert_conversation(self, conversation_id, user_message, a2rchi_message) -> List[int]:
+    def insert_conversation(self, conversation_id, user_message, a2rchi_message, is_refresh=False) -> List[int]:
         """
         """
         print(" INFO - entered insert_conversation.")
@@ -120,11 +120,17 @@ class ChatWrapper:
         a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
 
         # construct insert_tups
-        insert_tups = [
-            # (conversation_id, sender, content, ts)
-            (conversation_id, user_sender, user_content, user_msg_ts),
-            (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts),
-        ]
+        insert_tups = (
+            [
+                # (conversation_id, sender, content, ts)
+                (conversation_id, user_sender, user_content, user_msg_ts),
+                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts),
+            ]
+            if not is_refresh
+            else [
+                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts),
+            ]
+        )
 
         # create connection to database
         self.conn = psycopg2.connect(**self.pg_config)
@@ -218,7 +224,7 @@ class ChatWrapper:
             print(user_message)
             print(a2rchi_message)
 
-            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message)
+            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, is_refresh)
 
         except Exception as e:
             raise e

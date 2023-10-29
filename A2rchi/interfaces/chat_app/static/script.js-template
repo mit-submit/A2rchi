@@ -17,6 +17,7 @@ let userText = null;
 let conversation_id = null;
 let conversation = []
 let num_responses_since_last_rating = 0;
+let last_response_is_feedback_request = false;
 
 const loadDataFromLocalstorage = () => {
     // Load saved chats and theme from local storage and apply/add on the page
@@ -50,8 +51,16 @@ const refreshChat = async () => {
         return;
     }
 
+    // remove message to be regenerated from conversation
     conversation.pop();
     chatContainer.removeChild(chatContainer.lastChild);
+
+    // if the last response generated a feedback request, make sure to remove it here as well
+    if (last_response_is_feedback_request) {
+        chatContainer.removeChild(chatContainer.lastChild);
+    }
+
+    // generate new response
     showTypingAnimation(isRefresh=true);
 }
 
@@ -80,6 +89,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
         pElement.classList.add(".default-text");
         conversation.push(["A2rchi", response.response]);
         conversation_id = response.conversation_id;
+        last_response_is_feedback_request = false;
     } catch (error) {
         pElement.classList.add("error");
         pElement.textContent = "Oops! Something went wrong while retrieving the response. Please try again.";
@@ -210,7 +220,7 @@ const showFeedbackRequest = () => {
                     <div class="chat-details">
                         <img src="/static/images/a2rchi.png" alt="chatbot-img">
                         <div class=".default-text">
-                            <p>I've noticed you haven't rated any of my responses in awhile. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
+                            <p>I've noticed you haven't rated any of my responses in a while. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
                         </div>
                     </div>
                 </div>`;
@@ -221,6 +231,7 @@ const showFeedbackRequest = () => {
         chatContainer.appendChild(incomingChatDiv);
         chatContainer.scrollTo(0, chatContainer.scrollHeight);
         num_responses_since_last_rating = 0;
+        last_response_is_feedback_request = true;
     }
 }
 
