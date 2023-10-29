@@ -102,6 +102,9 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     incomingChatDiv.querySelector(".chat-details").appendChild(pElement);
     localStorage.setItem("all-chats", chatContainer.innerHTML);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
+
+    // ask user for feedback if it's been too many messages w/out any feedback
+    showFeedbackRequest();
 }
 
 const copyResponse = (copyBtn) => {
@@ -210,7 +213,6 @@ const showTypingAnimation = (isRefresh=false) => {
     chatContainer.appendChild(incomingChatDiv);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
     getChatResponse(incomingChatDiv, isRefresh);
-    showFeedbackRequest();
 }
 
 const showFeedbackRequest = () => {
