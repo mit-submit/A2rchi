@@ -56,7 +56,9 @@ const refreshChat = async () => {
     chatContainer.removeChild(chatContainer.lastChild);
 
     // if the last response generated a feedback request, make sure to remove it here as well
+    console.log(last_response_is_feedback_request)
     if (last_response_is_feedback_request) {
+        console.log("remove again")
         chatContainer.removeChild(chatContainer.lastChild);
     }
 
