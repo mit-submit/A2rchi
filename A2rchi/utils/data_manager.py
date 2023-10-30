@@ -246,6 +246,7 @@ class DataManager():
 
             print("Ids: ",ids)
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
+            print("succesfully added file ", filename)
 
         return collection
 
