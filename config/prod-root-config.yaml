@@ -89,7 +89,7 @@ utils:
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
     # choose one embedding from list below
-    EMBEDDING_NAME: HuggingFaceEmbeddings
+    EMBEDDING_NAME: OpenAIEmbeddings
     # list of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:
