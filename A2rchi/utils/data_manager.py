@@ -96,7 +96,7 @@ class DataManager():
                 path=self.global_config["LOCAL_VSTORE_PATH"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
-
+        client.reset()
         collection = client.get_or_create_collection(self.collection_name)
         print(f" n in collection: {collection.count()}")
 
