@@ -105,9 +105,9 @@ class ChatWrapper:
         """
         Execute the chat functionality.
         """
+        self.lock.acquire()
         try:
             # update vector store through data manager; will only do something if new files have been added
-            self.lock.acquire()
             print("INFO - acquired lock file update vectorstore")
 
             self.data_manager.update_vectorstore()
@@ -163,8 +163,8 @@ class ChatWrapper:
         else:
             output = "<p>" + result["answer"] + "</p>"
 
+        self.lock.acquire()
         try:
-            self.lock.acquire()
             print("INFO - acquired lock file write json")
 
             ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
