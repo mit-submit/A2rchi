@@ -22,7 +22,7 @@ services:
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
-      ALLOW_RESET: TRUE
+      ALLOW_RESET: true
     secrets:
       - cleo_url
       - cleo_user
