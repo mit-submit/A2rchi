@@ -113,6 +113,7 @@ class DataManager():
         # get current status of persistent vstore 
         files_in_vstore = [metadata["filename"] for metadata in collection.get(include=["metadatas"])["metadatas"]]
 
+
         # scan data folder and obtain list of files in data. Assumes max depth = 1
         dirs = [
             os.path.join(self.data_path, dir)
@@ -127,6 +128,11 @@ class DataManager():
 
         # files in data is a dictionary, with keys of the names of files and values with their full path.
         files_in_data = {os.path.basename(file_fullpath): file_fullpath for file_fullpath in files_in_data_fullpath}
+
+
+        print("files in vstore: ", files_in_vstore)
+        print("files in data: ", files_in_data)
+        print("collection: ", collection)
 
         # get map between sources and filename hashes
         with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
