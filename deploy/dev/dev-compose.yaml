@@ -22,7 +22,6 @@ services:
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
-      ALLOW_RESET: True
     secrets:
       - cleo_url
       - cleo_user
@@ -56,7 +55,6 @@ services:
       RUNTIME_ENV: dev
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
-      ALLOW_RESET: True
     secrets:
       - openai_api_key
       - hf_token
@@ -94,7 +92,6 @@ services:
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
-      ALLOW_RESET: True
     secrets:
       - imap_user
       - imap_pw
@@ -130,7 +127,6 @@ services:
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
-      ALLOW_RESET: True
     secrets:
       - flask_uploader_app_secret_key
       - uploader_salt
