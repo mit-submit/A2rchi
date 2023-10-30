@@ -112,10 +112,9 @@ class ChatWrapper:
 
             self.data_manager.update_vectorstore()
 
-            self.lock.release()
-            print("INFO - released lock file update vectorstore")
         except Exception as e:
             print(f"ERROR - {str(e)}")
+
         finally:
             self.lock.release()
             print("INFO - released lock file update vectorstore")
@@ -170,10 +169,9 @@ class ChatWrapper:
 
             ChatWrapper.update_or_add_discussion(self.data_path, "conversations_test.json", discussion_id, discussion_contents = history + [("A2rchi", output)])
 
-            self.lock.release()
-            print("INFO - released lock file write json")
         except Exception as e:
             print(f"ERROR - {str(e)}")
+
         finally:
             self.lock.release()
             print("INFO - released lock file write json")
