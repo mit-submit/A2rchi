@@ -336,10 +336,10 @@ class AnswerRenderer(mt.HTMLRenderer):
             "c": CLexer,
             "typescript": TypeScriptLexer,
             "html": HtmlLexer,
-            "Fortran" : FortranLexer,
-            "Julia" : JuliaLexer,
-            "Mathematica" : MathematicaLexer,
-            "MATLAB": MatlabLexer
+            "fortran" : FortranLexer,
+            "julia" : JuliaLexer,
+            "mathematica" : MathematicaLexer,
+            "matlab": MatlabLexer
         }
     
     def __init__(self):
