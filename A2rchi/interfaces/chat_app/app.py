@@ -343,6 +343,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         }
     
     def __init__(self):
+        self.config = Config_Loader().config
         super().__init__()
 
     def block_text(self,text):
@@ -353,9 +354,14 @@ class AnswerRenderer(mt.HTMLRenderer):
         # Handle code blocks (triple backticks)
         if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
         code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
+
+        if self.config["interfaces"]["chat_app"]["include_copy_button"]:
+            button = """<button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>"""
+        else: button = ""
+        
         return f"""<div class="code-box">
                 <div class="code-box-header"> 
-                <span>{info}</span> <button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>
+                <span>{info}</span>{button}
                 </div>
                 <div class="code-box-body">{code_block_highlighted}
                 </div>
