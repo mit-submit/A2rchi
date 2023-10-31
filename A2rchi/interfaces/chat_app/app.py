@@ -236,29 +236,23 @@ class ChatWrapper:
             self.data_manager.update_vectorstore()
 
             # convert the message to native A2rchi form (because javascript does not have tuples)
-            print(message)
             sender, content = tuple(message[0])            
 
             # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
             conversation_id = conversation_id or np.random.randint(100000, 999999)
-            print(conversation_id)
 
             # fetch history given conversation_id
             history = self.query_conversation_history(conversation_id)
-            print(history)
 
             # if this is a chat refresh / message regeneration; remove previous contiguous non-A2rchi message(s)
-            print(is_refresh)
             if is_refresh:
                 while history[-1][0] == "A2rchi":
                     _ = history.pop(-1)
-            print(history)
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 full_history = history + [(sender, content)] if not is_refresh else history
-                print(full_history)
                 result = self.chain(full_history)
             else:
                 # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
@@ -299,8 +293,6 @@ class ChatWrapper:
             # write user message and A2rchi response to database
             user_message = (sender, content, msg_ts)
             a2rchi_message = ("A2rchi", output, datetime.now())
-            print(user_message)
-            print(a2rchi_message)
 
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, is_refresh)
 
