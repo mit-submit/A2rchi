@@ -96,12 +96,8 @@ class DataManager():
                 path=self.global_config["LOCAL_VSTORE_PATH"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
-        print("collection list " , client.list_collections())
-        client.reset()
         collection = client.get_or_create_collection(self.collection_name)
-        print("collection list " , client.list_collections())
         print(f" n in collection: {collection.count()}")
-
         return collection
 
 
@@ -130,11 +126,6 @@ class DataManager():
 
         # files in data is a dictionary, with keys of the names of files and values with their full path.
         files_in_data = {os.path.basename(file_fullpath): file_fullpath for file_fullpath in files_in_data_fullpath}
-
-
-        print("files in vstore: ", files_in_vstore)
-        print("files in data: ", files_in_data)
-        print("collection: ", collection)
 
         # get map between sources and filename hashes
         with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:

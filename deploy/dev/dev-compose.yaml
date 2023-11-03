@@ -148,7 +148,7 @@ services:
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
       RUNTIME_ENV: dev
-      ALLOW_RESET: True
+      ALLOW_RESET: True #Allow to request client to reset vstore. Functionality not currently used but keep for future debugging
     ports:
       - 8002:8000  # host:container
     volumes:
