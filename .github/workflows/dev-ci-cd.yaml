@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - dev-root
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
@@ -88,12 +87,12 @@ jobs:
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-stop.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk:~/A2rchi-dev/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-dev/
 
       # run deploy script
       - name: Run Deploy Script
@@ -101,7 +100,7 @@ jobs:
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/dev/dev-install.sh
-          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-install.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner

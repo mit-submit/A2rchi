@@ -32,7 +32,7 @@ chains:
     ROLES: 
       - User
       - A2rchi
-      - Expert 
+      - Expert
     #logging within base chain
     logging:
       #name of .log logfile to be saved in data folder.  
@@ -103,7 +103,7 @@ utils:
       HuggingFaceEmbeddings:
         class: HuggingFaceEmbeddings
         kwargs:
-          model_name: "sentence-transformers/all-mpnet-base-v2"
+          model_name: sentence-transformers/all-MiniLM-L6-v2 #"sentence-transformers/all-mpnet-base-v2"
           model_kwargs:
             device: 'cpu'
           encode_kwargs: 
