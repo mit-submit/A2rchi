@@ -2,7 +2,6 @@ from A2rchi.chains.base import BaseSubMITChain as BaseChain
 
 from chromadb.config import Settings
 from langchain.vectorstores import Chroma
-from threading import Lock, Thread
 
 import chromadb
 import time
@@ -16,7 +15,6 @@ class Chain() :
         into a format that the chain can use. Then, it creates the chain using 
         those documents.
         """
-        self.lock = Lock()
         self.kill = False
 
         from A2rchi.utils.config_loader import Config_Loader
@@ -55,8 +53,7 @@ class Chain() :
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
 
-        # acquire lock and construct chain
-        self.lock.acquire()
+        # construct chain
         vectorstore = Chroma(
             client=client,
             collection_name=self.collection_name,
@@ -65,7 +62,6 @@ class Chain() :
         chain = BaseChain.from_llm(self.llm, vectorstore.as_retriever(), return_source_documents=True)
         print(f"N entries: {client.get_collection(self.collection_name).count()}")
         print("Updated chain with new vectorstore")
-        self.lock.release()
 
         return chain
 
@@ -135,10 +131,8 @@ class Chain() :
         chat_history = history[:-1] if history is not None else None
 
         # make the request to the chain 
-        self.lock.acquire()
         answer = chain({"question": question, "chat_history": chat_history})
         print(f" INFO - answer: {answer}")
-        self.lock.release()
 
         # delete chain object to release chain, vectorstore, and client for garbage collection
         del chain
