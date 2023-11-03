@@ -45,17 +45,18 @@ chains:
     MAIN_PROMPT: config/prompts/submit.prompt
   chain: 
     # pick one of the models listed in the model class map below
-    MODEL_NAME: OpenAILLM # LlamaLLM
+    MODEL_NAME: DumbLLM # LlamaLLM
     # map of all the class models and their keyword arguments
     MODEL_CLASS_MAP:
       OpenAILLM:
         class: OpenAILLM
         kwargs:
-          model_name: gpt-4
+          model_name: gpt-4 #or gpt-3.5-turbo
           temperature: 1
       DumbLLM:
         class: DumbLLM
-        kwargs: 
+        kwargs:
+          sleep_time_mean: 3
           filler: null
       LlamaLLM:
         class: LlamaLLM
