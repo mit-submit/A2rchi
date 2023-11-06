@@ -165,8 +165,32 @@ services:
       start_period: 10s
       start_interval: 5s
 
+  postgres-prod:
+    image: postgres:16
+    environment:
+      RUNTIME_ENV: prod
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_USER: a2rchi
+      POSTGRES_DB: a2rchi-db
+    secrets:
+      - pg_password
+    volumes:
+      - ./prod-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - a2rchi-prod-pg-data:/var/lib/postgresql/data
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U a2rchi -d a2rchi-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   a2rchi-prod-data:
+    external: true
+  a2rchi-prod-pg-data:
     external: true
 
 secrets:
@@ -200,3 +224,5 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
+  pg_password:
+    file: secrets/pg_password.txt
