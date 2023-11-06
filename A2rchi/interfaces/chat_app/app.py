@@ -36,7 +36,7 @@ import psycopg2.extras
 import yaml
 
 # DEFINITIONS
-QUERY_LIMIT = 1000 # max number of queries per conversation
+QUERY_LIMIT = 10000 # max number of queries per conversation
 
 
 class AnswerRenderer(mt.HTMLRenderer):
@@ -123,7 +123,7 @@ class ChatWrapper:
         the author of the text and the second entry is the text itself 
         """
         return [list(entry) for entry in history]
-    
+
 
     @staticmethod
     def format_code_in_text(text):
@@ -230,11 +230,20 @@ class ChatWrapper:
         Execute the chat functionality.
         """
         self.lock.acquire()
-        print("INFO - acquired lock file")
         try:
             # update vector store through data manager; will only do something if new files have been added
+            print("INFO - acquired lock file update vectorstore")
+
             self.data_manager.update_vectorstore()
 
+        except Exception as e:
+            print(f"ERROR - {str(e)}")
+
+        finally:
+            self.lock.release()
+            print("INFO - released lock file update vectorstore")
+
+        try:
             # convert the message to native A2rchi form (because javascript does not have tuples)
             sender, content = tuple(message[0])            
 
@@ -297,11 +306,9 @@ class ChatWrapper:
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, is_refresh)
 
         except Exception as e:
-            raise e
-        finally:
-            self.lock.release()
-            print("INFO - released lock file")
+            print(f"ERROR - {str(e)}")
 
+        finally:
             if self.cursor is not None:
                 self.cursor.close()
             if self.conn is not None:
