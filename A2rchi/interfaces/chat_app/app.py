@@ -367,8 +367,6 @@ class FlaskAppWrapper(object):
         import time
         time.sleep(130)
 
-        # TODO: also need to add timeout to server
-
         # compute timestamp at which message was received by server
         msg_ts = datetime.now()
 
@@ -376,6 +374,13 @@ class FlaskAppWrapper(object):
         message = request.json.get('last_message')
         conversation_id = request.json.get('conversation_id')
         is_refresh = request.json.get('is_refresh')
+        client_msg_ts = request.json.get('client_msg_ts') / 1000
+        client_timeout = request.json.get('timeout') / 1000
+
+        # if timestamp from message is more than TIMEOUT_SECS in the past;
+        # do not generate response as the client will have timed out
+        if msg_ts - client_msg_ts > client_timeout:
+            return jsonify({'error': 'client timeout'}), 408
 
         # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
