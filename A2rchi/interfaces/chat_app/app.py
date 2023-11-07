@@ -352,7 +352,7 @@ class ChatWrapper:
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
 
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, is_refresh)
-            timestamps['insert_convo_ts'] = datetime.now().timestamp()
+            timestamps['insert_convo_ts'] = datetime.now()
 
         except Exception as e:
             print(f"ERROR - {str(e)}")
@@ -363,7 +363,7 @@ class ChatWrapper:
             if self.conn is not None:
                 self.conn.close()
         
-        timestamps['finish_call_ts'] = datetime.now().timestamp()
+        timestamps['finish_call_ts'] = datetime.now()
 
         return output, conversation_id, message_ids, timestamps, False
 
