@@ -13,9 +13,11 @@ services:
       RUNTIME_ENV: prod-root
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
     secrets:
       - openai_api_key
       - hf_token
+      - pg_password
     volumes:
       - a2rchi-prod-root-data:/root/data/
     ports:
