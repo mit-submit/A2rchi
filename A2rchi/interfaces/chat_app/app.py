@@ -36,7 +36,7 @@ import psycopg2.extras
 import yaml
 
 # DEFINITIONS
-QUERY_LIMIT = 10000 # max number of queries per conversation
+QUERY_LIMIT = 10000 # max queries per conversation
 
 
 class AnswerRenderer(mt.HTMLRenderer):
