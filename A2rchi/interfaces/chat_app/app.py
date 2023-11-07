@@ -436,6 +436,8 @@ class FlaskAppWrapper(object):
         timestamps['server_response_msg_ts'] = datetime.now()
 
         # store timing info for this message
+        timestamps['server_received_msg_ts'] = server_received_msg_ts
+        timestamps['client_sent_msg_ts'] = client_sent_msg_ts
         self.chat.insert_timing(message_ids[-1], timestamps)
 
         # otherwise return A2rchi's response to client
