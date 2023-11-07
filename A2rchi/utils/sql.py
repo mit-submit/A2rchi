@@ -21,7 +21,7 @@ ORDER BY message_id ASC;
 """
 
 SQL_INSERT_TIMING = """INSERT INTO timing (
-    mid
+    mid,
     client_sent_msg_ts,
     server_received_msg_ts,
     lock_acquisition_ts,
