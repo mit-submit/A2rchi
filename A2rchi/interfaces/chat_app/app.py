@@ -259,7 +259,7 @@ class ChatWrapper:
         self.cursor, self.conn = None, None
 
 
-    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_msg_ts: float, client_timeout: float):
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
         """
         Execute the chat functionality.
         """
@@ -301,7 +301,7 @@ class ChatWrapper:
 
             # guard call to LLM; if timestamp from message is more than timeout secs in the past;
             # return error=True and do not generate response as the client will have timed out
-            if server_received_msg_ts.timestamp() - client_msg_ts > client_timeout:
+            if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
                 return None, None, None, True
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
@@ -437,7 +437,7 @@ class FlaskAppWrapper(object):
 
         # store timing info for this message
         timestamps['server_received_msg_ts'] = server_received_msg_ts
-        timestamps['client_sent_msg_ts'] = client_sent_msg_ts
+        timestamps['client_sent_msg_ts'] = datetime.fromtimestamp(client_sent_msg_ts)
         self.chat.insert_timing(message_ids[-1], timestamps)
 
         # otherwise return A2rchi's response to client
