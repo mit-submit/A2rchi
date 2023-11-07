@@ -156,16 +156,20 @@ const likeResponse = (likeBtn) => {
     const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/like";
 
      // Send an API request with the chat content and discussion ID
-     fetch(API_URL, {
-        method: "POST", // You may need to adjust the HTTP method
-        headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-        },
-        body: JSON.stringify({
-            message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
-        }),
-    })
+     try {
+        fetch(API_URL, {
+            method: "POST", // You may need to adjust the HTTP method
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({
+                message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+            }),
+        })
+     } catch (error) {
+        console.log("liked error message")
+     }
 }
 
 const dislikeResponse = (dislikeBtn) => {
@@ -188,22 +192,26 @@ const dislikeResponse = (dislikeBtn) => {
     function handleSubmitToAPI() {
         const additionalThoughts = additionalThoughtsInput.value;
 
-        fetch(API_URL, {
-            method: "POST", // You may need to adjust the HTTP method
-            headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            body: JSON.stringify({ 
-                message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
-                feedback_msg: additionalThoughts,
-                incorrect: correct_checkbox.checked,
-                unhelpful: helpful_checkbox.checked,
-                inappropriate: appropriate_checkbox.checked,
-            }),
-        });
+        try {
+            fetch(API_URL, {
+                method: "POST", // You may need to adjust the HTTP method
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+                body: JSON.stringify({ 
+                    message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+                    feedback_msg: additionalThoughts,
+                    incorrect: correct_checkbox.checked,
+                    unhelpful: helpful_checkbox.checked,
+                    inappropriate: appropriate_checkbox.checked,
+                }),
+            });
+        } catch (error) {
+            console.log("disliked error message")
+        }
 
-        //hide pop up formi
+        //hide pop up form
         popupForm.style.display = "none";
     }
 

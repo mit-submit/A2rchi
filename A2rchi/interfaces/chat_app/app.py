@@ -368,10 +368,6 @@ class FlaskAppWrapper(object):
             A json with a response (html formatted plain text string) and a
             discussion ID (either None or an integer)
         """
-        # TODO: remove; only here to debug timeout
-        import time
-        time.sleep(130)
-
         # compute timestamp at which message was received by server
         msg_ts = datetime.now()
 
