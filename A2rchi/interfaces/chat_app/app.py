@@ -225,7 +225,7 @@ class ChatWrapper:
         return message_ids
 
 
-    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, msg_ts: datetime):
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, msg_ts: datetime,  client_msg_ts: float, client_timeout: float):
         """
         Execute the chat functionality.
         """
@@ -259,14 +259,19 @@ class ChatWrapper:
                 while history[-1][0] == "A2rchi":
                     _ = history.pop(-1)
 
+            # guard call to LLM; if timestamp from message is more than timeout secs in the past;
+            # return error=True and do not generate response as the client will have timed out
+            if msg_ts.timestamp() - client_msg_ts > client_timeout:
+                return None, None, None, True
+
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 full_history = history + [(sender, content)] if not is_refresh else history
                 result = self.chain(full_history)
             else:
-                # the case where we have exceeded the QUERY LIMIT (built so that we do not overuse the chain)
-                output = "Sorry, our service is currently down due to exceptional demand. Please come again later."
-                return output, conversation_id
+                # for now let's return a timeout error, as returning a different
+                # error message would require handling new message_ids param. properly
+                return None, None, None, True
 
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
@@ -314,7 +319,7 @@ class ChatWrapper:
             if self.conn is not None:
                 self.conn.close()
 
-        return output, conversation_id, message_ids
+        return output, conversation_id, message_ids, False
 
 
 class FlaskAppWrapper(object):
@@ -377,15 +382,15 @@ class FlaskAppWrapper(object):
         client_msg_ts = request.json.get('client_msg_ts') / 1000
         client_timeout = request.json.get('timeout') / 1000
 
-        # if timestamp from message is more than TIMEOUT_SECS in the past;
-        # do not generate response as the client will have timed out
-        if msg_ts - client_msg_ts > client_timeout:
-            return jsonify({'error': 'client timeout'}), 408
-
         # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
-        response, conversation_id, message_ids = self.chat(message, conversation_id, is_refresh, msg_ts)
+        response, conversation_id, message_ids, error = self.chat(message, conversation_id, is_refresh, msg_ts, client_msg_ts, client_timeout)
 
+        # handle timeout error
+        if error:
+            return jsonify({'error': 'client timeout'}), 408
+
+        # otherwise return A2rchi's response to client
         return jsonify({'response': response, 'conversation_id': conversation_id, 'a2rchi_msg_id': message_ids[-1]})
 
     def index(self):

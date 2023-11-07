@@ -168,6 +168,10 @@ span.material-symbols-rounded {
 .chat .chat-details p.error {
   color: #e55865;
 }
+.chat .chat-details .error {
+  padding: 0 50px 0 25px;
+  color: var(--text-color);
+}
 .chat .typing-animation {
   padding-left: 25px;
   display: inline-flex;

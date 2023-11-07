@@ -100,8 +100,9 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
             last_message: conversation.slice(-1),
             conversation_id: conversation_id,
             is_refresh: isRefresh,
+            client_msg_ts: Date.now(),
+            client_timeout: DEFAULT_TIMEOUT_SECS * 1000
         }),
-        client_msg_ts: Date.now(),
         timeout: DEFAULT_TIMEOUT_SECS * 1000
     }
 
@@ -116,7 +117,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
         last_response_is_feedback_request = false;
     } catch (error) {
         pElement.classList.add("error");
-        pElement.textContent = "<p>Oops! Something went wrong while retrieving the response. Please try again.</p>";
+        pElement.textContent = "Oops! Something went wrong while retrieving the response. Please try again.";
     }
 
     // Remove the typing animation, append the paragraph element and save the chats to local storage
