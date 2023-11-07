@@ -17,6 +17,7 @@ interfaces:
     template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
     static_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
+    include_copy_button: False
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
@@ -27,6 +28,7 @@ chains:
     - empty.list
     - miscellanea.list
     - root-docs.list
+    - root-tutorial.list
     # - root-forum.list
   base:
     # roles that A2rchi knows about
@@ -98,7 +100,7 @@ utils:
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
     # choose one embedding from list below
-    EMBEDDING_NAME: OpenAIEmbeddings
+    EMBEDDING_NAME: HuggingFaceEmbeddings
     # list of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:
@@ -109,7 +111,7 @@ utils:
       HuggingFaceEmbeddings:
         class: HuggingFaceEmbeddings
         kwargs:
-          model_name: "sentence-transformers/all-mpnet-base-v2"
+          model_name: sentence-transformers/all-MiniLM-L6-v2 #"sentence-transformers/all-mpnet-base-v2" is best but currently not working
           model_kwargs:
             device: 'cpu'
           encode_kwargs: 

@@ -17,6 +17,7 @@ interfaces:
     template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
     static_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
+    include_copy_button: False
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
@@ -108,7 +109,7 @@ utils:
       HuggingFaceEmbeddings:
         class: HuggingFaceEmbeddings
         kwargs:
-          model_name: "sentence-transformers/all-mpnet-base-v2"
+          model_name: sentence-transformers/all-MiniLM-L6-v2 #"sentence-transformers/all-mpnet-base-v2"
           model_kwargs:
             device: 'cpu'
           encode_kwargs: 
