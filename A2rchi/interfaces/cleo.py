@@ -20,7 +20,6 @@ class CleoAIWrapper:
 
     def __init__(self):
         self.chain = Chain()
-        self.number_of_queries = 0 #TODO: finish installing this safegaurd.
 
         # initialize data manager
         self.data_manager = DataManager()

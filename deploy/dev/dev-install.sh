@@ -1,9 +1,15 @@
 #!/bin/bash
 
-# create volume if it doesn't already exist
+# create volume if it doesn't already exist for app data
 exists=`docker volume ls | awk '{print $2}' | grep a2rchi-dev-data`
 if [[ $exists != 'a2rchi-dev-data' ]]; then
     docker volume create --name a2rchi-dev-data
+fi
+
+# create volume if it doesn't already exist for postgres data
+exists=`docker volume ls | awk '{print $2}' | grep a2rchi-dev-pg-data`
+if [[ $exists != 'a2rchi-dev-pg-data' ]]; then
+    docker volume create --name a2rchi-dev-pg-data
 fi
 
 # build base image; try to reuse previously built image

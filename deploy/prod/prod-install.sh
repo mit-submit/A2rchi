@@ -6,6 +6,12 @@ if [[ $exists != 'a2rchi-prod-data' ]]; then
     docker volume create --name a2rchi-prod-data
 fi
 
+# create volume if it doesn't already exist for postgres data
+exists=`docker volume ls | awk '{print $2}' | grep a2rchi-prod-pg-data`
+if [[ $exists != 'a2rchi-prod-pg-data' ]]; then
+    docker volume create --name a2rchi-prod-pg-data
+fi
+
 # build base image; try to reuse previously built image
 cd A2rchi-prod/deploy/prod/
 docker build -f ../dockerfiles/Dockerfile-base -t a2rchi-base:BASE_TAG ../..
