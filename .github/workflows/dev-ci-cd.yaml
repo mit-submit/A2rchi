@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/add-timeout-to-client-requests
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
