@@ -170,7 +170,6 @@ span.material-symbols-rounded {
 }
 .chat .chat-details .error {
   padding: 0 50px 0 25px;
-  color: var(--text-color);
 }
 .chat .typing-animation {
   padding-left: 25px;

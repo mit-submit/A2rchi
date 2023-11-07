@@ -380,7 +380,7 @@ class FlaskAppWrapper(object):
         conversation_id = request.json.get('conversation_id')
         is_refresh = request.json.get('is_refresh')
         client_msg_ts = request.json.get('client_msg_ts') / 1000
-        client_timeout = request.json.get('timeout') / 1000
+        client_timeout = request.json.get('client_timeout') / 1000
 
         # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
