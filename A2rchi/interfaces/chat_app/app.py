@@ -436,7 +436,7 @@ class FlaskAppWrapper(object):
         timestamps['server_response_msg_ts'] = datetime.now()
 
         # store timing info for this message
-        self.insert_timing(message_ids[-1], timestamps)
+        self.chat.insert_timing(message_ids[-1], timestamps)
 
         # otherwise return A2rchi's response to client
         return jsonify({
