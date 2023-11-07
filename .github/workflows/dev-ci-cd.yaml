@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - bug/investigate-timing-issues
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest

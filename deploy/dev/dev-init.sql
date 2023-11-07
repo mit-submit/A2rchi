@@ -17,3 +17,20 @@ CREATE TABLE IF NOT EXISTS feedback (
     PRIMARY KEY (mid, feedback_ts),
     FOREIGN KEY (mid) REFERENCES conversations(message_id)
 );
+CREATE TABLE IF NOT EXISTS timing (
+    mid INTEGER NOT NULL,
+    client_sent_msg_ts TIMESTAMP NOT NULL,
+    server_received_msg_ts TIMESTAMP NOT NULL,
+    lock_acquisition_ts TIMESTAMP NOT NULL,
+    vectorstore_update_ts TIMESTAMP NOT NULL,
+    query_convo_history_ts TIMESTAMP NOT NULL,
+    chain_finished_ts TIMESTAMP NOT NULL,
+    similarity_search_ts TIMESTAMP NOT NULL,
+    a2rchi_message_ts TIMESTAMP NOT NULL,
+    insert_convo_ts TIMESTAMP NOT NULL,
+    finish_call_ts TIMESTAMP NOT NULL,
+    server_response_msg_ts TIMESTAMP NOT NULL,
+    msg_duration INTERVAL SECOND NOT NULL,
+    PRIMARY KEY (mid),
+    FOREIGN KEY (mid) REFERENCES conversations(message_id)
+);
