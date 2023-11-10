@@ -1,15 +1,3 @@
--- create grafana user if it does not exist
-DO
-$do$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'grafana') THEN
-        CREATE USER grafana WITH PASSWORD 'GRAFANA_PASSWORD';
-        GRANT USAGE ON SCHEMA public TO grafana;
-        GRANT SELECT ON public.timing TO grafana;
-    END IF;
-END
-$do$;
-
 -- create tables
 CREATE TABLE IF NOT EXISTS conversations (
     conversation_id INTEGER NOT NULL,
@@ -47,3 +35,15 @@ CREATE TABLE IF NOT EXISTS timing (
     PRIMARY KEY (mid),
     FOREIGN KEY (mid) REFERENCES conversations(message_id)
 );
+
+-- create grafana user if it does not exist
+DO
+$do$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'grafana') THEN
+        CREATE USER grafana WITH PASSWORD 'GRAFANA_PASSWORD';
+        GRANT USAGE ON SCHEMA public TO grafana;
+        GRANT SELECT ON public.timing TO grafana;
+    END IF;
+END
+$do$;
