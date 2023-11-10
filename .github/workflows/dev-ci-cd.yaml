@@ -78,6 +78,9 @@ jobs:
           touch ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
           echo "${{ secrets.DEV_PG_PASSWORD }}" >> ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
           chmod 400 ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
+          touch ${{ github.workspace }}/deploy/dev/secrets/grafana_password.txt
+          echo "${{ secrets.DEV_GRAFANA_PASSWORD }}" >> ${{ github.workspace }}/deploy/dev/secrets/grafana_password.txt
+          chmod 400 ${{ github.workspace }}/deploy/dev/secrets/grafana_password.txt
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File

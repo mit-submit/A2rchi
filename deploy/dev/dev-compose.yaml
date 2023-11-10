@@ -199,10 +199,29 @@ services:
       timeout: 5s
       retries: 5
 
+  grafana-dev:
+    image: grafana-dev:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-grafana
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    ports:
+      - 3000:3000  # host:container
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
 volumes:
   a2rchi-dev-data:
     external: true
   a2rchi-dev-pg-data:
+    external: true
+  a2rchi-dev-grafana-data:
     external: true
 
 secrets:
