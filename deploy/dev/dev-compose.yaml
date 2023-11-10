@@ -210,7 +210,7 @@ services:
     ports:
       - 3000:3000  # host:container
     volumes:
-      - grafana-storage:/var/lib/grafana
+      - a2rchi-dev-grafana-data:/var/lib/grafana
     logging:
       options:
         max-size: 10m
