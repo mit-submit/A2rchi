@@ -91,10 +91,10 @@ jobs:
           export tag="${tag//\//-}.${GITHUB_SHA}"
           echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/dev/.env
 
-      # stop any existing docker compose that's running
-      - name: Stop Docker Compose
-        run: |
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-stop.sh
+      # # stop any existing docker compose that's running
+      # - name: Stop Docker Compose
+      #   run: |
+      #     ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
