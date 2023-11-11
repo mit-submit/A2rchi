@@ -211,6 +211,7 @@ services:
       - 3000:3000  # host:container
     volumes:
       - a2rchi-dev-grafana-data:/var/lib/grafana
+      - ../grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/
     logging:
       options:
         max-size: 10m
