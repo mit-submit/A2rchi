@@ -19,7 +19,7 @@
     "editable": true,
     "fiscalYearStartMonth": 0,
     "graphTooltip": 0,
-    "id": 1,
+    "id": 5,
     "links": [],
     "liveNow": false,
     "panels": [
@@ -152,7 +152,7 @@
                 "type": "linear"
               },
               "showPoints": "auto",
-              "spanNulls": false,
+              "spanNulls": true,
               "stacking": {
                 "group": "A",
                 "mode": "none"
@@ -162,6 +162,7 @@
               }
             },
             "mappings": [],
+            "noValue": "0",
             "thresholds": {
               "mode": "absolute",
               "steps": [
@@ -206,7 +207,7 @@
             "editorMode": "code",
             "format": "table",
             "rawQuery": true,
-            "rawSql": "SELECT $__timeGroupAlias(server_received_msg_ts, 1h), count(*)\nFROM timing\nWHERE $__timeFilter(server_received_msg_ts)\nGROUP BY 1\nORDER BY $__timeGroup(server_received_msg_ts, 1h)",
+            "rawSql": "WITH timing_info AS (\n  SELECT $__timeGroup(server_received_msg_ts, '15m', 0) as t1, count(mid) as num_msg\n  FROM timing\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n  ORDER BY $__timeGroup(server_received_msg_ts, '15m', 0)\n), intervals AS (\n  select $__timeGroupAlias(t, '15m', 0) from generate_series($__timeFrom(), $__timeTo(), '15 minutes'::interval) AS s(t)\n)\nSELECT time, num_msg FROM intervals LEFT OUTER JOIN timing_info ON timing_info.t1 = intervals.time",
             "refId": "A",
             "sql": {
               "columns": [
