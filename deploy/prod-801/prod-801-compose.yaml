@@ -91,7 +91,7 @@ services:
     secrets:
       - pg_password
     volumes:
-      - ./prod-801-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../init.sql:/docker-entrypoint-initdb.d/init.sql
       - a2rchi-prod-801-pg-data:/var/lib/postgresql/data
     logging:
       options:
@@ -103,10 +103,30 @@ services:
       timeout: 5s
       retries: 5
 
+  grafana-prod-801:
+    image: grafana-prod-801:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-grafana
+    depends_on:
+      postgres-prod-801:
+        condition: service_healthy
+    ports:
+      - 3002:3000  # host:container
+    volumes:
+      - a2rchi-prod-801-grafana-data:/var/lib/grafana
+      - ../grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
 volumes:
   a2rchi-prod-801-data:
     external: true
   a2rchi-prod-801-pg-data:
+    external: true
+  a2rchi-prod-801-grafana-data:
     external: true
 
 secrets:

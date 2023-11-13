@@ -21,7 +21,7 @@ fi
 # fill-in variables in grafana files
 export grafanapass=`cat A2rchi-dev/deploy/dev/secrets/grafana_password.txt`
 sed -i 's/GRAFANA_PASSWORD/'"${grafanapass}"'/g' A2rchi-dev/deploy/grafana/datasources.yaml
-sed -i 's/GRAFANA_PASSWORD/'"${grafanapass}"'/g' A2rchi-dev/deploy/dev/dev-init.sql
+sed -i 's/GRAFANA_PASSWORD/'"${grafanapass}"'/g' A2rchi-dev/deploy/init.sql
 sed -i 's/RUNTIME_ENV/dev/g' A2rchi-dev/deploy/grafana/datasources.yaml
 unset grafanapass
 
