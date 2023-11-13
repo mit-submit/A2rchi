@@ -14,6 +14,11 @@ print("Starting Cleo Service")
 config = Config_Loader().config["utils"]
 cleo = cleo.Cleo('Cleo_Helpdesk')
 
+# temporary hack to prevent cleo, mailbox, and chat services from all
+# starting DataManager at the same time; eventually replace this with
+# more robust solution
+time.sleep(30)
+
 while True:
     cleo.load()
     cleo.process_new_issues()
