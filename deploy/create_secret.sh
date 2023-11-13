@@ -1,9 +1,9 @@
 #!/bin/bash
 
-secret_name=$1
+env=$1
 secret_file=$2
-env=$3
+secret=$3
 
-touch ${{ github.workspace }}/deploy/"${env}"/secrets/"${secret_file}"
-echo "${{ secrets.${secret_name} }}" >> ${{ github.workspace }}/deploy/"${env}"/secrets/"${secret_file}"
-chmod 400 ${{ github.workspace }}/deploy/"${env}"/secrets/"${secret_file}"
+touch WORKSPACE/deploy/"${env}"/secrets/"${secret_file}"
+echo "${secret}" >> WORKSPACE/deploy/"${env}"/secrets/"${secret_file}"
+chmod 400 WORKSPACE/deploy/"${env}"/secrets/"${secret_file}"
