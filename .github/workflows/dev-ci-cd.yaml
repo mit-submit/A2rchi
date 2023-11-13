@@ -31,7 +31,7 @@ jobs:
       - name: Create Secrets Files
         run: |
           mkdir -p ${{ github.workspace }}/deploy/dev/secrets/
-          ./${{ github.workspace }}/deploy/create_secret.sh DEV_IMAP_USER imap_user.txt dev
+          ${{ github.workspace }}/deploy/create_secret.sh DEV_IMAP_USER imap_user.txt dev
           # touch ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
           # echo "${{ secrets.DEV_IMAP_USER }}" >> ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
           # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
