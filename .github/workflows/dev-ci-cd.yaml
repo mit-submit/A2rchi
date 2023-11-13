@@ -51,7 +51,7 @@ jobs:
           /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
           /bin/bash ${workspace}/deploy/create_secret.sh pg_password.txt ${{ secrets.DEV_PG_PASSWORD }}
-          /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.DEV_GRAFANA_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.DEV_GRAFANA_PG_PASSWORD }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
