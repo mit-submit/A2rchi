@@ -234,7 +234,7 @@
             "table": "timing"
           }
         ],
-        "title": "Queries / Hour",
+        "title": "Number of Messages and Distinct Conversations",
         "type": "timeseries"
       }
     ],
@@ -252,6 +252,6 @@
     "timezone": "",
     "title": "A2rchi Usage",
     "uid": "faf20efc-ffe5-48ae-9a26-debe655bf5a8",
-    "version": 2,
+    "version": 3,
     "weekStart": ""
-  }
+}
