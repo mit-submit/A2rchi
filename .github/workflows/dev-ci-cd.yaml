@@ -31,8 +31,9 @@ jobs:
       - name: Create Secrets Files
         run: |
           mkdir -p ${{ github.workspace }}/deploy/dev/secrets/
-          sed -i "s/WORKSPACE/${{ github.workspace }}/" ${{ github.workspace }}/deploy/create_secret.sh
-          /bin/bash ${{ github.workspace }}/deploy/create_secret.sh dev imap_user.txt ${{ secrets.DEV_IMAP_USER }}
+          workspace=${{ github.workspace }}
+          sed -i "s/WORKSPACE/${workspace//\//\\/}/" ${workspace}/deploy/create_secret.sh
+          /bin/bash ${workspace}/deploy/create_secret.sh dev imap_user.txt ${{ secrets.DEV_IMAP_USER }}
           # touch ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
           # echo "${{ secrets.DEV_IMAP_USER }}" >> ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
           # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
