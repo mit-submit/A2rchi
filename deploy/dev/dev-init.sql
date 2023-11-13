@@ -44,6 +44,8 @@ BEGIN
         CREATE USER grafana WITH PASSWORD 'GRAFANA_PASSWORD';
         GRANT USAGE ON SCHEMA public TO grafana;
         GRANT SELECT ON public.timing TO grafana;
+        GRANT SELECT ON public.conversations TO grafana;
+        GRANT SELECT ON public.feedback TO grafana;
     END IF;
 END
 $do$;

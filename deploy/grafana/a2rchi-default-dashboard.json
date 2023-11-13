@@ -137,7 +137,7 @@
               "axisPlacement": "auto",
               "barAlignment": 0,
               "drawStyle": "line",
-              "fillOpacity": 0,
+              "fillOpacity": 40,
               "gradientMode": "none",
               "hideFrom": {
                 "legend": false,
@@ -207,7 +207,7 @@
             "editorMode": "code",
             "format": "table",
             "rawQuery": true,
-            "rawSql": "WITH timing_info AS (\n  SELECT $__timeGroup(server_received_msg_ts, '15m', 0) as t1, count(mid) as num_msg\n  FROM timing\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n  ORDER BY $__timeGroup(server_received_msg_ts, '15m', 0)\n), intervals AS (\n  select $__timeGroupAlias(t, '15m', 0) from generate_series($__timeFrom(), $__timeTo(), '15 minutes'::interval) AS s(t)\n)\nSELECT time, num_msg FROM intervals LEFT OUTER JOIN timing_info ON timing_info.t1 = intervals.time",
+            "rawSql": "-- number of messages per 15min window\nWITH msg_timing_info AS (\n  SELECT $__timeGroup(server_received_msg_ts, '15m', 0) as t1, count(mid) as num_msgs\n  FROM timing\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n  ORDER BY $__timeGroup(server_received_msg_ts, '15m', 0)\n), convo_timing_info AS ( -- number of unique conversations per 15 min window\n  SELECT $__timeGroup(server_received_msg_ts, '15m', 0) as t2, count(distinct(conversation_id)) as num_convos\n  FROM timing JOIN conversations ON timing.mid = conversations.message_id\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n  ORDER BY $__timeGroup(server_received_msg_ts, '15m', 0)\n), intervals AS (\n  SELECT $__timeGroupAlias(t, '15m', 0) FROM generate_series($__timeFrom(), $__timeTo(), '15 minutes'::interval) AS s(t)\n), msgs_join_convos AS (\n  SELECT * FROM msg_timing_info JOIN convo_timing_info ON t1 = t2\n)\nSELECT time, num_msgs, num_convos FROM intervals LEFT OUTER JOIN msgs_join_convos ON t1 = intervals.time;\n",
             "refId": "A",
             "sql": {
               "columns": [
@@ -252,6 +252,6 @@
     "timezone": "",
     "title": "A2rchi Usage",
     "uid": "faf20efc-ffe5-48ae-9a26-debe655bf5a8",
-    "version": 1,
+    "version": 2,
     "weekStart": ""
-}
+  }
