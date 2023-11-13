@@ -41,51 +41,17 @@ jobs:
           /bin/bash ${workspace}/deploy/create_secret.sh cleo_user.txt ${{ secrets.DEV_CLEO_USER }}
           /bin/bash ${workspace}/deploy/create_secret.sh cleo_pw.txt ${{ secrets.DEV_CLEO_PW }}
           /bin/bash ${workspace}/deploy/create_secret.sh cleo_project.txt ${{ secrets.DEV_CLEO_PROJECT }}
-          # touch ${{ github.workspace }}/deploy/dev/secrets/cleo_url.txt
-          # echo "${{ secrets.DEV_CLEO_URL }}" >> ${{ github.workspace }}/deploy/dev/secrets/cleo_url.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/cleo_url.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/cleo_user.txt
-          # echo "${{ secrets.DEV_CLEO_USER }}" >> ${{ github.workspace }}/deploy/dev/secrets/cleo_user.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/cleo_user.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/cleo_pw.txt
-          # echo "${{ secrets.DEV_CLEO_PW }}" >> ${{ github.workspace }}/deploy/dev/secrets/cleo_pw.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/cleo_pw.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/cleo_project.txt
-          # echo "${{ secrets.DEV_CLEO_PROJECT }}" >> ${{ github.workspace }}/deploy/dev/secrets/cleo_project.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/cleo_project.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/sender_server.txt
-          # echo "${{ secrets.DEV_SENDER_SERVER }}" >> ${{ github.workspace }}/deploy/dev/secrets/sender_server.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/sender_server.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/sender_port.txt
-          # echo "${{ secrets.DEV_SENDER_PORT }}" >> ${{ github.workspace }}/deploy/dev/secrets/sender_port.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/sender_port.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/sender_replyto.txt
-          # echo "${{ secrets.DEV_SENDER_REPLYTO }}" >> ${{ github.workspace }}/deploy/dev/secrets/sender_replyto.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/sender_replyto.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/sender_user.txt
-          # echo "${{ secrets.DEV_SENDER_USER }}" >> ${{ github.workspace }}/deploy/dev/secrets/sender_user.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/sender_user.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/sender_pw.txt
-          # echo "${{ secrets.DEV_SENDER_PW }}" >> ${{ github.workspace }}/deploy/dev/secrets/sender_pw.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/sender_pw.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/flask_uploader_app_secret_key.txt
-          # echo "${{ secrets.DEV_FLASK_UPLOADER_APP_SECRET_KEY }}" >> ${{ github.workspace }}/deploy/dev/secrets/flask_uploader_app_secret_key.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/flask_uploader_app_secret_key.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/uploader_salt.txt
-          # echo "${{ secrets.DEV_UPLOADER_SALT }}" >> ${{ github.workspace }}/deploy/dev/secrets/uploader_salt.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/uploader_salt.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/openai_api_key.txt
-          # echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/dev/secrets/openai_api_key.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/openai_api_key.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
-          # echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
-          # echo "${{ secrets.DEV_PG_PASSWORD }}" >> ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/grafana_password.txt
-          # echo "${{ secrets.DEV_GRAFANA_PASSWORD }}" >> ${{ github.workspace }}/deploy/dev/secrets/grafana_password.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/grafana_password.txt
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_server.txt ${{ secrets.DEV_SENDER_SERVER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_port.txt ${{ secrets.DEV_SENDER_PORT }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_replyto.txt ${{ secrets.DEV_SENDER_REPLYTO }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_user.txt ${{ secrets.DEV_SENDER_USER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_pw.txt ${{ secrets.DEV_SENDER_PW }}
+          /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.DEV_FLASK_UPLOADER_APP_SECRET_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.DEV_UPLOADER_SALT }}
+          /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
+          /bin/bash ${workspace}/deploy/create_secret.sh pg_password.txt ${{ secrets.DEV_PG_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.DEV_GRAFANA_PASSWORD }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
@@ -105,13 +71,13 @@ jobs:
         run: |
           rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-dev/
 
-      # # run deploy script
-      # - name: Run Deploy Script
-      #   run: |
-      #     export tag="${GITHUB_REF#refs/heads/}"
-      #     export tag="${tag//\//-}.${GITHUB_SHA}"
-      #     sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/dev/dev-install.sh
-      #     ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-install.sh
+      # run deploy script
+      - name: Run Deploy Script
+        run: |
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/dev/dev-install.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
