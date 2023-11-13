@@ -32,14 +32,15 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/deploy/dev/secrets/
           workspace=${{ github.workspace }}
+          env="dev"
           sed -i "s/WORKSPACE/${workspace//\//\\/}/" ${workspace}/deploy/create_secret.sh
-          /bin/bash ${workspace}/deploy/create_secret.sh dev imap_user.txt ${{ secrets.DEV_IMAP_USER }}
-          # touch ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
-          # echo "${{ secrets.DEV_IMAP_USER }}" >> ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/imap_user.txt
-          # touch ${{ github.workspace }}/deploy/dev/secrets/imap_pw.txt
-          # echo "${{ secrets.DEV_IMAP_PW }}" >> ${{ github.workspace }}/deploy/dev/secrets/imap_pw.txt
-          # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/imap_pw.txt
+          sed -i "s/ENV/${env}/" ${workspace}/deploy/create_secret.sh
+          /bin/bash ${workspace}/deploy/create_secret.sh imap_user.txt ${{ secrets.DEV_IMAP_USER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh imap_pw.txt ${{ secrets.DEV_IMAP_PW }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_url.txt ${{ secrets.DEV_CLEO_URL }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_user.txt ${{ secrets.DEV_CLEO_USER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_pw.txt ${{ secrets.DEV_CLEO_PW }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_project.txt ${{ secrets.DEV_CLEO_PROJECT }}
           # touch ${{ github.workspace }}/deploy/dev/secrets/cleo_url.txt
           # echo "${{ secrets.DEV_CLEO_URL }}" >> ${{ github.workspace }}/deploy/dev/secrets/cleo_url.txt
           # chmod 400 ${{ github.workspace }}/deploy/dev/secrets/cleo_url.txt

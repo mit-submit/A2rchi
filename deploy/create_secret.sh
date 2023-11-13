@@ -1,9 +1,8 @@
 #!/bin/bash
 
-env=$1
-secret_file=$2
-secret=$3
+secret_file=$1
+secret=$2
 
-touch WORKSPACE/deploy/"${env}"/secrets/"${secret_file}"
-echo "${secret}" >> WORKSPACE/deploy/"${env}"/secrets/"${secret_file}"
-chmod 400 WORKSPACE/deploy/"${env}"/secrets/"${secret_file}"
+touch WORKSPACE/deploy/ENV/secrets/"${secret_file}"
+echo "${secret}" >> WORKSPACE/deploy/ENV/secrets/"${secret_file}"
+chmod 400 WORKSPACE/deploy/ENV/secrets/"${secret_file}"
