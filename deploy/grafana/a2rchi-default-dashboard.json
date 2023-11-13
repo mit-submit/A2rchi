@@ -446,11 +446,11 @@
             }
           }
         ],
-        "title": "Messages per Conversation",
+        "title": "Conversations w/X Messages Histogram",
         "type": "histogram"
       }
     ],
-    "refresh": false,
+    "refresh": "",
     "schemaVersion": 38,
     "tags": [],
     "templating": {
@@ -464,6 +464,6 @@
     "timezone": "",
     "title": "A2rchi Usage",
     "uid": "faf20efc-ffe5-48ae-9a26-debe655bf5a8",
-    "version": 4,
+    "version": 5,
     "weekStart": ""
 }
