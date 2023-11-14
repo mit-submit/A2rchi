@@ -86,7 +86,7 @@ utils:
     port: 5432
     user: a2rchi
     database: a2rchi-db
-    host: prod-postgres-prod-1
+    host: prod-postgres-1
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0

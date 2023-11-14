@@ -16,13 +16,13 @@ import requests
 import time
 
 # DEFINITIONS
-SLACK_URL = "" # TODO: read from secret
 SLACK_HEADERS = {'content-type': 'application/json'}
 MIN_NEXT_POST_FILE = "/root/data/min_next_post.json"
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
+slack_url = read_secret("SLACK_WEBHOOK")
 piazza_email = read_secret("PIAZZA_EMAIL")
 piazza_password = read_secret("PIAZZA_PASSWORD")
 piazza_config = Config_Loader().config["utils"].get("piazza", None)
@@ -88,7 +88,7 @@ def read_min_next_post():
 #         response = f"====================\nReplying to Post @{post['nr']}\n==========\n\n{post_str}\n==========\n\nA2RCHI RESPONSE: {response}\n====================\n"
 
 #         # send response to Slack
-#         r = requests.post(SLACK_URL, data=json.dumps({"text": response}), headers=SLACK_HEADERS)
+#         r = requests.post(slack_url, data=json.dumps({"text": response}), headers=SLACK_HEADERS)
 #         print(r)
 
 #     else:
@@ -136,7 +136,7 @@ while True:
             response = f"====================\nReplying to Post @{post['nr']}\n==========\n\n{post_str}\n==========\n\nA2RCHI RESPONSE: {response}\n====================\n"
 
             # send response to Slack
-            r = requests.post(SLACK_URL, data=json.dumps({"text": response}), headers=SLACK_HEADERS)
+            r = requests.post(slack_url, data=json.dumps({"text": response}), headers=SLACK_HEADERS)
             print(r)
         except Exception as e:
             print(f"ERROR - Failed to process post {post_nr} due to the following exception:")

@@ -13,19 +13,19 @@ services:
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       PIAZZA_EMAIL_FILE: /run/secrets/piazza_email
       PIAZZA_PASSWORD_FILE: /run/secrets/piazza_password
+      SLACK_WEBHOOK_FILE: /run/secrets/slack_webhook
     secrets:
       - openai_api_key
       - hf_token
       - piazza_email
       - piazza_password
+      - slack_webhook
     volumes:
       - a2rchi-prod-65830-data:/root/data/
-      - /home/ubuntu/piazza-content/:/root/data/piazza-content/
+      # - /home/ubuntu/piazza-content/:/root/data/piazza-content/
     logging:
       options:
         max-size: 10m
-    ports:
-      - 7861:7861  # host:container
     restart: always
 
   chromadb:
@@ -36,7 +36,7 @@ services:
     environment:
       RUNTIME_ENV: prod-65830
     ports:
-      - 8000:8000  # host:container
+      - 8005:8000  # host:container
     volumes:
       - a2rchi-prod-65830-data:/chroma/chroma/
     logging:
@@ -65,3 +65,5 @@ secrets:
     file: secrets/piazza_email.txt
   piazza_password:
     file: secrets/piazza_password.txt
+  slack_webhook:
+    file: secrets/slack_webhook.txt

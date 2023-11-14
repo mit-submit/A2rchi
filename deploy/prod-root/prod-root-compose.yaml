@@ -1,5 +1,5 @@
 services:
-  chat-prod-root:
+  chat:
     image: chat-prod-root:${TAG}
     build:
       context: ../..
@@ -7,7 +7,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-prod-root:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod-root
@@ -27,7 +29,7 @@ services:
         max-size: 10m
     restart: always
 
-  uploader-prod-root:
+  uploader:
     image: uploader-prod-root:${TAG}
     build:
       context: ../..
@@ -35,7 +37,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-prod-root:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod-root
@@ -58,7 +62,7 @@ services:
         max-size: 10m
     restart: always
 
-  chromadb-prod-root:
+  chromadb:
     image: chromadb-prod-root:${TAG}
     build:
       context: ../..
@@ -82,7 +86,7 @@ services:
       start_period: 10s
       start_interval: 5s
 
-  postgres-prod-root:
+  postgres:
     image: postgres:16
     environment:
       RUNTIME_ENV: prod-root
@@ -104,13 +108,13 @@ services:
       timeout: 5s
       retries: 5
 
-  grafana-prod-root:
+  grafana:
     image: grafana-prod-root:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-grafana
     depends_on:
-      postgres-prod-root:
+      postgres:
         condition: service_healthy
     ports:
       - 3003:3000  # host:container
