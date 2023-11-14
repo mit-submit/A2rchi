@@ -2,7 +2,7 @@ from A2rchi.chains.chain import Chain
 from A2rchi.utils.config_loader import Config_Loader
 from A2rchi.utils.data_manager import DataManager
 from A2rchi.utils.env import read_secret
-from A2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_QUERY_CONVO
+from A2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO
 
 from datetime import datetime
 from pygments import highlight
@@ -36,7 +36,7 @@ import psycopg2.extras
 import yaml
 
 # DEFINITIONS
-QUERY_LIMIT = 10000 # max number of queries per conversation
+QUERY_LIMIT = 10000 # max queries per conversation
 
 
 class AnswerRenderer(mt.HTMLRenderer):
@@ -199,7 +199,7 @@ class ChatWrapper:
         """
         print(" INFO - entered insert_conversation.")
 
-        # parse user message / a2rchi message if not None
+        # parse user message / a2rchi message
         user_sender, user_content, user_msg_ts = user_message
         a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
 
@@ -229,20 +229,62 @@ class ChatWrapper:
         self.cursor, self.conn = None, None
 
         return message_ids
+    
+    def insert_timing(self, message_id, timestamps):
+        """
+        Store timing info to understand response profile.
+        """
+        print(" INFO - entered insert_timing.")
+
+        # construct insert_tup
+        insert_tup = (
+            message_id, 
+            timestamps['client_sent_msg_ts'],
+            timestamps['server_received_msg_ts'],
+            timestamps['lock_acquisition_ts'],
+            timestamps['vectorstore_update_ts'],
+            timestamps['query_convo_history_ts'],
+            timestamps['chain_finished_ts'],
+            timestamps['similarity_search_ts'],
+            timestamps['a2rchi_message_ts'],
+            timestamps['insert_convo_ts'],
+            timestamps['finish_call_ts'],
+            timestamps['server_response_msg_ts'],
+            timestamps['server_response_msg_ts'] - timestamps['server_received_msg_ts']
+        )
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_INSERT_TIMING, insert_tup)
+        self.conn.commit()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
 
 
-    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, msg_ts: datetime,  client_msg_ts: float, client_timeout: float):
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
         """
         Execute the chat functionality.
         """
+        # store timestamps for code profiling information
+        timestamps = {}
+
         self.lock.acquire()
+        timestamps['lock_acquisition_ts'] = datetime.now()
         try:
             # update vector store through data manager; will only do something if new files have been added
             print("INFO - acquired lock file update vectorstore")
 
             self.data_manager.update_vectorstore()
+            timestamps['vectorstore_update_ts'] = datetime.now()
 
         except Exception as e:
+            # NOTE: we log the error message but do not return here, as a failure
+            # to update the data manager does not necessarily mean A2rchi cannot
+            # process and respond to the message
             print(f"ERROR - {str(e)}")
 
         finally:
@@ -259,6 +301,7 @@ class ChatWrapper:
 
             # fetch history given conversation_id
             history = self.query_conversation_history(conversation_id)
+            timestamps['query_convo_history_ts'] = datetime.now()
 
             # if this is a chat refresh / message regeneration; remove previous contiguous non-A2rchi message(s)
             if is_refresh:
@@ -267,17 +310,18 @@ class ChatWrapper:
 
             # guard call to LLM; if timestamp from message is more than timeout secs in the past;
             # return error=True and do not generate response as the client will have timed out
-            if msg_ts.timestamp() - client_msg_ts > client_timeout:
-                return None, None, None, True
+            if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
+                return None, None, None, timestamps, 408
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 full_history = history + [(sender, content)] if not is_refresh else history
                 result = self.chain(full_history)
+                timestamps['chain_finished_ts'] = datetime.now()
             else:
                 # for now let's return a timeout error, as returning a different
                 # error message would require handling new message_ids param. properly
-                return None, None, None, True
+                return None, None, None, timestamps, 500
 
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
@@ -287,6 +331,7 @@ class ChatWrapper:
             # - low score means very close (it's a distance between embedding vectors approximated
             #   by an approximate k-nearest neighbors algorithm called HNSW)
             score = self.chain.similarity_search(content)
+            timestamps['similarity_search_ts'] = datetime.now()
 
             # load the present list of sources
             try:
@@ -311,21 +356,27 @@ class ChatWrapper:
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
             # write user message and A2rchi response to database
-            user_message = (sender, content, msg_ts)
-            a2rchi_message = ("A2rchi", output, datetime.now())
+            timestamps['a2rchi_message_ts'] = datetime.now()
+            user_message = (sender, content, server_received_msg_ts)
+            a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
 
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, is_refresh)
+            timestamps['insert_convo_ts'] = datetime.now()
 
         except Exception as e:
+            # NOTE: we log the error message and return here
             print(f"ERROR - {str(e)}")
+            return None, None, None, timestamps, 500
 
         finally:
             if self.cursor is not None:
                 self.cursor.close()
             if self.conn is not None:
                 self.conn.close()
+        
+        timestamps['finish_call_ts'] = datetime.now()
 
-        return output, conversation_id, message_ids, False
+        return output, conversation_id, message_ids, timestamps, None
 
 
 class FlaskAppWrapper(object):
@@ -375,25 +426,44 @@ class FlaskAppWrapper(object):
             discussion ID (either None or an integer)
         """
         # compute timestamp at which message was received by server
-        msg_ts = datetime.now()
+        server_received_msg_ts = datetime.now()
 
         # get user input and conversation_id from the request
         message = request.json.get('last_message')
         conversation_id = request.json.get('conversation_id')
         is_refresh = request.json.get('is_refresh')
-        client_msg_ts = request.json.get('client_msg_ts') / 1000
+        client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
         client_timeout = request.json.get('client_timeout') / 1000
 
         # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
-        response, conversation_id, message_ids, error = self.chat(message, conversation_id, is_refresh, msg_ts, client_msg_ts, client_timeout)
+        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout)
 
-        # handle timeout error
-        if error:
-            return jsonify({'error': 'client timeout'}), 408
+        # handle errors
+        if error_code is not None:
+            output = (
+                jsonify({'error': 'client timeout'})
+                if error_code == 408
+                else jsonify({'error': 'server error; see chat logs for message'})
+            )
+            return output, error_code
+
+        # compute timestamp at which message was returned to client
+        timestamps['server_response_msg_ts'] = datetime.now()
+
+        # store timing info for this message
+        timestamps['server_received_msg_ts'] = server_received_msg_ts
+        timestamps['client_sent_msg_ts'] = datetime.fromtimestamp(client_sent_msg_ts)
+        self.chat.insert_timing(message_ids[-1], timestamps)
 
         # otherwise return A2rchi's response to client
-        return jsonify({'response': response, 'conversation_id': conversation_id, 'a2rchi_msg_id': message_ids[-1]})
+        return jsonify({
+            'response': response,
+            'conversation_id': conversation_id,
+            'a2rchi_msg_id': message_ids[-1],
+            'server_response_msg_ts': timestamps['server_response_msg_ts'].timestamp(),
+            'final_response_msg_ts': datetime.now().timestamp(),
+        })
 
     def index(self):
         return render_template('index.html')

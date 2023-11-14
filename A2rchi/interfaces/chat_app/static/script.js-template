@@ -100,7 +100,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
             last_message: conversation.slice(-1),
             conversation_id: conversation_id,
             is_refresh: isRefresh,
-            client_msg_ts: Date.now(),
+            client_sent_msg_ts: Date.now(),
             client_timeout: DEFAULT_TIMEOUT_SECS * 1000
         }),
         timeout: DEFAULT_TIMEOUT_SECS * 1000
