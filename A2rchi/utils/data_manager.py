@@ -1,3 +1,5 @@
+from A2rchi.utils.scraper import Scraper
+
 from chromadb.config import Settings
 from langchain.document_loaders import TextLoader
 from langchain.document_loaders import PyPDFLoader
@@ -24,6 +26,11 @@ class DataManager():
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
+
+        # scrape data onto the filesystem
+        print("Scraping documents onto filesystem")
+        scraper = Scraper()
+        scraper.hard_scrape(verbose=True)
 
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
@@ -89,10 +96,8 @@ class DataManager():
                 path=self.global_config["LOCAL_VSTORE_PATH"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
-
         collection = client.get_or_create_collection(self.collection_name)
         print(f" n in collection: {collection.count()}")
-
         return collection
 
 
@@ -105,6 +110,7 @@ class DataManager():
 
         # get current status of persistent vstore 
         files_in_vstore = [metadata["filename"] for metadata in collection.get(include=["metadatas"])["metadatas"]]
+
 
         # scan data folder and obtain list of files in data. Assumes max depth = 1
         dirs = [
@@ -232,6 +238,7 @@ class DataManager():
 
             print("Ids: ",ids)
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
+            print("succesfully added file ", filename)
 
         return collection
 

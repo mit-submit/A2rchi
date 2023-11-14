@@ -6,9 +6,18 @@ if [[ $exists != 'a2rchi-prod-root-data' ]]; then
     docker volume create --name a2rchi-prod-root-data
 fi
 
+# create volume if it doesn't already exist for postgres data
+exists=`docker volume ls | awk '{print $2}' | grep a2rchi-prod-root-pg-data`
+if [[ $exists != 'a2rchi-prod-root-pg-data' ]]; then
+    docker volume create --name a2rchi-prod-root-pg-data
+fi
+
+# build base image; try to reuse previously built image
+cd A2rchi-prod-root/deploy/prod-root/
+docker build -f ../dockerfiles/Dockerfile-base -t a2rchi-base:BASE_TAG ../..
+
 # start services
 echo "Starting docker compose"
-cd A2rchi-prod-root/deploy/prod-root/
 docker compose -f prod-root-compose.yaml up -d --build --force-recreate --always-recreate-deps
 
 # # secrets files are created by CI pipeline and destroyed here

@@ -75,6 +75,9 @@ jobs:
           touch ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
+          touch ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
+          echo "${{ secrets.DEV_PG_PASSWORD }}" >> ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
+          chmod 400 ${{ github.workspace }}/deploy/dev/secrets/pg_password.txt
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
@@ -87,28 +90,25 @@ jobs:
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-stop.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk:~/A2rchi-dev/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-dev/
 
       # run deploy script
       - name: Run Deploy Script
         run: |
-          ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-install.sh
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/dev/dev-install.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/dev/dev-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
         run: |
-          rm ${{ github.workspace }}/deploy/dev/secrets/cleo_*.txt
-          rm ${{ github.workspace }}/deploy/dev/secrets/imap_*.txt
-          rm ${{ github.workspace }}/deploy/dev/secrets/sender_*.txt
-          rm ${{ github.workspace }}/deploy/dev/secrets/flask_uploader_app_secret_key.txt
-          rm ${{ github.workspace }}/deploy/dev/secrets/uploader_salt.txt
-          rm ${{ github.workspace }}/deploy/dev/secrets/openai_api_key.txt
-          rm ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
+          rm ${{ github.workspace }}/deploy/dev/secrets/*.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."

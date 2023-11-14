@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
+import time
 
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
@@ -32,6 +33,7 @@ class DumbLLM(BaseCustomLLM):
     A simple Dumb LLM, perfect for testing
     """
     filler: str = None
+    sleep_time_mean: int = 3
 
     def _call(
         self,
@@ -39,6 +41,9 @@ class DumbLLM(BaseCustomLLM):
         stop: Optional[List[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
+        sleep_time = np.random.normal(self.sleep_time_mean, 1)
+        print(f"DumbLLM: sleeping {sleep_time}")
+        time.sleep(sleep_time)
         return "I am just a dumb LLM, I will give you a number: " + str(np.random.randint(10000, 99999))
 
 class LlamaLLM(BaseCustomLLM):
