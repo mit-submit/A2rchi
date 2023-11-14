@@ -92,7 +92,7 @@ utils:
     CHUNK_OVERLAP: 0
     use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
-    chromadb_host: chromadb-prod-801
+    chromadb_host: chromadb
     chromadb_port: 8000
     collection_name: "prod_801_collection" #unique in case vector stores are ever combined.
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
