@@ -1,9 +1,11 @@
 services:
   piazza:
-    image: piazza:latest
+    image: piazza:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-piazza
+      args:
+        TAG: ${TAG}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -29,7 +31,7 @@ services:
     restart: always
 
   chromadb:
-    image: chromadb:latest
+    image: chromadb-prod-65830:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
