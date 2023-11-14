@@ -60,6 +60,11 @@ jobs:
           export tag="${tag//\//-}.${GITHUB_SHA}"
           echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/dev/.env
 
+      # create deployment directory if it doesn't already exist
+      - name: Create Directory
+        run: |
+          ssh submit06 "mkdir -p ~/A2rchi-dev/"
+
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |

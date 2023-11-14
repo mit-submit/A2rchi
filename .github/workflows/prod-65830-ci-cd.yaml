@@ -1,9 +1,9 @@
-name: Deploy A2rchi Meta
-run-name: ${{ github.actor }} deploys A2rchi Meta to prod
+name: Deploy A2rchi Prod for 6.5830
+run-name: ${{ github.actor }} deploys A2rchi for 6.5830 to prod
 on:
   push:
     branches:
-      - release-meta
+      - release-65830
 jobs:
   deploy-prod-system:
     runs-on: ubuntu-latest
@@ -26,66 +26,57 @@ jobs:
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add /home/runner/.ssh/id_rsa_submit
 
-      # TODO: update variables to be A2rchi meta-specific if need be
       # create secrets files for docker-compose
       - name: Create Secrets Files
         run: |
-          mkdir -p ${{ github.workspace }}/deploy/prod-meta/secrets/
+          mkdir -p ${{ github.workspace }}/deploy/prod-65830/secrets/
           workspace=${{ github.workspace }}
-          env="prod-meta"
+          env="prod-65830"
           sed -i "s/WORKSPACE/${workspace//\//\\/}/" ${workspace}/deploy/create_secret.sh
           sed -i "s/ENV/${env}/" ${workspace}/deploy/create_secret.sh
-          /bin/bash ${workspace}/deploy/create_secret.sh imap_user.txt ${{ secrets.PROD_META_IMAP_USER }}
-          /bin/bash ${workspace}/deploy/create_secret.sh imap_pw.txt ${{ secrets.PROD_IMAP_PW }}
-          /bin/bash ${workspace}/deploy/create_secret.sh cleo_url.txt ${{ secrets.PROD_CLEO_URL }}
-          /bin/bash ${workspace}/deploy/create_secret.sh cleo_user.txt ${{ secrets.PROD_CLEO_USER }}
-          /bin/bash ${workspace}/deploy/create_secret.sh cleo_pw.txt ${{ secrets.PROD_CLEO_PW }}
-          /bin/bash ${workspace}/deploy/create_secret.sh cleo_project.txt ${{ secrets.PROD_META_CLEO_PROJECT }}
-          /bin/bash ${workspace}/deploy/create_secret.sh sender_server.txt ${{ secrets.PROD_SENDER_SERVER }}
-          /bin/bash ${workspace}/deploy/create_secret.sh sender_port.txt ${{ secrets.PROD_SENDER_PORT }}
-          /bin/bash ${workspace}/deploy/create_secret.sh sender_replyto.txt ${{ secrets.PROD_META_SENDER_REPLYTO }}
-          /bin/bash ${workspace}/deploy/create_secret.sh sender_user.txt ${{ secrets.PROD_SENDER_USER }}
-          /bin/bash ${workspace}/deploy/create_secret.sh sender_pw.txt ${{ secrets.PROD_SENDER_PW }}
           /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.PROD_UPLOADER_SALT }}
           /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_email.txt ${{ secrets.PROD_65830_PIAZZA_EMAIL }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_password.txt ${{ secrets.PROD_65830_PIAZZA_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh slack_webhook.txt ${{ secrets.PROD_65830_SLACK_WEBHOOK }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
         run: |
-          touch ${{ github.workspace }}/deploy/prod-meta/.env
+          touch ${{ github.workspace }}/deploy/prod-65830/.env
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
-          echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-meta/.env
+          echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-65830/.env
 
       # create deployment directory if it doesn't already exist
       - name: Create Directory
         run: |
-          ssh submit06 "mkdir -p ~/A2rchi-prod-meta/"
+          ssh submit06 "mkdir -p ~/A2rchi-prod-65830/"
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-meta/prod-meta-stop.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-65830/prod-65830-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-meta/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-65830/
 
       # run deploy script
       - name: Run Deploy Script
         run: |
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
-          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-meta/prod-meta-install.sh
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-meta/prod-meta-install.sh
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-65830/prod-65830-install.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-65830/prod-65830-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
         run: |
-          rm ${{ github.workspace }}/deploy/prod-meta/secrets/*.txt
+          rm ${{ github.workspace }}/deploy/prod-65830/secrets/*.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."

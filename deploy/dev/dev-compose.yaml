@@ -1,5 +1,5 @@
 services:
-  cleo-dev:
+  cleo:
     image: cleo-dev:${TAG}
     build:
       context: ../..
@@ -7,9 +7,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
         condition: service_healthy
-      postgres-dev:
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -45,7 +45,7 @@ services:
         max-size: 10m
     restart: always
 
-  chat-dev:
+  chat:
     image: chat-dev:${TAG}
     build:
       context: ../..
@@ -53,9 +53,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
         condition: service_healthy
-      postgres-dev:
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -75,7 +75,7 @@ services:
       - 7682:7861  # host:container
     restart: always
 
-  mailbox-dev:
+  mailbox:
     image: mailbox-dev:${TAG}
     build:
       context: ../..
@@ -83,9 +83,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
         condition: service_healthy
-      postgres-dev:
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -121,7 +121,7 @@ services:
         max-size: 10m
     restart: always
 
-  uploader-dev:
+  uploader:
     image: uploader-dev:${TAG}
     build:
       context: ../..
@@ -129,9 +129,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
         condition: service_healthy
-      postgres-dev:
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -153,7 +153,7 @@ services:
         max-size: 10m
     restart: always
 
-  chromadb-dev:
+  chromadb:
     image: chromadb-dev:${TAG}
     build:
       context: ../..
@@ -178,7 +178,7 @@ services:
       start_period: 10s
       start_interval: 5s
 
-  postgres-dev:
+  postgres:
     image: postgres:16
     environment:
       RUNTIME_ENV: dev
@@ -200,13 +200,13 @@ services:
       timeout: 5s
       retries: 5
 
-  grafana-dev:
+  grafana:
     image: grafana-dev:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-grafana
     depends_on:
-      postgres-dev:
+      postgres:
         condition: service_healthy
     ports:
       - 3001:3000  # host:container

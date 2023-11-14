@@ -1,5 +1,5 @@
 services:
-  chat-prod-801:
+  chat:
     image: chat-prod-801:${TAG}
     build:
       context: ../..
@@ -8,7 +8,9 @@ services:
         BUILD_ENV: prod-801
         TAG: ${TAG}
     depends_on:
-      chromadb-prod-801:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod-801
@@ -28,7 +30,7 @@ services:
       - 7683:7861  # host:container
     restart: always
 
-  uploader-prod-801:
+  uploader:
     image: uploader-prod-801:${TAG}
     build:
       context: ../..
@@ -36,7 +38,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-prod-801:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod-801
@@ -59,7 +63,7 @@ services:
         max-size: 10m
     restart: always
 
-  chromadb-prod-801:
+  chromadb:
     image: chromadb-prod-801:${TAG}
     build:
       context: ../..
@@ -83,7 +87,7 @@ services:
       start_period: 10s
       start_interval: 5s
 
-  postgres-prod-801:
+  postgres:
     image: postgres:16
     environment:
       RUNTIME_ENV: prod-801
@@ -105,13 +109,13 @@ services:
       timeout: 5s
       retries: 5
 
-  grafana-prod-801:
+  grafana:
     image: grafana-prod-801:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-grafana
     depends_on:
-      postgres-prod-801:
+      postgres:
         condition: service_healthy
     ports:
       - 3002:3000  # host:container

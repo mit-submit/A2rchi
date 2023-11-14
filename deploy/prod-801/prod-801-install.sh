@@ -22,7 +22,6 @@ fi
 export grafanapass=`cat A2rchi-prod-801/deploy/prod-801/secrets/grafana_password.txt`
 sed -i 's/GRAFANA_PASSWORD/'"${grafanapass}"'/g' A2rchi-prod-801/deploy/grafana/datasources.yaml
 sed -i 's/GRAFANA_PASSWORD/'"${grafanapass}"'/g' A2rchi-prod-801/deploy/init.sql
-sed -i 's/RUNTIME_ENV/prod-801/g' A2rchi-prod-801/deploy/grafana/datasources.yaml
 unset grafanapass
 
 # build base image; try to reuse previously built image
