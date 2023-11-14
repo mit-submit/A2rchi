@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - release-65830
-      - feature/piazza
 jobs:
   deploy-prod-system:
     runs-on: ubuntu-latest
