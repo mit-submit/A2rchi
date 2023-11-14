@@ -13,8 +13,12 @@ os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 user = read_secret('IMAP_USER')
 password = read_secret('IMAP_PW')
 
-print("Starting Mailbox Service")
+# temporary hack to prevent cleo, mailbox, and chat services from all
+# starting DataManager at the same time; eventually replace this with
+# more robust solution
+time.sleep(60)
 
+print("Starting Mailbox Service")
 config = Config_Loader().config["utils"]
 cleo = cleo.Cleo('Cleo_Helpdesk')
 

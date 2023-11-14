@@ -13,11 +13,31 @@ const helpful_checkbox = document.getElementById("helpful_checkbox");
 const appropriate_checkbox = document.getElementById("appropriate_checkbox");
 popupForm.style.display = "none";
 
+// DEFINITIONS
+let DEFAULT_TIMEOUT_SECS = 120
 let userText = null;
 let conversation_id = null;
 let conversation = []
 let num_responses_since_last_rating = 0;
 let last_response_is_feedback_request = false;
+
+
+async function fetchWithTimeout(resource, options = {}) {
+    // extracts `timeout` field from options dict;
+    // will default to DEFAULT_TIMEOUT_SECS if no field is present
+    const { timeout = DEFAULT_TIMEOUT_SECS * 1000 } = options;
+
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    const response = await fetch(resource, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+
+    return response;
+}
 
 const loadDataFromLocalstorage = () => {
     // Load saved chats and theme from local storage and apply/add on the page
@@ -80,12 +100,15 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
             last_message: conversation.slice(-1),
             conversation_id: conversation_id,
             is_refresh: isRefresh,
-        })
+            client_sent_msg_ts: Date.now(),
+            client_timeout: DEFAULT_TIMEOUT_SECS * 1000
+        }),
+        timeout: DEFAULT_TIMEOUT_SECS * 1000
     }
 
     // Send POST request to Flask API, get response and set the response as paragraph element text
     try {
-        const response = await (await fetch(API_URL, requestOptions)).json();
+        const response = await (await fetchWithTimeout(API_URL, requestOptions)).json();
         pElement.innerHTML = response.response;
         pElement.setAttribute('id', response.a2rchi_msg_id.toString());
         pElement.classList.add(".default-text");
@@ -133,16 +156,20 @@ const likeResponse = (likeBtn) => {
     const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/like";
 
      // Send an API request with the chat content and discussion ID
-     fetch(API_URL, {
-        method: "POST", // You may need to adjust the HTTP method
-        headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-        },
-        body: JSON.stringify({
-            message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
-        }),
-    })
+     try {
+        fetch(API_URL, {
+            method: "POST", // You may need to adjust the HTTP method
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({
+                message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+            }),
+        })
+     } catch (error) {
+        console.log("liked error message")
+     }
 }
 
 const dislikeResponse = (dislikeBtn) => {
@@ -165,22 +192,26 @@ const dislikeResponse = (dislikeBtn) => {
     function handleSubmitToAPI() {
         const additionalThoughts = additionalThoughtsInput.value;
 
-        fetch(API_URL, {
-            method: "POST", // You may need to adjust the HTTP method
-            headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            body: JSON.stringify({ 
-                message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
-                feedback_msg: additionalThoughts,
-                incorrect: correct_checkbox.checked,
-                unhelpful: helpful_checkbox.checked,
-                inappropriate: appropriate_checkbox.checked,
-            }),
-        });
+        try {
+            fetch(API_URL, {
+                method: "POST", // You may need to adjust the HTTP method
+                headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+                body: JSON.stringify({ 
+                    message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+                    feedback_msg: additionalThoughts,
+                    incorrect: correct_checkbox.checked,
+                    unhelpful: helpful_checkbox.checked,
+                    inappropriate: appropriate_checkbox.checked,
+                }),
+            });
+        } catch (error) {
+            console.log("disliked error message")
+        }
 
-        //hide pop up formi
+        //hide pop up form
         popupForm.style.display = "none";
     }
 
