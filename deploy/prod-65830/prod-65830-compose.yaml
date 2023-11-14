@@ -19,7 +19,7 @@ services:
       - piazza_email
       - piazza_password
     volumes:
-      - a2rchi-data:/root/data/
+      - a2rchi-prod-65830-data:/root/data/
       - /home/ubuntu/piazza-content/:/root/data/piazza-content/
     logging:
       options:
@@ -38,7 +38,7 @@ services:
     ports:
       - 8000:8000  # host:container
     volumes:
-      - a2rchi-data:/chroma/chroma/
+      - a2rchi-prod-65830-data:/chroma/chroma/
     logging:
       options:
         max-size: 10m
@@ -53,7 +53,7 @@ services:
       start_interval: 5s
 
 volumes:
-  a2rchi-data:
+  a2rchi-prod-65830-data:
     external: true
 
 secrets:

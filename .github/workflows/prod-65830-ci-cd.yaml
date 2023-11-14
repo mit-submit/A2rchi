@@ -1,0 +1,86 @@
+name: Deploy A2rchi Prod for 6.5830
+run-name: ${{ github.actor }} deploys A2rchi for 6.5830 to prod
+on:
+  push:
+    branches:
+      - release-65830
+jobs:
+  deploy-prod-system:
+    runs-on: ubuntu-latest
+    env:
+      SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+    steps:
+      # boilerplate message and pull repository to CI runner
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - uses: actions/checkout@v3
+      - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
+
+      # setup SSH 
+      - name: Setup SSH
+        run: |
+          mkdir -p /home/runner/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY_MDRUSSO }}" > /home/runner/.ssh/id_rsa_submit
+          chmod 600 /home/runner/.ssh/id_rsa_submit
+          echo "${{ secrets.SSH_SUBMIT_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          cp ${{ github.workspace }}/deploy/ssh_config /home/runner/.ssh/config
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add /home/runner/.ssh/id_rsa_submit
+
+      # create secrets files for docker-compose
+      - name: Create Secrets Files
+        run: |
+          mkdir -p ${{ github.workspace }}/deploy/prod-65830/secrets/
+          touch ${{ github.workspace }}/deploy/prod-65830/secrets/flask_uploader_app_secret_key.txt
+          echo "${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}" >> ${{ github.workspace }}/deploy/prod-65830/secrets/flask_uploader_app_secret_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-65830/secrets/flask_uploader_app_secret_key.txt
+          touch ${{ github.workspace }}/deploy/prod-65830/secrets/uploader_salt.txt
+          echo "${{ secrets.PROD_UPLOADER_SALT }}" >> ${{ github.workspace }}/deploy/prod-65830/secrets/uploader_salt.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-65830/secrets/uploader_salt.txt
+          touch ${{ github.workspace }}/deploy/prod-65830/secrets/openai_api_key.txt
+          echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/prod-65830/secrets/openai_api_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-65830/secrets/openai_api_key.txt
+          touch ${{ github.workspace }}/deploy/prod-65830/secrets/hf_token.txt
+          echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-65830/secrets/hf_token.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-65830/secrets/hf_token.txt
+          touch ${{ github.workspace }}/deploy/prod-65830/secrets/pg_password.txt
+          echo "${{ secrets.PROD_65830_PG_PASSWORD }}" >> ${{ github.workspace }}/deploy/prod-65830/secrets/pg_password.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-65830/secrets/pg_password.txt
+
+      # create env file to set tag(s) for docker-compose
+      - name: Create Env File
+        run: |
+          touch ${{ github.workspace }}/deploy/prod-65830/.env
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-65830/.env
+
+      # create deployment directory if it doesn't already exist
+      - name: Create Directory
+        run: |
+          ssh submit06 'bash -s' < `mkdir -p ~/A2rchi-prod-65830/`
+
+      # stop any existing docker compose that's running
+      - name: Stop Docker Compose
+        run: |
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-65830/prod-65830-stop.sh
+
+      # copy repository to machine
+      - name: Copy Repository
+        run: |
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-65830/
+
+      # run deploy script
+      - name: Run Deploy Script
+        run: |
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-65830/prod-65830-install.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-65830/prod-65830-install.sh
+
+      # clean up secret files
+      - name: Remove Secrets from Runner
+        run: |
+          rm ${{ github.workspace }}/deploy/prod-65830/secrets/*.txt
+
+      # print job status
+      - run: echo "🍏 This job's status is ${{ job.status }}."
