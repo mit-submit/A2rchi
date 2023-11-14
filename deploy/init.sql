@@ -1,3 +1,4 @@
+-- create tables
 CREATE TABLE IF NOT EXISTS conversations (
     conversation_id INTEGER NOT NULL,
     message_id SERIAL,
@@ -34,3 +35,18 @@ CREATE TABLE IF NOT EXISTS timing (
     PRIMARY KEY (mid),
     FOREIGN KEY (mid) REFERENCES conversations(message_id)
 );
+
+-- create grafana user if it does not exist
+DO
+$do$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'grafana') THEN
+        CREATE USER grafana WITH PASSWORD 'GRAFANA_PASSWORD';
+        GRANT USAGE ON SCHEMA public TO grafana;
+        GRANT SELECT ON public.timing TO grafana;
+        GRANT SELECT ON public.conversations TO grafana;
+        GRANT SELECT ON public.feedback TO grafana;
+    END IF;
+END
+$do$;
+

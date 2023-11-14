@@ -9,8 +9,13 @@ import time
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
-print("Starting Cleo Service")
 
+# temporary hack to prevent cleo, mailbox, and chat services from all
+# starting DataManager at the same time; eventually replace this with
+# more robust solution
+time.sleep(30)
+
+print("Starting Cleo Service")
 config = Config_Loader().config["utils"]
 cleo = cleo.Cleo('Cleo_Helpdesk')
 

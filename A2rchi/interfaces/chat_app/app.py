@@ -148,6 +148,7 @@ class ChatWrapper:
 
     def insert_feedback(self, feedback):
         """
+        Insert feedback from user for specific message into feedback table.
         """
         # construct insert_tup (mid, feedback_ts, feedback, feedback_msg, incorrect, unhelpful, inappropriate)
         insert_tup = (
