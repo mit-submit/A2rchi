@@ -276,6 +276,9 @@ class ChatWrapper:
             timestamps['vectorstore_update_ts'] = datetime.now()
 
         except Exception as e:
+            # NOTE: we log the error message but do not return here, as a failure
+            # to update the data manager does not necessarily mean A2rchi cannot
+            # process and respond to the message
             print(f"ERROR - {str(e)}")
 
         finally:
@@ -302,7 +305,7 @@ class ChatWrapper:
             # guard call to LLM; if timestamp from message is more than timeout secs in the past;
             # return error=True and do not generate response as the client will have timed out
             if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
-                return None, None, None, True
+                return None, None, None, timestamps, 408
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
@@ -312,7 +315,7 @@ class ChatWrapper:
             else:
                 # for now let's return a timeout error, as returning a different
                 # error message would require handling new message_ids param. properly
-                return None, None, None, True
+                return None, None, None, timestamps, 500
 
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
@@ -355,7 +358,9 @@ class ChatWrapper:
             timestamps['insert_convo_ts'] = datetime.now()
 
         except Exception as e:
+            # NOTE: we log the error message and return here
             print(f"ERROR - {str(e)}")
+            return None, None, None, timestamps, 500
 
         finally:
             if self.cursor is not None:
@@ -365,7 +370,7 @@ class ChatWrapper:
         
         timestamps['finish_call_ts'] = datetime.now()
 
-        return output, conversation_id, message_ids, timestamps, False
+        return output, conversation_id, message_ids, timestamps, None
 
 
 class FlaskAppWrapper(object):
@@ -426,11 +431,16 @@ class FlaskAppWrapper(object):
 
         # query the chat and return the results.
         print(" INFO - Calling the ChatWrapper()")
-        response, conversation_id, message_ids, timestamps, error = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout)
+        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout)
 
-        # handle timeout error
-        if error:
-            return jsonify({'error': 'client timeout'}), 408
+        # handle errors
+        if error_code is not None:
+            output = (
+                jsonify({'error': 'client timeout'})
+                if error_code == 408
+                else jsonify({'error': 'server error; see chat logs for message'})
+            )
+            return output, error_code
 
         # compute timestamp at which message was returned to client
         timestamps['server_response_msg_ts'] = datetime.now()
