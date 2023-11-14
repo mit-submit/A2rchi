@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/staging-timeout-timing-grafana
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
