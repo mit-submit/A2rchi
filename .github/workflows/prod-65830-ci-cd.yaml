@@ -54,7 +54,7 @@ jobs:
       # create deployment directory if it doesn't already exist
       - name: Create Directory
         run: |
-          ssh submit06 'bash -s' < `mkdir -p ~/A2rchi-prod-65830/`
+          ssh submit06 'bash -s' < "mkdir -p ~/A2rchi-prod-65830/"
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
