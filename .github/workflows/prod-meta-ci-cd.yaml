@@ -31,45 +31,25 @@ jobs:
       - name: Create Secrets Files
         run: |
           mkdir -p ${{ github.workspace }}/deploy/prod-meta/secrets/
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
-          echo "${{ secrets.PROD_META_IMAP_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/imap_user.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
-          echo "${{ secrets.PROD_IMAP_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/imap_pw.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_url.txt
-          echo "${{ secrets.PROD_CLEO_URL }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_url.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_url.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_user.txt
-          echo "${{ secrets.PROD_CLEO_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_user.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_user.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
-          echo "${{ secrets.PROD_CLEO_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_pw.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
-          echo "${{ secrets.PROD_META_CLEO_PROJECT }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/cleo_project.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
-          echo "${{ secrets.PROD_SENDER_SERVER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_server.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
-          echo "${{ secrets.PROD_SENDER_PORT }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_port.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
-          echo "${{ secrets.PROD_META_SENDER_REPLYTO }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_replyto.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
-          echo "${{ secrets.PROD_SENDER_USER }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_user.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/sender_pw.txt
-          echo "${{ secrets.PROD_SENDER_PW }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/sender_pw.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/sender_pw.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/openai_api_key.txt
-          echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/openai_api_key.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/openai_api_key.txt
-          touch ${{ github.workspace }}/deploy/prod-meta/secrets/hf_token.txt
-          echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-meta/secrets/hf_token.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-meta/secrets/hf_token.txt
+          workspace=${{ github.workspace }}
+          env="prod-meta"
+          sed -i "s/WORKSPACE/${workspace//\//\\/}/" ${workspace}/deploy/create_secret.sh
+          sed -i "s/ENV/${env}/" ${workspace}/deploy/create_secret.sh
+          /bin/bash ${workspace}/deploy/create_secret.sh imap_user.txt ${{ secrets.PROD_META_IMAP_USER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh imap_pw.txt ${{ secrets.PROD_IMAP_PW }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_url.txt ${{ secrets.PROD_CLEO_URL }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_user.txt ${{ secrets.PROD_CLEO_USER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_pw.txt ${{ secrets.PROD_CLEO_PW }}
+          /bin/bash ${workspace}/deploy/create_secret.sh cleo_project.txt ${{ secrets.PROD_META_CLEO_PROJECT }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_server.txt ${{ secrets.PROD_SENDER_SERVER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_port.txt ${{ secrets.PROD_SENDER_PORT }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_replyto.txt ${{ secrets.PROD_META_SENDER_REPLYTO }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_user.txt ${{ secrets.PROD_SENDER_USER }}
+          /bin/bash ${workspace}/deploy/create_secret.sh sender_pw.txt ${{ secrets.PROD_SENDER_PW }}
+          /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.PROD_UPLOADER_SALT }}
+          /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
@@ -78,7 +58,12 @@ jobs:
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-meta/.env
-          
+
+      # create deployment directory if it doesn't already exist
+      - name: Create Directory
+        run: |
+          ssh submit06 "mkdir -p ~/A2rchi-prod-meta/"
+
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |

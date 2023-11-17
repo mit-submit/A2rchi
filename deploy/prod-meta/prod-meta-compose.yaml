@@ -1,5 +1,5 @@
 services:
-  cleo-prod-meta:
+  cleo:
     image: cleo-prod-meta:${TAG}
     build:
       context: ../..
@@ -38,7 +38,7 @@ services:
         max-size: 10m
     restart: always
 
-  mailbox-prod-meta:
+  mailbox:
     image: mailbox-prod-meta:${TAG}
     build:
       context: ../..

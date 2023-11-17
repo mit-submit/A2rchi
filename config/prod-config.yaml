@@ -86,13 +86,13 @@ utils:
     port: 5432
     user: a2rchi
     database: a2rchi-db
-    host: prod-postgres-prod-1
+    host: prod-postgres-1
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
     use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
-    chromadb_host: chromadb-prod
+    chromadb_host: chromadb
     chromadb_port: 8000
     collection_name: "prod_collection"
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance

@@ -1,10 +1,9 @@
-name: Deploy A2rchi Prod for root 
-run-name: ${{ github.actor }} deploys A2rchi for root to prod
+name: Deploy A2rchi Prod for 6.5830
+run-name: ${{ github.actor }} deploys A2rchi for 6.5830 to prod
 on:
   push:
     branches:
-      - release-ROOT
-      - feature/staging-timeout-timing-grafana
+      - release-65830
 jobs:
   deploy-prod-system:
     runs-on: ubuntu-latest
@@ -30,53 +29,54 @@ jobs:
       # create secrets files for docker-compose
       - name: Create Secrets Files
         run: |
-          mkdir -p ${{ github.workspace }}/deploy/prod-root/secrets/
+          mkdir -p ${{ github.workspace }}/deploy/prod-65830/secrets/
           workspace=${{ github.workspace }}
-          env="prod-root"
+          env="prod-65830"
           sed -i "s/WORKSPACE/${workspace//\//\\/}/" ${workspace}/deploy/create_secret.sh
           sed -i "s/ENV/${env}/" ${workspace}/deploy/create_secret.sh
           /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.PROD_UPLOADER_SALT }}
           /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
-          /bin/bash ${workspace}/deploy/create_secret.sh pg_password.txt ${{ secrets.PROD_ROOT_PG_PASSWORD }}
-          /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.PROD_ROOT_GRAFANA_PG_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_email.txt ${{ secrets.PROD_65830_PIAZZA_EMAIL }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_password.txt ${{ secrets.PROD_65830_PIAZZA_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh slack_webhook.txt ${{ secrets.PROD_65830_SLACK_WEBHOOK }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
         run: |
-          touch ${{ github.workspace }}/deploy/prod-root/.env
+          touch ${{ github.workspace }}/deploy/prod-65830/.env
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
-          echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-root/.env
+          echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-65830/.env
 
       # create deployment directory if it doesn't already exist
       - name: Create Directory
         run: |
-          ssh submit06 "mkdir -p ~/A2rchi-prod-root/"
+          ssh submit06 "mkdir -p ~/A2rchi-prod-65830/"
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-stop.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-65830/prod-65830-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-root/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-65830/
 
       # run deploy script
       - name: Run Deploy Script
         run: |
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
-          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-65830/prod-65830-install.sh
+          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-65830/prod-65830-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
         run: |
-          rm ${{ github.workspace }}/deploy/prod-root/secrets/*.txt
+          rm ${{ github.workspace }}/deploy/prod-65830/secrets/*.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
