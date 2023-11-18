@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - smallfix/lowercase-a2rchi-dir
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest

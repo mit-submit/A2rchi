@@ -1,8 +1,8 @@
 #!/bin/python
-from A2rchi.interfaces import cleo
-from A2rchi.utils import mailbox
-from A2rchi.utils.config_loader import Config_Loader
-from A2rchi.utils.env import read_secret
+from a2rchi.interfaces import cleo
+from a2rchi.utils import mailbox
+from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.env import read_secret
 
 import os
 import time

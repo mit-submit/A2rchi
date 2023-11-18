@@ -1,8 +1,8 @@
-from A2rchi.chains.chain import Chain
-from A2rchi.utils.config_loader import Config_Loader
-from A2rchi.utils.data_manager import DataManager
-from A2rchi.utils.env import read_secret
-from A2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO
+from a2rchi.chains.chain import Chain
+from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.data_manager import DataManager
+from a2rchi.utils.env import read_secret
+from a2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO
 
 from datetime import datetime
 from pygments import highlight

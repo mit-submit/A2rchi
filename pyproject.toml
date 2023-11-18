@@ -62,13 +62,13 @@ dependencies = [
 
 [tool.setuptools]
 packages = [
-    "A2rchi",
-    "A2rchi.bin",
-    "A2rchi.chains",
-    "A2rchi.interfaces",
-    "A2rchi.interfaces.chat_app",
-    "A2rchi.interfaces.uploader_app",
-    "A2rchi.utils",
+    "a2rchi",
+    "a2rchi.bin",
+    "a2rchi.chains",
+    "a2rchi.interfaces",
+    "a2rchi.interfaces.chat_app",
+    "a2rchi.interfaces.uploader_app",
+    "a2rchi.utils",
 ]
 
 [build-system]

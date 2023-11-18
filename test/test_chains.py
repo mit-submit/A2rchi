@@ -1,6 +1,6 @@
-from A2rchi.chains.chain import Chain
-from A2rchi.chains.models import DumbLLM, LlamaLLM, OpenAILLM
-from A2rchi.utils.config_loader import Config_Loader
+from a2rchi.chains.chain import Chain
+from a2rchi.chains.models import DumbLLM, LlamaLLM, OpenAILLM
+from a2rchi.utils.config_loader import Config_Loader
 
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 

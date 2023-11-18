@@ -15,7 +15,7 @@ class Scraper():
     
     def __init__(self, piazza_email=None, piazza_password=None):
         # fetch configs
-        from A2rchi.utils.config_loader import Config_Loader
+        from a2rchi.utils.config_loader import Config_Loader
         self.config = Config_Loader().config["utils"]["scraper"]
         self.global_config = Config_Loader().config["global"]
         self.piazza_config = Config_Loader().config["utils"].get("piazza", None)

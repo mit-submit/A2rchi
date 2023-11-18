@@ -1,7 +1,7 @@
-from A2rchi.chains.chain import Chain
-from A2rchi.utils import sender
-from A2rchi.utils.data_manager import DataManager
-from A2rchi.utils.env import read_secret
+from a2rchi.chains.chain import Chain
+from a2rchi.utils import sender
+from a2rchi.utils.data_manager import DataManager
+from a2rchi.utils.env import read_secret
 
 from redminelib import Redmine
 
