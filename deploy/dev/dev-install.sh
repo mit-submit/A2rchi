@@ -26,7 +26,7 @@ unset grafanapass
 
 # build base image; try to reuse previously built image
 cd A2rchi-dev/deploy/dev/
-docker build -f ../dockerfiles/Dockerfile-base -t a2rchi-base:BASE_TAG ../..
+docker build -f ../dockerfiles/Dockerfile-base -t a2rchi-base:BASE_TAG ../.. --no-cache
 
 # start services
 echo "Starting docker compose"
