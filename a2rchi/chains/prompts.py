@@ -1,6 +1,6 @@
 # flake8: noqa
 from langchain.prompts.prompt import PromptTemplate
-from A2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import Config_Loader
 
 config = Config_Loader().config["chains"]["prompts"]
 

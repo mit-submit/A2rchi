@@ -1,4 +1,4 @@
-from A2rchi.chains.base import BaseSubMITChain as BaseChain
+from a2rchi.chains.base import BaseSubMITChain as BaseChain
 
 from chromadb.config import Settings
 from langchain.vectorstores import Chroma
@@ -17,7 +17,7 @@ class Chain() :
         """
         self.kill = False
 
-        from A2rchi.utils.config_loader import Config_Loader
+        from a2rchi.utils.config_loader import Config_Loader
         self.config = Config_Loader().config["chains"]["chain"]
         self.global_config = Config_Loader().config["global"]
         self.utils_config = Config_Loader().config["utils"]

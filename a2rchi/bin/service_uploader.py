@@ -1,9 +1,9 @@
 #!/bin/python
-from A2rchi.interfaces.uploader_app.app import FlaskAppWrapper
-from A2rchi.utils.config_loader import Config_Loader
-from A2rchi.utils.data_manager import DataManager
-from A2rchi.utils.env import read_secret
-from A2rchi.utils.scraper import Scraper
+from a2rchi.interfaces.uploader_app.app import FlaskAppWrapper
+from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.data_manager import DataManager
+from a2rchi.utils.env import read_secret
+from a2rchi.utils.scraper import Scraper
 
 from flask import Flask
 from threading import Thread

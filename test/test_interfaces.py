@@ -1,4 +1,4 @@
-from A2rchi.interfaces.cleo import Cleo
+from a2rchi.interfaces.cleo import Cleo
 
 from time import time
 import threading

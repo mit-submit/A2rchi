@@ -1,4 +1,4 @@
-from A2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM
+from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM
 
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.embeddings import HuggingFaceEmbeddings
