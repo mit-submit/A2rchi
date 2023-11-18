@@ -14,14 +14,14 @@ interfaces:
     EXTERNAL_PORT: 7683
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
     HOSTNAME: "t3desk019.mit.edu"  # careful, this is used for the chat service
-    template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
-    static_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/static"
+    template_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/templates"
+    static_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
     include_copy_button: False
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
-    template_folder: "/root/A2rchi/A2rchi/interfaces/uploader_app/templates"
+    template_folder: "/root/A2rchi/a2rchi/interfaces/uploader_app/templates"
 
 chains:
   input_lists:

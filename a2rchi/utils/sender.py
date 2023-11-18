@@ -1,4 +1,4 @@
-from A2rchi.utils.env import read_secret
+from a2rchi.utils.env import read_secret
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText

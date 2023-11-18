@@ -1,6 +1,6 @@
-from A2rchi.utils.config_loader import Config_Loader
-from A2rchi.utils.env import read_secret
-from A2rchi.utils.scraper import Scraper
+from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.env import read_secret
+from a2rchi.utils.scraper import Scraper
 
 from flask import render_template, request, redirect, url_for, flash, session
 

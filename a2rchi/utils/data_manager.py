@@ -1,4 +1,4 @@
-from A2rchi.utils.scraper import Scraper
+from a2rchi.utils.scraper import Scraper
 
 from chromadb.config import Settings
 from langchain.document_loaders import TextLoader
@@ -19,7 +19,7 @@ import time
 class DataManager():
 
     def __init__(self):
-        from A2rchi.utils.config_loader import Config_Loader
+        from a2rchi.utils.config_loader import Config_Loader
         self.config = Config_Loader().config["utils"]
         self.global_config = Config_Loader().config["global"]
         self.data_path = self.global_config["DATA_PATH"]
