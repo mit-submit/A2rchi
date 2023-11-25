@@ -1,0 +1,5 @@
+# syntax=docker/dockerfile:1
+ARG TAG=from-env
+FROM a2rchi-base:${TAG}
+
+CMD ["python", "-u", "a2rchi/bin/service_piazza.py"]

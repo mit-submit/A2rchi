@@ -1,5 +1,5 @@
 services:
-  cleo-prod:
+  cleo:
     image: cleo-prod:${TAG}
     build:
       context: ../..
@@ -7,7 +7,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-prod:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod
@@ -41,7 +43,7 @@ services:
         max-size: 10m
     restart: always
 
-  chat-prod:
+  chat:
     image: chat-prod:${TAG}
     build:
       context: ../..
@@ -49,7 +51,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-prod:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod
@@ -69,7 +73,7 @@ services:
       - 7681:7861  # host:container
     restart: always
 
-  mailbox-prod:
+  mailbox:
     image: mailbox-prod:${TAG}
     build:
       context: ../..
@@ -77,7 +81,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-prod:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod
@@ -113,7 +119,7 @@ services:
         max-size: 10m
     restart: always
 
-  uploader-prod:
+  uploader:
     image: uploader-prod:${TAG}
     build:
       context: ../..
@@ -121,7 +127,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-prod:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: prod
@@ -143,7 +151,7 @@ services:
         max-size: 10m
     restart: always
 
-  chromadb-prod:
+  chromadb:
     image: chromadb-prod:${TAG}
     build:
       context: ../..
@@ -167,7 +175,7 @@ services:
       start_period: 10s
       start_interval: 5s
 
-  postgres-prod:
+  postgres:
     image: postgres:16
     environment:
       RUNTIME_ENV: prod
@@ -177,7 +185,7 @@ services:
     secrets:
       - pg_password
     volumes:
-      - ./prod-init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../init.sql:/docker-entrypoint-initdb.d/init.sql
       - a2rchi-prod-pg-data:/var/lib/postgresql/data
     logging:
       options:
@@ -189,10 +197,30 @@ services:
       timeout: 5s
       retries: 5
 
+  grafana:
+    image: grafana-prod:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - 3000:3000  # host:container
+    volumes:
+      - a2rchi-prod-grafana-data:/var/lib/grafana
+      - ../grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
 volumes:
   a2rchi-prod-data:
     external: true
   a2rchi-prod-pg-data:
+    external: true
+  a2rchi-prod-grafana-data:
     external: true
 
 secrets:

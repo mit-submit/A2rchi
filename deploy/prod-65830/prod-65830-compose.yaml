@@ -1,0 +1,71 @@
+services:
+  piazza:
+    image: piazza:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-piazza
+      args:
+        TAG: ${TAG}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    environment:
+      RUNTIME_ENV: prod-65830
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      PIAZZA_EMAIL_FILE: /run/secrets/piazza_email
+      PIAZZA_PASSWORD_FILE: /run/secrets/piazza_password
+      SLACK_WEBHOOK_FILE: /run/secrets/slack_webhook
+    secrets:
+      - openai_api_key
+      - hf_token
+      - piazza_email
+      - piazza_password
+      - slack_webhook
+    volumes:
+      - a2rchi-prod-65830-data:/root/data/
+      # - /home/ubuntu/piazza-content/:/root/data/piazza-content/
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
+  chromadb:
+    image: chromadb-prod-65830:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chroma
+    environment:
+      RUNTIME_ENV: prod-65830
+    ports:
+      - 8005:8000  # host:container
+    volumes:
+      - a2rchi-prod-65830-data:/chroma/chroma/
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    # healthcheck originates from inside container; so use container port
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+      start_interval: 5s
+
+volumes:
+  a2rchi-prod-65830-data:
+    external: true
+
+secrets:
+  openai_api_key:
+    file: secrets/openai_api_key.txt
+  hf_token:
+    file: secrets/hf_token.txt
+  piazza_email:
+    file: secrets/piazza_email.txt
+  piazza_password:
+    file: secrets/piazza_password.txt
+  slack_webhook:
+    file: secrets/slack_webhook.txt

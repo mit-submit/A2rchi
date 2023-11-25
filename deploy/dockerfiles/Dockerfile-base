@@ -7,5 +7,5 @@ COPY pyproject.toml pyproject.toml
 COPY README.md README.md
 COPY LICENSE LICENSE
 COPY config config
-COPY A2rchi A2rchi
+COPY a2rchi a2rchi
 RUN pip install --upgrade pip && pip install .
