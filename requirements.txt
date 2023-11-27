@@ -5,6 +5,7 @@ bitsandbytes==0.41.1
 chromadb==0.4.8
 clickhouse-connect==0.6.6
 coloredlogs==15.0.1
+cryptography==41.0.5
 duckdb==0.8.1
 fastapi==0.99.1
 flask==2.3.3
@@ -18,12 +19,15 @@ loguru==0.7.2
 lz4==4.3.2
 mistune==3.0.1
 monotonic==1.6
+oauthlib==3.2.2
 onnxruntime==1.15.1
 openai==0.27.9
 overrides==7.3.1
 pandas==2.1.0
 peft==0.5.0
+piazza-api==0.14.0
 posthog==3.0.1
+psycopg2-binary==2.9.9
 pulsar-client==3.2.0
 pygments==2.16.1
 pypdf==3.16.1
