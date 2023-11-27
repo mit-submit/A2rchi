@@ -259,12 +259,9 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
-<<<<<<< HEAD
   pg_password:
     file: secrets/pg_password.txt
-=======
   a2rchi_ssl_certicate:
     file: secrets/a2rchi_ssl_certicate.txt
   a2rchi_ssl_certicate_key:
     file: secrets/a2rchi_ssl_certicate_key.txt
->>>>>>> feature/login_page
