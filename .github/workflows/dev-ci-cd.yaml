@@ -75,6 +75,12 @@ jobs:
           touch ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/dev/secrets/hf_token.txt
+          touch ${{ github.workspace }}/deploy/dev/secrets/a2rchi_ssl_certificate.txt
+          echo "${{ secrets.A2RCHI_SSL_CERTIFICATE }}" >> ${{ github.workspace }}/deploy/dev/secrets/a2rchi_ssl_certificate.txt
+          chmod 400 ${{ github.workspace }}/deploy/dev/secrets/a2rchi_ssl_certificate.txt
+          touch ${{ github.workspace }}/deploy/dev/secrets/a2rchi_ssl_certificate_key.txt
+          echo "${{ secrets.A2RCHI_SSL_CERTIFICATE_KEY }}" >> ${{ github.workspace }}/deploy/dev/secrets/a2rchi_ssl_certificate_key.txt
+          chmod 400 ${{ github.workspace }}/deploy/dev/secrets/a2rchi_ssl_certificate_key.txt
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
