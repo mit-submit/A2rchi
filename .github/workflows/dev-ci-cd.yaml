@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/login_page
 jobs:
   deploy-dev-system:
     runs-on: ubuntu-latest
