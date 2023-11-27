@@ -19,6 +19,16 @@ let next_message_id = 0;
 let conversation = []
 let num_responses_since_last_rating = 0;
 
+function openNav() {
+    document.getElementById("main_sidebar").style.width = "250px";
+    document.getElementById("main").style.marginLeft = "250px";
+}
+
+function closeNav() {
+    document.getElementById("main_sidebar").style.width = "0";
+    document.getElementById("main").style.marginLeft= "0";
+}
+
 const loadDataFromLocalstorage = () => {
     // Load saved chats and theme from local storage and apply/add on the page
     const themeColor = localStorage.getItem("themeColor");
@@ -28,7 +38,7 @@ const loadDataFromLocalstorage = () => {
 
     const defaultText = `<div class="default-text">
                             <h1>A2rchi</h1>
-                            <p>Start a conversation and explore the power of A2rchi, specially trained on subMIT.<br> 
+                            <p>Start a conversation and explore the power of A2rchi, specially trained on FRONT END TEST.<br> 
                             Your chat history will be displayed here. <br> <br>
                             By using this website, you agree to the <a href="/terms">terms and conditions</a>.</p>
                         </div>`
@@ -55,7 +65,7 @@ const refreshChat = async () => {
 }
 
 const getChatResponse = async (incomingChatDiv) => {
-    const API_URL = "http://t3desk019.mit.edu:7861/api/get_chat_response";
+    const API_URL = "http://t3desk019.mit.edu:7555/api/get_chat_response";
     const pElement = document.createElement("div");
 
     // Give the p element of the response an id which is equal to the message id
@@ -112,7 +122,7 @@ const likeResponse = (likeBtn) => {
     const other_image = likeBtn.nextElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_down.png";
 
-    const API_URL = "http://t3desk019.mit.edu:7861/api/like";
+    const API_URL = "http://t3desk019.mit.edu:7555/api/like";
 
      // Send an API request with the chat content and discussion ID
      fetch(API_URL, {
@@ -142,7 +152,7 @@ const dislikeResponse = (dislikeBtn) => {
     const other_image = dislikeBtn.previousElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_up.png";
 
-    const API_URL = "http://t3desk019.mit.edu:7861/api/dislike";
+    const API_URL = "http://t3desk019.mit.edu:7555/api/dislike";
 
     // Show pop-up form
     popupForm.style.display = "block";

@@ -19,6 +19,16 @@ let next_message_id = 0;
 let conversation = []
 let num_responses_since_last_rating = 0;
 
+function openNav() {
+    document.getElementById("main_sidebar").style.width = "250px";
+    document.getElementById("main").style.marginLeft = "250px";
+}
+
+function closeNav() {
+    document.getElementById("main_sidebar").style.width = "0";
+    document.getElementById("main").style.marginLeft= "0";
+}
+
 const loadDataFromLocalstorage = () => {
     // Load saved chats and theme from local storage and apply/add on the page
     const themeColor = localStorage.getItem("themeColor");
