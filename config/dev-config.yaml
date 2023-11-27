@@ -13,10 +13,11 @@ interfaces:
     PORT: 7861
     EXTERNAL_PORT: 7682
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
-    HOSTNAME: "t3desk019.mit.edu"  # careful, this is used for the chat service
-    template_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/templates"
-    static_folder: "/root/A2rchi/A2rchi/interfaces/chat_app/static"
+    HOSTNAME: "submit06.mit.edu"  # careful, this is used for the chat service
+    template_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/templates"
+    static_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
+    include_copy_button: False
     DB_INIT_SCRIPT:   "/work/submit/juliush/A2rchi_test/A2rchi/A2rchi/interfaces/chat_app/schema.sql"
     USE_LOGIN: True
     ALLOW_GUEST_LOGIN: True
@@ -30,7 +31,7 @@ interfaces:
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
-    template_folder: "/root/A2rchi/A2rchi/interfaces/uploader_app/templates"
+    template_folder: "/root/A2rchi/a2rchi/interfaces/uploader_app/templates"
 
 chains:
   input_lists:
@@ -60,11 +61,12 @@ chains:
       OpenAILLM:
         class: OpenAILLM
         kwargs:
-          model_name: gpt-4
+          model_name: gpt-4 #or gpt-3.5-turbo
           temperature: 1
       DumbLLM:
         class: DumbLLM
-        kwargs: 
+        kwargs:
+          sleep_time_mean: 3
           filler: null
       LlamaLLM:
         class: LlamaLLM
@@ -92,18 +94,23 @@ utils:
   mailbox: 
     IMAP4_PORT: 143
     mailbox_update_time: 10
+  postgres:
+    port: 5432
+    user: a2rchi
+    database: a2rchi-db
+    host: dev-postgres-1
   data_manager:
     CHUNK_SIZE: 1000
     CHUNK_OVERLAP: 0
     use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
-    chromadb_host: chromadb-dev
+    chromadb_host: chromadb
     chromadb_port: 8000
     collection_name: "dev_collection"
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
   embeddings:
     # choose one embedding from list below
-    EMBEDDING_NAME: OpenAIEmbeddings
+    EMBEDDING_NAME: HuggingFaceEmbeddings
     # list of possible embeddings to use in vectorstore
     EMBEDDING_CLASS_MAP:
       OpenAIEmbeddings:
@@ -114,7 +121,7 @@ utils:
       HuggingFaceEmbeddings:
         class: HuggingFaceEmbeddings
         kwargs:
-          model_name: "sentence-transformers/all-mpnet-base-v2"
+          model_name: sentence-transformers/all-MiniLM-L6-v2 #sentence-transformers/multi-qa-mpnet-base-dot-v1 #sentence-transformers/all-mpnet-base-v2 are better but currently not working
           model_kwargs:
             device: 'cpu'
           encode_kwargs: 

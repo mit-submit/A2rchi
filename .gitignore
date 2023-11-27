@@ -11,3 +11,5 @@ venv
 *sqlite_db
 .vscode
 801-content/
+*secrets/
+logos/

@@ -1,5 +1,5 @@
 services:
-  cleo-dev:
+  cleo:
     image: cleo-dev:${TAG}
     build:
       context: ../..
@@ -7,7 +7,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -22,6 +24,7 @@ services:
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
     secrets:
       - cleo_url
       - cleo_user
@@ -34,6 +37,7 @@ services:
       - sender_pw
       - openai_api_key
       - hf_token
+      - pg_password
     volumes:
       - a2rchi-dev-data:/root/data/
     logging:
@@ -41,7 +45,7 @@ services:
         max-size: 10m
     restart: always
 
-  chat-dev:
+  chat:
     image: chat-dev:${TAG}
     build:
       context: ../..
@@ -49,17 +53,21 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       A2RCHI_SSL_CERTIFICATE_FILE: /run/secrets/a2rchi_ssl_certicate
       A2RCHI_SSL_CERTIFICATE_KEY_FILE: /run/secrets/a2rchi_ssl_certicate_key
     secrets:
       - openai_api_key
       - hf_token
+      - pg_password
     volumes:
       - a2rchi-dev-data:/root/data/
     logging:
@@ -69,7 +77,7 @@ services:
       - 7682:7861  # host:container
     restart: always
 
-  mailbox-dev:
+  mailbox:
     image: mailbox-dev:${TAG}
     build:
       context: ../..
@@ -77,7 +85,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -113,7 +123,7 @@ services:
         max-size: 10m
     restart: always
 
-  uploader-dev:
+  uploader:
     image: uploader-dev:${TAG}
     build:
       context: ../..
@@ -121,7 +131,9 @@ services:
       args:
         TAG: ${TAG}
     depends_on:
-      chromadb-dev:
+      chromadb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       RUNTIME_ENV: dev
@@ -143,13 +155,14 @@ services:
         max-size: 10m
     restart: always
 
-  chromadb-dev:
+  chromadb:
     image: chromadb-dev:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
       RUNTIME_ENV: dev
+      # ALLOW_RESET: True #Allow to request client to reset vstore. Functionality not currently used but keep for future debugging
     ports:
       - 8002:8000  # host:container
     volumes:
@@ -167,8 +180,52 @@ services:
       start_period: 10s
       start_interval: 5s
 
+  postgres:
+    image: postgres:16
+    environment:
+      RUNTIME_ENV: dev
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_USER: a2rchi
+      POSTGRES_DB: a2rchi-db
+    secrets:
+      - pg_password
+    volumes:
+      - ../init.sql:/docker-entrypoint-initdb.d/init.sql
+      - a2rchi-dev-pg-data:/var/lib/postgresql/data
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U a2rchi -d a2rchi-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana-dev:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - 3001:3000  # host:container
+    volumes:
+      - a2rchi-dev-grafana-data:/var/lib/grafana
+      - ../grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
 volumes:
   a2rchi-dev-data:
+    external: true
+  a2rchi-dev-pg-data:
+    external: true
+  a2rchi-dev-grafana-data:
     external: true
 
 secrets:
@@ -202,7 +259,12 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
+<<<<<<< HEAD
+  pg_password:
+    file: secrets/pg_password.txt
+=======
   a2rchi_ssl_certicate:
     file: secrets/a2rchi_ssl_certicate.txt
   a2rchi_ssl_certicate_key:
     file: secrets/a2rchi_ssl_certicate_key.txt
+>>>>>>> feature/login_page
