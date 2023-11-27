@@ -1,4 +1,4 @@
-from A2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import Config_Loader
 from flask_login import UserMixin
 
 import os
