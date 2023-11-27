@@ -1,18 +1,39 @@
 #!/bin/python
+
 from a2rchi.interfaces.chat_app.app import FlaskAppWrapper
+from a2rchi.interfaces.chat_app.user import User
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.env import read_secret
 
 from flask import Flask
+from flask_login import LoginManager
+
+global_config = Config_Loader().config["global"]
+app_config = Config_Loader().config["interfaces"]["chat_app"]
 
 import os
+import sqlite3
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
-config = Config_Loader().config["interfaces"]["chat_app"]
-global_config = Config_Loader().config["global"]
-print(f"Starting Chat Service with (host, port): ({config['HOST']}, {config['PORT']})")
+
+# database setup
+print(f"Initializing database")
+DB_PATH = os.path.join(global_config['DATA_PATH'], "flask_sqlite_db")
+
+# read sql script
+sql_script = None
+with open(app_config['DB_INIT_SCRIPT'], 'r') as f:
+    sql_script = f.read()
+
+# connect to db, create user table if it doesn't exist, and commit
+db = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+cursor = db.cursor()
+cursor.executescript(sql_script)
+db.commit()
+cursor.close()
+db.close()
 
 def generate_script(config):
     """
@@ -33,10 +54,35 @@ def generate_script(config):
 
     return
 
-generate_script(config)
-app = FlaskAppWrapper(Flask(
+# fill in template variables for front-end JS
+generate_script(app_config)
+
+# initialize app object
+print("Initializing flask app")
+app = Flask(
     __name__,
-    template_folder=config["template_folder"],
-    static_folder=config["static_folder"],
-))
-app.run(debug=True, port=config["PORT"], host=config["HOST"])
+    template_folder=app_config["template_folder"],
+    static_folder=app_config["static_folder"],
+)
+
+# User session management setup: https://flask-login.readthedocs.io/en/latest
+print("Setting up login manager")
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+# Flask-Login helper to retrieve a user from our db
+@login_manager.user_loader
+def load_user(user_id):
+    return User.get(user_id)
+
+# start app
+print(f"Starting Chat Service with (host, port): ({app_config['HOST']}, {app_config['PORT']})")
+app = FlaskAppWrapper(app)
+if app_config["HOSTNAME"] == "a2rchi.mit.edu":
+    print("Adding SSL certificates for a2rchi.mit.edu")
+    certificate_path = os.getenv("A2RCHI_SSL_CERTIFICATE_FILE")
+    key_path = os.getenv("A2RCHI_SSL_CERTIFICATE_KEY_FILE")
+    app.run(debug=True, port=app_config["PORT"], host=app_config["HOST"], ssl_context=(certificate_path, key_path))
+else:
+    print("No SSL certificate for this server found. Starting up with adhoc SSL certification")
+    app.run(debug=True, port=app_config["PORT"], host=app_config["HOST"], ssl_context="adhoc")

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>A2rchi Chat Service</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Google Fonts Link For Icons -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@2.0.3/marked.min.js"></script>
+  </head>
+  <body>
+
+    <!-- Main container-->
+    <div id="main">
+
+        <button class="openbtn" onclick="openNav()">☰</button>  
+
+        <div class="chat-container">
+            <div class="default-text">
+                {% if error %}
+                    <p style="color: red;">{{ error }}</p>
+                {% endif %}
+                <h3> Enter emails for users below (separated by commas):</h3> 
+                <form action="/submit_user_emails" method="post">
+                    <textarea id="emails" name="emails" rows="4" cols="50">{{ original_emails|default('') }}</textarea><br>
+                    <input type="submit" value="Submit">
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Sidebar container-->
+    <div id="main_sidebar" class="sidebar">
+        <div id="top-menu-links-container">
+          <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a>
+          <a class="top-menu-links" href="#">Chat</a>
+        </div>
+        <div class="bottom-menu-links-container">
+          <p id="user_info" class="bottom-menu-items"><img src="/static/images/user.svg" alt="user-img" width="25" height="25"> Guest </p>
+          <a href="/api/logout" class="bottom-menu-items">Logout</a>
+        </div>
+      </div>
+  
+    <!-- Small script. Annoying to put here, but the template must be rendered for the correct user-->
+    <!-- The below script does not handle the security of who gets acsess to the various pages, it just simply provides links-->
+    <script>
+  
+      let is_admin = {{ is_admin }};
+      let is_logged_in = {{ is_logged_in }};
+      if (is_logged_in) {
+          document.getElementById("user_info").innerHTML = '<img src="/static/images/user.svg" alt="user-img" width="25" height="25"> {{ user_name }}';
+      }
+  
+      if (is_admin) {
+          top_of_menu = document.getElementById("top-menu-links-container");
+          top_of_menu.innerHTML = '<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a> <a class="top-menu-links" href="/">Chat</a> <a class="top-menu-links" href="/master_documents">Master Documents</a><a class="top-menu-links" href="/personal_documents">Personal Documents</a>'
+      } else if (is_logged_in) {
+          top_of_menu = document.getElementById("top-menu-links-container");
+          top_of_menu.innerHTML = '<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a> <a class="top-menu-links" href="/">Chat</a> <a class="top-menu-links" href="/personal_documents">Personal Documents</a>'
+      }
+  
+    </script>
+
+  </body>
+</html>

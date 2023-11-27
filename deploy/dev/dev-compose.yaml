@@ -62,6 +62,8 @@ services:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      A2RCHI_SSL_CERTIFICATE_FILE: /run/secrets/a2rchi_ssl_certicate
+      A2RCHI_SSL_CERTIFICATE_KEY_FILE: /run/secrets/a2rchi_ssl_certicate_key
     secrets:
       - openai_api_key
       - hf_token
@@ -257,5 +259,12 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
+<<<<<<< HEAD
   pg_password:
     file: secrets/pg_password.txt
+=======
+  a2rchi_ssl_certicate:
+    file: secrets/a2rchi_ssl_certicate.txt
+  a2rchi_ssl_certicate_key:
+    file: secrets/a2rchi_ssl_certicate_key.txt
+>>>>>>> feature/login_page

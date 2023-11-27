@@ -13,31 +13,11 @@ const helpful_checkbox = document.getElementById("helpful_checkbox");
 const appropriate_checkbox = document.getElementById("appropriate_checkbox");
 popupForm.style.display = "none";
 
-// DEFINITIONS
-let DEFAULT_TIMEOUT_SECS = 120
 let userText = null;
-let conversation_id = null;
+let discussion_id = null;
+let next_message_id = 0;
 let conversation = []
 let num_responses_since_last_rating = 0;
-let last_response_is_feedback_request = false;
-
-
-async function fetchWithTimeout(resource, options = {}) {
-    // extracts `timeout` field from options dict;
-    // will default to DEFAULT_TIMEOUT_SECS if no field is present
-    const { timeout = DEFAULT_TIMEOUT_SECS * 1000 } = options;
-
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    const response = await fetch(resource, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(id);
-
-    return response;
-}
 
 function openNav() {
     document.getElementById("main_sidebar").style.width = "250px";
@@ -58,7 +38,7 @@ const loadDataFromLocalstorage = () => {
 
     const defaultText = `<div class="default-text">
                             <h1>A2rchi</h1>
-                            <p>Start a conversation and explore the power of A2rchi, specially trained on XX-TRAINED_ON-XX.<br> 
+                            <p>Start a conversation and explore the power of A2rchi, specially trained on FRONT END TEST.<br> 
                             Your chat history will be displayed here. <br> <br>
                             By using this website, you agree to the <a href="/terms">terms and conditions</a>.</p>
                         </div>`
@@ -76,29 +56,21 @@ const createChatElement = (content, className) => {
 }
 
 const refreshChat = async () => {
-    // if the conversation is empty; this is a no-op
-    if (conversation.length == 0) {
-        return;
-    }
-
-    // remove message to be regenerated from conversation
     conversation.pop();
-    chatContainer.removeChild(chatContainer.lastChild);
-
-    // if the last response generated a feedback request, make sure to remove it here as well
-    console.log(last_response_is_feedback_request)
-    if (last_response_is_feedback_request) {
-        console.log("remove again")
-        chatContainer.removeChild(chatContainer.lastChild);
+    if (next_message_id > 0) {
+        next_message_id = next_message_id -1;
     }
-
-    // generate new response
-    showTypingAnimation(isRefresh=true);
+    chatContainer.removeChild(chatContainer.lastChild);
+    showTypingAnimation();
 }
 
-const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
-    const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/get_chat_response";
+const getChatResponse = async (incomingChatDiv) => {
+    const API_URL = "http://t3desk019.mit.edu:7555/api/get_chat_response";
     const pElement = document.createElement("div");
+
+    // Give the p element of the response an id which is equal to the message id
+    pElement.setAttribute('id',next_message_id.toString());
+    next_message_id = next_message_id + 1
 
      // Define the properties and data for the API request
      const requestOptions = {
@@ -107,24 +79,18 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            last_message: conversation.slice(-1),
-            conversation_id: conversation_id,
-            is_refresh: isRefresh,
-            client_sent_msg_ts: Date.now(),
-            client_timeout: DEFAULT_TIMEOUT_SECS * 1000
-        }),
-        timeout: DEFAULT_TIMEOUT_SECS * 1000
+            conversation: conversation,
+            discussion_id: discussion_id,
+        })
     }
 
-    // Send POST request to Flask API, get response and set the response as paragraph element text
-    try {
-        const response = await (await fetchWithTimeout(API_URL, requestOptions)).json();
+     // Send POST request to Flask API, get response and set the response as paragraph element text
+     try {
+        const response = await (await fetch(API_URL, requestOptions)).json();
         pElement.innerHTML = response.response;
-        pElement.setAttribute('id', response.a2rchi_msg_id.toString());
         pElement.classList.add(".default-text");
         conversation.push(["A2rchi", response.response]);
-        conversation_id = response.conversation_id;
-        last_response_is_feedback_request = false;
+        discussion_id = response.discussion_id ;
     } catch (error) {
         pElement.classList.add("error");
         pElement.textContent = "Oops! Something went wrong while retrieving the response. Please try again.";
@@ -135,15 +101,6 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     incomingChatDiv.querySelector(".chat-details").appendChild(pElement);
     localStorage.setItem("all-chats", chatContainer.innerHTML);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
-
-    // ask user for feedback if it's been too many messages w/out any feedback
-    setTimeout(showFeedbackRequest, 500);
-}
-
-const copyCode = (copyCodeBtn) => {
-    // Copy the text content of the response to the clipboard
-    const reponseTextElement = copyCodeBtn.parentElement.parentElement.querySelector(".code-box-body");
-    navigator.clipboard.writeText(reponseTextElement.innerText);
 }
 
 const copyResponse = (copyBtn) => {
@@ -155,6 +112,8 @@ const copyResponse = (copyBtn) => {
 const likeResponse = (likeBtn) => {
     num_responses_since_last_rating = 0;
 
+    const chatContent = likeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
+
     // fill the image
     const image = likeBtn.querySelector("img");
     image.src = "/static/images/thumbs_up_filled.png"
@@ -163,27 +122,27 @@ const likeResponse = (likeBtn) => {
     const other_image = likeBtn.nextElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_down.png";
 
-    const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/like";
+    const API_URL = "http://t3desk019.mit.edu:7555/api/like";
 
      // Send an API request with the chat content and discussion ID
-     try {
-        fetch(API_URL, {
-            method: "POST", // You may need to adjust the HTTP method
-            headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            body: JSON.stringify({
-                message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
-            }),
-        })
-     } catch (error) {
-        console.log("liked error message")
-     }
+     fetch(API_URL, {
+        method: "POST", // You may need to adjust the HTTP method
+        headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({ 
+            content: chatContent,
+            discussion_id: discussion_id,
+            message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+        }),
+    })
 }
 
 const dislikeResponse = (dislikeBtn) => {
     num_responses_since_last_rating = 0;
+
+    const chatContent = dislikeBtn.parentElement.previousElementSibling.querySelector("p").textContent;
 
     // fill the image
     const image = dislikeBtn.querySelector("img");
@@ -193,7 +152,7 @@ const dislikeResponse = (dislikeBtn) => {
     const other_image = dislikeBtn.previousElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_up.png";
 
-    const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/dislike";
+    const API_URL = "http://t3desk019.mit.edu:7555/api/dislike";
 
     // Show pop-up form
     popupForm.style.display = "block";
@@ -202,40 +161,38 @@ const dislikeResponse = (dislikeBtn) => {
     function handleSubmitToAPI() {
         const additionalThoughts = additionalThoughtsInput.value;
 
-        try {
-            fetch(API_URL, {
-                method: "POST", // You may need to adjust the HTTP method
-                headers: {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                },
-                body: JSON.stringify({ 
-                    message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
-                    feedback_msg: additionalThoughts,
-                    incorrect: correct_checkbox.checked,
-                    unhelpful: helpful_checkbox.checked,
-                    inappropriate: appropriate_checkbox.checked,
-                }),
-            });
-        } catch (error) {
-            console.log("disliked error message")
-        }
+        fetch(API_URL, {
+            method: "POST", // You may need to adjust the HTTP method
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({ 
+                content: chatContent,
+                discussion_id: discussion_id,
+                message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+                message: additionalThoughts,
+                incorrect: correct_checkbox.checked,
+                unhelpful: helpful_checkbox.checked,
+                inappropriate: appropriate_checkbox.checked,
+            }),
+        });
 
-        //hide pop up form
+        //hide pop up formi
         popupForm.style.display = "none";
     }
 
     //wait for user to submit response or close the additional feedback window
-    submitButton.addEventListener("click", handleSubmitToAPI, {once: true});
-    closeButton.addEventListener("click", handleSubmitToAPI, {once: true});
+    submitButton.addEventListener("click", handleSubmitToAPI);
+    closeButton.addEventListener("click", handleSubmitToAPI);
 }
 
 const closeFeedback = (closeBtn) => {
-    //hide pop up form
+    //hide pop up formi
     popupForm.style.display = "none";
 }
 
-const showTypingAnimation = (isRefresh=false) => {
+const showTypingAnimation = () => {
     // Display the typing animation and call the getChatResponse function
     const html = `<div class="chat-content">
                     <div class="chat-details">
@@ -259,7 +216,8 @@ const showTypingAnimation = (isRefresh=false) => {
     const incomingChatDiv = createChatElement(html, "incoming");
     chatContainer.appendChild(incomingChatDiv);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
-    getChatResponse(incomingChatDiv, isRefresh);
+    getChatResponse(incomingChatDiv);
+    showFeedbackRequest();
 }
 
 const showFeedbackRequest = () => {
@@ -271,7 +229,7 @@ const showFeedbackRequest = () => {
                     <div class="chat-details">
                         <img src="/static/images/a2rchi.png" alt="chatbot-img">
                         <div class=".default-text">
-                            <p>I've noticed you haven't rated any of my responses in a while. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
+                            <p>I've noticed you haven't rated any of my responses in awhile. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
                         </div>
                     </div>
                 </div>`;
@@ -282,7 +240,6 @@ const showFeedbackRequest = () => {
         chatContainer.appendChild(incomingChatDiv);
         chatContainer.scrollTo(0, chatContainer.scrollHeight);
         num_responses_since_last_rating = 0;
-        last_response_is_feedback_request = true;
     }
 }
 
@@ -314,7 +271,8 @@ deleteButton.addEventListener("click", () => {
     // Remove the chats from local storage and call loadDataFromLocalstorage function
     if(confirm("Are you sure you want to delete all the chats?")) {
         conversation = []
-        conversation_id = null
+        discussion_id = null
+        next_message_id = 0;
         localStorage.removeItem("all-chats");
         loadDataFromLocalstorage();
     }

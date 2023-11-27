@@ -15,6 +15,7 @@
   --outgoing-chat-border: #343541;
   --incoming-chat-border: #444654;
   --incoming-chat-code-snippet: #545764;
+  --alternative-bckg: #1f1f27;
 }
 .light-mode {
   --text-color: #343541;
@@ -26,6 +27,7 @@
   --outgoing-chat-border: #FFFFFF;
   --incoming-chat-border: #D9D9E3;
   --incoming-chat-code-snippet: #FFFFFF;
+  --alternative-bckg: #a9a9bc;
 }
 body {
   background: var(--outgoing-chat-bg);
@@ -38,6 +40,153 @@ ul {
 
 ol {
   margin: 1rem 3.5rem;
+}
+
+#main {
+  transition: margin-left .5s;
+}
+
+/*login page styling */
+.page-wrapper {
+  background-image: url("images/login.png");
+  background-position: center; 
+  background-size: cover;
+  background-repeat: no-repeat;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  display: flex;
+}
+
+.login-wrapper {
+  width: 420px;
+  background: var(--alternative-bckg);
+  border: 2px solid var(--outgoing-chat-bg);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  color: var(--text-color);
+  border-radius: 10px;
+  padding: 30px 40px;
+}
+.login-wrapper h1 {
+  font-size:  36px;
+  text-align: center;
+  margin: 0 0 15px 0;
+
+}
+.login-wrapper .login-btn {
+  width: 100%;
+  height: 45px;
+  background: var(--icon-hover-bg);
+  border: none;
+  outline: none;
+  border-radius: 40px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-color);
+  font-weight: 600;
+  margin: 10px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+}
+
+.login-wrapper .register-link {
+  font-size: 14.5px;
+  text-align: center;
+  margin: 20px 0 15px;
+}
+
+.register-link p a {
+  color: var(--text-color);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.register-link p a:HOVER {
+  text-decoration: underline;
+}
+
+
+/* Main sidebar menu styling */
+.sidebar {
+  height: 100%;
+  width: 0;
+  position: fixed;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  background-color: #111;
+  overflow-x: hidden;
+  transition: 0.5s;
+  padding-top: 60px;
+}
+
+.sidebar .closebtn {
+  position: absolute;
+  top: 0;
+  right: 25px;
+  font-size: 36px;
+  margin-left: 50px;
+  
+  padding: 8px 8px 8px 32px;
+  text-decoration: none;
+  color: #818181;
+  display: block;
+  transition: 0.3s;
+}
+
+.openbtn {
+  font-size: 20px;
+  cursor: pointer;
+  background-color: #111;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  position:fixed;
+  margin-top: 20px;
+  margin-left: 20px;
+}
+
+
+.top-menu-links {
+  padding: 8px 8px 8px 32px;
+  text-decoration: none;
+  font-size: 25px;
+  color: #818181;
+  display: block;
+  transition: 0.3s;
+}
+
+.sidebar a:hover {
+  color: #f1f1f1;
+}
+
+.openbtn:hover {
+  background-color: #444;
+}
+
+.bottom-menu-links-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 40px;
+}
+
+.bottom-menu-items {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 5px;
+  padding-left: 32px;
+
+  text-decoration: none;
+  font-size: 15px;
+  color: #818181;
+  display: block;
+  transition: 0.3s;
 }
 
 /* Pop up container styling */
