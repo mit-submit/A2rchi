@@ -64,10 +64,20 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       A2RCHI_SSL_CERTIFICATE_FILE: /run/secrets/a2rchi_ssl_certicate
       A2RCHI_SSL_CERTIFICATE_KEY_FILE: /run/secrets/a2rchi_ssl_certicate_key
+      MIT_CLIENT_ID_FILE: /run/secrets/mit_client_id
+      MIT_CLIENT_SECRET_FILE: /run/secrets/mit_client_secret
+      GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
+      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
     secrets:
       - openai_api_key
       - hf_token
       - pg_password
+      - a2rchi_ssl_certicate
+      - a2rchi_ssl_certicate_key
+      - mit_client_id
+      - mit_client_secret
+      - google_client_id
+      - google_client_secret
     volumes:
       - a2rchi-dev-data:/root/data/
     logging:
@@ -265,3 +275,11 @@ secrets:
     file: secrets/a2rchi_ssl_certicate.txt
   a2rchi_ssl_certicate_key:
     file: secrets/a2rchi_ssl_certicate_key.txt
+  mit_client_id:
+    file: secrets/mit_client_id.txt
+  mit_client_secret:
+    file: secrets/mit_client_secret.txt
+  google_client_id:
+    file: secrets/google_client_id.txt
+  google_client_secret:
+    file: secrets/google_client_secret.txt
