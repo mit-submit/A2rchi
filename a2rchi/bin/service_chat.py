@@ -7,6 +7,7 @@ from a2rchi.utils.env import read_secret
 
 from flask import Flask
 from flask_login import LoginManager
+import tempfile
 
 global_config = Config_Loader().config["global"]
 app_config = Config_Loader().config["interfaces"]["chat_app"]
@@ -79,10 +80,24 @@ def load_user(user_id):
 print(f"Starting Chat Service with (host, port): ({app_config['HOST']}, {app_config['PORT']})")
 app = FlaskAppWrapper(app)
 if app_config["HOSTNAME"] == "a2rchi.mit.edu":
+
     print("Adding SSL certificates for a2rchi.mit.edu")
-    certificate_path = os.getenv("A2RCHI_SSL_CERTIFICATE_FILE")
-    key_path = os.getenv("A2RCHI_SSL_CERTIFICATE_KEY_FILE")
-    app.run(debug=True, port=app_config["PORT"], host=app_config["HOST"], ssl_context=(certificate_path, key_path))
+
+    #get the ssl cert and key and save them to temporary files
+    ssl_cert = read_secret("A2RCHI_SSL_CERTIFICATE")
+    ssl_key = read_secret("A2RCHI_SSL_CERTIFICATE_KEY")
+    cert_file = tempfile.NamedTemporaryFile(delete=False)
+    key_file = tempfile.NamedTemporaryFile(delete=False)
+    cert_file.write(ssl_cert.encode())
+    key_file.write(ssl_key.encode())
+
+    app.run(debug=True, port=app_config["PORT"], host=app_config["HOST"], ssl_context=(cert_file.name, key_file.name))
+
+    #remove the temp ssl cert and key temp files
+    os.unlink(cert_file.name)
+    os.unlink(key_file.name)
+
 else:
+    
     print("No SSL certificate for this server found. Starting up with adhoc SSL certification")
     app.run(debug=True, port=app_config["PORT"], host=app_config["HOST"], ssl_context="adhoc")
