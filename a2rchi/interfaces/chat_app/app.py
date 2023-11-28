@@ -460,7 +460,7 @@ class FlaskAppWrapper(object):
 
         if self.GOOGLE_LOGIN:
             google_callback = partial(
-                FlaskAppWrapper.callback,
+                self.callback,
                 get_provider_cfg=self.get_google_provider_cfg,
                 client=self.google_client,
                 client_id=GOOGLE_CLIENT_ID,
@@ -471,7 +471,7 @@ class FlaskAppWrapper(object):
 
         if self.MIT_LOGIN:
             mit_callback = partial(
-                FlaskAppWrapper.callback,
+                self.callback,
                 get_provider_cfg=self.get_mit_provider_cfg,
                 client=self.mit_client,
                 client_id=MIT_CLIENT_ID,
@@ -674,8 +674,7 @@ class FlaskAppWrapper(object):
 
         return redirect(request_uri)
 
-    @staticmethod
-    def callback(get_provider_cfg, client, client_id, client_secret, valid_user_emails):
+    def callback(self, get_provider_cfg, client, client_id, client_secret, valid_user_emails):
         # get authorization code provider sent back
         code = request.args.get("code")
 
@@ -715,7 +714,7 @@ class FlaskAppWrapper(object):
             return "User email not available or not verified by provider.", 400
 
         # if owner of this application has not green-light email; reject user
-        if user_email not in valid_user_emails:
+        if user_email not in self.VALID_USER_EMAILS:
             return "User email not authorized for this application.", 401
 
             # TODO: we could send them to a different landing page w/a link back to index
