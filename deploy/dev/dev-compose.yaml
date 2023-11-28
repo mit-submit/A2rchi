@@ -154,7 +154,7 @@ services:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
     secrets:
-      - flask_uploader_app_secret_key
+      - flask_app_secret_key
       - uploader_salt
       - openai_api_key
       - hf_token
