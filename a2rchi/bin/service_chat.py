@@ -79,7 +79,7 @@ def load_user(user_id):
 # start app
 print(f"Starting Chat Service with (host, port): ({app_config['HOST']}, {app_config['PORT']})")
 app = FlaskAppWrapper(app)
-if app_config["HOSTNAME"] == "a2rchi.mit.edu":
+if False: #app_config["HOSTNAME"] == "a2rchi.mit.edu":
 
     print("Adding SSL certificates for a2rchi.mit.edu")
 
@@ -98,6 +98,6 @@ if app_config["HOSTNAME"] == "a2rchi.mit.edu":
     os.unlink(key_file.name)
 
 else:
-    
+
     print("No SSL certificate for this server found. Starting up with adhoc SSL certification")
     app.run(debug=True, port=app_config["PORT"], host=app_config["HOST"], ssl_context="adhoc")
