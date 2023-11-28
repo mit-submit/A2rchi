@@ -411,7 +411,7 @@ class FlaskAppWrapper(object):
     def __init__(self, app, **configs):
         print(" INFO - entering FlaskAppWrapper")
         self.app = app
-        self.app.secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")  # TODO: REMOVE UPLOADER FROM NAME
+        self.app.secret_key = read_secret("FLASK_APP_SECRET_KEY")  # TODO: REMOVE UPLOADER FROM NAME
         self.configs(**configs)
         self.global_config = Config_Loader().config["global"]
         self.app_config = Config_Loader().config["interfaces"]["chat_app"]

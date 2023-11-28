@@ -198,7 +198,7 @@ class FlaskAppWrapper(object):
 
         # store flask app and set secret key
         self.app = app
-        self.app.secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
+        self.app.secret_key = read_secret("FLASK_APP_SECRET_KEY")
 
         # set flask configuration
         self.configs(**configs)

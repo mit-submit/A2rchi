@@ -46,7 +46,7 @@ jobs:
           /bin/bash ${workspace}/deploy/create_secret.sh sender_replyto.txt ${{ secrets.DEV_SENDER_REPLYTO }}
           /bin/bash ${workspace}/deploy/create_secret.sh sender_user.txt ${{ secrets.DEV_SENDER_USER }}
           /bin/bash ${workspace}/deploy/create_secret.sh sender_pw.txt ${{ secrets.DEV_SENDER_PW }}
-          /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.DEV_FLASK_UPLOADER_APP_SECRET_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh flask_app_secret_key.txt ${{ secrets.DEV_FLASK_APP_SECRET_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.DEV_UPLOADER_SALT }}
           /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
