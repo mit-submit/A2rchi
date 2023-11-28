@@ -272,9 +272,9 @@ secrets:
   pg_password:
     file: secrets/pg_password.txt
   a2rchi_ssl_certicate:
-    file: secrets/a2rchi_ssl_certicate.txt
+    file: secrets/a2rchi_ssl_certificate.txt
   a2rchi_ssl_certicate_key:
-    file: secrets/a2rchi_ssl_certicate_key.txt
+    file: secrets/a2rchi_ssl_certificate_key.txt
   mit_client_id:
     file: secrets/mit_client_id.txt
   mit_client_secret:
