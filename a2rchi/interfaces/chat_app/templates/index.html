@@ -11,44 +11,84 @@
     <script src="https://cdn.jsdelivr.net/npm/marked@2.0.3/marked.min.js"></script>
   </head>
   <body>
-    <!-- Chats container -->
-    <div class="chat-container"></div>
-    
-    <!-- Typing container -->
-    <div class="typing-container">
-      <div class="typing-content">
-        <div class="typing-textarea">
-          <textarea id="chat-input" spellcheck="false" placeholder="Enter your question for A2rchi" required></textarea>
-          <span id="send-btn" class="material-symbols-rounded">send</span>
+
+    <!-- Main container-->
+    <div id="main">
+
+      <button class="openbtn" onclick="openNav()">☰</button>  
+
+      <!-- Chats container -->
+      <div class="chat-container"></div>
+      
+      <!-- Typing container -->
+      <div class="typing-container">
+        <div class="typing-content">
+          <div class="typing-textarea">
+            <textarea id="chat-input" spellcheck="false" placeholder="Enter your question for A2rchi" required></textarea>
+            <span id="send-btn" class="material-symbols-rounded">send</span>
+          </div>
+          <div class="typing-controls">
+            <span id="theme-btn" class="material-symbols-rounded">light_mode</span>
+            <span id="refresh-btn" class="material-symbols-rounded">autorenew</span>
+            <span id="delete-btn" class="material-symbols-rounded">delete</span>
         </div>
-        <div class="typing-controls">
-          <span id="theme-btn" class="material-symbols-rounded">light_mode</span>
-          <span id="refresh-btn" class="material-symbols-rounded">autorenew</span>
-          <span id="delete-btn" class="material-symbols-rounded">delete</span>
+      </div>
+
+      <!-- Pop-up form for dislikes-->
+      <div id="popup-form" style="display: none;">
+        <div id="popup-content">
+          <div id="popup-heading-container" >
+            <h2>Additional Feedback</h2>
+            <button id="dislike-close-button" onclick="closeFeedback(this)">
+              <img src="/static/images/close.png" alt="Close" width="30" height="30">
+            </button>
+          </div>
+          <textarea id="dislike-additional-thoughts" rows="4" cols="50" placeholder="Why did you dislike the response?" ></textarea>
+          <br>
+          <input type="checkbox" id="correct_checkbox">
+          <label for="correct_checkbox"> The answer is not correct</label><br>
+          <input type="checkbox" id="helpful_checkbox">
+          <label for="helpful_checkbox"> The answer is not helpful</label><br>
+          <input type="checkbox" id="appropriate_checkbox">
+          <label for="appropriate_checkbox"> The answer is not appropriate</label><br>
+          <br>
+          <button id="dislike-submit-button">Submit</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Sidebar container-->
+    <div id="main_sidebar" class="sidebar">
+      <div id="top-menu-links-container">
+        <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a>
+        <a class="top-menu-links" href="#">Chat</a>
+      </div>
+      <div class="bottom-menu-links-container">
+        <p id="user_info" class="bottom-menu-items"><img src="/static/images/user.svg" alt="user-img" width="25" height="25"> Guest </p>
+        <a href="/api/logout" class="bottom-menu-items">Logout</a>
       </div>
     </div>
 
-    <!-- Pop-up form for dislikes-->
-    <div id="popup-form" style="display: none;">
-      <div id="popup-content">
-        <div id="popup-heading-container" >
-          <h2>Additional Feedback</h2>
-          <button id="dislike-close-button" onclick="closeFeedback(this)">
-            <img src="/static/images/close.png" alt="Close" width="30" height="30">
-          </button>
-        </div>
-        <textarea id="dislike-additional-thoughts" rows="4" cols="50" placeholder="Why did you dislike the response?" ></textarea>
-        <br>
-        <input type="checkbox" id="correct_checkbox">
-        <label for="correct_checkbox"> The answer is not correct</label><br>
-        <input type="checkbox" id="helpful_checkbox">
-        <label for="helpful_checkbox"> The answer is not helpful</label><br>
-        <input type="checkbox" id="appropriate_checkbox">
-        <label for="appropriate_checkbox"> The answer is not appropriate</label><br>
-        <br>
-        <button id="dislike-submit-button">Submit</button>
-      </div>
-    </div>
+  <!-- Small script. Annoying to put here, but the template must be rendered for the correct user-->
+  <!-- The below script does not handle the security of who gets acsess to the various pages, it just simply provides links-->
+  <script>
+
+    let is_admin = {{ is_admin }};
+    let is_logged_in = {{ is_logged_in }};
+    if (is_logged_in) {
+        document.getElementById("user_info").innerHTML = '<img src="/static/images/user.svg" alt="user-img" width="25" height="25"> {{ user_name }}';
+    }
+
+    if (is_admin) {
+        top_of_menu = document.getElementById("top-menu-links-container");
+        top_of_menu.innerHTML = '<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a> <a class="top-menu-links" href="/">Chat</a> <a class="top-menu-links" href="/master_documents">Master Documents</a><a class="top-menu-links" href="/personal_documents">Personal Documents</a>'
+    } else if (is_logged_in) {
+        top_of_menu = document.getElementById("top-menu-links-container");
+        top_of_menu.innerHTML = '<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a> <a class="top-menu-links" href="/">Chat</a> <a class="top-menu-links" href="/personal_documents">Personal Documents</a>'
+    }
+
+  </script>
 
   </body>
 </html>
