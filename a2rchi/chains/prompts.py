@@ -13,6 +13,7 @@ def read_prompt(prompt_filepath, is_condense_prompt=False, is_main_prompt=False)
         if len(line.lstrip())>0 and line.lstrip()[0:1] != "#":
             prompt += line + "\n"
 
+    # TODO: how do we make the prompt templates + chains more flexible to end users?
     if is_condense_prompt and ("{chat_history}" not in prompt or "{question}" not in prompt):
         raise ValueError("""Condensing prompt must contain \"{chat_history}\" and \"{question}\" tags. Instead, found prompt to be:
                          """ + prompt)
@@ -28,4 +29,8 @@ QA_PROMPT = PromptTemplate(
 
 CONDENSE_QUESTION_PROMPT = PromptTemplate(
     template=read_prompt(config["CONDENSING_PROMPT"], is_condense_prompt=True), input_variables=["chat_history", "question"]
+)
+
+SUMMARY_PROMPT = PromptTemplate(
+    template=read_prompt(config["SUMMARY_PROMPT"]), input_variables=["summary", "new_lines"]
 )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from loguru import logger
 from langchain.callbacks import FileCallbackHandler
 
-from a2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
+from a2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT, SUMMARY_PROMPT
 from a2rchi.utils.config_loader import Config_Loader
 
 from langchain.base_language import BaseLanguageModel
@@ -81,22 +81,25 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         cls,
         llm: BaseLanguageModel,
         retriever: BaseRetriever,
+        qa_prompt: BasePromptTemplate = QA_PROMPT,
         condense_question_prompt: BasePromptTemplate = CONDENSE_QUESTION_PROMPT,
+        summary_prompt: BasePromptTemplate = CONDENSE_QUESTION_PROMPT,
         chain_type: str = "stuff",
         verbose: bool = False,
         condense_question_llm: Optional[BaseLanguageModel] = None,
+        summary_llm: Optional[BaseLanguageModel] = None,
         combine_docs_chain_kwargs: Optional[Dict] = None,
         **kwargs: Any,
     ) -> BaseConversationalRetrievalChain:
         # Load chain from LLM
         combine_docs_chain_kwargs = combine_docs_chain_kwargs or {}
-        _prompt = QA_PROMPT
+        _prompt = qa_prompt
         document_variable_name = "context"
 
         #Add logger for storing input to the QA chain, ie filled QA template 
-        logfile = os.path.join(data_path,config["logging"]["input_output_filename"])
+        logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
         logger.add(logfile, colorize=True, enqueue=True)
-        handler = FileCallbackHandler(logfile)  
+        handler = FileCallbackHandler(logfile)
 
         llm_chain = LLMChain(
             llm=llm,
