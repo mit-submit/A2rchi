@@ -1,0 +1,125 @@
+name: {{ config_name | default("default", true) }}
+
+global:
+  TRAINED_ON: {{ trained_on_str | default("", true) }}    #used to create name of the specific version of a2rchi we're using
+  DATA_PATH: "/root/data/"
+  ACCOUNTS_PATH: "/root/.accounts/"
+  LOCAL_VSTORE_PATH: "/root/data/vstore/"
+  ACCEPTED_FILES: 
+    - ".txt"
+    - ".html"
+    - ".pdf"
+
+interfaces:
+  chat_app:
+    PORT: 7861
+    EXTERNAL_PORT: 7861
+    HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+    HOSTNAME: {{ hostname | default("localhost", true) }}  # careful, this is used for the chat service
+    template_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/templates"
+    static_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/static"
+    num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
+    include_copy_button: False
+
+chains:
+  input_lists:
+  {%- for input_list in web_input_lists %}
+    - {{ input_list -}}
+  {% endfor %}
+  base:
+    # roles that A2rchi knows about
+    ROLES: 
+      - User
+      - A2rchi
+      # - Expert 
+    #logging within base chain
+    logging:
+      #name of .log logfile to be saved in data folder.  
+      input_output_filename: chain_input_output.log
+  prompts:
+    # prompt that serves to condense a history and a question into a single question
+    CONDENSING_PROMPT: /root/A2rchi/condense.prompt
+    # main prompt which takes in a single question and a context.
+    MAIN_PROMPT: /root/A2rchi/main.prompt
+    # summarize past convo
+    SUMMARY_PROMPT: /root/A2rchi/summary.prompt
+  chain:
+    # pick one of the models listed in the model class map below
+    MODEL_NAME: {{ model_name | default("OpenAIGPT4", true) }} # LlamaLLM
+    CONDENSE_MODEL_NAME: {{ condense_model_name | default("OpenAIGPT4", true) }}
+    SUMMARY_MODEL_NAME: {{ summary_model_name | default("OpenAIGPT4", true) }}
+    # map of all the class models and their keyword arguments
+    MODEL_CLASS_MAP:
+      OpenAIGPT4:
+        class: OpenAILLM
+        kwargs:
+          model_name: gpt-4
+          temperature: 1
+      OpenAIGPT35:
+        class: OpenAILLM
+        kwargs:
+          model_name: gpt-3.5-turbo
+          temperature: 1
+      DumbLLM:
+        class: DumbLLM
+        kwargs:
+          sleep_time_mean: 3
+          filler: null
+      LlamaLLM:
+        class: LlamaLLM
+        kwargs:
+          base_model: "meta-llama/Llama-2-7b-chat-hf" #the location of the model (ex. meta-llama/Llama-2-70b)
+          peft_model: null #the location of the finetuning of the model. Can be none
+          enable_salesforce_content_safety: True # Enable safety check with Salesforce safety flan t5
+          quantization: True #enables 8-bit quantization
+          max_new_tokens: 4096 #The maximum numbers of tokens to generate
+          seed: null #seed value for reproducibility
+          do_sample: True #Whether or not to use sampling ; use greedy decoding otherwise.
+          min_length: null #The minimum length of the sequence to be generated, input prompt + min_new_tokens
+          use_cache: True  #[optional] Whether or not the model should use the past last key/values attentions Whether or not the model should use the past last key/values attentions (if applicable to the model) to speed up decoding.
+          top_p: .9 # [optional] If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation.
+          temperature: .6 # [optional] The value used to modulate the next token probabilities.
+          top_k: 50 # [optional] The number of highest probability vocabulary tokens to keep for top-k-filtering.
+          repetition_penalty: 1.0 #The parameter for repetition penalty. 1.0 means no penalty.
+          length_penalty: 1 #[optional] Exponential penalty to the length that is used with beam-based generation.
+          max_padding_length: null # the max padding length to be used with tokenizer padding the prompts.
+    chain_update_time: 10 # the amount of time (in seconds) which passes between when the chain updates to the newest version of the vectorstore
+
+utils:
+  postgres:
+    port: 5432
+    user: a2rchi
+    database: a2rchi-db
+    host: {{ postgres_hostname }}
+  data_manager:
+    CHUNK_SIZE: 1000
+    CHUNK_OVERLAP: 0
+    use_HTTP_chromadb_client: True   # recommended: True
+    # use_HTTP_chromadb_client: False
+    chromadb_host: chromadb
+    chromadb_port: 8000
+    collection_name: {{ collection_name }}
+    reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
+  embeddings:
+    # choose one embedding from list below
+    EMBEDDING_NAME: HuggingFaceEmbeddings
+    # list of possible embeddings to use in vectorstore
+    EMBEDDING_CLASS_MAP:
+      OpenAIEmbeddings:
+        class: OpenAIEmbeddings
+        kwargs:
+          model: text-embedding-ada-002
+        similarity_score_reference: 0.4
+      HuggingFaceEmbeddings:
+        class: HuggingFaceEmbeddings
+        kwargs:
+          model_name: sentence-transformers/all-MiniLM-L6-v2 #sentence-transformers/multi-qa-mpnet-base-dot-v1 #sentence-transformers/all-mpnet-base-v2 are better but currently not working
+          model_kwargs:
+            device: 'cpu'
+          encode_kwargs: 
+            normalize_embeddings: True
+        similarity_score_reference: 0.9
+  scraper:
+    reset_data: True         # delete websites and sources.yml in data folder
+    verify_urls: False       # should be true when possible
+    enable_warnings: False   # keeps output clean if verify == False
