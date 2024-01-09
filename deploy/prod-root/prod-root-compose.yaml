@@ -16,10 +16,24 @@ services:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      A2RCHI_SSL_CERTIFICATE_FILE: /run/secrets/a2rchi_ssl_certicate
+      A2RCHI_SSL_CERTIFICATE_KEY_FILE: /run/secrets/a2rchi_ssl_certicate_key
+      MIT_CLIENT_ID_FILE: /run/secrets/mit_client_id
+      MIT_CLIENT_SECRET_FILE: /run/secrets/mit_client_secret
+      GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
+      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
+      FLASK_APP_SECRET_KEY_FILE: /run/secrets/flask_app_secret_key
     secrets:
       - openai_api_key
       - hf_token
       - pg_password
+      - a2rchi_ssl_certicate
+      - a2rchi_ssl_certicate_key
+      - mit_client_id
+      - mit_client_secret
+      - google_client_id
+      - google_client_secret
+      - flask_app_secret_key
     volumes:
       - a2rchi-prod-root-data:/root/data/
     ports:
@@ -69,6 +83,7 @@ services:
       dockerfile: deploy/dockerfiles/Dockerfile-chroma
     environment:
       RUNTIME_ENV: prod-root
+      # ALLOW_RESET: True #Allow to request client to reset vstore. Functionality not currently used but keep for future debugging
     ports:
       - 8004:8000  # host:container
     volumes:
@@ -145,3 +160,15 @@ secrets:
     file: secrets/hf_token.txt
   pg_password:
     file: secrets/pg_password.txt
+  a2rchi_ssl_certicate:
+    file: secrets/a2rchi_ssl_certificate.txt
+  a2rchi_ssl_certicate_key:
+    file: secrets/a2rchi_ssl_certificate_key.txt
+  mit_client_id:
+    file: secrets/mit_client_id.txt
+  mit_client_secret:
+    file: secrets/mit_client_secret.txt
+  google_client_id:
+    file: secrets/google_client_id.txt
+  google_client_secret:
+    file: secrets/google_client_secret.txt

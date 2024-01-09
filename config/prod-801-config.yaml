@@ -18,6 +18,16 @@ interfaces:
     static_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
     include_copy_button: False
+    DB_INIT_SCRIPT:   "/root/A2rchi/a2rchi/interfaces/chat_app/schema.sql"
+    USE_LOGIN: False
+    ALLOW_GUEST_LOGIN: True
+    GOOGLE_LOGIN: True
+    MIT_LOGIN: True
+    ADMIN_USER_EMAILS:
+      - russomatthewd@gmail.com
+      - russomatthewd.spam@gmail.com
+      - mdrusso@mit.edu
+      - julius.heitkoetter@gmail.com
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
@@ -56,6 +66,7 @@ chains:
       DumbLLM:
         class: DumbLLM
         kwargs: 
+          sleep_time_mean: 3
           filler: null
       LlamaLLM:
         class: LlamaLLM
@@ -76,6 +87,7 @@ chains:
           length_penalty: 1 #[optional] Exponential penalty to the length that is used with beam-based generation.
           max_padding_length: null # the max padding length to be used with tokenizer padding the prompts.
     chain_update_time: 10 # the amount of time (in seconds) which passes between when the chain updates to the newest version of the vectorstore
+
 utils:
   cleo:
     cleo_update_time: 10
