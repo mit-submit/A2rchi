@@ -82,7 +82,7 @@
 
     if (is_admin) {
         top_of_menu = document.getElementById("top-menu-links-container");
-        top_of_menu.innerHTML = '<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a> <a class="top-menu-links" href="/">Chat</a> <a class="top-menu-links" href="/master_documents">Master Documents</a><a class="top-menu-links" href="/personal_documents">Personal Documents</a>'
+        top_of_menu.innerHTML = '<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a> <a class="top-menu-links" href="/">Chat</a> <a class="top-menu-links" href="/master_documents">Master Documents</a><a class="top-menu-links" href="/personal_documents">Personal Documents</a><a class="top-menu-links" href="/admin_settings">Admin Settings</a>'
     } else if (is_logged_in) {
         top_of_menu = document.getElementById("top-menu-links-container");
         top_of_menu.innerHTML = '<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a> <a class="top-menu-links" href="/">Chat</a> <a class="top-menu-links" href="/personal_documents">Personal Documents</a>'
