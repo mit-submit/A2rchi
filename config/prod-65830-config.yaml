@@ -40,6 +40,7 @@ chains:
       DumbLLM:
         class: DumbLLM
         kwargs: 
+          sleep_time_mean: 3
           filler: null
       LlamaLLM:
         class: LlamaLLM
