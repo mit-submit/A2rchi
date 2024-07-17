@@ -1,6 +1,6 @@
 services:
   chat:
-    image: chat-prod-root:${TAG}
+    image:  chat-prod-root:${TAG}
     build:
       context: ../..
       dockerfile: deploy/dockerfiles/Dockerfile-chat
