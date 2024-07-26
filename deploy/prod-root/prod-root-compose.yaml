@@ -70,7 +70,7 @@ services:
     environment:
       RUNTIME_ENV: prod-root
     ports:
-      - 8000:8000  # host:container
+      - 8004:8000  # host:container
     volumes:
       - a2rchi-prod-root-data:/chroma/chroma/
     logging:
