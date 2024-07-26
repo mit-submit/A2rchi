@@ -52,17 +52,17 @@ jobs:
       # create deployment directory if it doesn't already exist
       - name: Create Directory
         run: |
-          ssh submit06 "mkdir -p ~/A2rchi-prod-root/"
+          ssh submit-t3desk018 "mkdir -p ~/A2rchi-prod-root/"
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-stop.sh
+          ssh submit-t3desk018 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-root/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk018:~/A2rchi-prod-root/
 
       # run deploy script
       - name: Run Deploy Script
@@ -70,7 +70,7 @@ jobs:
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
+          ssh submit-t3desk018 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
