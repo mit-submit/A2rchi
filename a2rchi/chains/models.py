@@ -7,6 +7,7 @@ import time
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
 from langchain.chat_models import ChatOpenAI
+from langchain.chat_models import ChatAnthropic
 from langchain.llms import LlamaCpp
 
 class BaseCustomLLM(LLM):
@@ -45,6 +46,22 @@ class DumbLLM(BaseCustomLLM):
         print(f"DumbLLM: sleeping {sleep_time}")
         time.sleep(sleep_time)
         return "I am just a dumb LLM, I will give you a number: " + str(np.random.randint(10000, 99999))
+
+
+class AnthropicLLM(ChatAnthropic):
+    """
+    Loading Anthropic model from langchain package and specifying version. Options include:
+        model: str = "claude-3-opus-20240229"
+        model: str = "claude-3-sonnet-20240229"
+
+    Model comparison: https://docs.anthropic.com/en/docs/about-claude/models#model-comparison 
+    """
+
+    model: str = "claude-3-opus-20240229"
+
+    temp: int = 0
+
+
 
 class LlamaLLM(BaseCustomLLM):
     """

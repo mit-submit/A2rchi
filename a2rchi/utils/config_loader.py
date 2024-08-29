@@ -1,4 +1,4 @@
-from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM
+from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM
 
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -23,6 +23,7 @@ class Config_Loader:
 
             # change the model class parameter from a string to an actual class
             MODEL_MAPPING = {
+                "AnthropicLLM": AnthropicLLM
                 "OpenAILLM": OpenAILLM,
                 "DumbLLM": DumbLLM,
                 "LlamaLLM": LlamaLLM
