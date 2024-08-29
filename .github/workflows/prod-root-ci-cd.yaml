@@ -37,6 +37,7 @@ jobs:
           /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.PROD_UPLOADER_SALT }}
           /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh anthropic_api_key.txt ${{ secrets.ANTHROPIC_API_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
           /bin/bash ${workspace}/deploy/create_secret.sh pg_password.txt ${{ secrets.PROD_ROOT_PG_PASSWORD }}
           /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.PROD_ROOT_GRAFANA_PG_PASSWORD }}
