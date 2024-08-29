@@ -59,7 +59,7 @@ class AnthropicLLM(ChatAnthropic):
 
     model: str = "claude-3-opus-20240229"
 
-    temp: int = 0
+    temp: int = 1
 
 
 
