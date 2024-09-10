@@ -48,7 +48,7 @@ services:
       - 5004:5001  # host:container
     volumes:
       - a2rchi-prod-801-data:/root/data/
-      - /home/tier3/a2rchi/801-content/:/root/data/801-content/
+      - /home/tier3/a2rchi/801-content-f24/:/root/data/801-content/
     logging:
       options:
         max-size: 10m
