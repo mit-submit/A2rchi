@@ -205,6 +205,7 @@ dependencies:
   - zstd=1.5.5=hc292b87_0
   - pip:
       - accelerate==0.21.0
+      - anthropic==0.7.3
       - backoff==2.2.1
       - bitsandbytes==0.41.1
       - chroma-hnswlib==0.7.2
