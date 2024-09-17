@@ -42,6 +42,15 @@ jobs:
           touch ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
           echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
           chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
+          touch ${{ github.workspace }}/deploy/prod-801/secrets/piazza_email.txt
+          echo "${{ secrets.PROD_801_PIAZZA_EMAIL }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/piazza_email.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/piazza_email.txt
+          touch ${{ github.workspace }}/deploy/prod-801/secrets/piazza_password.txt
+          echo "${{ secrets.PROD_801_PIAZZA_PASSWORD }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/piazza_password.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/piazza_password.txt
+          touch ${{ github.workspace }}/deploy/prod-801/secrets/slack_webhook.txt
+          echo "${{ secrets.PROD_801_SLACK_WEBHOOK }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/slack_webhook.txt
+          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/slack_webhook.txt
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File

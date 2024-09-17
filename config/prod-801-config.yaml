@@ -114,3 +114,5 @@ utils:
     reset_data: True         # delete websites and sources.yml in data folder
     verify_urls: False       # should be true when possible
     enable_warnings: False   # keeps output clean if verify == False
+  piazza:
+    network_id: "m0g3v0ahsqm2lg"
