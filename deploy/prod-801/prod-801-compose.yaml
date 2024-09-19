@@ -1,4 +1,34 @@
 services:
+  piazza-prod-801:
+    image: piazza-prod-801:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-piazza
+      args:
+        TAG: ${TAG}
+    depends_on:
+      chromadb-prod-801:
+        condition: service_healthy
+    environment:
+      RUNTIME_ENV: prod-801
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      PIAZZA_EMAIL_FILE: /run/secrets/piazza_email
+      PIAZZA_PASSWORD_FILE: /run/secrets/piazza_password
+      SLACK_WEBHOOK_FILE: /run/secrets/slack_webhook
+    secrets:
+      - openai_api_key
+      - hf_token
+      - piazza_email
+      - piazza_password
+      - slack_webhook
+    volumes:
+      - a2rchi-prod-801-data:/root/data/
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
   chat-prod-801:
     image: chat-prod-801:${TAG}
     build:
@@ -91,3 +121,9 @@ secrets:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
+  piazza_email:
+    file: secrets/piazza_email.txt
+  piazza_password:
+    file: secrets/piazza_password.txt
+  slack_webhook:
+    file: secrets/slack_webhook.txt
