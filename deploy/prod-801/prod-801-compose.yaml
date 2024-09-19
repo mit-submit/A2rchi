@@ -3,7 +3,7 @@ services:
     image: piazza-prod-801:${TAG}
     build:
       context: ../..
-      dockerfile: deploy/dockerfiles/Dockerfile-piazza'
+      dockerfile: deploy/dockerfiles/Dockerfile-piazza
       args:
         TAG: ${TAG}
     depends_on:
