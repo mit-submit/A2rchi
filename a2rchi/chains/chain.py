@@ -1,7 +1,7 @@
 from a2rchi.chains.base import BaseSubMITChain as BaseChain
 
 from chromadb.config import Settings
-from langchain.vectorstores import Chroma
+from langchain_chroma import Chroma
 
 import chromadb
 import time

@@ -1,4 +1,5 @@
-from piazza_api import Piazza
+# from piazza_api import Piazza
+# from a2rchi.bin.service_piazza import Piazza
 
 import hashlib
 import os

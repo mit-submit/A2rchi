@@ -17,7 +17,7 @@ import time
 
 # DEFINITIONS
 SLACK_HEADERS = {'content-type': 'application/json'}
-MIN_NEXT_POST_FILE = "/root/data/min_next_post.json"
+MIN_NEXT_POST_FILE = "/Users/longzhuren/a2rchi_new/root/data/min_next_post.json"
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")

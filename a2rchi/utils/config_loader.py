@@ -18,12 +18,13 @@ class Config_Loader:
         """
         env = os.getenv("RUNTIME_ENV")
         try:
-            with open(f"./config/{env}-config.yaml", "r") as f:
+            # with open(f"./config/{env}-config.yaml", "r") as f:
+            with open(f"./config/prod-root-config.yaml", "r") as f:
                 config = yaml.load(f, Loader=yaml.FullLoader)
 
             # change the model class parameter from a string to an actual class
             MODEL_MAPPING = {
-                "AnthropicLLM": AnthropicLLM
+                "AnthropicLLM": AnthropicLLM,
                 "OpenAILLM": OpenAILLM,
                 "DumbLLM": DumbLLM,
                 "LlamaLLM": LlamaLLM
