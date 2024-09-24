@@ -19,6 +19,7 @@ services:
       SENDER_PW_FILE: /run/secrets/sender_pw
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
     secrets:
       - cleo_url
       - cleo_user
@@ -31,6 +32,7 @@ services:
       - sender_pw
       - openai_api_key
       - hf_token
+      - pg_password
     volumes:
       - a2rchi-prod-meta-data:/root/data/
     logging:
