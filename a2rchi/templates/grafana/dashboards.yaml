@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: A2rchi
+    folder: A2rchi
+    type: file
+    options:
+      path:
+        /var/lib/grafana/dashboards

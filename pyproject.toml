@@ -39,7 +39,7 @@ dependencies = [
     "peft==0.5.0",
     "piazza-api==0.14.0",
     "posthog==3.0.1",
-    "psycopg2==2.9.9",
+    "psycopg2-binary==2.9.9",
     "pulsar-client==3.2.0",
     "pygments==2.16.1",
     "pypdf==3.16.1",
@@ -60,14 +60,23 @@ dependencies = [
     "zstandard==0.21.0",
 ]
 
+[project.scripts]
+a2rchi = "a2rchi.cli.cli_main:main"
+
+[tool.setuptools.package-data]
+a2rchi = ["templates/*", "templates/grafana/*"]
+
 [tool.setuptools]
 packages = [
     "a2rchi",
     "a2rchi.bin",
+    "a2rchi.cli",
     "a2rchi.chains",
     "a2rchi.interfaces",
     "a2rchi.interfaces.chat_app",
     "a2rchi.interfaces.uploader_app",
+    "a2rchi.templates",
+    "a2rchi.templates.grafana",
     "a2rchi.utils",
 ]
 

@@ -87,7 +87,7 @@ class Scraper():
     def collect_urls_from_lists(self):
         urls = []
         for list_name in self.input_lists:
-            with open(f"config/{list_name}", "r") as f:
+            with open(list_name, "r") as f:
                 data = f.read()
 
             for line in data.split("\n"):

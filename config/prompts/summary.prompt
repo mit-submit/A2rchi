@@ -1,0 +1,15 @@
+# Prompt used to summarize a chat history.
+# This is a very general prompt for summarizing histories, so for base installs it will not need to be modified
+# 
+# All summarizing prompts must have the following tags in them, which will be filled with the appropriate information:
+#      {chat_history}
+#
+Given the following summary of a conversation between you (the AI named A2rchi) and a human user who needs help, and some new lines in the conversation, summarize the chat history to include the most relevant information.
+
+Current Summary:
+{summary}
+
+New lines of conversation:
+{new_lines}
+
+New summary:
