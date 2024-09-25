@@ -1,8 +1,8 @@
 global:
   TRAINED_ON: "root"    #used to create name of the specific version of a2rchi we're using
-  DATA_PATH: "/Users/longzhuren/a2rchi_new/root/data/"
-  ACCOUNTS_PATH: "/Users/longzhuren/a2rchi_new/root/.accounts/"
-  LOCAL_VSTORE_PATH: "/Users/longzhuren/a2rchi_new/root/data/vstore/"
+  DATA_PATH: "/root/data/"
+  ACCOUNTS_PATH: "/root/.accounts/"
+  LOCAL_VSTORE_PATH: "/root/data/vstore/"
   ACCEPTED_FILES: 
     -".txt"
     -".html"
@@ -14,14 +14,14 @@ interfaces:
     EXTERNAL_PORT: 7684
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
     HOSTNAME: "submit06.mit.edu"  # careful, this is used for the chat service
-    template_folder: "/Users/longzhuren/a2rchi_new/root/A2rchi/a2rchi/interfaces/chat_app/templates"
-    static_folder: "/Users/longzhuren/a2rchi_new/root/A2rchi/a2rchi/interfaces/chat_app/static"
+    template_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/templates"
+    static_folder: "/root/A2rchi/a2rchi/interfaces/chat_app/static"
     num_responses_until_feedback: 3 #the number of responses given by A2rchi until she asks for feedback.
     include_copy_button: False
   uploader_app:
     PORT: 5001
     HOST: "0.0.0.0" # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
-    template_folder: "/Users/longzhuren/a2rchi_new/root/A2rchi/a2rchi/interfaces/uploader_app/templates"
+    template_folder: "/root/A2rchi/a2rchi/interfaces/uploader_app/templates"
 
 chains:
   input_lists:
@@ -99,7 +99,7 @@ utils:
     CHUNK_OVERLAP: 0
     use_HTTP_chromadb_client: True   # recommended: True (use http client for the chromadb vectorstore?)
     # use_HTTP_chromadb_client: False
-    chromadb_host: localhost
+    chromadb_host: chromadb
     chromadb_port: 8000
     collection_name: "prod_root_collection" #unique in case vector stores are ever combined.
     reset_collection: True           # reset the entire collection each time it is accessed by a new data manager instance
