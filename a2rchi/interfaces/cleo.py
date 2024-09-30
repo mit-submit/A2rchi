@@ -182,7 +182,11 @@ class Cleo:
                     if record.notes != "":
                         history += f"\n next entry: {record.notes}"                    
                 print("History input: ",history)
-                answer = self.ai_wrapper(self.get_issue_history(issue.id))
+                try:
+                    answer = self.ai_wrapper(self.get_issue_history(issue.id))
+                except Exception as e:
+                    print(f"ERROR: {e}")
+                    answer = "I am sorry, I am not able to process this request at the moment. Please continue with this ticket manually."
                 self.add_note_to_issue(issue.id,answer)
                 print("A2rchi's response:\n",answer)
                 self.feedback_issue(issue.id)
