@@ -53,8 +53,8 @@ chains:
       AnthropicLLM:
         class: AnthropicLLM
         kwargs:
-          model_name: claude-3-opus-20240229
-          temperature: 1 # not sure if 1 is best value? for now keeping consistent with prior settings.
+          model_name: claude-3-5-sonnet-20240620" # claude-3-opus-20240229
+          #temperature: 1 # not sure if 1 is best value? for now keeping consistent with prior settings.
       OpenAILLM:
         class: OpenAILLM
         kwargs:
