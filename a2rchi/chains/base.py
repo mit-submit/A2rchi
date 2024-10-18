@@ -15,6 +15,10 @@ from langchain.schema.prompt_template import BasePromptTemplate
 from typing import Any, Dict, List, Optional, Tuple
 import os 
 
+from pydantic import BaseModel
+from langchain_core.runnables import RunnableSequence, RunnablePassthrough
+from typing import Callable
+
 
 # DEFINITIONS
 config = Config_Loader().config["chains"]["base"]
@@ -46,7 +50,8 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
     """
     retriever: BaseRetriever # Index to connect to
     max_tokens_limit: Optional[int] = None # restrict doc length to return from store, enforced only for StuffDocumentChain
-    get_chat_history: Optional[function] = _get_chat_history
+    # get_chat_history: Optional[function] = _get_chat_history
+    get_chat_history: Optional[Callable[[List[Tuple[str, str]]], str]] = _get_chat_history
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:
         num_docs = len(docs)
