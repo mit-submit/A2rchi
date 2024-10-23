@@ -1,5 +1,6 @@
 """Chain for chatting with a vector database."""
 from __future__ import annotations
+from pydantic import BaseModel
 from loguru import logger
 from langchain.callbacks import FileCallbackHandler
 
@@ -12,7 +13,10 @@ from langchain.chains.conversational_retrieval.base import BaseConversationalRet
 from langchain.chains.llm import LLMChain
 from langchain.schema import BaseRetriever, Document
 from langchain.schema.prompt_template import BasePromptTemplate
+from langchain_core.runnables import RunnableSequence, RunnablePassthrough
 from typing import Any, Dict, List, Optional, Tuple
+from typing import Callable
+# from pydantic import model_rebuild
 import os 
 
 
@@ -46,7 +50,20 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
     """
     retriever: BaseRetriever # Index to connect to
     max_tokens_limit: Optional[int] = None # restrict doc length to return from store, enforced only for StuffDocumentChain
-    get_chat_history: Optional[function] = _get_chat_history
+    get_chat_history: Optional[Callable[[List[Tuple[str, str]]], str]] = _get_chat_history
+
+    # kuangfei: the rebuild logic is default or rewrite
+    # @classmethod
+    # def model_rebuild(
+    #     cls,
+    #     *,
+    #     force: bool = False,
+    #     raise_errors: bool = True,
+    #     _parent_namespace_depth: int = 2,
+    #     _types_namespace: dict[str, Any] | None = None,
+    # ) -> bool | None:
+    #     return False
+    
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:
         num_docs = len(docs)
@@ -104,6 +121,17 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
             callbacks = [handler],
             verbose=verbose,
         )
+
+        # llm_chain = RunnableSequence(
+        #     {
+        #         "sentence": RunnablePassthrough(),
+        #         "language": RunnablePassthrough()
+        #     }
+        #     | _prompt
+        #     | llm
+        #     # | output_parser
+        # )
+
         doc_chain = StuffDocumentsChain(
             llm_chain=llm_chain,
             document_variable_name=document_variable_name,
@@ -114,7 +142,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         condense_question_chain = LLMChain(
             llm=_llm, prompt=condense_question_prompt, callbacks = [handler], verbose=verbose
         )
-
+        
         return cls(
             retriever=retriever,
             combine_docs_chain=doc_chain,

@@ -73,3 +73,5 @@ def test_chain_call_prevhistory():
     result = c1([("User", question), ("A2rchi", answer), ("User", follow_up)])
     c1.kill = True
     assert result["answer"] is not None
+
+

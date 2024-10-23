@@ -1,4 +1,3 @@
-from piazza_api import Piazza
 
 import hashlib
 import os

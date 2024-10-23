@@ -23,7 +23,7 @@ class Config_Loader:
 
             # change the model class parameter from a string to an actual class
             MODEL_MAPPING = {
-                "AnthropicLLM": AnthropicLLM
+                "AnthropicLLM": AnthropicLLM,
                 "OpenAILLM": OpenAILLM,
                 "DumbLLM": DumbLLM,
                 "LlamaLLM": LlamaLLM

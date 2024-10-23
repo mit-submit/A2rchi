@@ -28,7 +28,7 @@ chains:
     - empty.list
     - miscellanea.list
     - root-docs.list
-    - root-tutorial.list
+    # - root-tutorial.list
     # - root-forum.list
   base:
     # roles that A2rchi knows about
@@ -53,12 +53,12 @@ chains:
       AnthropicLLM:
         class: AnthropicLLM
         kwargs:
-          model_name: claude-3-opus-20240229
+          model: claude-3-opus-20240229
           temperature: 1 # not sure if 1 is best value? for now keeping consistent with prior settings.
       OpenAILLM:
         class: OpenAILLM
         kwargs:
-          model_name: gpt-4
+          model_name: gpt-4o-mini
           temperature: 1
       DumbLLM:
         class: DumbLLM
