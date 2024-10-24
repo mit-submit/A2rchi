@@ -5,7 +5,7 @@ from langchain_community.document_loaders.text import TextLoader
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import BSHTMLLoader
 from langchain_openai import OpenAIEmbeddings
-from langchain_chroma import Chroma
+from langchain_chroma.vectorstores import Chroma
 from langchain_text_splitters.character import CharacterTextSplitter
 
 import chromadb
