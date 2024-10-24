@@ -1,7 +1,7 @@
 from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM
 
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 import os
 import yaml
