@@ -4,11 +4,10 @@ import numpy as np
 import torch
 import time
 
-from langchain.callbacks.manager import CallbackManagerForLLMRun
-from langchain.llms.base import LLM
-from langchain.chat_models import ChatOpenAI
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
+from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain.llms import LlamaCpp
 
 
 import requests
