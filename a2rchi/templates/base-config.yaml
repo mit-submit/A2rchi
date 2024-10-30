@@ -46,6 +46,11 @@ chains:
     CONDENSE_MODEL_NAME: {{ chains.chain.CONDENSE_MODEL_NAME | default("OpenAIGPT4", true) }}
     SUMMARY_MODEL_NAME: {{ chains.chain.SUMMARY_MODEL_NAME | default("OpenAIGPT4", true) }}
     MODEL_CLASS_MAP:
+      AnthropicLLM:
+        class: AnthropicLLM
+        kwargs:
+          model_name: {{ chains.chain.MODEL_CLASS_MAP.AnthropicLLM.kwargs.model_name | default("claude-3-opus-20240229", true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.AnthropicLLM.kwargs.temperature | default(1, true) }}
       OpenAIGPT4:
         class: OpenAILLM
         kwargs:
