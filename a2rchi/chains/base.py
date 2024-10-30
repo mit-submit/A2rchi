@@ -1,18 +1,22 @@
 """Chain for chatting with a vector database."""
 from __future__ import annotations
+from pydantic import BaseModel
 from loguru import logger
-from langchain.callbacks import FileCallbackHandler
+from langchain_core.callbacks.file import FileCallbackHandler
 
 from a2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT #SUMMARY_PROMPT
 from a2rchi.utils.config_loader import Config_Loader
 
-from langchain.base_language import BaseLanguageModel
-from langchain.chains.combine_documents.stuff import StuffDocumentsChain
+from langchain_core.language_models.base import BaseLanguageModel
+from langchain.chains.combine_documents.stuff import StuffDocumentsChain # deprecated, should update
 from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
-from langchain.chains.llm import LLMChain
-from langchain.schema import BaseRetriever, Document
-from langchain.schema.prompt_template import BasePromptTemplate
+from langchain.chains.llm import LLMChain # deprecated, should update
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document
+from langchain_core.prompts.base import BasePromptTemplate
+from langchain_core.runnables import RunnableSequence, RunnablePassthrough
 from typing import Any, Dict, List, Optional, Tuple
+from typing import Callable
 import os 
 
 
@@ -46,7 +50,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
     """
     retriever: BaseRetriever # Index to connect to
     max_tokens_limit: Optional[int] = None # restrict doc length to return from store, enforced only for StuffDocumentChain
-    get_chat_history: Optional[function] = _get_chat_history
+    get_chat_history: Optional[Callable[[List[Tuple[str, str]]], str]] = _get_chat_history
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:
         num_docs = len(docs)

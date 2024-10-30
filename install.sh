@@ -15,6 +15,7 @@ HERE=`pwd`
 echo "# DO NOT EDIT !! THIS FILE IS GENERATED AT INSTALL (install.sh) !!
 export A2RCHI_BASE=$HERE
 export OPENAI_API_KEY=\`cat $HOME/.openai/api.key\`
+export ANTHROPIC_API_KEY=\`cat $HOME/.claudeai/api.key\`
 export PATH=\${PATH}:\${A2RCHI_BASE}/bin
 export PYTHONPATH=\${PYTHONPATH}:\${A2RCHI_BASE}/chains:\${A2RCHI_BASE}/interfaces:\${A2RCHI_BASE}/utils
 

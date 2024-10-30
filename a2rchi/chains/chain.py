@@ -4,7 +4,7 @@ from a2rchi.utils.config_loader import Config_Loader
 
 from chromadb.config import Settings
 from langchain.prompts.prompt import PromptTemplate
-from langchain.vectorstores import Chroma
+from langchain_chroma.vectorstores import Chroma
 
 from langchain.chains.conversation.memory import ConversationSummaryMemory
 from langchain.chains import ConversationChain
