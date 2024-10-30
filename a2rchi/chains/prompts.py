@@ -31,6 +31,6 @@ CONDENSE_QUESTION_PROMPT = PromptTemplate(
     template=read_prompt(config["CONDENSING_PROMPT"], is_condense_prompt=True), input_variables=["chat_history", "question"]
 )
 
-SUMMARY_PROMPT = PromptTemplate(
-    template=read_prompt(config["SUMMARY_PROMPT"]), input_variables=["summary", "new_lines"]
-)
+#SUMMARY_PROMPT = PromptTemplate(
+#    template=read_prompt(config["SUMMARY_PROMPT"]), input_variables=["summary", "new_lines"]
+#)

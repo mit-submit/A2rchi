@@ -3,7 +3,7 @@ from __future__ import annotations
 from loguru import logger
 from langchain.callbacks import FileCallbackHandler
 
-from a2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT, SUMMARY_PROMPT
+from a2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT #SUMMARY_PROMPT
 from a2rchi.utils.config_loader import Config_Loader
 
 from langchain.base_language import BaseLanguageModel
