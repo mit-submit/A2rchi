@@ -1,0 +1,118 @@
+services:
+  chat:
+    image: {{ chat_image }}:{{ chat_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat
+      args:
+        TAG: ${TAG}
+    container_name: {{ chat_container_name }}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - openai_api_key
+      - hf_token
+      - pg_password
+    volumes:
+      - {{ chat_volume_name }}:/root/data/
+      - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+      - ./summary.prompt:/root/A2rchi/summary.prompt
+    logging:
+      options:
+        max-size: 10m
+    ports:
+      - 7861:7861  # host:container
+    restart: always
+  
+  chromadb:
+    image: {{ chromadb_image }}:{{ chromadb_tag }}
+    build:
+      context: .
+      dockerfile:  a2rchi_code/templates/dockerfiles/Dockerfile-chroma
+    container_name: {{ chromadb_container_name }}
+    ports:
+      - 8000:8000  # host:container
+    volumes:
+      - {{ chat_volume_name }}:/chroma/chroma/
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    # healthcheck originates from inside container; so use container port
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+      start_interval: 5s
+
+  postgres:
+    image: postgres:16
+    container_name: {{ postgres_container_name }}
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_USER: a2rchi
+      POSTGRES_DB: a2rchi-db
+    secrets:
+      - pg_password
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - {{ postgres_volume_name }}:/var/lib/postgresql/data
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U a2rchi -d a2rchi-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  {% if include_grafana -%}
+  grafana:
+    image: {{ grafana_image }}:{{ grafana_tag }}
+    container_name: {{ grafana_container_name }}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - 3000:3000  # host:container
+    volumes:
+      - {{ grafana_volume_name }}:/var/lib/grafana
+      - ./grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
+      - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+  {% endif %}
+
+volumes:
+  {{ chat_volume_name }}:
+    external: true
+  {{ postgres_volume_name }}:
+    external: true
+  {% if include_grafana -%}
+  {{ grafana_volume_name }}:
+    external: true
+  {% endif %}
+
+secrets:
+  openai_api_key:
+    file: secrets/openai_api_key.txt
+  hf_token:
+    file: secrets/hf_token.txt
+  pg_password:
+    file: secrets/pg_password.txt

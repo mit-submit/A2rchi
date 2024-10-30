@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1
+ARG TAG=from-env
+FROM a2rchi-base:${TAG}
+
+COPY config config
+COPY a2rchi a2rchis
+
+CMD ["python", "-u", "a2rchi/bin/service_uploader.py"]

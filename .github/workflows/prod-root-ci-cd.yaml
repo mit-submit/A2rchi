@@ -30,18 +30,16 @@ jobs:
       - name: Create Secrets Files
         run: |
           mkdir -p ${{ github.workspace }}/deploy/prod-root/secrets/
-          touch ${{ github.workspace }}/deploy/prod-root/secrets/flask_uploader_app_secret_key.txt
-          echo "${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}" >> ${{ github.workspace }}/deploy/prod-root/secrets/flask_uploader_app_secret_key.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-root/secrets/flask_uploader_app_secret_key.txt
-          touch ${{ github.workspace }}/deploy/prod-root/secrets/uploader_salt.txt
-          echo "${{ secrets.PROD_UPLOADER_SALT }}" >> ${{ github.workspace }}/deploy/prod-root/secrets/uploader_salt.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-root/secrets/uploader_salt.txt
-          touch ${{ github.workspace }}/deploy/prod-root/secrets/openai_api_key.txt
-          echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/prod-root/secrets/openai_api_key.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-root/secrets/openai_api_key.txt
-          touch ${{ github.workspace }}/deploy/prod-root/secrets/hf_token.txt
-          echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-root/secrets/hf_token.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-root/secrets/hf_token.txt
+          workspace=${{ github.workspace }}
+          env="prod-root"
+          sed -i "s/WORKSPACE/${workspace//\//\\/}/" ${workspace}/deploy/create_secret.sh
+          sed -i "s/ENV/${env}/" ${workspace}/deploy/create_secret.sh
+          /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.PROD_UPLOADER_SALT }}
+          /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
+          /bin/bash ${workspace}/deploy/create_secret.sh pg_password.txt ${{ secrets.PROD_ROOT_PG_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.PROD_ROOT_GRAFANA_PG_PASSWORD }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
@@ -50,6 +48,11 @@ jobs:
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-root/.env
+
+      # create deployment directory if it doesn't already exist
+      - name: Create Directory
+        run: |
+          ssh submit06 "mkdir -p ~/A2rchi-prod-root/"
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
@@ -64,15 +67,15 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
           ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
         run: |
-          rm ${{ github.workspace }}/deploy/prod-root/secrets/flask_uploader_app_secret_key.txt
-          rm ${{ github.workspace }}/deploy/prod-root/secrets/uploader_salt.txt
-          rm ${{ github.workspace }}/deploy/prod-root/secrets/openai_api_key.txt
-          rm ${{ github.workspace }}/deploy/prod-root/secrets/hf_token.txt
+          rm ${{ github.workspace }}/deploy/prod-root/secrets/*.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."

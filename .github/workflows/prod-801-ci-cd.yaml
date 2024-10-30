@@ -30,27 +30,19 @@ jobs:
       - name: Create Secrets Files
         run: |
           mkdir -p ${{ github.workspace }}/deploy/prod-801/secrets/
-          touch ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
-          echo "${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
-          touch ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
-          echo "${{ secrets.PROD_UPLOADER_SALT }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
-          touch ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
-          echo "${{ secrets.OPENAI_API_KEY }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
-          touch ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
-          echo "${{ secrets.HF_TOKEN }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
-          touch ${{ github.workspace }}/deploy/prod-801/secrets/piazza_email.txt
-          echo "${{ secrets.PROD_801_PIAZZA_EMAIL }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/piazza_email.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/piazza_email.txt
-          touch ${{ github.workspace }}/deploy/prod-801/secrets/piazza_password.txt
-          echo "${{ secrets.PROD_801_PIAZZA_PASSWORD }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/piazza_password.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/piazza_password.txt
-          touch ${{ github.workspace }}/deploy/prod-801/secrets/slack_webhook.txt
-          echo "${{ secrets.PROD_801_SLACK_WEBHOOK }}" >> ${{ github.workspace }}/deploy/prod-801/secrets/slack_webhook.txt
-          chmod 400 ${{ github.workspace }}/deploy/prod-801/secrets/slack_webhook.txt
+          workspace=${{ github.workspace }}
+          env="prod-801"
+          sed -i "s/WORKSPACE/${workspace//\//\\/}/" ${workspace}/deploy/create_secret.sh
+          sed -i "s/ENV/${env}/" ${workspace}/deploy/create_secret.sh
+          /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.PROD_UPLOADER_SALT }}
+          /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
+          /bin/bash ${workspace}/deploy/create_secret.sh pg_password.txt ${{ secrets.PROD_801_PG_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.PROD_801_GRAFANA_PG_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_email.txt ${{ secrets.PROD_801_PIAZZA_EMAIL }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_password.txt ${{ secrets.PROD_801_PIAZZA_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh slack_webhook.txt ${{ secrets.PROD_801_SLACK_WEBHOOK }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File
@@ -59,6 +51,11 @@ jobs:
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           echo "TAG=${tag}" >> ${{ github.workspace }}/deploy/prod-801/.env
+
+      # create deployment directory if it doesn't already exist
+      - name: Create Directory
+        run: |
+          ssh submit-t3desk "mkdir -p ~/A2rchi-prod-801/"
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
@@ -73,15 +70,15 @@ jobs:
       # run deploy script
       - name: Run Deploy Script
         run: |
+          export tag="${GITHUB_REF#refs/heads/}"
+          export tag="${tag//\//-}.${GITHUB_SHA}"
+          sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-801/prod-801-install.sh
           ssh submit-t3desk 'bash -s' < ${{ github.workspace }}/deploy/prod-801/prod-801-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner
         run: |
-          rm ${{ github.workspace }}/deploy/prod-801/secrets/flask_uploader_app_secret_key.txt
-          rm ${{ github.workspace }}/deploy/prod-801/secrets/uploader_salt.txt
-          rm ${{ github.workspace }}/deploy/prod-801/secrets/openai_api_key.txt
-          rm ${{ github.workspace }}/deploy/prod-801/secrets/hf_token.txt
+          rm ${{ github.workspace }}/deploy/prod-801/secrets/*.txt
 
       # print job status
       - run: echo "🍏 This job's status is ${{ job.status }}."
