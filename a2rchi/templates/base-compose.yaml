@@ -99,6 +99,40 @@ services:
     restart: always
   {% endif %}
 
+  {% if include_uploader_service -%}
+  uploader:
+    image: {{ uploader_image }}:{{ uploader_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-uploader
+      args:
+        TAG: ${TAG}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
+      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+    secrets:
+      - flask_uploader_app_secret_key
+      - uploader_salt
+      - openai_api_key
+      - hf_token
+    ports:
+      - 5003:5001  # host:container
+    volumes:
+      - {{ chat_volume_name }}:/root/data/
+      - ./config.yaml:/root/A2rchi/config.yaml
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+  {% endif %}
+
 volumes:
   {{ chat_volume_name }}:
     external: true
@@ -110,9 +144,16 @@ volumes:
   {% endif %}
 
 secrets:
+  # Core secrets
   openai_api_key:
     file: secrets/openai_api_key.txt
   hf_token:
     file: secrets/hf_token.txt
   pg_password:
     file: secrets/pg_password.txt
+
+  # Uploader secrets
+  flask_uploader_app_secret_key:
+    file: secrets/flask_uploader_app_secret_key.txt
+  uploader_salt:
+    file: secrets/uploader_salt.txt

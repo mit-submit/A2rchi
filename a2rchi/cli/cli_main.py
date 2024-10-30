@@ -132,8 +132,14 @@ def cli():
 @click.command()
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
+@click.option('--document-uploader', '-g', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
-def create(name, include_grafana, a2rchi_config_filepath):
+def create(
+    name, 
+    include_grafana, 
+    include_uploader_service, 
+    a2rchi_config_filepath
+):
     """
     Create an instance of a RAG system with the specified name. By default,
     this command will create the following services:
@@ -224,6 +230,15 @@ def create(name, include_grafana, a2rchi_config_filepath):
         with open(os.path.join(a2rchi_name_dir, "grafana", "grafana.ini"), 'w') as f:
             f.write(grafana_config)
 
+    compose_template_vars["include_uploader_service"] = include_uploader_service
+    if include_uploader_service:
+         _print_msg("Preparing Uploader Service")
+
+         # Add uploader service to compose
+         compose_template_vars["include_uploader_service"] = include_uploader_service
+         compose_template_vars["uploader_image"] = f"uploader-{name}"
+         compose_template_vars["uploader_tag"] = tag
+
     _print_msg("Preparing Postgres")
     # prepare init.sql for postgres initialization
     init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
@@ -245,6 +260,12 @@ def create(name, include_grafana, a2rchi_config_filepath):
 
     with open(os.path.join(a2rchi_name_dir, "secrets", "pg_password.txt"), 'w') as f:
         f.write(f"{os.environ.get('PG_PASSWORD')}")
+
+    with open(os.path.join(a2rchi_name_dir, "secrets", "flask_uploader_app_secret_key.txt"), 'w') as f:
+        f.write(f"{os.environ.get('FLASK_UPLOADER_APP_SECRET_KEY')}")
+
+    with open(os.path.join(a2rchi_name_dir, "secrets", "uploader_salt.txt"), 'w') as f:
+        f.write(f"{os.environ.get('UPLOADER_SALT')}")
 
     # Define required fields in user configuration of A2rchi
     required_fields = [
