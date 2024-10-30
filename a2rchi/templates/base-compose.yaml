@@ -1,6 +1,11 @@
 services:
   chat:
     image: {{ chat_image }}:{{ chat_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat
+      args:
+        TAG: ${TAG}
     container_name: {{ chat_container_name }}
     depends_on:
       chromadb:
@@ -30,6 +35,9 @@ services:
   
   chromadb:
     image: {{ chromadb_image }}:{{ chromadb_tag }}
+    build:
+      context: .
+      dockerfile:  a2rchi_code/templates/dockerfiles/Dockerfile-chroma
     container_name: {{ chromadb_container_name }}
     ports:
       - 8000:8000  # host:container

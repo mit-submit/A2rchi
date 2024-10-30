@@ -8,6 +8,7 @@ import secrets
 import shutil
 import subprocess
 import yaml
+import time
 
 # DEFINITIONS
 env = Environment(
@@ -16,6 +17,7 @@ env = Environment(
 )
 A2RCHI_DIR = os.path.join(os.path.expanduser('~'), ".a2rchi")
 BASE_CONFIG_TEMPLATE = "base-config.yaml"
+BASE_DOCKERFILE_LOCATION = "dockerfiles"
 BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
@@ -30,17 +32,44 @@ class BashCommandException(Exception):
     pass
 
 
-def _run_bash_command(command_str: str) -> Tuple[str, str]:
-    """Helper function to split a bash command on spaces and execute it using subprocess."""
-    # split command on spaces into list of strings
+def _run_bash_command(command_str: str, verbose = False) -> Tuple[str, str]:
+    """Helper function to execute a bash command and print output in real-time without hanging."""
     command_str_lst = command_str.split(" ")
 
-    # execute command and capture the output
-    out = subprocess.run(command_str_lst, capture_output=True)
+    # Start the process
+    process = subprocess.Popen(command_str_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    
+    # Initialize empty strings for stdout and stderr
+    stdout, stderr = "", ""
 
-    # return stdout as string
-    return str(out.stdout, "utf-8"), str(out.stderr, "utf-8")
+    # Continuously read from stdout and stderr
+    while True:
+        # Check if there’s output from stdout
+        if process.poll() is not None:
+            break  # Process has finished, so we can exit the loop
+        
+        # Read each line from stdout and stderr as it becomes available
+        out_line = process.stdout.readline()
+        if out_line:
+            if verbose:
+                _print_msg(out_line)  # Print each line as it is produced
+            stdout += out_line
 
+        err_line = process.stderr.readline()
+        if err_line:
+            if verbose:
+                _print_msg(err_line)  # Print each error line as it is produced
+            stderr += err_line
+
+        # Allow other tasks to run if this process takes time
+        time.sleep(0.1)
+
+    # Capture any remaining output after process completes
+    remaining_stdout, remaining_stderr = process.communicate()
+    stdout += remaining_stdout
+    stderr += remaining_stderr
+
+    return stdout, stderr
 
 def _create_docker_volume(volume_name):
     # first, check to see if volume already exists
@@ -118,12 +147,14 @@ def create(name, include_grafana, a2rchi_config_filepath):
     os.makedirs(a2rchi_name_dir, exist_ok=True)
 
     # initialize dictionary of template variables for docker compose file
+    tag = "2000" # TODO, make tagging better
+    os.environ['TAG'] = tag #TODO: also this should be done with templating, not environment variables
     compose_template_vars = {
-        "chat_image": "mdr223/a2rchi",
-        "chat_tag": "chat-0.0.1",
+        "chat_image": f"chat-{name}",
+        "chat_tag": tag,
         "chat_container_name": f"chat-{name}",
-        "chromadb_image": "mdr223/a2rchi",
-        "chromadb_tag": "chromadb-0.0.1",
+        "chromadb_image": f"chromadb-{name}",
+        "chromadb_tag": tag,
         "chromadb_container_name": f"chromadb-{name}",
         "postgres_container_name": f"postgres-{name}",
     }
@@ -220,6 +251,12 @@ def create(name, include_grafana, a2rchi_config_filepath):
     shutil.copyfile(a2rchi_config["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
     shutil.copyfile(a2rchi_config["summary_prompt"], os.path.join(a2rchi_name_dir, "summary.prompt"))
 
+    # copy input lists
+    weblists_path = os.path.join(a2rchi_name_dir, "weblists")
+    os.makedirs(weblists_path, exist_ok=True)
+    for web_input_list in a2rchi_config["web_input_lists"]:
+        shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
+
     # load and render config template
     config_template = env.get_template(BASE_CONFIG_TEMPLATE)
     config = config_template.render(**a2rchi_config)
@@ -228,13 +265,17 @@ def create(name, include_grafana, a2rchi_config_filepath):
     with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
         f.write(config)
 
+    # copy over the code into the a2rchi dir
+    shutil.copytree("a2rchi", os.path.join(a2rchi_name_dir, "a2rchi_code"))
+    shutil.copyfile("pyproject.toml", os.path.join(a2rchi_name_dir, "pyproject.toml"))
+    shutil.copyfile("requirements.txt", os.path.join(a2rchi_name_dir, "requirements.txt"))
+    shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
+
     # create a2rchi system using docker
+    _print_msg("Building Base Image")
+    _, _ = _run_bash_command(f"docker build -f {os.path.join(a2rchi_name_dir, 'a2rchi_code/templates/dockerfiles/Dockerfile-base')} -t a2rchi-base:{tag} --progress=plain {os.path.join(a2rchi_name_dir)}", verbose=True) #TODO: not great printing out output #TODO: should be name specific to the deployment
     _print_msg("Starting docker compose")
-    stdout, stderr = _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps")
-    if stdout:
-        print(stdout)
-    if stderr:
-        print(stderr)
+    stdout, stderr = _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps", verbose=True) #TODO: not great printing out output
 
 
 @click.command()
@@ -256,11 +297,15 @@ def delete(name):
     _print_msg("Stopping docker compose")
     _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down")
 
+    # remove files in a2rchi directory
+    _print_msg("Removing files in a2rchi directory")
+    _run_bash_command(f"rm -r {a2rchi_name_dir}")
+
 
 @click.command()
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
-def update(name, a2rchi_config_filepath):
+def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore, or if we actually need it
     """
     Update instance of RAG system with the specified name using a new configuration.
     """
