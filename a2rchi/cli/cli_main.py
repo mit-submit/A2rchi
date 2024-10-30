@@ -1,4 +1,5 @@
-from jinja2 import Environment, PackageLoader, select_autoescape
+import re
+from jinja2 import Environment, PackageLoader, select_autoescape, ChainableUndefined
 from typing import Tuple
 
 import click
@@ -13,7 +14,8 @@ import time
 # DEFINITIONS
 env = Environment(
     loader=PackageLoader("a2rchi"),
-    autoescape=select_autoescape()
+    autoescape=select_autoescape(),
+    undefined=ChainableUndefined,
 )
 A2RCHI_DIR = os.path.join(os.path.expanduser('~'), ".a2rchi")
 BASE_CONFIG_TEMPLATE = "base-config.yaml"
@@ -31,6 +33,18 @@ class InvalidCommandException(Exception):
 class BashCommandException(Exception):
     pass
 
+
+def _validate_config(config, required_fields):
+    """
+    a function to validate presence of required fields in nested dictionaries
+    """
+    for field in required_fields:
+        keys = field.split('.')
+        value = config
+        for key in keys:
+            if key not in value:
+                raise ValueError(f"Missing required field: '{field}' in the configuration")
+            value = value[key]  # Drill down into nested dictionaries
 
 def _run_bash_command(command_str: str, verbose = False) -> Tuple[str, str]:
     """Helper function to execute a bash command and print output in real-time without hanging."""
@@ -170,6 +184,7 @@ def create(name, include_grafana, a2rchi_config_filepath):
     grafana_pg_password = os.environ.get("GRAFANA_PG_PASSWORD", secrets.token_hex(8))
 
     # if deployment includes grafana, create docker volume and template deployment files
+    compose_template_vars["include_grafana"] = include_grafana
     if include_grafana:
         _create_docker_volume(f"a2rchi-grafana-{name}")
 
@@ -231,30 +246,31 @@ def create(name, include_grafana, a2rchi_config_filepath):
     with open(os.path.join(a2rchi_name_dir, "secrets", "pg_password.txt"), 'w') as f:
         f.write(f"{os.environ.get('PG_PASSWORD')}")
 
-    _print_msg("Preparing Compose")
-    # load compose template
-    compose_template = env.get_template(BASE_COMPOSE_TEMPLATE)
-    compose = compose_template.render({**compose_template_vars})
-    with open(os.path.join(a2rchi_name_dir, "compose.yaml"), 'w') as f:
-        # yaml.dump(compose, f)
-        f.write(compose)
+    # Define required fields in user configuration of A2rchi
+    required_fields = [
+        'name', 
+        'global.TRAINED_ON',
+        'chains.input_lists', 
+        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT'
+    ]
 
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
         a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
+        _validate_config(a2rchi_config, required_fields=required_fields)
         a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
         if "collection_name" not in a2rchi_config:
             a2rchi_config["collection_name"] = f"collection_{name}"
 
     # copy prompts
-    shutil.copyfile(a2rchi_config["main_prompt"], os.path.join(a2rchi_name_dir, "main.prompt"))
-    shutil.copyfile(a2rchi_config["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
-    shutil.copyfile(a2rchi_config["summary_prompt"], os.path.join(a2rchi_name_dir, "summary.prompt"))
+    shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
+    shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
+    shutil.copyfile(a2rchi_config["chains"]["prompts"]["SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "summary.prompt"))
 
     # copy input lists
     weblists_path = os.path.join(a2rchi_name_dir, "weblists")
     os.makedirs(weblists_path, exist_ok=True)
-    for web_input_list in a2rchi_config["web_input_lists"]:
+    for web_input_list in a2rchi_config["chains"]["input_lists"]:
         shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
 
     # load and render config template
@@ -264,6 +280,14 @@ def create(name, include_grafana, a2rchi_config_filepath):
     # write final templated configuration
     with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
         f.write(config)
+
+    # load compose template
+    _print_msg("Preparing Compose")
+    compose_template = env.get_template(BASE_COMPOSE_TEMPLATE)
+    compose = compose_template.render({**compose_template_vars})
+    with open(os.path.join(a2rchi_name_dir, "compose.yaml"), 'w') as f:
+        # yaml.dump(compose, f)
+        f.write(compose)
 
     # copy over the code into the a2rchi dir
     shutil.copytree("a2rchi", os.path.join(a2rchi_name_dir, "a2rchi_code"))

@@ -2,7 +2,7 @@
 ARG TAG=from-env
 FROM a2rchi-base:${TAG}
 # FROM mdr223/a2rchi:base-${TAG}
-EXPOSE 7861
+#EXPOSE 7861
 
 # ensure this directory is present for prod-801 deployment
 # RUN if [ "$BUILD_ENV" = "prod-801" ] ; then mkdir /root/data/801-content ; fi
