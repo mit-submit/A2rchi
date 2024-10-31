@@ -161,3 +161,30 @@ Finally, to tear down the deployment, simply run:
 ```
 $ a2rchi delete --name my-a2rchi
 ```
+
+## Helpful Notes for Deployment
+
+You may wish to use the CLI in order to stage production deployments. This section covers some useful notes to keep in mind.
+
+### Running multiple deployments on the same machine
+
+The CLI is built to allow multiple deployments to run on the same daemon. The docker networks between all the deployments are seperate, so there is very little risk of them accidentally communicating with one another.
+
+However, one thing to be careful of is the external ports. Suppose you're running two deployments and both of them are running the chat on port 8000. There is no way to view both deployments at the same time from the same port, so instead you should split to forwarding the deployments to other external ports. Generally, this can be done in the configuration:
+```
+interfaces:
+  chat_app:
+    EXTERNAL_PORT: 1000
+  uploader_app:
+    EXTERNAL_PORT: 1001
+  grafana:
+    EXTERNAL_PORT: 1002
+
+utils:
+  data_manager:
+    chromadb_external_port: 1050
+```
+
+### Persisting data between deployments
+
+Do docker volumes persist between deployments? I don't know yet. We should build it so that it is though. 

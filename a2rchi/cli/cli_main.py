@@ -186,6 +186,21 @@ def create(
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"
 
+    # Define required fields in user configuration of A2rchi
+    required_fields = [
+        'name', 
+        'global.TRAINED_ON',
+        'chains.input_lists', 
+        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT'
+    ]
+    # load user configuration of A2rchi
+    with open(a2rchi_config_filepath, 'r') as f:
+        a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
+        _validate_config(a2rchi_config, required_fields=required_fields)
+        a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
+        if "collection_name" not in a2rchi_config:
+            a2rchi_config["collection_name"] = f"collection_{name}"
+
     # fetch or generate grafana password
     grafana_pg_password = os.environ.get("GRAFANA_PG_PASSWORD", secrets.token_hex(8))
 
@@ -198,8 +213,8 @@ def create(
         # add grafana to compose and SQL init
         compose_template_vars["include_grafana"] = include_grafana
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
-        compose_template_vars["grafana_image"] = "mdr223/a2rchi"
-        compose_template_vars["grafana_tag"] = "grafana-0.0.1"
+        compose_template_vars["grafana_image"] = f"grafana-{name}"
+        compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
         # template grafana datasources file to include postgres pw for grafana
@@ -230,6 +245,11 @@ def create(
         with open(os.path.join(a2rchi_name_dir, "grafana", "grafana.ini"), 'w') as f:
             f.write(grafana_config)
 
+        # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
+        # Grafana service ports
+        grafana_port_host = a2rchi_config.get('interfaces', {}).get('grafana', {}).get('EXTERNAL_PORT', 3000)
+        compose_template_vars['grafana_port_host'] = grafana_port_host
+
     compose_template_vars["include_uploader_service"] = include_uploader_service
     if include_uploader_service:
          _print_msg("Preparing Uploader Service")
@@ -238,6 +258,13 @@ def create(
          compose_template_vars["include_uploader_service"] = include_uploader_service
          compose_template_vars["uploader_image"] = f"uploader-{name}"
          compose_template_vars["uploader_tag"] = tag
+
+         # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
+         # Uploader service ports
+         uploader_port_host = a2rchi_config.get('interfaces', {}).get('uploader_app', {}).get('EXTERNAL_PORT', 5003)
+         uploader_port_container = a2rchi_config.get('interfaces', {}).get('uploader_app', {}).get('PORT', 5001)
+         compose_template_vars['uploader_port_host'] = uploader_port_host
+         compose_template_vars['uploader_port_container'] = uploader_port_container
 
     _print_msg("Preparing Postgres")
     # prepare init.sql for postgres initialization
@@ -267,21 +294,8 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "secrets", "uploader_salt.txt"), 'w') as f:
         f.write(f"{os.environ.get('UPLOADER_SALT')}")
 
-    # Define required fields in user configuration of A2rchi
-    required_fields = [
-        'name', 
-        'global.TRAINED_ON',
-        'chains.input_lists', 
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT'
-    ]
-
-    # load user configuration of A2rchi
-    with open(a2rchi_config_filepath, 'r') as f:
-        a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
-        _validate_config(a2rchi_config, required_fields=required_fields)
-        a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
-        if "collection_name" not in a2rchi_config:
-            a2rchi_config["collection_name"] = f"collection_{name}"
+    with open(os.path.join(a2rchi_name_dir, "secrets", "anthropic_api_key.txt"), 'w') as f:
+        f.write(f"{os.environ.get('ANTHROPIC_API_KEY')}")
 
     # copy prompts
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
@@ -301,6 +315,17 @@ def create(
     # write final templated configuration
     with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
         f.write(config)
+
+    # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
+    # Chat service ports
+    chat_port_host = a2rchi_config.get('interfaces', {}).get('chat_app', {}).get('EXTERNAL_PORT', 7861)
+    chat_port_container = a2rchi_config.get('interfaces', {}).get('chat_app', {}).get('PORT', 7861)
+    compose_template_vars['chat_port_host'] = chat_port_host
+    compose_template_vars['chat_port_container'] = chat_port_container
+    # ChromaDB service ports
+    chromadb_port_host = a2rchi_config.get('utils', {}).get('data_manager', {}).get('chromadb_external_port', 8000)
+    compose_template_vars['chromadb_port_host'] = chromadb_port_host
+    # Postgres service ports are never externally exposed, so they don't need to be managed!
 
     # load compose template
     _print_msg("Preparing Compose")

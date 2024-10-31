@@ -22,8 +22,11 @@ interfaces:
     include_copy_button: {{ interfaces.chat_app.include_copy_button | default(false, true) }}
   uploader_app:
     PORT: {{ interfaces.uploader_app.PORT | default(5001, true) }}
+    EXTERNAL_PORT: {{ interfaces.uploader_app.EXTERNAL_PORT | default(5003, true) }}
     HOST: {{ interfaces.uploader_app.HOST | default("0.0.0.0", true) }} # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
     template_folder: {{ interfaces.uploader_app.template_folder | default("/root/A2rchi/a2rchi/interfaces/uploader_app/templates", true) }}
+  grafana:
+    EXTERNAL_PORT: {{ interfaces.grafana.EXTERNAL_PORT | default(3000, true) }}
 
 chains:
   input_lists:
@@ -97,7 +100,8 @@ utils:
     CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
     use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
     chromadb_host: {{ utils.data_manager.chromadb_host | default('chromadb', true) }}
-    chromadb_port: {{ utils.data_manager.chromadb_port | default(8000, true) }}
+    chromadb_port: {{ utils.data_manager.chromadb_port | default(8000, true) }} # This should never really need to be changed off of 8000
+    chromadb_external_port:  {{ utils.data_manager.chromadb_external_port | default(8000, true) }}
     collection_name: {{ collection_name }}
     reset_collection: {{ utils.data_manager.reset_collection | default(true, true) }}
   embeddings:

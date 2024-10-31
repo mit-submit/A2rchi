@@ -32,7 +32,7 @@ services:
       options:
         max-size: 10m
     ports:
-      - 7861:7861  # host:container
+      - {{ chat_port_host }}:{{ chat_port_container }}  # host:containe
     restart: always
   
   chromadb:
@@ -42,7 +42,7 @@ services:
       dockerfile:  a2rchi_code/templates/dockerfiles/Dockerfile-chroma
     container_name: {{ chromadb_container_name }}
     ports:
-      - 8000:8000  # host:container
+      - {{ chromadb_port_host }}:8000  # host:container
     volumes:
       - {{ chat_volume_name }}:/chroma/chroma/
     logging:
@@ -51,7 +51,7 @@ services:
     restart: always
     # healthcheck originates from inside container; so use container port
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"] #health check uses container port
       interval: 15s
       timeout: 10s
       retries: 3
@@ -83,12 +83,15 @@ services:
   {% if include_grafana -%}
   grafana:
     image: {{ grafana_image }}:{{ grafana_tag }}
+    build:
+      context: .
+      dockerfile:  a2rchi_code/templates/dockerfiles/Dockerfile-grafana
     container_name: {{ grafana_container_name }}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - 3000:3000  # host:container
+      - {{ grafana_port_host }}:3000  # host:container
     volumes:
       - {{ grafana_volume_name }}:/var/lib/grafana
       - ./grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
@@ -127,7 +130,7 @@ services:
       - anthropic_api_key
       - hf_token
     ports:
-      - 5003:5001  # host:container
+      - {{ uploader_port_host }}:{{ uploader_port_container }}  # host:container
     volumes:
       - {{ chat_volume_name }}:/root/data/
       - ./config.yaml:/root/A2rchi/config.yaml
