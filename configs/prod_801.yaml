@@ -1,0 +1,23 @@
+name: prod_801
+
+global:
+  TRAINED_ON: "8.01"
+
+chains:
+  input_lists:
+    - configs/miscellanea.list
+    - configs/801-textbook.list
+  chain:
+    MODEL_NAME: AnthropicLLM
+    CONDENSE_MODEL_NAME: AnthropicLLM
+    SUMMARY_MODEL_NAME: AnthropicLLM
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt
+    MAIN_PROMPT: configs/prompts/801.prompt
+    SUMMARY_PROMPT: configs/prompts/summary.prompt
+    MODEL_CLASS_MAP:
+      AnthropicLLM:
+        class: AnthropicLLM
+        kwargs:
+          model_name: claude-3-opus-20240229
+          temperature: 1
