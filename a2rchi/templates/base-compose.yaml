@@ -173,6 +173,7 @@ services:
       options:
         max-size: 10m
     restart: always
+  {% endif %}
 
 volumes:
   {{ chat_volume_name }}:

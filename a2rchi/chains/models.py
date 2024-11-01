@@ -58,7 +58,7 @@ class AnthropicLLM(ChatAnthropic):
     Model comparison: https://docs.anthropic.com/en/docs/about-claude/models#model-comparison 
     """
 
-    model: str = "claude-3-opus-20240229"
+    model_name: str = "claude-3-opus-20240229"
     temp: int = 1
 
 

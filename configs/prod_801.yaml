@@ -3,6 +3,12 @@ name: prod_801
 global:
   TRAINED_ON: "8.01"
 
+interfaces:
+  chat_app:
+    PORT: 7864
+    EXTERNAL_PORT: 7864
+    HOSTNAME: "t3desk018.mit.edu"
+
 chains:
   input_lists:
     - configs/miscellanea.list
@@ -15,9 +21,3 @@ chains:
     CONDENSING_PROMPT: configs/prompts/condense.prompt
     MAIN_PROMPT: configs/prompts/801.prompt
     SUMMARY_PROMPT: configs/prompts/summary.prompt
-    MODEL_CLASS_MAP:
-      AnthropicLLM:
-        class: AnthropicLLM
-        kwargs:
-          model_name: claude-3-opus-20240229
-          temperature: 1
