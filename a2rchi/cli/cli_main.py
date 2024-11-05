@@ -33,6 +33,10 @@ class InvalidCommandException(Exception):
 class BashCommandException(Exception):
     pass
 
+def _prepare_secret(a2rchi_name_dir, secret_name):
+    os.makedirs(os.path.join(a2rchi_name_dir, "secrets"), exist_ok=True)
+    with open(os.path.join(a2rchi_name_dir, "secrets", f"{secret_name.lower()}.txt"), 'w') as f:
+        f.write(f"{os.environ.get(secret_name.upper())}")
 
 def _validate_config(config, required_fields):
     """
@@ -133,11 +137,13 @@ def cli():
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-g', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
+@click.option('--cleo-and-mailer', '-g', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
 def create(
     name, 
     include_grafana, 
     include_uploader_service, 
+    include_cleo_and_mailer,
     a2rchi_config_filepath
 ):
     """
@@ -266,6 +272,33 @@ def create(
          compose_template_vars['uploader_port_host'] = uploader_port_host
          compose_template_vars['uploader_port_container'] = uploader_port_container
 
+         _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key")
+         _prepare_secret(a2rchi_name_dir, "uploader_salt")
+
+    compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
+    if include_cleo_and_mailer:
+        _print_msg("Preparing Cleo and Emailer Service")
+
+        # Add uploader service to compose
+        compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
+        compose_template_vars["cleo_image"] = f"cleo-{name}"
+        compose_template_vars["cleo_tag"] = tag
+        compose_template_vars["mailbox_image"] = f"mailbox-{name}"
+        compose_template_vars["mailbox_tag"] = tag
+
+        _prepare_secret(a2rchi_name_dir, "imap_user")
+        _prepare_secret(a2rchi_name_dir, "imap_pw")
+        _prepare_secret(a2rchi_name_dir, "cleo_url")
+        _prepare_secret(a2rchi_name_dir, "cleo_user")
+        _prepare_secret(a2rchi_name_dir, "cleo_pw")
+        _prepare_secret(a2rchi_name_dir, "cleo_project")
+        _prepare_secret(a2rchi_name_dir, "sender_server")
+        _prepare_secret(a2rchi_name_dir, "sender_port")
+        _prepare_secret(a2rchi_name_dir, "sender_replyto")
+        _prepare_secret(a2rchi_name_dir, "sender_user")
+        _prepare_secret(a2rchi_name_dir, "sender_pw")
+
+
     _print_msg("Preparing Postgres")
     # prepare init.sql for postgres initialization
     init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
@@ -275,27 +308,12 @@ def create(
     })
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
-
-    # TODO: make more general purpose
+    
     # prepare secrets
-    os.makedirs(os.path.join(a2rchi_name_dir, "secrets"), exist_ok=True)
-    with open(os.path.join(a2rchi_name_dir, "secrets", "openai_api_key.txt"), 'w') as f:
-        f.write(f"{os.environ.get('OPENAI_API_KEY')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "hf_token.txt"), 'w') as f:
-        f.write(f"{os.environ.get('HF_TOKEN')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "pg_password.txt"), 'w') as f:
-        f.write(f"{os.environ.get('PG_PASSWORD')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "flask_uploader_app_secret_key.txt"), 'w') as f:
-        f.write(f"{os.environ.get('FLASK_UPLOADER_APP_SECRET_KEY')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "uploader_salt.txt"), 'w') as f:
-        f.write(f"{os.environ.get('UPLOADER_SALT')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "anthropic_api_key.txt"), 'w') as f:
-        f.write(f"{os.environ.get('ANTHROPIC_API_KEY')}")
+    _prepare_secret(a2rchi_name_dir, "openai_api_key")
+    _prepare_secret(a2rchi_name_dir, "anthropic_api_key")
+    _prepare_secret(a2rchi_name_dir, "hf_token")
+    _prepare_secret(a2rchi_name_dir, "pg_password")
 
     # copy prompts
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
