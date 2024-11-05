@@ -37,6 +37,7 @@ jobs:
           /bin/bash ${workspace}/deploy/create_secret.sh flask_uploader_app_secret_key.txt ${{ secrets.PROD_FLASK_UPLOADER_APP_SECRET_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh uploader_salt.txt ${{ secrets.PROD_UPLOADER_SALT }}
           /bin/bash ${workspace}/deploy/create_secret.sh openai_api_key.txt ${{ secrets.OPENAI_API_KEY }}
+          /bin/bash ${workspace}/deploy/create_secret.sh anthropic_api_key.txt ${{ secrets.ANTHROPIC_API_KEY }}
           /bin/bash ${workspace}/deploy/create_secret.sh hf_token.txt ${{ secrets.HF_TOKEN }}
           /bin/bash ${workspace}/deploy/create_secret.sh pg_password.txt ${{ secrets.PROD_ROOT_PG_PASSWORD }}
           /bin/bash ${workspace}/deploy/create_secret.sh grafana_password.txt ${{ secrets.PROD_ROOT_GRAFANA_PG_PASSWORD }}
@@ -58,17 +59,17 @@ jobs:
       # create deployment directory if it doesn't already exist
       - name: Create Directory
         run: |
-          ssh submit06 "mkdir -p ~/A2rchi-prod-root/"
+          ssh submit-t3desk018 "mkdir -p ~/A2rchi-prod-root/"
 
       # stop any existing docker compose that's running
       - name: Stop Docker Compose
         run: |
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-stop.sh
+          ssh submit-t3desk018 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-stop.sh
 
       # copy repository to machine
       - name: Copy Repository
         run: |
-          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit06:~/A2rchi-prod-root/
+          rsync -e ssh -r ${{ github.workspace}}/* --exclude .git/ --delete submit-t3desk018:~/A2rchi-prod-root/
 
       # run deploy script
       - name: Run Deploy Script
@@ -76,7 +77,7 @@ jobs:
           export tag="${GITHUB_REF#refs/heads/}"
           export tag="${tag//\//-}.${GITHUB_SHA}"
           sed -i "s/BASE_TAG/${tag}/" ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
-          ssh submit06 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
+          ssh submit-t3desk018 'bash -s' < ${{ github.workspace }}/deploy/prod-root/prod-root-install.sh
 
       # clean up secret files
       - name: Remove Secrets from Runner

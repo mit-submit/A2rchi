@@ -1,10 +1,18 @@
 """SQL queries used by A2rchi"""
 SQL_INSERT_CONVO = """
 INSERT INTO conversations (
-    conversation_id, sender, content, ts
+    conversation_id, sender, content, ts, conf_id
 )
 VALUES %s
 RETURNING message_id;
+"""
+
+SQL_INSERT_CONFIG = """
+INSERT INTO configs (
+    config, config_name
+)
+VALUES %s
+RETURNING config_id;
 """
 
 SQL_INSERT_FEEDBACK = """

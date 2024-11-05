@@ -1,5 +1,3 @@
-from piazza_api import Piazza
-
 import hashlib
 import os
 import re
@@ -87,7 +85,7 @@ class Scraper():
     def collect_urls_from_lists(self):
         urls = []
         for list_name in self.input_lists:
-            with open(f"config/{list_name}", "r") as f:
+            with open(os.path.join("weblists", os.path.basename(list_name)), "r") as f:
                 data = f.read()
 
             for line in data.split("\n"):

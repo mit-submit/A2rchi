@@ -46,6 +46,9 @@ jobs:
           /bin/bash ${workspace}/deploy/create_secret.sh mit_client_secret.txt ${{ secrets.DEV_MIT_CLIENT_SECRET }}
           /bin/bash ${workspace}/deploy/create_secret.sh google_client_id.txt ${{ secrets.DEV_GOOGLE_CLIENT_ID }}
           /bin/bash ${workspace}/deploy/create_secret.sh google_client_secret.txt ${{ secrets.DEV_GOOGLE_CLIENT_SECRET }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_email.txt ${{ secrets.PROD_801_PIAZZA_EMAIL }}
+          /bin/bash ${workspace}/deploy/create_secret.sh piazza_password.txt ${{ secrets.PROD_801_PIAZZA_PASSWORD }}
+          /bin/bash ${workspace}/deploy/create_secret.sh slack_webhook.txt ${{ secrets.PROD_801_SLACK_WEBHOOK }}
 
       # create env file to set tag(s) for docker-compose
       - name: Create Env File

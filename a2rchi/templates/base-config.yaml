@@ -1,0 +1,129 @@
+name: {{ name | default("default", true) }}
+
+global:
+  TRAINED_ON: {{ global.TRAINED_ON | default("", true) }}
+  DATA_PATH: "{{ global.DATA_PATH | default('/root/data/', true) }}"
+  ACCOUNTS_PATH: "{{ global.ACCOUNTS_PATH | default('/root/.accounts/', true) }}"
+  LOCAL_VSTORE_PATH: "{{ global.LOCAL_VSTORE_PATH | default('/root/data/vstore/', true) }}"
+  ACCEPTED_FILES: 
+    {%- for file_type in global.ACCEPTED_FILES | default(['.txt', '.html', '.pdf']) %}
+    - "{{ file_type }}"
+    {%- endfor %}
+
+interfaces:
+  chat_app:
+    PORT: {{ interfaces.chat_app.PORT | default(7861, true) }}
+    EXTERNAL_PORT: {{ interfaces.chat_app.EXTERNAL_PORT | default(7861, true) }}
+    HOST: {{ interfaces.chat_app.HOST | default("0.0.0.0", true) }}
+    HOSTNAME: {{ interfaces.chat_app.HOSTNAME | default("localhost", true) }}
+    template_folder: "{{ interfaces.chat_app.template_folder | default('/root/A2rchi/a2rchi/interfaces/chat_app/templates', true) }}"
+    static_folder: "{{ interfaces.chat_app.static_folder | default('/root/A2rchi/a2rchi/interfaces/chat_app/static', true) }}"
+    num_responses_until_feedback: {{ interfaces.chat_app.num_responses_until_feedback | default(3, true) }}
+    include_copy_button: {{ interfaces.chat_app.include_copy_button | default(false, true) }}
+  uploader_app:
+    PORT: {{ interfaces.uploader_app.PORT | default(5001, true) }}
+    EXTERNAL_PORT: {{ interfaces.uploader_app.EXTERNAL_PORT | default(5003, true) }}
+    HOST: {{ interfaces.uploader_app.HOST | default("0.0.0.0", true) }} # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
+    template_folder: {{ interfaces.uploader_app.template_folder | default("/root/A2rchi/a2rchi/interfaces/uploader_app/templates", true) }}
+  grafana:
+    EXTERNAL_PORT: {{ interfaces.grafana.EXTERNAL_PORT | default(3000, true) }}
+
+chains:
+  input_lists:
+    {%- for input_list in chains.input_lists | default([]) %}
+    - {{ input_list }}
+    {%- endfor %}
+  base:
+    ROLES:
+      {%- for role in chains.base.ROLES | default(['User', 'A2rchi']) %}
+      - {{ role }}
+      {%- endfor %}
+    logging:
+      input_output_filename: "{{ chains.base.logging.input_output_filename | default('chain_input_output.log', true) }}"
+  prompts:
+    CONDENSING_PROMPT: "/root/A2rchi/condense.prompt"
+    MAIN_PROMPT: "/root/A2rchi/main.prompt"
+    SUMMARY_PROMPT: "/root/A2rchi/summary.prompt"
+  chain:
+    MODEL_NAME: {{ chains.chain.MODEL_NAME | default("OpenAIGPT4", true) }}
+    CONDENSE_MODEL_NAME: {{ chains.chain.CONDENSE_MODEL_NAME | default("OpenAIGPT4", true) }}
+    SUMMARY_MODEL_NAME: {{ chains.chain.SUMMARY_MODEL_NAME | default("OpenAIGPT4", true) }}
+    MODEL_CLASS_MAP:
+      AnthropicLLM:
+        class: AnthropicLLM
+        kwargs:
+          model_name: {{ chains.chain.MODEL_CLASS_MAP.AnthropicLLM.kwargs.model_name | default('claude-3-opus-20240229', true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.AnthropicLLM.kwargs.temperature | default(1, true) }}
+      OpenAIGPT4:
+        class: OpenAILLM
+        kwargs:
+          model_name: {{ chains.chain.MODEL_CLASS_MAP.OpenAIGPT4.kwargs.model_name | default('gpt-4', true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.OpenAIGPT4.kwargs.temperature | default(1, true) }}
+      OpenAIGPT35:
+        class: OpenAILLM
+        kwargs:
+          model_name: {{ chains.chain.MODEL_CLASS_MAP.OpenAIGPT35.kwargs.model_name | default('gpt-3.5-turbo', true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.OpenAIGPT35.kwargs.temperature | default(1, true) }}
+      DumbLLM:
+        class: DumbLLM
+        kwargs:
+          sleep_time_mean: {{ chains.chain.MODEL_CLASS_MAP.DumbLLM.kwargs.sleep_time_mean | default(3, true) }}
+          filler: {{ chains.chain.MODEL_CLASS_MAP.DumbLLM.kwargs.filler | default('null', true) }}
+      LlamaLLM:
+        class: LlamaLLM
+        kwargs:
+          base_model: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.base_model | default("meta-llama/Llama-2-7b-chat-hf", true) }}
+          peft_model: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.peft_model | default("null", true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.enable_salesforce_content_safety | default(true, true) }}
+          quantization: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.quantization | default(true, true) }}
+          max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.max_new_tokens | default(4096, true) }}
+          seed: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.seed | default("null", true) }}
+          do_sample: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.do_sample | default(true, true) }}
+          min_length: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.min_length | default("null", true) }}
+          use_cache: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.use_cache | default(true, true) }}
+          top_p: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.top_p | default(0.9, true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.temperature | default(0.6, true) }}
+          top_k: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.top_k | default(50, true) }}
+          repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.repetition_penalty | default(1.0, true) }}
+          length_penalty: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.length_penalty | default(1, true) }}
+          max_padding_length: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.max_padding_length | default("null", true) }}
+    chain_update_time: {{ chains.chain.chain_update_time | default(10, true) }}
+
+utils:
+  postgres:
+    port: {{ utils.postgres.port | default(5432, true) }}
+    user: {{ utils.postgres.user | default('a2rchi', true) }}
+    database: {{ utils.postgres.database | default('a2rchi-db', true) }}
+    host: {{ postgres_hostname }}
+  data_manager:
+    CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(1000, true) }}
+    CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
+    use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
+    chromadb_host: {{ utils.data_manager.chromadb_host | default('chromadb', true) }}
+    chromadb_port: {{ utils.data_manager.chromadb_port | default(8000, true) }} # This should never really need to be changed off of 8000
+    chromadb_external_port:  {{ utils.data_manager.chromadb_external_port | default(8000, true) }}
+    collection_name: {{ collection_name }}
+    reset_collection: {{ utils.data_manager.reset_collection | default(true, true) }}
+  embeddings:
+    EMBEDDING_NAME: {{ utils.embeddings.EMBEDDING_NAME | default('OpenAIEmbeddings', true) }}
+    EMBEDDING_CLASS_MAP:
+      OpenAIEmbeddings:
+        class: OpenAIEmbeddings
+        kwargs:
+          model: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.kwargs.model | default('text-embedding-ada-002', true) }}
+        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.similarity_score_reference | default(0.4, true) }}
+      HuggingFaceEmbeddings:
+        class: HuggingFaceEmbeddings
+        kwargs:
+          model_name: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.model_name | default('sentence-transformers/all-MiniLM-L6-v2', true) }}
+          model_kwargs:
+            device: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.model_kwargs.device | default('cpu', true) }}
+          encode_kwargs: 
+            normalize_embeddings: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
+        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(0.9, true) }}
+  scraper:
+    reset_data: {{ utils.scraper.reset_data | default(true, true) }}
+    verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
+    enable_warnings: {{ utils.scraper.enable_warnings | default(false, true) }}
+  piazza:
+    network_id: {{ utils.piazza.network_id | default("m0g3v0ahsqm2lg", true) }} # default is for 8.01, should probably change this...

@@ -1,18 +1,22 @@
 """Chain for chatting with a vector database."""
 from __future__ import annotations
+from pydantic import BaseModel
 from loguru import logger
-from langchain.callbacks import FileCallbackHandler
+from langchain_core.callbacks.file import FileCallbackHandler
 
-from a2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
+from a2rchi.chains.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT #SUMMARY_PROMPT
 from a2rchi.utils.config_loader import Config_Loader
 
-from langchain.base_language import BaseLanguageModel
-from langchain.chains.combine_documents.stuff import StuffDocumentsChain
+from langchain_core.language_models.base import BaseLanguageModel
+from langchain.chains.combine_documents.stuff import StuffDocumentsChain # deprecated, should update
 from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
-from langchain.chains.llm import LLMChain
-from langchain.schema import BaseRetriever, Document
-from langchain.schema.prompt_template import BasePromptTemplate
+from langchain.chains.llm import LLMChain # deprecated, should update
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document
+from langchain_core.prompts.base import BasePromptTemplate
+from langchain_core.runnables import RunnableSequence, RunnablePassthrough
 from typing import Any, Dict, List, Optional, Tuple
+from typing import Callable
 import os 
 
 
@@ -46,7 +50,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
     """
     retriever: BaseRetriever # Index to connect to
     max_tokens_limit: Optional[int] = None # restrict doc length to return from store, enforced only for StuffDocumentChain
-    get_chat_history: Optional[function] = _get_chat_history
+    get_chat_history: Optional[Callable[[List[Tuple[str, str]]], str]] = _get_chat_history
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:
         num_docs = len(docs)
@@ -81,22 +85,25 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
         cls,
         llm: BaseLanguageModel,
         retriever: BaseRetriever,
+        qa_prompt: BasePromptTemplate = QA_PROMPT,
         condense_question_prompt: BasePromptTemplate = CONDENSE_QUESTION_PROMPT,
+        summary_prompt: BasePromptTemplate = CONDENSE_QUESTION_PROMPT,
         chain_type: str = "stuff",
         verbose: bool = False,
         condense_question_llm: Optional[BaseLanguageModel] = None,
+        summary_llm: Optional[BaseLanguageModel] = None,
         combine_docs_chain_kwargs: Optional[Dict] = None,
         **kwargs: Any,
     ) -> BaseConversationalRetrievalChain:
         # Load chain from LLM
         combine_docs_chain_kwargs = combine_docs_chain_kwargs or {}
-        _prompt = QA_PROMPT
+        _prompt = qa_prompt
         document_variable_name = "context"
 
         #Add logger for storing input to the QA chain, ie filled QA template 
-        logfile = os.path.join(data_path,config["logging"]["input_output_filename"])
+        logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
         logger.add(logfile, colorize=True, enqueue=True)
-        handler = FileCallbackHandler(logfile)  
+        handler = FileCallbackHandler(logfile)
 
         llm_chain = LLMChain(
             llm=llm,

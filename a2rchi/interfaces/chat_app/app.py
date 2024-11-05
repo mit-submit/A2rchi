@@ -1,9 +1,9 @@
 from a2rchi.chains.chain import Chain
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import Config_Loader, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.interfaces.chat_app.user import User
 from a2rchi.utils.env import read_secret
-from a2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO
+from a2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG
 
 from datetime import datetime
 from pygments import highlight
@@ -52,6 +52,9 @@ import requests
 
 # DEFINITIONS
 QUERY_LIMIT = 10000 # max queries per conversation
+MAIN_PROMPT_FILE = "/root/A2rchi/main.prompt"
+CONDENSE_PROMPT_FILE = "/root/A2rchi/condense.prompt"
+SUMMARY_PROMPT_FILE = "/root/A2rchi/summary.prompt"
 
 UUID_BYTES = 8
 
@@ -144,6 +147,12 @@ class ChatWrapper:
         self.chain = Chain()
         self.number_of_queries = 0
 
+        # initialize config_id to be None
+        self.config_id = None
+
+    def update_config(self, config_id):
+        self.config_id = config_id
+        self.chain.update_config()
 
     @staticmethod
     def convert_to_app_history(history):
@@ -234,12 +243,12 @@ class ChatWrapper:
         insert_tups = (
             [
                 # (conversation_id, sender, content, ts)
-                (conversation_id, user_sender, user_content, user_msg_ts),
-                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts),
+                (conversation_id, user_sender, user_content, user_msg_ts, self.config_id),
+                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts, self.config_id),
             ]
             if not is_refresh
             else [
-                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts),
+                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts, self.config_id),
             ]
         )
 
@@ -343,7 +352,7 @@ class ChatWrapper:
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 full_history = history + [(sender, content)] if not is_refresh else history
-                result = self.chain(full_history)
+                result = self.chain(full_history, conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
                 # for now let's return a timeout error, as returning a different
@@ -413,12 +422,26 @@ class FlaskAppWrapper(object):
         self.app = app
         self.app.secret_key = read_secret("FLASK_APP_SECRET_KEY")  # TODO: REMOVE UPLOADER FROM NAME
         self.configs(**configs)
-        self.global_config = Config_Loader().config["global"]
+        self.config = Config_Loader().config
+        self.global_config = self.config["global"]
         self.app_config = Config_Loader().config["interfaces"]["chat_app"]
+        self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
+
+        # store postgres connection info
+        self.pg_config = {
+            "password": read_secret("POSTGRES_PASSWORD"),
+            **self.utils_config["postgres"],
+        }
+        self.conn = None
+        self.cursor = None
+
+        # insert config
+        self.config_id = self.insert_config(self.config)
 
         # create the chat from the wrapper
         self.chat = ChatWrapper()
+        self.chat.update_config(self.config_id)
 
         # configure login
         self.USE_LOGIN = self.app_config["USE_LOGIN"]
@@ -450,6 +473,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/terms', 'terms', self.terms)
         self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
+        self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
 
         if self.USE_LOGIN:
             self.add_endpoint('/api/login', 'login', self.login, methods=["GET", "POST"])
@@ -496,9 +520,84 @@ class FlaskAppWrapper(object):
     def run(self, **kwargs):
         self.app.run(**kwargs)
 
+    def insert_config(self, config):
+        # TODO: use config_name (and then hash of config string) to determine
+        #       if config already exists; if so, don't push new config
+
+        # parse config and config_name
+        config_name = self.config["name"]
+        config = yaml.dump(self.config)
+
+        # construct insert_tup
+        insert_tup = [
+            (config, config_name),
+        ]
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONFIG, insert_tup)
+        self.conn.commit()
+        config_id = list(map(lambda tup: tup[0], self.cursor.fetchall()))[0]
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+        return config_id
+
+    def update_config(self):
+        """
+        Updates the config used by A2rchi for responding to messages. The config
+        is parsed and inserted into the `configs` table. Finally, the chat wrapper's
+        config_id is updated.
+        """
+        # parse config and write it out to CONFIG_PATH
+        config_str = request.json.get('config')
+        with open(CONFIG_PATH, 'w') as f:
+            f.write(config_str)
+
+        # parse prompts and write them to their respective locations
+        main_prompt = request.json.get('main_prompt')
+        with open(MAIN_PROMPT_FILE, 'w') as f:
+            f.write(main_prompt)
+
+        condense_prompt = request.json.get('condense_prompt')
+        with open(CONDENSE_PROMPT_FILE, 'w') as f:
+            f.write(condense_prompt)
+
+        summary_prompt = request.json.get('summary_prompt')
+        with open(SUMMARY_PROMPT_FILE, 'w') as f:
+            f.write(summary_prompt)
+
+        # re-read config using ConfigLoader and update dependent variables
+        self.config = Config_Loader().config
+        self.global_config = self.config["global"]
+        self.utils_config = self.config["utils"]
+        self.data_path = self.global_config["DATA_PATH"]
+
+        # store postgres connection info
+        self.pg_config = {
+            "password": read_secret("POSTGRES_PASSWORD"),
+            **self.utils_config["postgres"],
+        }
+        self.conn = None
+        self.cursor = None
+
+        # insert config
+        self.config_id = self.insert_config(self.config)
+
+        # create the chat from the wrapper
+        self.chat = ChatWrapper()
+        self.chat.update_config(self.config_id)
+
+        return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
+
+
     def get_chat_response(self):
         """
-        Gets a response when prompted.Asks as an API to the main app, who's
+        Gets a response when prompted. Asks as an API to the main app, who's
         functionality is carried through by javascript and html. Input is a 
         requestion with
 

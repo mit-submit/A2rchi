@@ -1,5 +1,0 @@
-export SENDER_SERVER='smtp.gmail.com'
-export SENDER_PORT=587
-export SENDER_REPLYTO='alternative email (mailing list)'
-export SENDER_USER='user-on-smtp'
-export SENDER_PW='password-for-smtp'
