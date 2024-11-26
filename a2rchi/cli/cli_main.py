@@ -33,6 +33,72 @@ class InvalidCommandException(Exception):
 class BashCommandException(Exception):
     pass
 
+def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets):
+    """
+    Prepares a secret by locating its file in the specified directories, 
+    reading its content, and saving it to a target directory.
+
+    The function searches for a secret file named `"{secret_name.lower()}.txt"`
+    in the directories provided in `locations_of_secrets`. If multiple files 
+    with the same name are found, an error is raised to prevent ambiguity. 
+    If no file is found, a `FileNotFoundError` is raised. The secret's content 
+    is read from the file and written to the `secrets` subdirectory within 
+    `a2rchi_name_dir`.
+
+    Args:
+        a2rchi_name_dir (str): The base directory where the `secrets` 
+            directory will be created or used.
+        secret_name (str): The name of the secret to locate. The function 
+            expects a file named `"{secret_name.lower()}.txt"` in the given 
+            directories.
+        locations_of_secrets (list[str]): A list of directories to search 
+            for the secret file.
+
+    Raises:
+        ValueError: If multiple files with the secret name are found in the 
+            specified directories.
+        FileNotFoundError: If no file with the secret name is found in the 
+            specified directories.
+    
+    Example:
+        >>> a2rchi_name_dir = "/path/to/a2rchi"
+        >>> secret_name = "API_KEY"
+        >>> locations_of_secrets = ["/path/to/dir1", "/path/to/dir2"]
+        >>> _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets)
+        Secret for 'API_KEY' prepared at /path/to/a2rchi/secrets/api_key.txt.
+    """
+    # Ensure the secrets directory exists
+    secrets_dir = os.path.join(a2rchi_name_dir, "secrets")
+    os.makedirs(secrets_dir, exist_ok=True)
+
+    # Look for the secret file in the specified locations
+    secret_filename = f"{secret_name.lower()}.txt"
+    found_secrets = []
+
+    for location in locations_of_secrets:
+        potential_path = os.path.expanduser(os.path.join(location, secret_filename))
+        if os.path.isfile(potential_path):
+            found_secrets.append(potential_path)
+
+    # Check for multiple occurrences of the secret
+    if len(found_secrets) > 1:
+        raise ValueError(
+            f"Error: Multiple secret files found for '{secret_name}' in locations: {found_secrets}"
+        )
+    elif len(found_secrets) == 0:
+        raise FileNotFoundError(
+            f"Error: No secret file found for '{secret_name}' in the specified locations."
+        )
+
+    # Read the secret from the found file
+    secret_file_path = found_secrets[0]
+    with open(secret_file_path, 'r') as secret_file:
+        secret_value = secret_file.read().strip()
+
+    # Write the secret to the target directory
+    target_secret_path = os.path.join(secrets_dir, secret_filename)
+    with open(target_secret_path, 'w') as target_file:
+        target_file.write(secret_value)
 
 def _validate_config(config, required_fields):
     """
@@ -133,11 +199,13 @@ def cli():
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-g', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
+@click.option('--cleo-and-mailer', '-g', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
 def create(
     name, 
     include_grafana, 
     include_uploader_service, 
+    include_cleo_and_mailer,
     a2rchi_config_filepath
 ):
     """
@@ -200,6 +268,8 @@ def create(
         a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
         if "collection_name" not in a2rchi_config:
             a2rchi_config["collection_name"] = f"collection_{name}"
+
+    locations_of_secrets = a2rchi_config["locations_of_secrets"]
 
     # fetch or generate grafana password
     grafana_pg_password = os.environ.get("GRAFANA_PG_PASSWORD", secrets.token_hex(8))
@@ -266,6 +336,33 @@ def create(
          compose_template_vars['uploader_port_host'] = uploader_port_host
          compose_template_vars['uploader_port_container'] = uploader_port_container
 
+         _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
+         _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
+
+    compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
+    if include_cleo_and_mailer:
+        _print_msg("Preparing Cleo and Emailer Service")
+
+        # Add uploader service to compose
+        compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
+        compose_template_vars["cleo_image"] = f"cleo-{name}"
+        compose_template_vars["cleo_tag"] = tag
+        compose_template_vars["mailbox_image"] = f"mailbox-{name}"
+        compose_template_vars["mailbox_tag"] = tag
+
+        _prepare_secret(a2rchi_name_dir, "imap_user", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "imap_pw", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_url", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_user", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_pw", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_project", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "sender_server", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "sender_port", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "sender_replyto", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "sender_user", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
+
+
     _print_msg("Preparing Postgres")
     # prepare init.sql for postgres initialization
     init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
@@ -275,27 +372,12 @@ def create(
     })
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
-
-    # TODO: make more general purpose
+    
     # prepare secrets
-    os.makedirs(os.path.join(a2rchi_name_dir, "secrets"), exist_ok=True)
-    with open(os.path.join(a2rchi_name_dir, "secrets", "openai_api_key.txt"), 'w') as f:
-        f.write(f"{os.environ.get('OPENAI_API_KEY')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "hf_token.txt"), 'w') as f:
-        f.write(f"{os.environ.get('HF_TOKEN')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "pg_password.txt"), 'w') as f:
-        f.write(f"{os.environ.get('PG_PASSWORD')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "flask_uploader_app_secret_key.txt"), 'w') as f:
-        f.write(f"{os.environ.get('FLASK_UPLOADER_APP_SECRET_KEY')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "uploader_salt.txt"), 'w') as f:
-        f.write(f"{os.environ.get('UPLOADER_SALT')}")
-
-    with open(os.path.join(a2rchi_name_dir, "secrets", "anthropic_api_key.txt"), 'w') as f:
-        f.write(f"{os.environ.get('ANTHROPIC_API_KEY')}")
+    _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
 
     # copy prompts
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))

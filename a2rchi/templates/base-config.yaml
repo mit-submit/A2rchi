@@ -35,7 +35,7 @@ chains:
     {%- endfor %}
   base:
     ROLES:
-      {%- for role in chains.base.ROLES | default(['User', 'A2rchi']) %}
+      {%- for role in chains.base.ROLES | default(['User', 'A2rchi', 'Expert']) %}
       - {{ role }}
       {%- endfor %}
     logging:
@@ -127,3 +127,8 @@ utils:
     enable_warnings: {{ utils.scraper.enable_warnings | default(false, true) }}
   piazza:
     network_id: {{ utils.piazza.network_id | default("m0g3v0ahsqm2lg", true) }} # default is for 8.01, should probably change this...
+  cleo: 
+    cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
+  mailbox: 
+    IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
+    mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}

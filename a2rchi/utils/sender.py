@@ -42,9 +42,16 @@ class Sender:
         print(f" ===============\n SUBJECT: {subject}")
         print(f" BODY:\n{body}")
 
-        # add the message body
+        # Prepare the recipient list
+        recipient_list = []
+        if to:
+            recipient_list.extend([email.strip() for email in to.split(',')])
+        if cc:
+            recipient_list.extend([email.strip() for email in cc.split(',')])
+
+        # Send the email
         msg.attach(MIMEText(body, 'plain'))
-        self.server.sendmail(self.user, f"{to},{cc}", msg.as_string())
+        self.server.sendmail(self.user, recipient_list, msg.as_string())
 
         #finally, quit the server
         self.server.quit()
