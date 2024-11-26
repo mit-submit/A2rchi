@@ -1,0 +1,24 @@
+name: prod_submit
+
+global:
+  TRAINED_ON: "the SubMIT Cluster"  
+
+chains:
+  input_lists:  
+    - config_old/submit.list
+    - config_old/miscellanea.list
+  chain:
+    MODEL_NAME: OpenAIGPT35
+    CONDENSE_MODEL_NAME: OpenAIGPT35
+    SUMMARY_MODEL_NAME: OpenAIGPT35
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt  
+    MAIN_PROMPT: configs/prompts/submit.prompt  
+    SUMMARY_PROMPT: configs/prompts/summary.prompt  
+
+interaces:
+  chat_app:
+    PORT: 7861
+    EXTERNAL_PORT: 7861
+    HOSTNAME: "t3desk019.mit.edu"
+  
