@@ -1,0 +1,23 @@
+name: prod_801
+
+global:
+  TRAINED_ON: "8.01"
+
+interfaces:
+  chat_app:
+    PORT: 7864
+    EXTERNAL_PORT: 7864
+    HOSTNAME: "t3desk018.mit.edu"
+
+chains:
+  input_lists:
+    - configs/miscellanea.list
+    - configs/801-textbook.list
+  chain:
+    MODEL_NAME: AnthropicLLM
+    CONDENSE_MODEL_NAME: AnthropicLLM
+    SUMMARY_MODEL_NAME: AnthropicLLM
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt
+    MAIN_PROMPT: configs/prompts/801.prompt
+    SUMMARY_PROMPT: configs/prompts/summary.prompt

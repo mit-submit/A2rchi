@@ -52,7 +52,7 @@ chains:
       AnthropicLLM:
         class: AnthropicLLM
         kwargs:
-          model_name: {{ chains.chain.MODEL_CLASS_MAP.AnthropicLLM.kwargs.model_name | default("claude-3-opus-20240229", true) }}
+          model_name: {{ chains.chain.MODEL_CLASS_MAP.AnthropicLLM.kwargs.model_name | default('claude-3-opus-20240229', true) }}
           temperature: {{ chains.chain.MODEL_CLASS_MAP.AnthropicLLM.kwargs.temperature | default(1, true) }}
       OpenAIGPT4:
         class: OpenAILLM
@@ -125,3 +125,5 @@ utils:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
     enable_warnings: {{ utils.scraper.enable_warnings | default(false, true) }}
+  piazza:
+    network_id: {{ utils.piazza.network_id | default("m0g3v0ahsqm2lg", true) }} # default is for 8.01, should probably change this...
