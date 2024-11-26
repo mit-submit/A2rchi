@@ -162,7 +162,7 @@ class Chain() :
         return score
 
 
-    def __call__(self, history, conversation_id):
+    def __call__(self, history, conversation_id = None):
         """
         Call for the chain to answer a question
 

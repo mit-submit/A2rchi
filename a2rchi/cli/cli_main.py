@@ -76,7 +76,7 @@ def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets):
     found_secrets = []
 
     for location in locations_of_secrets:
-        potential_path = os.path.join(location, secret_filename)
+        potential_path = os.path.expanduser(os.path.join(location, secret_filename))
         if os.path.isfile(potential_path):
             found_secrets.append(potential_path)
 

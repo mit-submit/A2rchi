@@ -10,8 +10,8 @@ locations_of_secrets:
 
 chains:
   input_lists:  
-    - config_old/submit.list
-    - config_old/miscellanea.list
+    - configs/submit.list
+    - configs/miscellanea.list
   chain:
     MODEL_NAME: OpenAIGPT35
     CONDENSE_MODEL_NAME: OpenAIGPT35
@@ -21,7 +21,7 @@ chains:
     MAIN_PROMPT: configs/prompts/submit.prompt  
     SUMMARY_PROMPT: configs/prompts/summary.prompt  
 
-interaces:
+interfaces:
   chat_app:
     PORT: 7861
     EXTERNAL_PORT: 7861

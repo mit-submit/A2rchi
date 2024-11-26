@@ -219,6 +219,9 @@ services:
     volumes:
       - {{ chat_volume_name }}:/root/data/
       - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+      - ./summary.prompt:/root/A2rchi/summary.prompt
     logging:
       options:
         max-size: 10m
@@ -268,6 +271,9 @@ services:
       - hf_token
     volumes:
       - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+      - ./summary.prompt:/root/A2rchi/summary.prompt
     logging:
       options:
         max-size: 10m
