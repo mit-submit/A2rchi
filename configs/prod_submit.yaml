@@ -3,6 +3,11 @@ name: prod_submit
 global:
   TRAINED_ON: "the SubMIT Cluster"  
 
+locations_of_secrets:
+  - ~/.secrets/api_tokens
+  - ~/.secrets/salts_and_internal_passwords
+  - ~/.secrets/submit_cleo_and_mailer_passwords
+
 chains:
   input_lists:  
     - config_old/submit.list
