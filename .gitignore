@@ -13,3 +13,7 @@ venv
 801-content/
 *secrets/
 logos/
+docs/site
+setup.sh
+.*
+build/
