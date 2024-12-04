@@ -12,6 +12,7 @@ flask-cors==5.0.0
 flatbuffers==23.5.26
 hnswlib==0.7.0
 httptools==0.6.1
+httpx==0.27.2
 humanfriendly==10.0
 langchain==0.3.0
 loguru==0.7.2
