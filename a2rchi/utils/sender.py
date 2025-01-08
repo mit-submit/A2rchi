@@ -45,9 +45,14 @@ class Sender:
         # Prepare the recipient list
         recipient_list = []
         if to:
-            recipient_list.extend([email.strip() for email in to.split(',')])
+            recipient_list.extend([
+                formataddr(parseaddr(email.strip())) for email in to.split(',')
+            ])
+
         if cc:
-            recipient_list.extend([email.strip() for email in cc.split(',')])
+            recipient_list.extend([
+                formataddr(parseaddr(email.strip())) for email in cc.split(',')
+            ])
 
         # Send the email
         msg.attach(MIMEText(body, 'plain'))
