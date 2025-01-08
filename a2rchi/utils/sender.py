@@ -2,6 +2,7 @@ from a2rchi.utils.env import read_secret
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr, parseaddr
 
 import smtplib
 
