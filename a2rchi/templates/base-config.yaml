@@ -110,7 +110,7 @@ utils:
       OpenAIEmbeddings:
         class: OpenAIEmbeddings
         kwargs:
-          model: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.kwargs.model | default('text-embedding-ada-002', true) }}
+          model: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.kwargs.model | default('text-embedding-3-small', true) }}
         similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.similarity_score_reference | default(0.4, true) }}
       HuggingFaceEmbeddings:
         class: HuggingFaceEmbeddings

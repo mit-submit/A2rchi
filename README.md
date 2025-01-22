@@ -1,6 +1,7 @@
 # A2rchi 🌟  
 **AI Augmented Research Chat Intelligence**
 
+
 Welcome to **A2rchi**, the cutting-edge Research and Education Assistant! Originally developed for the subMIT project at MIT, A2rchi is your go-to RAG-based chat model tailored for research, teaching, and beyond. 🎓💻
 
 ---

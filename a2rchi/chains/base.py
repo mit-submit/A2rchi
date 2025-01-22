@@ -49,7 +49,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
     Chain for chatting with an index, specific for submit
     """
     retriever: BaseRetriever # Index to connect to
-    max_tokens_limit: Optional[int] = None # restrict doc length to return from store, enforced only for StuffDocumentChain
+    max_tokens_limit: Optional[int] = 8192 # restrict doc length to return from store, enforced only for StuffDocumentChain, 8192 max token limit for current openAI model in use
     get_chat_history: Optional[Callable[[List[Tuple[str, str]]], str]] = _get_chat_history
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:

@@ -198,8 +198,8 @@ def cli():
 @click.command()
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
-@click.option('--document-uploader', '-g', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
-@click.option('--cleo-and-mailer', '-g', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
+@click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
+@click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
 def create(
     name, 
