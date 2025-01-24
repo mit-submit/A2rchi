@@ -1,0 +1,32 @@
+name: a2rchi_ssher
+
+global:
+  TRAINED_ON: "subMIT"
+
+locations_of_secrets:
+  - ~/.secrets/api_tokens
+  - ~/.secrets/salts_and_internal_passwords
+  - ~/.secrets/submit_cleo_and_mailer_passwords
+  - ~/.ssh/
+
+interfaces:
+  chat_app:
+    PORT: 7861
+    EXTERNAL_PORT: 7861
+    HOSTNAME: "t3desk018.mit.edu"
+
+chains:
+  input_lists:
+    - configs/miscellanea.list
+    - configs/submit.list
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt
+    MAIN_PROMPT: configs/prompts/submit.prompt
+    SUMMARY_PROMPT: configs/prompts/summary.prompt
+
+utils:
+  postgres:
+    port: 5432
+  data_manager:
+    chromadb_port: 8000 # This should never really need to be changed off of 8000
+    chromadb_external_port: 8000

@@ -72,7 +72,10 @@ def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets):
     os.makedirs(secrets_dir, exist_ok=True)
 
     # Look for the secret file in the specified locations
-    secret_filename = f"{secret_name.lower()}.txt"
+    if secret_name == "id_rsa":
+        secret_filename = f"{secret_name.lower()}"
+    else:
+        secret_filename = f"{secret_name.lower()}.txt"
     found_secrets = []
 
     for location in locations_of_secrets:
@@ -89,16 +92,29 @@ def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets):
         raise FileNotFoundError(
             f"Error: No secret file found for '{secret_name}' in the specified locations."
         )
-
+    
     # Read the secret from the found file
     secret_file_path = found_secrets[0]
-    with open(secret_file_path, 'r') as secret_file:
-        secret_value = secret_file.read().strip()
+    if secret_name == "id_rsa":
+        with open(secret_file_path, 'r') as secret_file:
+            secret_value = secret_file.read()
+    else:
+        with open(secret_file_path, 'r') as secret_file:
+            secret_value = secret_file.read().strip()
 
     # Write the secret to the target directory
     target_secret_path = os.path.join(secrets_dir, secret_filename)
     with open(target_secret_path, 'w') as target_file:
         target_file.write(secret_value)
+
+
+    #info1 = f"Preparing secret for {secret_name} from {secret_file_path}"
+    #info2 = f"secret value: {secret_value}"
+    #info3 = f"target secret path {target_secret_path}"
+    #if secret_name == "id_rsa":
+    #    _print_msg(info1)
+    #    _print_msg(info2)
+    #    _print_msg(info3)
 
 def _validate_config(config, required_fields):
     """
@@ -378,6 +394,7 @@ def create(
     _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
     _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "id_rsa", locations_of_secrets)
 
     # copy prompts
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
@@ -452,6 +469,9 @@ def delete(name):
     # remove files in a2rchi directory
     _print_msg("Removing files in a2rchi directory")
     _run_bash_command(f"rm -r {a2rchi_name_dir}")
+    if os.path.exists(a2rchi_name_dir):
+        ssh_key_path = os.path.join(a2rchi_name_dir, "secrets", "id_rsa")
+        _run_bash_command(f"rm -f {ssh_key_path}")
 
 
 @click.command()

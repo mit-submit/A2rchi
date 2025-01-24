@@ -23,7 +23,7 @@ chains:
 
 interfaces:
   chat_app:
-    PORT: 7861
-    EXTERNAL_PORT: 7861
+    PORT: 7863
+    EXTERNAL_PORT: 7863
     HOSTNAME: "t3desk019.mit.edu"
   

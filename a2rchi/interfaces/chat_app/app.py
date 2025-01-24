@@ -29,8 +29,12 @@ from typing import List
 
 import mistune as mt
 import numpy as np
+import paramiko
 
 import os
+import re
+import traceback
+import logging
 import psycopg2
 import psycopg2.extras
 import yaml
@@ -274,6 +278,44 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    # following function will just ask an llm with some prompting, hardcoded now for testing ssh
+    def get_server_info(self, machine, username, private_key):
+        logging.basicConfig(level=logging.DEBUG)
+
+        ssh_client = paramiko.SSHClient()
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        if 'mit.edu' not in machine:
+            hostname = f"{machine}.mit.edu"  
+        else:
+            hostname = machine
+
+        print(f"Attempting to connect to {hostname} with user {username} using key {private_key}")
+
+        try:
+            private_key_obj = paramiko.RSAKey.from_private_key_file(private_key)
+            print(f"Private key type: {type(private_key_obj)}")
+
+            ssh_client.connect(
+                hostname=hostname,
+                username=username,
+                pkey=private_key_obj,
+            )
+            # relevant command here! for now hardcoded to only this one...
+            stdin, stdout, stderr = ssh_client.exec_command('who; uptime')
+            print(stderr.read().decode())
+
+            output = stdout.read().decode()
+
+        except Exception as e:
+            traceback.print_exc()
+            output = ""
+
+        finally:
+            ssh_client.close()
+
+        return output
+
 
     def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
         """
@@ -318,6 +360,27 @@ class ChatWrapper:
                 while history[-1][0] == "A2rchi":
                     _ = history.pop(-1)
 
+            # hardcoding here in combination with function above will be replaced with llm...
+            additional_context = ""
+            if "how many users" in content.lower():
+                # get the number of users
+                ssh_key = "/run/secrets/id_rsa"
+                print(f"ssh_key is: {ssh_key}")
+                # doing user="pmlugato" for now, once ldap server configured and such, will be a2rchi (service account at /home/tier3)
+                user = "pmlugato"
+                pattern = r"\b(?:submit\d{2}|t3desk\d{3})(?:\.mit\.edu)?\b"
+                machines = re.findall(pattern, content)
+                print(f"machines are: {machines}")
+                total_server_info = ""
+                # include something if machine not specified or something -- this is just initial infrastructure for play
+                for machine in machines:
+                    print(f"machine is: {machine}")
+                    server_info = self.get_server_info(machine=machine, username=user, private_key=ssh_key)
+                    total_server_info += f"{server_info}\n"
+                    print(f"server_info is: {server_info}")
+
+                additional_context = "Additionally, this is the result of the server info query: " + total_server_info
+
             # guard call to LLM; if timestamp from message is more than timeout secs in the past;
             # return error=True and do not generate response as the client will have timed out
             if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
@@ -326,6 +389,9 @@ class ChatWrapper:
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 full_history = history + [(sender, content)] if not is_refresh else history
+                # will not have to append this as user query, can add it to context or something
+                if additional_context != "":
+                    full_history += [(sender, additional_context)]
                 result = self.chain(full_history, conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:

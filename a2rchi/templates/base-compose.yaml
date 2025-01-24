@@ -17,11 +17,13 @@ services:
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      SSH_KEY_FILE: /run/secrets/id_rsa
     secrets:
       - openai_api_key
       - anthropic_api_key
       - hf_token
       - pg_password
+      - id_rsa
     volumes:
       - {{ chat_volume_name }}:/root/data/
       - ./config.yaml:/root/A2rchi/config.yaml
@@ -300,6 +302,8 @@ secrets:
     file: secrets/hf_token.txt
   pg_password:
     file: secrets/pg_password.txt
+  id_rsa:
+    file: secrets/id_rsa
 
   # Uploader secrets
   flask_uploader_app_secret_key:
