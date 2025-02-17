@@ -23,10 +23,9 @@ The discourse key is stored as secret on github "DISCOURSE_KEY". To send a reque
 hence it should be run from lxplus (CERN's computing framework). Core of this script is the function process_posts, see below.
 
 WHAT STILL NEEDS TO BE DONE: 
- - Connecting the actual chain, making sure the format of the conversation history, as taken in input by the chain, is correct. 
+ - Add in conversation history
  - Adding the piece to retrieve separately from the chain relevant forum posts (I would suggest feeding A2rchi just with docs and tutorials for now) 
 in order to provide root hosts with similar issues that already have an answer. Find a practical way to implement a question cap. 
- - Maybe connect to database for monitoring 
 '''
 
 
@@ -82,14 +81,14 @@ class DiscourseMattermost:
         return
 
     def remove_response(self, id):
-        # send response to MM
+        # remove response to MM
         content = "api/v4/posts/" + id
         r = requests.delete(self.mattermost_url + content, headers= {"Authorization" : f"Bearer {self.PAK}"})
         print(r)
         return
 
     def clear_channel(self):
-        #remove all posts from MM channel
+        # remove all posts from MM channel
         content = f"api/v4/channels/{self.mattermost_channel_id}/posts"
         r = requests.get(self.mattermost_url + content, headers= {"Authorization" : f"Bearer {self.PAK}"})
         for id in r.json()["order"]:
