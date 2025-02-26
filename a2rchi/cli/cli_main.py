@@ -259,7 +259,8 @@ def create(
         'name', 
         'global.TRAINED_ON',
         'chains.input_lists', 
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT'
+        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
+        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
     ]
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
@@ -373,11 +374,21 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
-    # prepare secrets
-    _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+    # Prepare secrets
+    user_specified_models = set(a2rchi_config["chains"]["chain"].values())
+    secrets_mapping = {
+        "OpenAIGPT4": "openai_api_key",
+        "OpenAIGPT35": "openai_api_key",
+        "AnthropicLLM": "anthropic_api_key",
+        "HuggingFaceLLM": "hf_token",
+    }
+    for model, secret in secrets_mapping.items():
+        if model in user_specified_models:
+            _prepare_secret(a2rchi_name_dir, secret, locations_of_secrets)
+
+    # Always prepare PostgreSQL password
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
+
 
     # copy prompts
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
