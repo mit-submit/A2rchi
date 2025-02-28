@@ -1,0 +1,7 @@
+site_name: A2rchi Docs
+nav:
+  - Getting Started: index.md
+  - User's Guide: users_guide.md
+  - Developer's Guide: developers.md
+  - About: about.md
+theme: readthedocs

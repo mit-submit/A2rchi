@@ -1,13 +1,12 @@
 from a2rchi.utils.scraper import Scraper
 
 from chromadb.config import Settings
-from langchain.document_loaders import TextLoader
-from langchain.document_loaders import PyPDFLoader
-from langchain.memory import ConversationBufferMemory
-from langchain.document_loaders import BSHTMLLoader
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
-from langchain.text_splitter import CharacterTextSplitter
+from langchain_community.document_loaders.text import TextLoader
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import BSHTMLLoader
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma.vectorstores import Chroma
+from langchain_text_splitters.character import CharacterTextSplitter
 
 import chromadb
 import hashlib

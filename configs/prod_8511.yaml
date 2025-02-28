@@ -1,0 +1,30 @@
+name: prod_8511
+
+global:
+  TRAINED_ON: "8.511"
+
+interfaces:
+  chat_app:
+    PORT: 7861
+    EXTERNAL_PORT: 7861
+    HOSTNAME: "t3desk018.mit.edu"
+
+chains:
+  input_lists:
+    - configs/miscellanea.list
+    - configs/8511_ocw.list
+  chain:
+    MODEL_NAME: AnthropicLLM
+    CONDENSE_MODEL_NAME: AnthropicLLM
+    SUMMARY_MODEL_NAME: AnthropicLLM
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt
+    MAIN_PROMPT: configs/prompts/8511.prompt
+    SUMMARY_PROMPT: configs/prompts/summary.prompt
+
+utils:
+  postgres:
+    port: 5432
+  data_manager:
+    chromadb_port: 8000 # This should never really need to be changed off of 8000
+    chromadb_external_port: 8001

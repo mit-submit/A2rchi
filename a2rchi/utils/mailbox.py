@@ -5,6 +5,7 @@ from a2rchi.utils.env import read_secret
 import email
 import imaplib
 import os
+import re
 
 ### DEFINITIONS
 # this constant defines an offset into the message description
@@ -163,7 +164,9 @@ class Mailbox:
 
         # if this is not a multi-part message then get the payload (i.e the message body)
         elif msg.get_content_type() == 'text/plain':
-            body = msg.get_payload(decode=True) 
+            body = msg.get_payload(decode=True)
+        elif msg.get_content_type() == 'text/html':
+            body_html = msg.get_payload(decode=True)
 
        # no checking done to match the charset with the correct part. 
         for charset in self._get_charsets(msg):
@@ -183,7 +186,11 @@ class Mailbox:
             print(f"{header.upper():8s}: {msg[header]}")
 
         body, body_html = self._get_email_body(msg)
-        description = body if body else body_html
+        if body:
+            description = body
+        else:
+            new_body = self._extract_email_body(body_html)
+            description = new_body
         description = self._clear_text(description)
         print("BODY:")
         print(description)
@@ -211,7 +218,10 @@ class Mailbox:
             u"\u3030"
                           "]+", re.UNICODE)
         return re.sub(emoj, '', string)
+<<<<<<< HEAD
+=======
     
+>>>>>>> main
 
     def _connect(self):
         """
@@ -244,3 +254,19 @@ class Mailbox:
             return False
 
         return True
+
+
+    def _extract_email_body(self, payload):
+        """
+        Extracts the visible text content from HTML payload.
+        """
+        try:
+            soup = BeautifulSoup(payload, 'html.parser')
+
+            body_text = soup.get_text(separator='\n').strip()
+            print("DEBUG: Extracted body text:", body_text)
+            print(type(body_text))
+            return body_text
+        except Exception as e:
+            print(f"DEBUG: Error parsing HTML: {e}")
+            return ""

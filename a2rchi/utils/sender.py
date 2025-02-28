@@ -2,6 +2,7 @@ from a2rchi.utils.env import read_secret
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr, parseaddr, getaddresses
 
 import smtplib
 
@@ -42,9 +43,25 @@ class Sender:
         print(f" ===============\n SUBJECT: {subject}")
         print(f" BODY:\n{body}")
 
-        # add the message body
+        # Prepare the recipient list
+        recipient_list = []
+        if to:
+            recipient_list.extend([
+            formataddr(addr) for addr in getaddresses([to])
+            ])
+
+        if cc:
+            recipient_list.extend([
+            formataddr(addr) for addr in getaddresses([cc])
+            ])
+
+        print("Recipient List:", recipient_list)
+        smtp_recipient_list = [addr[1] for addr in getaddresses([to, cc]) if addr[1]]
+        print("SMTP Recipient List:", smtp_recipient_list)
+
+        # Send the email
         msg.attach(MIMEText(body, 'plain'))
-        self.server.sendmail(self.user, f"{to},{cc}", msg.as_string())
+        self.server.sendmail(self.user, recipient_list, msg.as_string())
 
         #finally, quit the server
         self.server.quit()

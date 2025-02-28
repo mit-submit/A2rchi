@@ -4,10 +4,13 @@ import numpy as np
 import torch
 import time
 
-from langchain.callbacks.manager import CallbackManagerForLLMRun
-from langchain.llms.base import LLM
-from langchain.chat_models import ChatOpenAI
-from langchain.llms import LlamaCpp
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+
+import requests
+from typing import Optional, List
 
 class BaseCustomLLM(LLM):
     """
@@ -45,6 +48,21 @@ class DumbLLM(BaseCustomLLM):
         print(f"DumbLLM: sleeping {sleep_time}")
         time.sleep(sleep_time)
         return "I am just a dumb LLM, I will give you a number: " + str(np.random.randint(10000, 99999))
+
+
+class AnthropicLLM(ChatAnthropic):
+    """
+    Loading Anthropic model from langchain package and specifying version. Options include:
+        model: str = "claude-3-opus-20240229"
+        model: str = "claude-3-sonnet-20240229"
+    Model comparison: https://docs.anthropic.com/en/docs/about-claude/models#model-comparison 
+    """
+
+    model_name: str = "claude-3-opus-20240229"
+    temp: int = 1
+
+
+
 
 class LlamaLLM(BaseCustomLLM):
     """
@@ -217,3 +235,80 @@ class SalesforceSafetyChecker():
             report += "|" + "|".join(f"{n:^10}" for n in scores.keys()) + "|\n"
             report += "|" + "|".join(f"{n:^10}" for n in scores.values()) + "|\n"
         return "Salesforce Content Safety Flan T5 Base", is_safe, report
+
+
+
+
+class BaseCustomLLM(LLM):
+    """
+    Abstract class used to load a custom LLM
+    """
+    n_tokens: int = 100 # this has to be here for parent LLM class
+
+    @property
+    def _llm_type(self) -> str:
+        return "custom"
+
+    @abstractmethod
+    def _call(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+    ) -> str:
+        pass
+
+
+class ClaudeLLM(BaseCustomLLM):
+    """
+    An LLM class that uses Anthropic's Claude model.
+    """
+    #TODO: obscure api key in final production version
+    api_key: str  = "INSERT KEY HERE!!!" # Claude API key
+    base_url: str = "https://api.anthropic.com/v1/messages"  # Anthropic API endpoint
+    model_name: str = "claude-3-5-sonnet-20240620"  # Specify the model version to use
+
+    verbose: bool = False
+
+    def _call(
+        self,
+        prompt: str = None,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        max_tokens: int = 1024,
+    ) -> str:
+
+        if stop is not None:
+            print("WARNING : currently this model does not support stop tokens")
+
+        if self.verbose:
+            print(f"INFO : Starting call to Claude with prompt: {prompt}")
+
+        headers = {
+            "x-api-key": self.api_key,  # Use the API key for the x-api-key header
+            "anthropic-version": "2023-06-01",  # Add the required version header
+            "Content-Type": "application/json"
+        }
+
+        # Modify the payload to match the required structure
+        payload = {
+            "model": self.model_name,  # You can keep this dynamic based on your code
+            "max_tokens": max_tokens,  # Update to match the required max_tokens
+            "messages": [  # Use a list of messages where each message has a role and content
+                {"role": "user", "content": prompt}  # Prompt becomes part of the message content
+            ]
+        }
+
+        if self.verbose:
+            print("INFO: Sending request to Claude API")
+
+        # Send request to Claude API
+        response = requests.post(self.base_url, headers=headers, json=payload)
+
+        if response.status_code == 200:
+            completion = response.json()["content"][0]["text"]
+            if self.verbose:
+                print(f"INFO : received response from Claude API: {completion}")
+            return completion
+        else:
+            raise Exception(f"API request to Claude failed with status {response.status_code}, {response.text}")
