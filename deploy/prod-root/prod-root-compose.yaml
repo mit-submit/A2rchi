@@ -1,0 +1,147 @@
+services:
+  chat:
+    image:  chat-prod-root:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chat
+      args:
+        TAG: ${TAG}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      RUNTIME_ENV: prod-root
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - openai_api_key
+      - hf_token
+      - pg_password
+    volumes:
+      - a2rchi-prod-root-data:/root/data/
+    ports:
+      - 7684:7861  # host:container
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
+  uploader:
+    image: uploader-prod-root:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-uploader
+      args:
+        TAG: ${TAG}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      RUNTIME_ENV: prod-root
+      FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
+      UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+    secrets:
+      - flask_uploader_app_secret_key
+      - uploader_salt
+      - openai_api_key
+      - hf_token
+    ports:
+      - 5005:5001  # host:container
+    volumes:
+      - a2rchi-prod-root-data:/root/data/
+      - /home/tier3/a2rchi/root-content/:/root/data/root-content/
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
+  chromadb:
+    image: chromadb-prod-root:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-chroma
+    environment:
+      RUNTIME_ENV: prod-root
+    ports:
+      - 8004:8000  # host:container
+    volumes:
+      - a2rchi-prod-root-data:/chroma/chroma/
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    # healthcheck originates from inside container; so use container port
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+      start_interval: 5s
+
+  postgres:
+    image: postgres:16
+    environment:
+      RUNTIME_ENV: prod-root
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_USER: a2rchi
+      POSTGRES_DB: a2rchi-db
+    secrets:
+      - pg_password
+    volumes:
+      - ../init.sql:/docker-entrypoint-initdb.d/init.sql
+      - a2rchi-prod-root-pg-data:/var/lib/postgresql/data
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U a2rchi -d a2rchi-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana-prod-root:${TAG}
+    build:
+      context: ../..
+      dockerfile: deploy/dockerfiles/Dockerfile-grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - 3003:3000  # host:container
+    volumes:
+      - a2rchi-prod-root-grafana-data:/var/lib/grafana
+      - ../grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+
+volumes:
+  a2rchi-prod-root-data:
+    external: true
+  a2rchi-prod-root-pg-data:
+    external: true
+  a2rchi-prod-root-grafana-data:
+    external: true
+
+secrets:
+  flask_uploader_app_secret_key:
+    file: secrets/flask_uploader_app_secret_key.txt
+  uploader_salt:
+    file: secrets/uploader_salt.txt
+  openai_api_key:
+    file: secrets/openai_api_key.txt
+  hf_token:
+    file: secrets/hf_token.txt
+  pg_password:
+    file: secrets/pg_password.txt

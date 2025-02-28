@@ -218,6 +218,10 @@ class Mailbox:
             u"\u3030"
                           "]+", re.UNICODE)
         return re.sub(emoj, '', string)
+<<<<<<< HEAD
+=======
+    
+>>>>>>> main
 
     def _connect(self):
         """
