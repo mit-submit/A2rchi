@@ -40,13 +40,13 @@ Secrets are values which are sensitive and therefore should not be directly incl
 
 To manage these secrets, we ask that you write them to a location on your file system in `.txt` files titled the name of the secrets. You will then give the location of the folder to the configuration file (see next section). You may also use multiple different folders/locations and supply them all to the configuration.
 
-The secrets you are required to have to start a2rchi are:
+The secrets you are required to have to start a2rchi are one of:
 - `openai_api_key`: the API key given by openAI
 - `anthropic_api_key`: the API key given by anthropic
-- `hf_token`: the API key to your huggingface account.
+- `hf_token`: the API key to your huggingface account,
+depending on your choice of model and embeddings (default for both set to openAI), as well as:
 - `pg_password`: some password you pick which encrypts the database.
 
-Note that you technically only need the API key for the models that you are using (by default openAI), so for the other ones you can just put in dummy variables. (Yes, we know it's not the cleanest way to do it...)
 
 ## Basic CLI Overview
 
@@ -197,3 +197,4 @@ utils:
 Docker volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo so every time you deploy. Of course, if you are editing any data, you should explicitly remove this infromation from the volume, or simply remove the volume itself with
 ```
 docker volume rm <volume name>
+```
