@@ -194,4 +194,6 @@ utils:
 
 ### Persisting data between deployments
 
-Do docker volumes persist between deployments? I don't know yet. We should build it so that it is though. 
+Docker volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo so every time you deploy. Of course, if you are editing any data, you should explicitly remove this infromation from the volume, or simply remove the volume itself with
+```
+docker volume rm <volume name>
