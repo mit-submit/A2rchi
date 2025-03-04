@@ -4,9 +4,9 @@ A2rchi is built with several interfaces which collaborate with a CORE in order t
 
 The user's guide is broken up into detailing the various interfaces and the secrets/configurations needed for those interfaces. 
 
-To include an interface, simply add it's tag at the end of the `create` CLI command. For example, to include grafana run
+To include an interface, simply add it's tag at the end of the `create` CLI command. For example, to include the document uploader, run:
 ```
-$ a2rchi create --name my-a2rchi --a2rchi-config example_conf.yaml --grafana True
+$ a2rchi create --name my-a2rchi --a2rchi-config example_conf.yaml --document-uploader True
 ```
 
 ## CORE Interface
@@ -30,7 +30,7 @@ Both methods are outlined below
 
 #### Document Lists
 
-Before starting the a2rchi service, one can create a document list, which is a `.list` file containing *links* that point to either `html`, `txt`, or `pdf` files. `.list` files are also able to support comments,      ↪using "#". They are also generally stored in the `config` folder of the repository. For example, the below may be a list
+Before starting the a2rchi service, one can create a document list, which is a `.list` file containing *links* that point to either `html`, `txt`, or `pdf` files. `.list` files are also able to support comments, using "#". They are also generally stored in the `config` folder of the repository. For example, the below may be a list
 
 ```
 # Documents for the 6.5830 class
@@ -58,7 +58,7 @@ When you restart the service, all the documents will be uploaded to the vector s
 
 In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: 
 ```
---service-uploader
+--document-uploader True
 ```
 The exact port may vary based on configuration (default is `5001`). A simple `docker ps -a` command run on the server will inform which port it's being run on.
 
@@ -74,7 +74,7 @@ from the `/root/A2rchi/a2rchi` directory.·
 
 This script will guide you through creating an account. Note that we do not garuntee the security of this account, so never upload critical passwords to create it.·
 
-Once you have created an account, visit the outgoing port of the data manager docker service and then log in. The GUI will then allow you to upload documents while a2rchi is still running. Note that it may take a   ↪few minutes for all the documents to upload.
+Once you have created an account, visit the outgoing port of the data manager docker service and then log in. The GUI will then allow you to upload documents while a2rchi is still running. Note that it may take a few minutes for all the documents to upload.
 
 
 ## Piazza Interface
