@@ -54,6 +54,18 @@
     </li>
         </ul>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#adding-documents-and-the-uploader-interface">Adding Documents and the Uploader Interface</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#adding-documents">Adding Documents</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#document-lists">Document Lists</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#manual-uploader">Manual Uploader</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#piazza-interface">Piazza Interface</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#secrets_1">Secrets</a>
@@ -122,6 +134,47 @@
 <p>TODO: add description of interface here</p>
 <h3 id="secrets">Secrets</h3>
 <h3 id="configuration">Configuration</h3>
+<h2 id="adding-documents-and-the-uploader-interface">Adding Documents and the Uploader Interface</h2>
+<h3 id="adding-documents">Adding Documents</h3>
+<p>There are two main ways to add documents to A2rchi's vector database. They are
+·
+- Adding lists of online pdf sources to the configuration to be uploaded at start up
+- Manually adding files while the service is running via the uploader.</p>
+<p>Both methods are outlined below</p>
+<h4 id="document-lists">Document Lists</h4>
+<p>Before starting the a2rchi service, one can create a document list, which is a <code>.list</code> file containing <em>links</em> that point to either <code>html</code>, <code>txt</code>, or <code>pdf</code> files. <code>.list</code> files are also able to support comments,      ↪using "#". They are also generally stored in the <code>config</code> folder of the repository. For example, the below may be a list</p>
+<pre><code># Documents for the 6.5830 class
+https://dsg.csail.mit.edu/6.5830/index.php
+https://db.csail.mit.edu/madden/
+https://people.csail.mit.edu/kraska/
+https://dsg.csail.mit.edu/6.5830/syllabus.php
+https://dsg.csail.mit.edu/6.5830/faq.php
+https://dsg.csail.mit.edu/6.5830/lectures/lec1-notes.pdf
+https://dsg.csail.mit.edu/6.5830/lectures/lec2-notes.pdf
+https://dsg.csail.mit.edu/6.5830/lectures/lec3-notes.pdf
+</code></pre>
+<p>Once you have created and saved the list in the repository, simply add it to the configuration of the deployment you would like to run under <code>chains/input-lists</code> such as</p>
+<pre><code>chains:
+  input_lists:
+    - empty.list
+    - submit.list
+    - miscellanea.list
+</code></pre>
+<p>When you restart the service, all the documents will be uploaded to the vector store. Note, this may take a few minutes.</p>
+<h4 id="manual-uploader">Manual Uploader</h4>
+<p>In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: </p>
+<pre><code>--service-uploader
+</code></pre>
+<p>The exact port may vary based on configuration (default is <code>5001</code>). A simple <code>docker ps -a</code> command run on the server will inform which port it's being run on.</p>
+<p>In order to access the manager, one must first make an account. To do this, first get the ID or name of the uploader container using <code>docker ps -a</code>. Then, acces the container using</p>
+<pre><code>docker exec -it &lt;CONTAINER-ID&gt; bash
+</code></pre>
+<p>so you can run</p>
+<pre><code>python bin/service_create_account.py
+</code></pre>
+<p>from the <code>/root/A2rchi/a2rchi</code> directory.·</p>
+<p>This script will guide you through creating an account. Note that we do not garuntee the security of this account, so never upload critical passwords to create it.·</p>
+<p>Once you have created an account, visit the outgoing port of the data manager docker service and then log in. The GUI will then allow you to upload documents while a2rchi is still running. Note that it may take a   ↪few minutes for all the documents to upload.</p>
 <h2 id="piazza-interface">Piazza Interface</h2>
 <p>TODO: add description of interface here</p>
 <h3 id="secrets_1">Secrets</h3>

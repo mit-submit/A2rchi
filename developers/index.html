@@ -88,7 +88,9 @@
 <p>Editing documentation requires you to install the mkdocs python packge:</p>
 <pre><code>pip install mkdocs
 </code></pre>
-<p>To edit documentation, simply make changes to the <code>.md</code> and <code>.yml</code> files in the <code>./docs</code> folder. To view your changes without pushing them, <code>cd</code> into the <code>./docs</code> folder and then run <code>mkdocs serve</code>. To publish your changes, run <code>mkdocs gh-deploy</code>. Please make sure to also open a PR to merge the documentation changes into main.</p>
+<p>To edit documentation, simply make changes to the <code>.md</code> and <code>.yml</code> files in the <code>./docs</code> folder. To view your changes without pushing them, <code>cd</code> into the <code>./docs</code> folder and then run <code>mkdocs serve</code>. Add the <code>-a IP:HOST</code> argument (default is localhost:8000) to specify where to host the docs so you can easily view your changes on the web.</p>
+<p>To publish your changes, run <code>mkdocs gh-deploy</code>. Please make sure to also open a PR to merge the documentation changes into main.</p>
+<p>Note, please do edit files in the gh-pages branch by hand, again, make a PR to main from a separate branch, and then you can deploy from main with the new changes.</p>
               
             </div>
           </div><footer>

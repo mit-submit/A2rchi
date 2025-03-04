@@ -276,7 +276,9 @@ utils:
     chromadb_external_port: 1050
 </code></pre>
 <h3 id="persisting-data-between-deployments">Persisting data between deployments</h3>
-<p>Do docker volumes persist between deployments? I don't know yet. We should build it so that it is though. </p>
+<p>Docker volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo so every time you deploy. Of course, if you are editing any data, you should explicitly remove this infromation from the volume, or simply remove the volume itself with
+```
+docker volume rm <volume name></p>
               
             </div>
           </div><footer>
@@ -325,5 +327,5 @@ utils:
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2024-12-02 17:52:12.211232+00:00
+Build Date UTC : 2025-03-04 18:38:57.206709+00:00
 -->
