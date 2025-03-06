@@ -235,8 +235,7 @@ def create(
     os.makedirs(a2rchi_name_dir, exist_ok=True)
 
     # initialize dictionary of template variables for docker compose file
-    tag = "2000" # TODO, make tagging better
-    os.environ['TAG'] = tag #TODO: also this should be done with templating, not environment variables
+    tag = "2000"
     compose_template_vars = {
         "chat_image": f"chat-{name}",
         "chat_tag": tag,
@@ -375,18 +374,9 @@ def create(
         f.write(init_sql)
     
     # Prepare secrets
-    user_specified_models = set(a2rchi_config["chains"]["chain"].values())
-    secrets_mapping = {
-        "OpenAIGPT4": "openai_api_key",
-        "OpenAIGPT35": "openai_api_key",
-        "AnthropicLLM": "anthropic_api_key",
-        "HuggingFaceLLM": "hf_token",
-    }
-    for model, secret in secrets_mapping.items():
-        if model in user_specified_models:
-            _prepare_secret(a2rchi_name_dir, secret, locations_of_secrets)
-
-    # Always prepare PostgreSQL password
+    _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
 
 
