@@ -181,6 +181,15 @@ https://physics.mit.edu/faculty/christoph-paus
 <p><strong><code>chains:prompts:MAIN_PROMPT:</code></strong>: A main prompt is a prompt used to qurery LLM with appropriate context and question. This configuration line gives the path, relative to the root of the repo, of a file containing a main prompt. All main prompts must have the following tags in them, which will be filled with the appropriate information: <code>{question}</code> and <code>{context}</code>. An example prompt specific to subMIT can be found here: <code>configs/prompts/submit.prompt</code> (it will not perform well for other applications where it is recommeneded to write your own prompt and change it in the config)</p>
 </li>
 <li>
+<p><strong><code>chains:chain:MODEL_NAME</code></strong>: Model name for the choice of LLM (OpenAIGPT4, OpenAIGPT35, AnthropicLLM, DumbLLM, etc)</p>
+</li>
+<li>
+<p><strong><code>chains:chain:CONDENSE_MODEL_NAME</code></strong>: Model name for condensing chat histories.</p>
+</li>
+<li>
+<p><strong><code>chains:chain:SUMMARY_MODEL_NAME</code></strong>: Model name for summarizing.</p>
+</li>
+<li>
 <p><strong><code>location_of_secrets</code></strong>: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. </p>
 </li>
 </ol>
@@ -327,5 +336,5 @@ utils:
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2025-03-06 14:23:47.021682+00:00
+Build Date UTC : 2025-03-06 15:04:48.875594+00:00
 -->
