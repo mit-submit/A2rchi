@@ -2,7 +2,6 @@ accelerate==1.0.1
 backoff==2.2.1
 beautifulsoup4==4.12.3
 bitsandbytes==0.41.1
-bs4==4.12.3
 chromadb==0.4.13
 clickhouse-connect==0.6.6
 coloredlogs==15.0.1
