@@ -140,12 +140,12 @@
 <h2 id="secrets">Secrets</h2>
 <p>Secrets are values which are sensitive and therefore should not be directly included in code or configuration files. They typically include passwords, API keys, etc. </p>
 <p>To manage these secrets, we ask that you write them to a location on your file system in <code>.txt</code> files titled the name of the secrets. You will then give the location of the folder to the configuration file (see next section). You may also use multiple different folders/locations and supply them all to the configuration.</p>
-<p>The secrets you are required to have to start a2rchi are one of:
+<p>The secrets you are required to have to start a2rchi are:
 - <code>openai_api_key</code>: the API key given by openAI
 - <code>anthropic_api_key</code>: the API key given by anthropic
 - <code>hf_token</code>: the API key to your huggingface account,
-depending on your choice of model and embeddings (default for both set to openAI), as well as:
-- <code>pg_password</code>: some password you pick which encrypts the database.</p>
+- <code>pg_password</code>: some password you pick which encrypts the database.
+We will change imminently as we support open LLMs and it shouldn't be necessary to have all of these for any given deployment. For now, for any api keys you are not using, please still create the corresponding file and write any dummy text.</p>
 <h2 id="basic-cli-overview">Basic CLI Overview</h2>
 <p>A2rchi's CORE launches its chat interface and data management interface. The CORE CLI has the following commands:</p>
 <pre><code>a2rchi create --name &lt;name&gt; --a2rchi-config &lt;path-to-config&gt;
@@ -327,5 +327,5 @@ utils:
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2025-03-04 18:54:47.996003+00:00
+Build Date UTC : 2025-03-06 14:23:47.021682+00:00
 -->
