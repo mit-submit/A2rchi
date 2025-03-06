@@ -204,6 +204,10 @@ chains:
   input_lists: #REQUIRED
     - config_old/submit.list
     - config_old/miscellanea.list
+  chain:
+    - MODEL_NAME: OpenAIGPT4 #REQUIRED
+    - CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
+    - SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
   prompts:
     CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
     MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
@@ -336,5 +340,5 @@ utils:
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2025-03-06 15:04:48.875594+00:00
+Build Date UTC : 2025-03-06 15:16:22.971214+00:00
 -->
