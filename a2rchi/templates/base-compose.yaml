@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat
       args:
-        TAG: ${TAG}
+        TAG: {{ chat_tag }}
     container_name: {{ chat_container_name }}
     depends_on:
       chromadb:
