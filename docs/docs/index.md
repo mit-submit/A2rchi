@@ -69,11 +69,13 @@ There are a few required fields that must be included in every configuration. Th
 2. **`global:TRAINED_ON`**: A quick couple words describing the data that you want A2rchi to specialize in. For example, "introductory classical mechanics" or "the subMIT cluster at MIT."
 
 3. **`chains:input_lists`**: A list of file(s), each containing a list of websites seperated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, `configs/miscellanea.list` contains information of the MIT proffessors who started the A2rchi project:
+
 ```
 # web pages of various people
 https://people.csail.mit.edu/kraska
 https://physics.mit.edu/faculty/christoph-paus
 ```
+
 4. **`chains:prompts:CONDENSING_PROMPT`**: A condensing prompt is a prompt used to condense a chat history and a follow up question into a stand alone question. This configuration line gives the path, relative to the root of the repo, of a file containing a condensing prompt. All condensing prompts must have the following tags in them, which will be filled with the appropriate information: `{chat_history}` and `{question}`. A very general prompt for condensing histories can be found at `configs/prompts/condense.prompt`, so for base installs it will not need to be modified. 
 
 5. **`chains:prompts:SUMMARY_PROMPT`**: #TODO: I don't actually know what this does... For now just link it a blank file....
@@ -100,6 +102,10 @@ chains:
   input_lists: #REQUIRED
     - config_old/submit.list
     - config_old/miscellanea.list
+  chain:
+    - MODEL_NAME: OpenAIGPT4 #REQUIRED
+    - CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
+    - SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
   prompts:
     CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
     MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
