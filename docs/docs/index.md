@@ -80,7 +80,13 @@ https://physics.mit.edu/faculty/christoph-paus
 
 6. **`chains:prompts:MAIN_PROMPT:`**: A main prompt is a prompt used to qurery LLM with appropriate context and question. This configuration line gives the path, relative to the root of the repo, of a file containing a main prompt. All main prompts must have the following tags in them, which will be filled with the appropriate information: `{question}` and `{context}`. An example prompt specific to subMIT can be found here: `configs/prompts/submit.prompt` (it will not perform well for other applications where it is recommeneded to write your own prompt and change it in the config)
 
-7. **`location_of_secrets`**: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. 
+7. **`chains:chain:MODEL_NAME`**: Model name for the choice of LLM (OpenAIGPT4, OpenAIGPT35, AnthropicLLM, DumbLLM, etc)
+
+8. **`chains:chain:CONDENSE_MODEL_NAME`**: Model name for condensing chat histories.
+
+9. **`chains:chain:SUMMARY_MODEL_NAME`**: Model name for summarizing.
+
+10. **`location_of_secrets`**: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. 
 
 Below is an example of a bare minimum condifiguration file:
 ```
