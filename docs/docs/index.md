@@ -40,12 +40,12 @@ Secrets are values which are sensitive and therefore should not be directly incl
 
 To manage these secrets, we ask that you write them to a location on your file system in `.txt` files titled the name of the secrets. You will then give the location of the folder to the configuration file (see next section). You may also use multiple different folders/locations and supply them all to the configuration.
 
-The secrets you are required to have to start a2rchi are one of:
+The secrets you are required to have to start a2rchi are:
 - `openai_api_key`: the API key given by openAI
 - `anthropic_api_key`: the API key given by anthropic
 - `hf_token`: the API key to your huggingface account,
-depending on your choice of model and embeddings (default for both set to openAI), as well as:
 - `pg_password`: some password you pick which encrypts the database.
+We will change imminently as we support open LLMs and it shouldn't be necessary to have all of these for any given deployment. For now, for any api keys you are not using, please still create the corresponding file and write any dummy text.
 
 
 ## Basic CLI Overview
