@@ -201,12 +201,15 @@ def cli():
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
+@click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
+
 def create(
     name, 
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
-    a2rchi_config_filepath
+    a2rchi_config_filepath,
+    image_tag
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -235,7 +238,7 @@ def create(
     os.makedirs(a2rchi_name_dir, exist_ok=True)
 
     # initialize dictionary of template variables for docker compose file
-    tag = "2000"
+    tag = image_tag
     compose_template_vars = {
         "chat_image": f"chat-{name}",
         "chat_tag": tag,
@@ -425,8 +428,6 @@ def create(
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
 
     # create a2rchi system using docker
-    _print_msg("Building Base Image")
-    _, _ = _run_bash_command(f"docker build -f {os.path.join(a2rchi_name_dir, 'a2rchi_code/templates/dockerfiles/Dockerfile-base')} -t a2rchi-base:{tag} --progress=plain {os.path.join(a2rchi_name_dir)}", verbose=True) #TODO: not great printing out output #TODO: should be name specific to the deployment
     _print_msg("Starting docker compose")
     stdout, stderr = _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps", verbose=True) #TODO: not great printing out output
 
