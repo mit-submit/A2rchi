@@ -199,8 +199,8 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
     peft_model: str = None          # location of the finetuning of the model 
     enable_salesforce_content_safety: bool = True
                                     # enable safety check with Salesforce safety flan t5
-    quantization: bool = True       # enables 8-bit quantization
-    max_new_tokens: int = 2048      # maximum numbers of tokens to generate
+    quantization: bool = False       # enables 8-bit quantization
+    max_new_tokens: int = 1024      # maximum numbers of tokens to generate
     seed: int = None                # seed value for reproducibility
     do_sample: bool = True          # use sampling; otherwise greedy decoding
     min_length: int = None          # minimum length of sequence to generate, input prompt + min_new_tokens
@@ -230,14 +230,18 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
             torch.cuda.manual_seed(self.seed)
             torch.manual_seed(self.seed)
 
+        # clear cuda cache
+        torch.cuda.empty_cache()
+
         # create tokenizer
         self.tokenizer = None
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False)
         if self.quantization:
             bnbconfig = BitsAndBytesConfig(load_in_8bit=True)
-            base_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False, device_map="auto", quantization_config=bnbconfig)
+            # specify cache dir (in container?) ?
+            base_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only=False, device_map="auto", quantization_config=bnbconfig)
         else:
-            base_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False, device_map="auto", torch_dtype=torch.float16)
+            base_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only=False, device_map="auto", torch_dtype=torch.float16)
 
         if self.peft_model:
             self.hf_model = PeftModel.from_pretrained(base_model, self.peft_model)
@@ -284,6 +288,9 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
 
         # prepare input
         special_tokens = self.tokenizer.special_tokens_map
+        if "<|im_start|>" not in special_tokens.get("additional_special_tokens", []):
+            self.tokenizer.add_special_tokens({"additional_special_tokens": ["<|im_start|>", "<|im_end|>"]})
+
         if "[INST]" in special_tokens.get("additional_special_tokens", []):
             print("INFO - using instructor template")
             formatted_chat = f"[INST] {prompt} [/INST]"
@@ -303,7 +310,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
             end_tag = "assistant"
 
         else:
-            print("INFO - using no template")
+            print("INFO - not able to detect template, will try without")
             formatted_chat = prompt
             end_tag = ""
 
