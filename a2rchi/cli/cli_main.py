@@ -151,9 +151,17 @@ def _run_bash_command(command_str: str, verbose = False) -> Tuple[str, str]:
 
     return stdout, stderr
 
-def _create_docker_volume(volume_name):
+def _create_volume(volume_name, podman=False):
+    # root podman or docker
+    if podman:
+        ls_volumes = "sudo podman volume ls"
+        create_volume = f"sudo podman volume create {volume_name}"
+    else:
+        ls_volumes = "docker volume ls"
+        create_volume = f"docker volume create --name {volume_name}"
+
     # first, check to see if volume already exists
-    stdout, stderr = _run_bash_command("docker volume ls")
+    stdout, stderr = _run_bash_command(ls_volumes)
     if stderr:
         raise BashCommandException(stderr)
 
@@ -163,8 +171,8 @@ def _create_docker_volume(volume_name):
             return
 
     # otherwise, create the volume
-    _print_msg(f"Creating docker volume: {volume_name}")
-    _, stderr = _run_bash_command(f"docker volume create --name {volume_name}")
+    _print_msg(f"Creating volume: {volume_name}")
+    _, stderr = _run_bash_command(create_volume)
     if stderr:
         raise BashCommandException(stderr)
 
@@ -201,12 +209,16 @@ def cli():
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
+@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
+@click.option('--gpu', 'use_gpu', type=bool, default=False, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
 def create(
     name, 
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
-    a2rchi_config_filepath
+    a2rchi_config_filepath,
+    use_podman,
+    use_gpu
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -234,8 +246,9 @@ def create(
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
     os.makedirs(a2rchi_name_dir, exist_ok=True)
 
-    # initialize dictionary of template variables for docker compose file
+    # initialize dictionary of template variables for compose file
     tag = "2000" # TODO, make tagging better
+    tag = "2001"
     os.environ['TAG'] = tag #TODO: also this should be done with templating, not environment variables
     compose_template_vars = {
         "chat_image": f"chat-{name}",
@@ -247,10 +260,13 @@ def create(
         "postgres_container_name": f"postgres-{name}",
     }
 
+    # tell compose whether to look for gpus or not
+    compose_template_vars["use_gpu"] = use_gpu
+
     # create docker volumes; these commands will no-op if they already exist
     _print_msg("Creating docker volumes")
-    _create_docker_volume(f"a2rchi-{name}")
-    _create_docker_volume(f"a2rchi-pg-{name}")
+    _create_volume(f"a2rchi-{name}", podman=use_podman)
+    _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"
 
@@ -277,7 +293,7 @@ def create(
     # if deployment includes grafana, create docker volume and template deployment files
     compose_template_vars["include_grafana"] = include_grafana
     if include_grafana:
-        _create_docker_volume(f"a2rchi-grafana-{name}")
+        _create_volume(f"a2rchi-grafana-{name}", podman=use_podman)
 
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
@@ -424,15 +440,18 @@ def create(
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
 
     # create a2rchi system using docker
-    _print_msg("Building Base Image")
-    _, _ = _run_bash_command(f"docker build -f {os.path.join(a2rchi_name_dir, 'a2rchi_code/templates/dockerfiles/Dockerfile-base')} -t a2rchi-base:{tag} --progress=plain {os.path.join(a2rchi_name_dir)}", verbose=True) #TODO: not great printing out output #TODO: should be name specific to the deployment
-    _print_msg("Starting docker compose")
-    stdout, stderr = _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps", verbose=True) #TODO: not great printing out output
+    if use_podman:
+        compose_up = f"sudo podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
+    else:
+        compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
+    _print_msg("Starting compose")
+    stdout, stderr = _run_bash_command(compose_up, verbose=True) #TODO: not great printing out output
 
 
 @click.command()
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
-def delete(name):
+@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
+def delete(name, use_podman):
     """
     Delete instance of RAG system with the specified name.
     """
@@ -446,8 +465,12 @@ def delete(name):
 
     # stop compose
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
-    _print_msg("Stopping docker compose")
-    _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down")
+    if use_podman:
+        compose_down = f"sudo podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
+    else:
+        compose_down = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
+    _print_msg("Stopping compose")
+    _run_bash_command(compose_down)
 
     # remove files in a2rchi directory
     _print_msg("Removing files in a2rchi directory")

@@ -3,9 +3,9 @@ services:
     image: {{ chat_image }}:{{ chat_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if use_gpu else '' }}
       args:
-        TAG: ${TAG}
+        TAG: 2001
     container_name: {{ chat_container_name }}
     depends_on:
       chromadb:
@@ -17,6 +17,10 @@ services:
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      {% if use_gpu -%}
+      NVIDIA_VISIBLE_DEVICES: all #all or 0,1,2,3
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
     secrets:
       - openai_api_key
       - anthropic_api_key
@@ -32,8 +36,24 @@ services:
       options:
         max-size: 10m
     ports:
-      - {{ chat_port_host }}:{{ chat_port_container }}  # host:containe
+      - {{ chat_port_host }}:{{ chat_port_container }}  # host:container
     restart: always
+    {% if use_gpu -%}
+    security_opt:
+      - label:disable
+    devices:
+      - "/dev/dri:/dev/dri"
+      - "/dev/nvidia0:/dev/nvidia0"
+      - "/dev/nvidia1:/dev/nvidia1"
+      - "/dev/nvidia2:/dev/nvidia2"
+      - "/dev/nvidia3:/dev/nvidia3"
+      - "/dev/nvidiactl:/dev/nvidiactl"
+      - "/dev/nvidia-modeset:/dev/nvidia-modeset"
+      - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+      - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+    annotations:
+      org.opencontainers.image.nvidia/gpu.devices: all #all or 0,1,2,3
+    {% endif %}
   
   chromadb:
     image: {{ chromadb_image }}:{{ chromadb_tag }}
@@ -59,7 +79,7 @@ services:
       start_interval: 5s
 
   postgres:
-    image: postgres:16
+    image: docker.io/postgres:16
     container_name: {{ postgres_container_name }}
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password

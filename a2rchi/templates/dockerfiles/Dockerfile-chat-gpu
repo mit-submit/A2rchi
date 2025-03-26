@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.10
+FROM docker.io/pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
 RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
 
@@ -7,10 +7,11 @@ COPY requirements.txt requirements.txt
 COPY LICENSE LICENSE
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
-#EXPOSE 7861
 
-# ensure this directory is present for prod-801 deployment
-# RUN if [ "$BUILD_ENV" = "prod-801" ] ; then mkdir /root/data/801-content ; fi
+RUN apt-get update && apt-get install -y \
+    nvidia-utils-550 \
+    libnvidia-compute-550 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY a2rchi_code a2rchi
 COPY pyproject.toml pyproject.toml
