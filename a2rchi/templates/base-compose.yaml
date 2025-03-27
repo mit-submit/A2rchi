@@ -48,7 +48,6 @@ services:
       - "/dev/nvidia2:/dev/nvidia2"
       - "/dev/nvidia3:/dev/nvidia3"
       - "/dev/nvidiactl:/dev/nvidiactl"
-      - "/dev/nvidia-modeset:/dev/nvidia-modeset"
       - "/dev/nvidia-uvm:/dev/nvidia-uvm"
       - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
     annotations:
