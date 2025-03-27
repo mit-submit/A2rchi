@@ -11,13 +11,13 @@ interfaces:
 
 chains:
   input_lists:
-    - configs/miscellanea.list
-    - configs/801-textbook.list
+    - env/801/miscellanea.list
+    - env/801/801-textbook.list
   chain:
     MODEL_NAME: AnthropicLLM
     CONDENSE_MODEL_NAME: AnthropicLLM
     SUMMARY_MODEL_NAME: AnthropicLLM
   prompts:
-    CONDENSING_PROMPT: configs/prompts/condense.prompt
-    MAIN_PROMPT: configs/prompts/801.prompt
-    SUMMARY_PROMPT: configs/prompts/summary.prompt
+    CONDENSING_PROMPT: env/801/condense.prompt
+    MAIN_PROMPT: env/801/main.prompt
+    SUMMARY_PROMPT: env/801/summary.prompt
