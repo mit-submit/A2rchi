@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import yaml
 import time
+import shlex
+import threading
 
 # DEFINITIONS
 env = Environment(
@@ -112,44 +114,44 @@ def _validate_config(config, required_fields):
                 raise ValueError(f"Missing required field: '{field}' in the configuration")
             value = value[key]  # Drill down into nested dictionaries
 
-def _run_bash_command(command_str: str, verbose = False) -> Tuple[str, str]:
-    """Helper function to execute a bash command and print output in real-time without hanging."""
-    command_str_lst = command_str.split(" ")
 
-    # Start the process
-    process = subprocess.Popen(command_str_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
-    # Initialize empty strings for stdout and stderr
-    stdout, stderr = "", ""
+def _run_bash_command(command_str: str, verbose=False) -> Tuple[str, str]:
+    """Run a shell command and stream output in real-time, capturing stdout and stderr."""
+    command_str_lst = shlex.split(command_str)
+    process = subprocess.Popen(
+        command_str_lst,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1  # line-buffered
+    )
 
-    # Continuously read from stdout and stderr
-    while True:
-        # Check if there’s output from stdout
-        if process.poll() is not None:
-            break  # Process has finished, so we can exit the loop
-        
-        # Read each line from stdout and stderr as it becomes available
-        out_line = process.stdout.readline()
-        if out_line:
+    stdout_lines = []
+    stderr_lines = []
+
+    def _read_stream(stream, collector, stream_name):
+        for line in iter(stream.readline, ''):
+            collector.append(line)
             if verbose:
-                _print_msg(out_line)  # Print each line as it is produced
-            stdout += out_line
+                _print_msg(f"{line}")  # keep formatting tight
+        stream.close()
 
-        err_line = process.stderr.readline()
-        if err_line:
-            if verbose:
-                _print_msg(err_line)  # Print each error line as it is produced
-            stderr += err_line
+    # start threads for non-blocking reads
+    stdout_thread = threading.Thread(target=_read_stream, args=(process.stdout, stdout_lines, "stdout"))
+    stderr_thread = threading.Thread(target=_read_stream, args=(process.stderr, stderr_lines, "stderr"))
+    stdout_thread.start()
+    stderr_thread.start()
 
-        # Allow other tasks to run if this process takes time
-        time.sleep(0.1)
+    # wait for command to finish
+    try:
+        process.wait()
+    except KeyboardInterrupt:
+        process.terminate()
+        stdout_thread.join()
+        stderr_thread.join()
+        raise
 
-    # Capture any remaining output after process completes
-    remaining_stdout, remaining_stderr = process.communicate()
-    stdout += remaining_stdout
-    stderr += remaining_stderr
-
-    return stdout, stderr
+    return ''.join(stdout_lines), ''.join(stderr_lines)
 
 def _create_volume(volume_name, podman=False):
     # root podman or docker
@@ -264,7 +266,7 @@ def create(
     compose_template_vars["use_gpu"] = use_gpu
 
     # create docker volumes; these commands will no-op if they already exist
-    _print_msg("Creating docker volumes")
+    _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
     _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
