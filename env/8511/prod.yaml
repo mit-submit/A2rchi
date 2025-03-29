@@ -11,16 +11,16 @@ interfaces:
 
 chains:
   input_lists:
-    - configs/miscellanea.list
-    - configs/8511_ocw.list
+    - env/8511/miscellanea.list
+    - env/8511/8511_ocw.list
   chain:
     MODEL_NAME: AnthropicLLM
     CONDENSE_MODEL_NAME: AnthropicLLM
     SUMMARY_MODEL_NAME: AnthropicLLM
   prompts:
-    CONDENSING_PROMPT: configs/prompts/condense.prompt
-    MAIN_PROMPT: configs/prompts/8511.prompt
-    SUMMARY_PROMPT: configs/prompts/summary.prompt
+    CONDENSING_PROMPT: env/8511/condense.prompt
+    MAIN_PROMPT: env/8511/8511.prompt
+    SUMMARY_PROMPT: env/8511/summary.prompt
 
 utils:
   postgres:

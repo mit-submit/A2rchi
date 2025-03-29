@@ -9,9 +9,9 @@ chains:
     - config_old/submit.list
     - config_old/miscellanea.list
   prompts:
-    CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
-    MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
-    SUMMARY_PROMPT: config_old/prompts/summary.prompt #REQUIRED
+    CONDENSING_PROMPT: env/example/condense.prompt #REQUIRED
+    MAIN_PROMPT: env/example/submit.prompt #REQUIRED
+    SUMMARY_PROMPT: env/example/summary.prompt #REQUIRED
 
 location_of_secrets: #REQUIRED
-  - ~/.secrets/a2rchi_base_secrets
+  - ~/.secrets/example/a2rchi_base_secrets
