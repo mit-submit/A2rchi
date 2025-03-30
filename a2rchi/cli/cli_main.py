@@ -170,6 +170,7 @@ def _create_volume(volume_name, podman=False):
     for line in stdout.split("\n"):
         # return early if the volume exists
         if volume_name in line:
+            _print_msg(f"Volume '{volume_name}' already exists. No action needed.")
             return
 
     # otherwise, create the volume

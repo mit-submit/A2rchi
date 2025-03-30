@@ -362,6 +362,9 @@ class ChatWrapper:
             # if the score is low enough, include the source as a link, otherwise give just the answer
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
+            print("INFO - similarity score reference: ", similarity_score_reference)
+            print("INFO - similarity score: ", score)
+            print("INFO - source: ", source)
             if score < similarity_score_reference and source in sources.keys(): 
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
             else:
