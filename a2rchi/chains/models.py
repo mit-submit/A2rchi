@@ -216,6 +216,14 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
     hf_model: Callable = None
     safety_checker: List = None
 
+    @classmethod
+    def get_cached_model(cls, key):
+        return cls._MODEL_CACHE.get(key)
+
+    @classmethod
+    def set_cached_model(cls, key, value):
+        cls._MODEL_CACHE[key] = value
+
     def __init__(self, **kwargs):
         super().__init__()
         for key, value in kwargs.items():
@@ -225,31 +233,52 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         from peft import PeftModel
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-         # Set the seeds for reproducibility
+        # Set the seeds for reproducibility
         if self.seed:
-            torch.cuda.manual_seed(self.seed)
             torch.manual_seed(self.seed)
+            torch.cuda.manual_seed(self.seed)
 
-        # clear cuda cache
-        torch.cuda.empty_cache()
+        model_cache_key = (self.base_model, self.quantization, self.peft_model)
 
-        # create tokenizer
-        self.tokenizer = None
-        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False)
-        if self.quantization:
-            bnbconfig = BitsAndBytesConfig(load_in_8bit=True)
-            # specify cache dir (in container?) ?
-            base_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only=False, device_map="auto", quantization_config=bnbconfig)
+        print("CACHE IS AT:", id(HuggingFaceOpenLLM._MODEL_CACHE))
+        print("INFO - cache key:", model_cache_key)
+        print("INFO - current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
+
+        cached = self.get_cached_model(model_cache_key)
+        if cached:
+            print("INFO - model found in cache.")
+            self.tokenizer, self.hf_model = cached
         else:
-            base_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only=False, device_map="auto", torch_dtype=torch.float16)
+            print("INFO - model not in cache. Loading...")
 
-        if self.peft_model:
-            self.hf_model = PeftModel.from_pretrained(base_model, self.peft_model)
-        else:
-            self.hf_model = base_model
-        self.hf_model.eval()
+            self.tokenizer = AutoTokenizer.from_pretrained(self.base_model, local_files_only=False)
 
-        # create safety checker
+            if self.quantization:
+                bnbconfig = BitsAndBytesConfig(load_in_8bit=True)
+                base_model = AutoModelForCausalLM.from_pretrained(
+                    self.base_model,
+                    local_files_only=False,
+                    device_map="auto",
+                    quantization_config=bnbconfig,
+                )
+            else:
+                base_model = AutoModelForCausalLM.from_pretrained(
+                    self.base_model,
+                    local_files_only=False,
+                    device_map="auto",
+                    torch_dtype=torch.float16,
+                )
+
+            if self.peft_model:
+                self.hf_model = PeftModel.from_pretrained(base_model, self.peft_model)
+            else:
+                self.hf_model = base_model
+
+            self.hf_model.eval()
+
+            self.set_cached_model(model_cache_key, (self.tokenizer, self.hf_model))
+            print("INFO - model loaded and cached.")
+
         self.safety_checker = []
         if self.enable_salesforce_content_safety:
             self.safety_checker.append(SalesforceSafetyChecker())
@@ -310,7 +339,9 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
             end_tag = "assistant"
 
         else:
-            print("INFO - not able to detect template, will try without")
+            print("INFO - not able to detect template, will try without (debugging info below)")
+            print("DEBUG - special tokens: ", self.tokenizer.special_tokens_map)
+            print("DEBUG - prompt: ", prompt)
             formatted_chat = prompt
             end_tag = ""
 
@@ -332,6 +363,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     length_penalty=self.length_penalty,
                 )
             
+        print("INFO - inference completed, decoding output.")
         output_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
         # safety check of the model output
@@ -352,6 +384,10 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                         - reformat your question so that it does not prompt an unsafe response."""
 
         return output_text[output_text.rfind(end_tag) + len(end_tag):]
+
+# setting class-level cache for HuggingFaceOpenLLM to store loaded models
+# prevents doubly loading the same model multiple times
+HuggingFaceOpenLLM._MODEL_CACHE = {}
 
 class OpenAILLM(ChatOpenAI):
     """

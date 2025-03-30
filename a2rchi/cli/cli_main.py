@@ -447,7 +447,7 @@ def create(
     else:
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
-    stdout, stderr = _run_bash_command(compose_up, verbose=True) #TODO: not great printing out output
+    stdout, stderr = _run_bash_command(compose_up, verbose=True)
 
 
 @click.command()
