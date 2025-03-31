@@ -119,7 +119,11 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
 
         _llm = condense_question_llm or llm
         condense_question_chain = LLMChain(
-            llm=_llm, prompt=condense_question_prompt, callbacks = [handler], verbose=verbose
+            llm=_llm,
+            prompt=condense_question_prompt,
+            callbacks = [handler],
+            verbose=verbose,
+            output_key="question"
         )
 
         return cls(

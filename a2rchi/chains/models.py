@@ -296,6 +296,8 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         
+        # longer term, better solution probably needed - shouldn't rely on string parsing the prompts...
+
         context_start = prompt.find("Context:")
         question_start = prompt.rfind("Question:")
 
@@ -317,14 +319,18 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
 
         # prepare input
         special_tokens = self.tokenizer.special_tokens_map
+
+        # force chat template for final QA
         if "<|im_start|>" not in special_tokens.get("additional_special_tokens", []):
             self.tokenizer.add_special_tokens({"additional_special_tokens": ["<|im_start|>", "<|im_end|>"]})
 
+        # instructor template
         if "[INST]" in special_tokens.get("additional_special_tokens", []):
             print("INFO - using instructor template")
             formatted_chat = f"[INST] {prompt} [/INST]"
             end_tag = "[/INST]"
 
+        # chat template
         elif "<|im_start|>" in special_tokens.get("additional_special_tokens", []) and context_start != -1 and question_start != -1:
             print("INFO - using chat template")
             real_context = prompt[context_start+len("Context:"):question_start]
@@ -338,6 +344,15 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
             formatted_chat = self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True)
             end_tag = "assistant"
 
+        # current template for history and follow-up condensing before final QA
+        elif "Standalone question:" in prompt:
+            # Handle standalone question format
+            print("INFO - using standalone question template")
+            prompt = prompt.replace("Standalone question:", "Return only the standalone question in the next line, formatted with 'FINAL QUESTION: ', followed by the question itself.")
+            formatted_chat = prompt
+            end_tag = "FINAL QUESTION: "
+
+        # fallback to default if no template detected
         else:
             print("INFO - not able to detect template, will try without (debugging info below)")
             print("DEBUG - special tokens: ", self.tokenizer.special_tokens_map)
@@ -382,7 +397,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     There are two ways to solve this:
                         - generate the response
                         - reformat your question so that it does not prompt an unsafe response."""
-
+       
         return output_text[output_text.rfind(end_tag) + len(end_tag):]
 
 # setting class-level cache for HuggingFaceOpenLLM to store loaded models
