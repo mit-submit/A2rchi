@@ -55,9 +55,9 @@ class Sender:
             formataddr(addr) for addr in getaddresses([cc])
             ])
 
-       print("Recipient List:", recipient_list)
-       smtp_recipient_list = [addr[1] for addr in getaddresses([to, cc]) if addr[1]]
-       print("SMTP Recipient List:", smtp_recipient_list)
+        print("Recipient List:", recipient_list)
+        smtp_recipient_list = [addr[1] for addr in getaddresses([to, cc]) if addr[1]]
+        print("SMTP Recipient List:", smtp_recipient_list)
 
         # Send the email
         msg.attach(MIMEText(body, 'plain'))

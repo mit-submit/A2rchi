@@ -43,10 +43,10 @@ To manage these secrets, we ask that you write them to a location on your file s
 The secrets you are required to have to start a2rchi are:
 - `openai_api_key`: the API key given by openAI
 - `anthropic_api_key`: the API key given by anthropic
-- `hf_token`: the API key to your huggingface account.
+- `hf_token`: the API key to your huggingface account,
 - `pg_password`: some password you pick which encrypts the database.
+We will change imminently as we support open LLMs and it shouldn't be necessary to have all of these for any given deployment. For now, for any api keys you are not using, please still create the corresponding file and write any dummy text.
 
-Note that you technically only need the API key for the models that you are using (by default openAI), so for the other ones you can just put in dummy variables. (Yes, we know it's not the cleanest way to do it...)
 
 ## Basic CLI Overview
 
@@ -69,18 +69,26 @@ There are a few required fields that must be included in every configuration. Th
 2. **`global:TRAINED_ON`**: A quick couple words describing the data that you want A2rchi to specialize in. For example, "introductory classical mechanics" or "the subMIT cluster at MIT."
 
 3. **`chains:input_lists`**: A list of file(s), each containing a list of websites seperated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, `configs/miscellanea.list` contains information of the MIT proffessors who started the A2rchi project:
+
 ```
 # web pages of various people
 https://people.csail.mit.edu/kraska
 https://physics.mit.edu/faculty/christoph-paus
 ```
+
 4. **`chains:prompts:CONDENSING_PROMPT`**: A condensing prompt is a prompt used to condense a chat history and a follow up question into a stand alone question. This configuration line gives the path, relative to the root of the repo, of a file containing a condensing prompt. All condensing prompts must have the following tags in them, which will be filled with the appropriate information: `{chat_history}` and `{question}`. A very general prompt for condensing histories can be found at `configs/prompts/condense.prompt`, so for base installs it will not need to be modified. 
 
 5. **`chains:prompts:SUMMARY_PROMPT`**: #TODO: I don't actually know what this does... For now just link it a blank file....
 
 6. **`chains:prompts:MAIN_PROMPT:`**: A main prompt is a prompt used to qurery LLM with appropriate context and question. This configuration line gives the path, relative to the root of the repo, of a file containing a main prompt. All main prompts must have the following tags in them, which will be filled with the appropriate information: `{question}` and `{context}`. An example prompt specific to subMIT can be found here: `configs/prompts/submit.prompt` (it will not perform well for other applications where it is recommeneded to write your own prompt and change it in the config)
 
-7. **`location_of_secrets`**: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. 
+7. **`chains:chain:MODEL_NAME`**: Model name for the choice of LLM (OpenAIGPT4, OpenAIGPT35, AnthropicLLM, DumbLLM, etc)
+
+8. **`chains:chain:CONDENSE_MODEL_NAME`**: Model name for condensing chat histories.
+
+9. **`chains:chain:SUMMARY_MODEL_NAME`**: Model name for summarizing.
+
+10. **`location_of_secrets`**: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. 
 
 Below is an example of a bare minimum condifiguration file:
 ```
@@ -94,6 +102,10 @@ chains:
   input_lists: #REQUIRED
     - config_old/submit.list
     - config_old/miscellanea.list
+  chain:
+    - MODEL_NAME: OpenAIGPT4 #REQUIRED
+    - CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
+    - SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
   prompts:
     CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
     MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
@@ -194,4 +206,7 @@ utils:
 
 ### Persisting data between deployments
 
-Do docker volumes persist between deployments? I don't know yet. We should build it so that it is though. 
+Docker volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo so every time you deploy. Of course, if you are editing any data, you should explicitly remove this infromation from the volume, or simply remove the volume itself with
+```
+docker volume rm <volume name>
+```

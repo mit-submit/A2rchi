@@ -1,6 +1,12 @@
 # syntax=docker/dockerfile:1
-ARG TAG=from-env
-FROM a2rchi-base:${TAG}
+FROM python:3.10
+RUN mkdir -p /root/A2rchi
+WORKDIR /root/A2rchi
+
+COPY requirements.txt requirements.txt
+COPY LICENSE LICENSE
+
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY a2rchi_code a2rchi
 COPY pyproject.toml pyproject.toml

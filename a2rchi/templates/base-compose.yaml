@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if use_gpu else '' }}
       args:
-        TAG: 2001
+        TAG: {{ chat_tag }}
     container_name: {{ chat_container_name }}
     depends_on:
       chromadb:

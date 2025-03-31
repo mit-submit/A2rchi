@@ -214,6 +214,8 @@ def cli():
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'use_gpu', type=bool, default=False, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
+@click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
+
 def create(
     name, 
     include_grafana, 
@@ -221,7 +223,8 @@ def create(
     include_cleo_and_mailer,
     a2rchi_config_filepath,
     use_podman,
-    use_gpu
+    use_gpu,
+    image_tag
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -249,10 +252,8 @@ def create(
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
     os.makedirs(a2rchi_name_dir, exist_ok=True)
 
-    # initialize dictionary of template variables for compose file
-    tag = "2000" # TODO, make tagging better
-    tag = "2001"
-    os.environ['TAG'] = tag #TODO: also this should be done with templating, not environment variables
+    # initialize dictionary of template variables for docker compose file
+    tag = image_tag
     compose_template_vars = {
         "chat_image": f"chat-{name}",
         "chat_tag": tag,
@@ -278,7 +279,8 @@ def create(
         'name', 
         'global.TRAINED_ON',
         'chains.input_lists', 
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT'
+        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
+        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
     ]
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
@@ -392,11 +394,12 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
-    # prepare secrets
+    # Prepare secrets
     _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
     _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
     _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
+
 
     # copy prompts
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
