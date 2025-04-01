@@ -204,7 +204,7 @@ class DataManager():
             
             # load documents from current file and add to docs and metadata
             docs = loader.load()
-            for doc in docs:
+            for doc in docs: 
                 new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
                 chunks += new_chunks
                 metadatas += [doc.metadata for chunk in new_chunks]

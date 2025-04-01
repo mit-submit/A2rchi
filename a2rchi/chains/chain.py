@@ -44,8 +44,16 @@ class Chain() :
         condense_model_name = self.chain_config.get("CONDENSE_MODEL_NAME", model_name)
         summary_model_name = self.chain_config.get("SUMMARY_MODEL_NAME", model_name)
         self.llm = model_class_map[model_name]["class"](**model_class_map[model_name]["kwargs"])
-        self.condense_llm = model_class_map[condense_model_name]["class"](**model_class_map[condense_model_name]["kwargs"])
-        self.summary_llm = model_class_map[summary_model_name]["class"](**model_class_map[summary_model_name]["kwargs"])
+
+        if condense_model_name == model_name:
+            self.condense_llm = None
+        else:
+            self.condense_llm = model_class_map[condense_model_name]["class"](**model_class_map[condense_model_name]["kwargs"])
+            
+        if summary_model_name == model_name:
+            self.summary_llm = None
+        else:
+            self.summary_llm = model_class_map[summary_model_name]["class"](**model_class_map[summary_model_name]["kwargs"])
 
         print("Using model ", model_name, " with parameters: ")
         for param_name in model_class_map[model_name]["kwargs"].keys():

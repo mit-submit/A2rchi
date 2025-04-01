@@ -3,7 +3,7 @@ services:
     image: {{ chat_image }}:{{ chat_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if use_gpu else '' }}
       args:
         TAG: {{ chat_tag }}
     container_name: {{ chat_container_name }}
@@ -17,6 +17,10 @@ services:
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      {% if use_gpu -%}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
     secrets:
       - openai_api_key
       - anthropic_api_key
@@ -32,8 +36,26 @@ services:
       options:
         max-size: 10m
     ports:
-      - {{ chat_port_host }}:{{ chat_port_container }}  # host:containe
+      - {{ chat_port_host }}:{{ chat_port_container }}  # host:container
     restart: always
+    {% if use_gpu -%}
+    security_opt:
+      - label:disable
+    devices:
+    # selecting devices (nvidia0, nvidia1, nvidia2, nvidia3) overrides visible devices and annotations. comment out any devices you don't need
+    # TODO: make this configurable outside of this file
+    # N.B. even smallest models will load across multiple GPUs if available.
+      - "/dev/dri:/dev/dri"
+      - "/dev/nvidia0:/dev/nvidia0"
+      #- "/dev/nvidia1:/dev/nvidia1"
+      #- "/dev/nvidia2:/dev/nvidia2"
+      #- "/dev/nvidia3:/dev/nvidia3"
+      - "/dev/nvidiactl:/dev/nvidiactl"
+      - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+      - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+    annotations:
+      org.opencontainers.image.nvidia/gpu.devices: all
+    {% endif %}
   
   chromadb:
     image: {{ chromadb_image }}:{{ chromadb_tag }}
@@ -59,7 +81,7 @@ services:
       start_interval: 5s
 
   postgres:
-    image: postgres:16
+    image: docker.io/postgres:16
     container_name: {{ postgres_container_name }}
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
@@ -111,7 +133,7 @@ services:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-uploader
       args:
-        TAG: ${TAG}
+        TAG: {{ uploader_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -144,10 +166,10 @@ services:
   piazza:
     image: {{ piazza_image }}:{{ piazza_tag }}
     build:
-      context: .i
+      context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-piazza
       args:
-        TAG: ${TAG}
+        TAG: {{ piazza_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -180,9 +202,9 @@ services:
     image: {{ cleo_image }}:{{ cleo_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-cleo
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-cleo{{ '-gpu' if use_gpu else '' }}
       args:
-        TAG: ${TAG}
+        TAG: {{ cleo_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -202,6 +224,10 @@ services:
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      {% if use_gpu -%}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
     secrets:
       - cleo_url
       - cleo_user
@@ -226,6 +252,24 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if use_gpu -%}
+    security_opt:
+      - label:disable
+    devices:
+    # selecting devices (nvidia0, nvidia1, nvidia2, nvidia3) overrides visible devices and annotations. comment out any devices you don't need
+    # TODO: make this configurable outside of this file
+    # N.B. even smallest models will load across multiple GPUs if available.
+      - "/dev/dri:/dev/dri"
+      #- "/dev/nvidia0:/dev/nvidia0"
+      - "/dev/nvidia1:/dev/nvidia1"
+      #- "/dev/nvidia2:/dev/nvidia2"
+      #- "/dev/nvidia3:/dev/nvidia3"
+      - "/dev/nvidiactl:/dev/nvidiactl"
+      - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+      - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+    annotations:
+      org.opencontainers.image.nvidia/gpu.devices: all
+    {% endif %}
 
   mailbox:
     image: {{ mailbox_image }}:{{ mailbox_tag }}
@@ -233,7 +277,7 @@ services:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mailbox
       args:
-        TAG: ${TAG}
+        TAG: {{ mailbox_tag }}
     depends_on:
       chromadb:
         condition: service_healthy

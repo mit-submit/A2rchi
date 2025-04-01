@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import yaml
 import time
+import shlex
+import threading
 
 # DEFINITIONS
 env = Environment(
@@ -112,59 +114,68 @@ def _validate_config(config, required_fields):
                 raise ValueError(f"Missing required field: '{field}' in the configuration")
             value = value[key]  # Drill down into nested dictionaries
 
-def _run_bash_command(command_str: str, verbose = False) -> Tuple[str, str]:
-    """Helper function to execute a bash command and print output in real-time without hanging."""
-    command_str_lst = command_str.split(" ")
 
-    # Start the process
-    process = subprocess.Popen(command_str_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
-    # Initialize empty strings for stdout and stderr
-    stdout, stderr = "", ""
+def _run_bash_command(command_str: str, verbose=False) -> Tuple[str, str]:
+    """Run a shell command and stream output in real-time, capturing stdout and stderr."""
+    command_str_lst = shlex.split(command_str)
+    process = subprocess.Popen(
+        command_str_lst,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1  # line-buffered
+    )
 
-    # Continuously read from stdout and stderr
-    while True:
-        # Check if there’s output from stdout
-        if process.poll() is not None:
-            break  # Process has finished, so we can exit the loop
-        
-        # Read each line from stdout and stderr as it becomes available
-        out_line = process.stdout.readline()
-        if out_line:
+    stdout_lines = []
+    stderr_lines = []
+
+    def _read_stream(stream, collector, stream_name):
+        for line in iter(stream.readline, ''):
+            collector.append(line)
             if verbose:
-                _print_msg(out_line)  # Print each line as it is produced
-            stdout += out_line
+                _print_msg(f"{line}")  # keep formatting tight
+        stream.close()
 
-        err_line = process.stderr.readline()
-        if err_line:
-            if verbose:
-                _print_msg(err_line)  # Print each error line as it is produced
-            stderr += err_line
+    # start threads for non-blocking reads
+    stdout_thread = threading.Thread(target=_read_stream, args=(process.stdout, stdout_lines, "stdout"))
+    stderr_thread = threading.Thread(target=_read_stream, args=(process.stderr, stderr_lines, "stderr"))
+    stdout_thread.start()
+    stderr_thread.start()
 
-        # Allow other tasks to run if this process takes time
-        time.sleep(0.1)
+    # wait for command to finish
+    try:
+        process.wait()
+    except KeyboardInterrupt:
+        process.terminate()
+        stdout_thread.join()
+        stderr_thread.join()
+        raise
 
-    # Capture any remaining output after process completes
-    remaining_stdout, remaining_stderr = process.communicate()
-    stdout += remaining_stdout
-    stderr += remaining_stderr
+    return ''.join(stdout_lines), ''.join(stderr_lines)
 
-    return stdout, stderr
+def _create_volume(volume_name, podman=False):
+    # root podman or docker
+    if podman:
+        ls_volumes = "sudo podman volume ls"
+        create_volume = f"sudo podman volume create {volume_name}"
+    else:
+        ls_volumes = "docker volume ls"
+        create_volume = f"docker volume create --name {volume_name}"
 
-def _create_docker_volume(volume_name):
     # first, check to see if volume already exists
-    stdout, stderr = _run_bash_command("docker volume ls")
+    stdout, stderr = _run_bash_command(ls_volumes)
     if stderr:
         raise BashCommandException(stderr)
 
     for line in stdout.split("\n"):
         # return early if the volume exists
         if volume_name in line:
+            _print_msg(f"Volume '{volume_name}' already exists. No action needed.")
             return
 
     # otherwise, create the volume
-    _print_msg(f"Creating docker volume: {volume_name}")
-    _, stderr = _run_bash_command(f"docker volume create --name {volume_name}")
+    _print_msg(f"Creating volume: {volume_name}")
+    _, stderr = _run_bash_command(create_volume)
     if stderr:
         raise BashCommandException(stderr)
 
@@ -201,6 +212,8 @@ def cli():
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
+@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
+@click.option('--gpu', 'use_gpu', type=bool, default=False, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 
 def create(
@@ -209,6 +222,8 @@ def create(
     include_uploader_service, 
     include_cleo_and_mailer,
     a2rchi_config_filepath,
+    use_podman,
+    use_gpu,
     image_tag
 ):
     """
@@ -249,10 +264,16 @@ def create(
         "postgres_container_name": f"postgres-{name}",
     }
 
+    # tell compose whether to look for gpus or not
+    compose_template_vars["use_gpu"] = use_gpu
+
+    # piazza compose vars
+    compose_template_vars["piazza_tag"] = tag
+
     # create docker volumes; these commands will no-op if they already exist
-    _print_msg("Creating docker volumes")
-    _create_docker_volume(f"a2rchi-{name}")
-    _create_docker_volume(f"a2rchi-pg-{name}")
+    _print_msg("Creating volumes")
+    _create_volume(f"a2rchi-{name}", podman=use_podman)
+    _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"
 
@@ -280,7 +301,7 @@ def create(
     # if deployment includes grafana, create docker volume and template deployment files
     compose_template_vars["include_grafana"] = include_grafana
     if include_grafana:
-        _create_docker_volume(f"a2rchi-grafana-{name}")
+        _create_volume(f"a2rchi-grafana-{name}", podman=use_podman)
 
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
@@ -428,13 +449,18 @@ def create(
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
 
     # create a2rchi system using docker
-    _print_msg("Starting docker compose")
-    stdout, stderr = _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps", verbose=True) #TODO: not great printing out output
+    if use_podman:
+        compose_up = f"sudo podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
+    else:
+        compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
+    _print_msg("Starting compose")
+    stdout, stderr = _run_bash_command(compose_up, verbose=True)
 
 
 @click.command()
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
-def delete(name):
+@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
+def delete(name, use_podman):
     """
     Delete instance of RAG system with the specified name.
     """
@@ -448,8 +474,12 @@ def delete(name):
 
     # stop compose
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
-    _print_msg("Stopping docker compose")
-    _run_bash_command(f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down")
+    if use_podman:
+        compose_down = f"sudo podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
+    else:
+        compose_down = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
+    _print_msg("Stopping compose")
+    _run_bash_command(compose_down)
 
     # remove files in a2rchi directory
     _print_msg("Removing files in a2rchi directory")

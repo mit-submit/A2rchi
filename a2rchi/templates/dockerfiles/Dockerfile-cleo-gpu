@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+FROM docker.io/pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
+RUN mkdir -p /root/A2rchi
+WORKDIR /root/A2rchi
+
+COPY requirements.txt requirements.txt
+COPY LICENSE LICENSE
+
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+RUN apt-get update && apt-get install -y \
+    nvidia-utils-550 \
+    libnvidia-compute-550 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY a2rchi_code a2rchi
+COPY pyproject.toml pyproject.toml
+COPY weblists weblists
+RUN pip install --upgrade pip && pip install .
+
+CMD ["python", "-u", "a2rchi/bin/service_cleo.py"]
