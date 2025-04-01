@@ -275,7 +275,7 @@ services:
     image: {{ mailbox_image }}:{{ mailbox_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mailbox
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if use_gpu else '' }}
       args:
         TAG: {{ mailbox_tag }}
     depends_on:
@@ -298,6 +298,10 @@ services:
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% if use_gpu -%}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
     secrets:
       - imap_user
       - imap_pw
@@ -322,6 +326,24 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if use_gpu -%}
+    security_opt:
+      - label:disable
+    devices:
+    # selecting devices (nvidia0, nvidia1, nvidia2, nvidia3) overrides visible devices and annotations. comment out any devices you don't need
+    # TODO: make this configurable outside of this file
+    # N.B. even smallest models will load across multiple GPUs if available.
+      - "/dev/dri:/dev/dri"
+      #- "/dev/nvidia0:/dev/nvidia0"
+      #- "/dev/nvidia1:/dev/nvidia1"
+      - "/dev/nvidia2:/dev/nvidia2"
+      #- "/dev/nvidia3:/dev/nvidia3"
+      - "/dev/nvidiactl:/dev/nvidiactl"
+      - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+      - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+    annotations:
+      org.opencontainers.image.nvidia/gpu.devices: all
+    {% endif %}
 {% endif %}
 
 volumes:
