@@ -87,6 +87,24 @@ chains:
           repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.repetition_penalty | default(1.0, true) }}
           length_penalty: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.length_penalty | default(1, true) }}
           max_padding_length: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.max_padding_length | default("null", true) }}
+      HuggingFaceOpenLLM:
+        class: HuggingFaceOpenLLM
+        kwargs:
+          base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.base_model | default("Qwen/Qwen2.5-14B-Instruct-1M", true) }}
+          peft_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.peft_model | default("null", true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.enable_salesforce_content_safety | default(true, true) }}
+          quantization: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.quantization | default(true, true) }}
+          max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.max_new_tokens | default(4096, true) }}
+          seed: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.seed | default("null", true) }}
+          do_sample: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.do_sample | default(true, true) }}
+          min_length: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.min_length | default("null", true) }}
+          use_cache: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.use_cache | default(true, true) }}
+          top_p: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.top_p | default(0.9, true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.temperature | default(0.6, true) }}
+          top_k: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.top_k | default(50, true) }}
+          repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.repetition_penalty | default(1.0, true) }}
+          length_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.length_penalty | default(1, true) }}
+          max_padding_length: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.max_padding_length | default("null", true) }}
     chain_update_time: {{ chains.chain.chain_update_time | default(10, true) }}
 
 utils:

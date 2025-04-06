@@ -49,7 +49,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
     Chain for chatting with an index, specific for submit
     """
     retriever: BaseRetriever # Index to connect to
-    max_tokens_limit: Optional[int] = 8192 # restrict doc length to return from store, enforced only for StuffDocumentChain, 8192 max token limit for current openAI model in use
+    max_tokens_limit: Optional[int] = 7000 # restrict doc length to return from store, enforced only for StuffDocumentChain
     get_chat_history: Optional[Callable[[List[Tuple[str, str]]], str]] = _get_chat_history
 
     def _reduce_tokens_below_limit(self, docs: List[Document]) -> List[Document]:
@@ -119,7 +119,11 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
 
         _llm = condense_question_llm or llm
         condense_question_chain = LLMChain(
-            llm=_llm, prompt=condense_question_prompt, callbacks = [handler], verbose=verbose
+            llm=_llm,
+            prompt=condense_question_prompt,
+            callbacks = [handler],
+            verbose=verbose,
+            output_key="question"
         )
 
         return cls(

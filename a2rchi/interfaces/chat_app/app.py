@@ -34,6 +34,8 @@ import os
 import psycopg2
 import psycopg2.extras
 import yaml
+import json
+import time
 
 # DEFINITIONS
 QUERY_LIMIT = 10000 # max queries per conversation
@@ -303,7 +305,7 @@ class ChatWrapper:
 
         try:
             # convert the message to native A2rchi form (because javascript does not have tuples)
-            sender, content = tuple(message[0])            
+            sender, content = tuple(message[0])
 
             # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
@@ -313,7 +315,7 @@ class ChatWrapper:
             history = self.query_conversation_history(conversation_id)
             timestamps['query_convo_history_ts'] = datetime.now()
 
-            # if this is a chat refresh / message regeneration; remove previous contiguous non-A2rchi message(s)
+            # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
             if is_refresh:
                 while history[-1][0] == "A2rchi":
                     _ = history.pop(-1)
@@ -360,6 +362,9 @@ class ChatWrapper:
             # if the score is low enough, include the source as a link, otherwise give just the answer
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
+            print("INFO - similarity score reference: ", similarity_score_reference)
+            print("INFO - similarity score: ", score)
+            print("INFO - source: ", source)
             if score < similarity_score_reference and source in sources.keys(): 
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
             else:
@@ -526,6 +531,7 @@ class FlaskAppWrapper(object):
             discussion ID (either None or an integer)
         """
         # compute timestamp at which message was received by server
+        start_time = time.time()
         server_received_msg_ts = datetime.now()
 
         # get user input and conversation_id from the request
@@ -557,13 +563,26 @@ class FlaskAppWrapper(object):
         self.chat.insert_timing(message_ids[-1], timestamps)
 
         # otherwise return A2rchi's response to client
-        return jsonify({
+        try:
+            response_size = len(response) if isinstance(response, str) else 0
+            print(f"Generated Response Length: {response_size} characters")
+            json.dumps({'response': response})  # Validate JSON formatting
+        except Exception as e:
+            print(f"JSON Encoding Error: {e}")
+            response = "Error processing response"
+
+        response_data = {
             'response': response,
             'conversation_id': conversation_id,
             'a2rchi_msg_id': message_ids[-1],
             'server_response_msg_ts': timestamps['server_response_msg_ts'].timestamp(),
             'final_response_msg_ts': datetime.now().timestamp(),
-        })
+        }
+
+        end_time = time.time()
+        print(f"API Response Time: {end_time - start_time:.2f} seconds")
+
+        return jsonify(response_data)
 
     def index(self):
         return render_template('index.html')

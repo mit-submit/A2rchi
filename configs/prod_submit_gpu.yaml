@@ -1,0 +1,38 @@
+name: prod_submit
+
+global:
+  TRAINED_ON: "the SubMIT Cluster"  
+
+locations_of_secrets:
+  - ~/.secrets/api_tokens
+  - ~/.secrets/salts_and_internal_passwords
+  - ~/.secrets/submit_cleo_and_mailer_passwords
+
+chains:
+  input_lists:  
+    - configs/submit.list
+    - configs/miscellanea.list
+  chain:
+    MODEL_NAME: HuggingFaceOpenLLM
+    CONDENSE_MODEL_NAME: HuggingFaceOpenLLM
+    SUMMARY_MODEL_NAME: HuggingFaceOpenLLM
+    MODEL_CLASS_MAP:
+      HuggingFaceOpenLLM:
+        kwargs:
+          base_model: "Qwen/Qwen2.5-14B-Instruct-1M"
+          quantization: True
+
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt  
+    MAIN_PROMPT: configs/prompts/submit.prompt  
+    SUMMARY_PROMPT: configs/prompts/summary.prompt  
+
+utils:
+  embeddings:
+    EMBEDDING_NAME: HuggingFaceEmbeddings
+    EMBEDDING_CLASS_MAP:
+      HuggingFaceEmbeddings:
+        similarity_score_reference: 10
+interfaces:
+  chat_app:
+    HOSTNAME: "submit76.mit.edu" 

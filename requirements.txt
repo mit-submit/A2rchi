@@ -1,7 +1,7 @@
 accelerate==1.0.1
 backoff==2.2.1
-beautifulsoup4==4.12.3
-bitsandbytes==0.41.1
+beautifulsoup4==4.12.3 
+bitsandbytes==0.45.1
 chromadb==0.4.13
 clickhouse-connect==0.6.6
 coloredlogs==15.0.1
@@ -49,9 +49,10 @@ pydantic-core==2.23.4
 pydantic-settings==2.5.2
 chroma-hnswlib==0.7.3
 anthropic==0.34.2
-torch==2.4.1
+torch==2.2.0
 scipy==1.14.0
 pulsar-client==3.5.0
 psycopg2-binary==2.9.10
 requests==2.32.3
 pyyaml==6.0.2
+protobuf==3.20.3
