@@ -17,7 +17,7 @@ env = Environment(
     autoescape=select_autoescape(),
     undefined=ChainableUndefined,
 )
-A2RCHI_DIR = os.path.join(os.path.expanduser('~'), ".a2rchi")
+A2RCHI_DIR = os.environ.get('A2RCHI_DIR',os.path.join(os.path.expanduser('~'), ".a2rchi"))
 BASE_CONFIG_TEMPLATE = "base-config.yaml"
 BASE_DOCKERFILE_LOCATION = "dockerfiles"
 BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
