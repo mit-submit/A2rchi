@@ -96,7 +96,7 @@ utils:
     database: {{ utils.postgres.database | default('a2rchi-db', true) }}
     host: {{ postgres_hostname }}
   data_manager:
-    CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(1000, true) }}
+    CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(20000, true) }}
     CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
     use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
     chromadb_host: {{ utils.data_manager.chromadb_host | default('chromadb', true) }}

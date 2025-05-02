@@ -24,6 +24,7 @@ utils:
     database: a2rchi-db
     host: postgres-demo
   data_manager:
+    chunk_size: 10000
     chromadb_host: chromadb-demo
     collection_name: "dev_collection"
     chromadb_port: 8000
