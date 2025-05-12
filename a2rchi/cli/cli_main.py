@@ -156,8 +156,8 @@ def _run_bash_command(command_str: str, verbose=False) -> Tuple[str, str]:
 def _create_volume(volume_name, podman=False):
     # root podman or docker
     if podman:
-        ls_volumes = "sudo podman volume ls"
-        create_volume = f"sudo podman volume create {volume_name}"
+        ls_volumes = "podman volume ls"
+        create_volume = f"podman volume create {volume_name}"
     else:
         ls_volumes = "docker volume ls"
         create_volume = f"docker volume create --name {volume_name}"
@@ -450,7 +450,7 @@ def create(
 
     # create a2rchi system using docker
     if use_podman:
-        compose_up = f"sudo podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
+        compose_up = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     else:
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
@@ -475,7 +475,7 @@ def delete(name, use_podman):
     # stop compose
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
     if use_podman:
-        compose_down = f"sudo podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
+        compose_down = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
     else:
         compose_down = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
     _print_msg("Stopping compose")

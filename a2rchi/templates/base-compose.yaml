@@ -42,17 +42,20 @@ services:
     security_opt:
       - label:disable
     devices:
-    # selecting devices (nvidia0, nvidia1, nvidia2, nvidia3) overrides visible devices and annotations. comment out any devices you don't need
+    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
     # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
-      - "/dev/dri:/dev/dri"
-      - "/dev/nvidia0:/dev/nvidia0"
+      #- "/dev/dri:/dev/dri"
+      #- "/dev/nvidia0:/dev/nvidia0"
       #- "/dev/nvidia1:/dev/nvidia1"
       #- "/dev/nvidia2:/dev/nvidia2"
       #- "/dev/nvidia3:/dev/nvidia3"
-      - "/dev/nvidiactl:/dev/nvidiactl"
-      - "/dev/nvidia-uvm:/dev/nvidia-uvm"
-      - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+      #- "/dev/nvidiactl:/dev/nvidiactl"
+      #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
+      #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+       - "nvidia.com/gpu=0"
+      #- "nvidia.com/gpu=1"
+      #- "nvidia.com/gpu=2"
     annotations:
       org.opencontainers.image.nvidia/gpu.devices: all
     {% endif %}
@@ -256,17 +259,18 @@ services:
     security_opt:
       - label:disable
     devices:
-    # selecting devices (nvidia0, nvidia1, nvidia2, nvidia3) overrides visible devices and annotations. comment out any devices you don't need
+    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
     # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
-      - "/dev/dri:/dev/dri"
+      #- "/dev/dri:/dev/dri"
       #- "/dev/nvidia0:/dev/nvidia0"
-      - "/dev/nvidia1:/dev/nvidia1"
+      #- "/dev/nvidia1:/dev/nvidia1"
       #- "/dev/nvidia2:/dev/nvidia2"
       #- "/dev/nvidia3:/dev/nvidia3"
-      - "/dev/nvidiactl:/dev/nvidiactl"
-      - "/dev/nvidia-uvm:/dev/nvidia-uvm"
-      - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+      #- "/dev/nvidiactl:/dev/nvidiactl"
+      #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
+      #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+      - "nvidia.com/gpu=1"
     annotations:
       org.opencontainers.image.nvidia/gpu.devices: all
     {% endif %}
@@ -330,17 +334,18 @@ services:
     security_opt:
       - label:disable
     devices:
-    # selecting devices (nvidia0, nvidia1, nvidia2, nvidia3) overrides visible devices and annotations. comment out any devices you don't need
+    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
     # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
-      - "/dev/dri:/dev/dri"
+      #- "/dev/dri:/dev/dri"
       #- "/dev/nvidia0:/dev/nvidia0"
       #- "/dev/nvidia1:/dev/nvidia1"
-      - "/dev/nvidia2:/dev/nvidia2"
+      #- "/dev/nvidia2:/dev/nvidia2"
       #- "/dev/nvidia3:/dev/nvidia3"
-      - "/dev/nvidiactl:/dev/nvidiactl"
-      - "/dev/nvidia-uvm:/dev/nvidia-uvm"
-      - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+      #- "/dev/nvidiactl:/dev/nvidiactl"
+      #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
+      #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+      - "nvidia.com/gpu=2"
     annotations:
       org.opencontainers.image.nvidia/gpu.devices: all
     {% endif %}

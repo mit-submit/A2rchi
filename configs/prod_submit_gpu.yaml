@@ -35,4 +35,4 @@ utils:
         similarity_score_reference: 10
 interfaces:
   chat_app:
-    HOSTNAME: "submit76.mit.edu" 
+    HOSTNAME: "submit75.mit.edu" 
