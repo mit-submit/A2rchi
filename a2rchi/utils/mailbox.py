@@ -6,6 +6,7 @@ import email
 import imaplib
 import os
 import re
+from bs4 import BeautifulSoup
 
 ### DEFINITIONS
 # this constant defines an offset into the message description
