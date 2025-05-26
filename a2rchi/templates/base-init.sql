@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     message_id SERIAL,
     sender TEXT NOT NULL,
     content TEXT NOT NULL,
+    context_title TEXT NOT NULL,
+    context TEXT NOT NULL,
     ts TIMESTAMP NOT NULL,
     conf_id INTEGER NOT NULL,
     PRIMARY KEY (message_id),
