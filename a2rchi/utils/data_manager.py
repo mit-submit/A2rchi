@@ -4,9 +4,12 @@ from chromadb.config import Settings
 from langchain_community.document_loaders.text import TextLoader
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import BSHTMLLoader
+from langchain_community.document_loaders import UnstructuredMarkdownLoader
+from langchain_community.document_loaders import PythonLoader
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma.vectorstores import Chroma
 from langchain_text_splitters.character import CharacterTextSplitter
+from langchain_community.document_loaders import DirectoryLoader
 
 import chromadb
 import hashlib
@@ -204,7 +207,7 @@ class DataManager():
             
             # load documents from current file and add to docs and metadata
             docs = loader.load()
-            for doc in docs: 
+            for doc in docs:
                 new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
                 chunks += new_chunks
                 metadatas += [doc.metadata for chunk in new_chunks]
@@ -249,6 +252,12 @@ class DataManager():
         _, file_extension = os.path.splitext(file_path)
         if file_extension == ".txt":
             return TextLoader(file_path)
+        elif file_extension == ".C":
+            return TextLoader(file_path)
+        elif file_extension == ".md":
+            return UnstructuredMarkdownLoader(file_path)
+        elif file_extension == ".py":
+            return PythonLoader(file_path)
         elif file_extension == ".html":
             return BSHTMLLoader(file_path, bs_kwargs={"features": "html.parser"})
         elif file_extension == ".pdf":
