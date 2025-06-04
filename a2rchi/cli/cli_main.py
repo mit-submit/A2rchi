@@ -409,6 +409,9 @@ def create(
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "summary.prompt"))
 
+    # TODO: remove this in favor of config file and get sso creds from secrets
+    print("Copying .env file to a2rchi directory", a2rchi_name_dir)
+    shutil.copyfile('./.env', os.path.join(a2rchi_name_dir, ".env"))
     # copy input lists
     weblists_path = os.path.join(a2rchi_name_dir, "weblists")
     os.makedirs(weblists_path, exist_ok=True)
