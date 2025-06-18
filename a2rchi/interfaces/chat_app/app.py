@@ -26,6 +26,7 @@ from flask import request, jsonify, render_template
 from flask_cors import CORS
 from threading import Lock
 from typing import List
+from urllib.parse import urlparse
 
 import mistune as mt
 import numpy as np
@@ -365,8 +366,9 @@ class ChatWrapper:
             print("INFO - similarity score reference: ", similarity_score_reference)
             print("INFO - similarity score: ", score)
             print("INFO - source: ", source)
-            if score < similarity_score_reference and source in sources.keys(): 
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + sources[source] + " target=\"_blank\" rel=\"noopener noreferrer\">Click here to read more</a></p>"
+            if score < similarity_score_reference and source in sources.keys():
+                parsed_source = urlparse(sources[source])
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + sources[source] + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
             else:
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
