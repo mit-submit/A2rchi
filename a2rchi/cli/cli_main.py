@@ -115,7 +115,7 @@ def _validate_config(config, required_fields):
             value = value[key]  # Drill down into nested dictionaries
 
 
-def _run_bash_command(command_str: str, verbose=False) -> Tuple[str, str]:
+def _run_bash_command(command_str: str, verbose=False, cwd=None) -> Tuple[str, str]:
     """Run a shell command and stream output in real-time, capturing stdout and stderr."""
     command_str_lst = shlex.split(command_str)
     process = subprocess.Popen(
@@ -123,7 +123,8 @@ def _run_bash_command(command_str: str, verbose=False) -> Tuple[str, str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1  # line-buffered
+        bufsize=1,  # line-buffered
+        cwd=cwd
     )
 
     stdout_lines = []
@@ -397,10 +398,20 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
+    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME", "SUMMARY_MODEL_NAME"]
+    chain_config = a2rchi_config["chains"]["chain"]
+
     # Prepare secrets
-    _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+    if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDINGS_NAME", ""):
+        _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
+        compose_template_vars["openai"] = True
+    if any("Anthropic" in chain_config[model] for model in model_fields):
+        _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
+        compose_template_vars["anthropic"] = True
+    if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDINGS_NAME", ""):
+        _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+        compose_template_vars["huggingface"] = True
+
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
 
 
@@ -423,14 +434,16 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
         f.write(config)
 
-    # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
+    with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'r') as f:
+        filled_config = yaml.load(f, Loader=yaml.FullLoader)
+
     # Chat service ports
-    chat_port_host = a2rchi_config.get('interfaces', {}).get('chat_app', {}).get('EXTERNAL_PORT', 7861)
-    chat_port_container = a2rchi_config.get('interfaces', {}).get('chat_app', {}).get('PORT', 7861)
+    chat_port_host = filled_config.get('interfaces').get('chat_app').get('EXTERNAL_PORT')
+    chat_port_container = filled_config.get('interfaces').get('chat_app').get('PORT')
     compose_template_vars['chat_port_host'] = chat_port_host
     compose_template_vars['chat_port_container'] = chat_port_container
     # ChromaDB service ports
-    chromadb_port_host = a2rchi_config.get('utils', {}).get('data_manager', {}).get('chromadb_external_port', 8000)
+    chromadb_port_host = filled_config.get('utils').get('data_manager').get('chromadb_external_port')
     compose_template_vars['chromadb_port_host'] = chromadb_port_host
     # Postgres service ports are never externally exposed, so they don't need to be managed!
 
@@ -454,7 +467,7 @@ def create(
     else:
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
-    stdout, stderr = _run_bash_command(compose_up, verbose=True)
+    stdout, stderr = _run_bash_command(compose_up, verbose=True, cwd=a2rchi_name_dir)
 
 
 @click.command()
