@@ -424,14 +424,16 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
         f.write(config)
 
-    # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
+    with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'r') as f:
+        filled_config = yaml.load(f, Loader=yaml.FullLoader)
+
     # Chat service ports
-    chat_port_host = a2rchi_config.get('interfaces', {}).get('chat_app', {}).get('EXTERNAL_PORT', 7861)
-    chat_port_container = a2rchi_config.get('interfaces', {}).get('chat_app', {}).get('PORT', 7861)
+    chat_port_host = filled_config.get('interfaces').get('chat_app').get('EXTERNAL_PORT')
+    chat_port_container = filled_config.get('interfaces').get('chat_app').get('PORT')
     compose_template_vars['chat_port_host'] = chat_port_host
     compose_template_vars['chat_port_container'] = chat_port_container
     # ChromaDB service ports
-    chromadb_port_host = a2rchi_config.get('utils', {}).get('data_manager', {}).get('chromadb_external_port', 8000)
+    chromadb_port_host = filled_config.get('utils').get('data_manager').get('chromadb_external_port')
     compose_template_vars['chromadb_port_host'] = chromadb_port_host
     # Postgres service ports are never externally exposed, so they don't need to be managed!
 
