@@ -398,10 +398,20 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
+    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME", "SUMMARY_MODEL_NAME"]
+    chain_config = a2rchi_config["chains"]["chain"]
+
     # Prepare secrets
-    _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+    if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDINGS_NAME", ""):
+        _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
+        compose_template_vars["openai"] = True
+    if any("Anthropic" in chain_config[model] for model in model_fields):
+        _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
+        compose_template_vars["anthropic"] = True
+    if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDINGS_NAME", ""):
+        _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+        compose_template_vars["huggingface"] = True
+
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
 
 
