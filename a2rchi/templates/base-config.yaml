@@ -25,6 +25,14 @@ interfaces:
     EXTERNAL_PORT: {{ interfaces.uploader_app.EXTERNAL_PORT | default(5003, true) }}
     HOST: {{ interfaces.uploader_app.HOST | default("0.0.0.0", true) }} # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
     template_folder: {{ interfaces.uploader_app.template_folder | default("/root/A2rchi/a2rchi/interfaces/uploader_app/templates", true) }}
+  grader_app:
+    PORT: {{ interfaces.grader_app.PORT | default(7861, true) }}
+    EXTERNAL_PORT: {{ interfaces.grader_app.EXTERNAL_PORT | default(7861, true) }}
+    HOST: {{ interfaces.grader_app.HOST | default("0.0.0.0", true) }}
+    HOSTNAME: {{ interfaces.grader_app.HOSTNAME | default("localhost", true) }}
+    template_folder: {{ interfaces.grader_app.template_folder | default("/root/A2rchi/a2rchi/interfaces/grader_app/templates", true) }}
+    num_problems: {{ interfaces.grader_app.num_problems | default(1, true) }}
+    # keep grading prompts (so not QA) in chains or here?
   grafana:
     EXTERNAL_PORT: {{ interfaces.grafana.EXTERNAL_PORT | default(3000, true) }}
 
@@ -41,13 +49,19 @@ chains:
     logging:
       input_output_filename: "{{ chains.base.logging.input_output_filename | default('chain_input_output.log', true) }}"
   prompts:
-    CONDENSING_PROMPT: "/root/A2rchi/condense.prompt"
-    MAIN_PROMPT: "/root/A2rchi/main.prompt"
-    SUMMARY_PROMPT: "/root/A2rchi/summary.prompt"
+    CONDENSING_PROMPT: "{{ '/root/A2rchi/condense.prompt' if chains.chain.CONDENSE_MODEL_NAME else null }}"
+    MAIN_PROMPT: "{{ '/root/A2rchi/main.prompt' if chains.chain.MODEL_NAME else null }}"
+    IMAGE_PROCESSING_PROMPT: "{{ '/root/A2rchi/image_processing.prompt' if chains.chain.IMAGE_PROCESSING_MODEL_NAME else null }}"
+    GRADING_SUMMARY_PROMPT: "{{ '/root/A2rchi/grading_summary.prompt' if chains.chain.GRADING_SUMMARY_MODEL_NAME else null }}"
+    GRADING_ANALYSIS_PROMPT: "{{ '/root/A2rchi/grading_analysis.prompt' if chains.chain.GRADING_ANALYSIS_MODEL_NAME else null }}"
+    GRADING_FINAL_GRADE_PROMPT: "{{ '/root/A2rchi/grading_final_grade.prompt' if chains.chain.GRADING_FINAL_GRADE_MODEL_NAME else null }}"
   chain:
-    MODEL_NAME: {{ chains.chain.MODEL_NAME | default("OpenAIGPT4", true) }}
-    CONDENSE_MODEL_NAME: {{ chains.chain.CONDENSE_MODEL_NAME | default("OpenAIGPT4", true) }}
-    SUMMARY_MODEL_NAME: {{ chains.chain.SUMMARY_MODEL_NAME | default("OpenAIGPT4", true) }}
+    MODEL_NAME: {{ chains.chain.MODEL_NAME | default('null', true) }}
+    CONDENSE_MODEL_NAME: {{ chains.chain.CONDENSE_MODEL_NAME | default('null', true) }}
+    IMAGE_PROCESSING_MODEL_NAME: {{ chains.chain.IMAGE_PROCESSING_MODEL_NAME | default('null', true) }}
+    GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
+    GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
+    GRADING_FINAL_GRADE_MODEL_NAME: {{ chains.chain.GRADING_FINAL_GRADE_MODEL_NAME | default('null', true) }}
     MODEL_CLASS_MAP:
       AnthropicLLM:
         class: AnthropicLLM
@@ -74,7 +88,7 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.base_model | default("meta-llama/Llama-2-7b-chat-hf", true) }}
           peft_model: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.peft_model | default("null", true) }}
-          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.enable_salesforce_content_safety | default(true, true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           quantization: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.quantization | default(true, true) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.max_new_tokens | default(4096, true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.seed | default("null", true) }}
@@ -92,7 +106,7 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.base_model | default("Qwen/Qwen2.5-14B-Instruct-1M", true) }}
           peft_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.peft_model | default("null", true) }}
-          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.enable_salesforce_content_safety | default(true, true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           quantization: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.quantization | default(true, true) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.max_new_tokens | default(4096, true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.seed | default("null", true) }}
@@ -105,6 +119,23 @@ chains:
           repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.repetition_penalty | default(1.0, true) }}
           length_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.length_penalty | default(1, true) }}
           max_padding_length: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.max_padding_length | default("null", true) }}
+      HuggingFaceImageLLM:
+        class: HuggingFaceImageLLM
+        kwargs:
+          base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.base_model | default("Qwen/Qwen2.5-14B-Instruct-1M", true) }}
+          quantization: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.quantization | default(true, true) }}
+          min_pixels: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.min_pixels | default(175616, true) }}
+          max_pixels: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.max_pixels | default(1003520, true) }}
+          max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.max_new_tokens | default(4096, true) }}
+          seed: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.seed | default("null", true) }}
+          do_sample: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.do_sample | default(false, false) }}
+          min_length: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.min_length | default("null", true) }}
+          use_cache: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.use_cache | default(true, true) }}
+          top_p: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.top_p | default(0.9, true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.temperature | default(0.6, true) }}
+          top_k: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.top_k | default(50, true) }}
+          repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.repetition_penalty | default(1.0, true) }}
+          length_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.length_penalty | default(1, true) }}
     chain_update_time: {{ chains.chain.chain_update_time | default(10, true) }}
 
 utils:
@@ -122,6 +153,7 @@ utils:
     chromadb_external_port:  {{ utils.data_manager.chromadb_external_port | default(8000, true) }}
     collection_name: {{ collection_name }}
     reset_collection: {{ utils.data_manager.reset_collection | default(true, true) }}
+    num_documents_to_retrieve: {{ utils.data_manager.num_documents_to_retrieve | default(5, true) }}
   embeddings:
     EMBEDDING_NAME: {{ utils.embeddings.EMBEDDING_NAME | default('OpenAIEmbeddings', true) }}
     EMBEDDING_CLASS_MAP:
