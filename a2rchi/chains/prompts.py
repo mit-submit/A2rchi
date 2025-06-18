@@ -1,36 +1,78 @@
 # flake8: noqa
 from langchain_core.prompts import PromptTemplate
 from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.chains.utils.prompt_validators import ValidatedPromptTemplate
+from a2rchi.chains.utils.prompt_validators import (
+    validate_main_prompt,
+    validate_condense_prompt,
+    validate_image_prompt,
+    validate_grading_summary_prompt,
+    validate_grading_analysis_prompt,
+    validate_grading_final_grade_prompt
+)
 
 config = Config_Loader().config["chains"]["prompts"]
 
-def read_prompt(prompt_filepath, is_condense_prompt=False, is_main_prompt=False):
-    with open(prompt_filepath, "r") as f:
-        raw_prompt = f.read()
+if config["MAIN_PROMPT"]:
+    print("main prompt there")
 
-    prompt = ""
-    for line in raw_prompt.split("\n"):
-        if len(line.lstrip())>0 and line.lstrip()[0:1] != "#":
-            prompt += line + "\n"
+if config["IMAGE_PROCESSING_PROMPT"]:
+    print("image processing prompt there")
 
-    # TODO: how do we make the prompt templates + chains more flexible to end users?
-    if is_condense_prompt and ("{chat_history}" not in prompt or "{question}" not in prompt):
-        raise ValueError("""Condensing prompt must contain \"{chat_history}\" and \"{question}\" tags. Instead, found prompt to be:
-                         """ + prompt)
-    if is_main_prompt and ("{context}" not in prompt or "{question}" not in prompt):
-        raise ValueError("""Condensing prompt must contain \"{context}\" and \"{question}\" tags. Instead, found prompt to be:
-                         """ + prompt)
+prompt_config = {
+    "QA": {
+        "path": config["MAIN_PROMPT"],
+        "input_variables": ["context", "question"],
+        "validate": validate_main_prompt,
+    },
+    "CONDENSE_QUESTION": {
+        "path": config["CONDENSING_PROMPT"],
+        "input_variables": ["chat_history", "question"],
+        "validate": validate_condense_prompt,
+    },
+    "IMAGE_PROCESSING": {
+        "path": config["IMAGE_PROCESSING_PROMPT"],
+        "input_variables": [],
+        "validate": validate_image_prompt  # don't think there is anything to validate here...,
+    },
+    "GRADING_SUMMARY": {
+        "path": config["GRADING_SUMMARY_PROMPT"],
+        "input_variables": ["final_student_solution"],
+        "validate": validate_grading_summary_prompt,
+    },
+    "GRADING_ANALYSIS": {
+        "path": config["GRADING_ANALYSIS_PROMPT"],
+        "input_variables": ["official_explanation", "final_student_solution", "solution_summary"],
+        "validate": validate_grading_analysis_prompt,
+    },
+    "GRADING_FINAL_GRADE": {
+        "path": config["GRADING_FINAL_GRADE_PROMPT"],
+        "input_variables": ["final_student_solution", "official_explanation", "analysis_result"],
+        "validate": validate_grading_final_grade_prompt,
+    }
+}
 
-    return prompt
+# need these for deciding which prompts to template/exist?:
+grading_summary = Config_Loader().config["chains"]["chain"]["GRADING_SUMMARY_MODEL_NAME"]
+grading_analysis = Config_Loader().config["chains"]["chain"]["GRADING_ANALYSIS_MODEL_NAME"]
 
-QA_PROMPT = PromptTemplate(
-    template=read_prompt(config["MAIN_PROMPT"], is_main_prompt=True), input_variables=["context", "question"]
-)
+def read_prompt(prompt_filepath: str) -> str:
 
-CONDENSE_QUESTION_PROMPT = PromptTemplate(
-    template=read_prompt(config["CONDENSING_PROMPT"], is_condense_prompt=True), input_variables=["chat_history", "question"]
-)
+    try:
+        with open(prompt_filepath, "r") as f:
+            raw_prompt = f.read()
 
-#SUMMARY_PROMPT = PromptTemplate(
-#    template=read_prompt(config["SUMMARY_PROMPT"]), input_variables=["summary", "new_lines"]
-#)
+        return "\n".join(
+            line for line in raw_prompt.split("\n") if not line.lstrip().startswith("#")
+        )
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Prompt file not found: {prompt_filepath}")
+
+PROMPTS = {
+    name: ValidatedPromptTemplate(
+        template=read_prompt(info["path"]),
+        input_variables=info["input_variables"],
+        validator=info["validate"]
+    )
+    for name, info in prompt_config.items() if info["path"] != ""
+}
