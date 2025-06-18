@@ -74,7 +74,7 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.base_model | default("meta-llama/Llama-2-7b-chat-hf", true) }}
           peft_model: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.peft_model | default("null", true) }}
-          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.enable_salesforce_content_safety | default(true, true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           quantization: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.quantization | default(true, true) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.max_new_tokens | default(4096, true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.LlamaLLM.kwargs.seed | default("null", true) }}
@@ -92,7 +92,7 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.base_model | default("Qwen/Qwen2.5-14B-Instruct-1M", true) }}
           peft_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.peft_model | default("null", true) }}
-          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.enable_salesforce_content_safety | default(true, true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           quantization: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.quantization | default(true, true) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.max_new_tokens | default(4096, true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.seed | default("null", true) }}

@@ -115,7 +115,7 @@ def _validate_config(config, required_fields):
             value = value[key]  # Drill down into nested dictionaries
 
 
-def _run_bash_command(command_str: str, verbose=False) -> Tuple[str, str]:
+def _run_bash_command(command_str: str, verbose=False, cwd=None) -> Tuple[str, str]:
     """Run a shell command and stream output in real-time, capturing stdout and stderr."""
     command_str_lst = shlex.split(command_str)
     process = subprocess.Popen(
@@ -123,7 +123,8 @@ def _run_bash_command(command_str: str, verbose=False) -> Tuple[str, str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1  # line-buffered
+        bufsize=1,  # line-buffered
+        cwd=cwd
     )
 
     stdout_lines = []
@@ -454,7 +455,7 @@ def create(
     else:
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
-    stdout, stderr = _run_bash_command(compose_up, verbose=True)
+    stdout, stderr = _run_bash_command(compose_up, verbose=True, cwd=a2rchi_name_dir)
 
 
 @click.command()
