@@ -7,5 +7,5 @@ RUN mkdir -p /etc/grafana/provisioning/dashboards
 RUN mkdir -p /var/lib/grafana/dashboards
 
 # # copy files into respective grafana directories
-# COPY deploy/grafana/datasources.yaml /etc/grafana/provisioning/datasources/
-# COPY deploy/grafana/dashboards.yaml /etc/grafana/provisioning/dashboards/
+#COPY grafana/datasources.yaml /etc/grafana/provisioning/datasources/
+#COPY grafana/dashboards.yaml /etc/grafana/provisioning/dashboards/

@@ -296,19 +296,25 @@ def create(
 
     locations_of_secrets = a2rchi_config["locations_of_secrets"]
 
-    # fetch or generate grafana password
-    grafana_pg_password = os.environ.get("GRAFANA_PG_PASSWORD", secrets.token_hex(8))
+    
+
 
     # if deployment includes grafana, create docker volume and template deployment files
     compose_template_vars["include_grafana"] = include_grafana
     if include_grafana:
         _create_volume(f"a2rchi-grafana-{name}", podman=use_podman)
 
+        # fetch grafana password or raise error if not set
+        if "GRAFANA_PG_PASSWORD" not in os.environ:
+            raise RuntimeError("Missing required environment variable for grafana service: GRAFANA_PG_PASSWORD")
+
+        grafana_pg_password = os.environ["GRAFANA_PG_PASSWORD"]
+
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
         compose_template_vars["include_grafana"] = include_grafana
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
-        compose_template_vars["grafana_image"] = f"grafana-{name}"
+        compose_template_vars["grafana_image"] = f"docker.io/grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
@@ -330,7 +336,10 @@ def create(
             f.write(grafana_dashboards)
 
         a2rchi_dashboards_template = env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
-        a2rchi_dashboards = a2rchi_dashboards_template.render()
+        a2rchi_dashboards = a2rchi_dashboards_template.render(
+            prod_config_name=a2rchi_config["name"],
+            prod_model_name=a2rchi_config["chains"]["chain"]["MODEL_NAME"]
+        )
         with open(os.path.join(a2rchi_name_dir, "grafana", "a2rchi-default-dashboard.json"), 'w') as f:
             # json.dump(a2rchi_dashboards, f)
             f.write(a2rchi_dashboards)
