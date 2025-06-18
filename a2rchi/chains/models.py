@@ -9,8 +9,12 @@ from langchain_core.language_models.llms import LLM
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
+from qwen_vl_utils import process_vision_info
+
 import requests
 from typing import Optional, List
+
+from a2rchi.chains.utils.prompt_formatters import PromptFormatter
 
 class BaseCustomLLM(LLM):
     """
@@ -260,6 +264,8 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     local_files_only=False,
                     device_map="auto",
                     quantization_config=bnbconfig,
+                    use_safetensors=True,
+                    cache_dir="/root/data/", # load weights into dir mounted as volume so don't need to keepd downloading when iterating
                 )
             else:
                 base_model = AutoModelForCausalLM.from_pretrained(
@@ -267,6 +273,8 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     local_files_only=False,
                     device_map="auto",
                     torch_dtype=torch.float16,
+                    use_safetensors=True,
+                    cache_dir="/root/data/", # load weights into dir mounted as volume so don't need to keepd downloading when iterating
                 )
 
             if self.peft_model:
@@ -295,14 +303,9 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         stop: Optional[List[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
-        
-        # longer term, better solution probably needed - shouldn't rely on string parsing the prompts...
-
-        context_start = prompt.find("Context:")
-        question_start = prompt.rfind("Question:")
 
         # check if input is safe:
-        safety_results = [check(prompt[question_start:]) for check in self.safety_checker]
+        safety_results = [check(prompt) for check in self.safety_checker]
         are_safe = all([r[1] for r in safety_results])
         if not are_safe:
             print("User prompt deemed unsafe.")
@@ -317,50 +320,10 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     
                     Please try to reformat your question."""
 
-        # prepare input
-        special_tokens = self.tokenizer.special_tokens_map
+        formatter = PromptFormatter(self.tokenizer)
+        formatted_prompt, end_tag = formatter.format_prompt(prompt)
 
-        # force chat template for final QA
-        if "<|im_start|>" not in special_tokens.get("additional_special_tokens", []):
-            self.tokenizer.add_special_tokens({"additional_special_tokens": ["<|im_start|>", "<|im_end|>"]})
-
-        # instructor template
-        if "[INST]" in special_tokens.get("additional_special_tokens", []):
-            print("INFO - using instructor template")
-            formatted_chat = f"[INST] {prompt} [/INST]"
-            end_tag = "[/INST]"
-
-        # chat template
-        elif "<|im_start|>" in special_tokens.get("additional_special_tokens", []) and context_start != -1 and question_start != -1:
-            print("INFO - using chat template")
-            real_context = prompt[context_start+len("Context:"):question_start]
-            question_end = prompt.rfind("Helpful Answer:") if 'Helpful Answer:' in prompt else len(prompt)
-
-            message = [
-                {"role": "system", "content": prompt[:context_start]},
-                {"role": "assistant", "content": f"Here is some useful context:\n {real_context}"},
-                {"role": "user", "content": prompt[question_start+len("Question:"):question_end]},
-            ]
-            formatted_chat = self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True)
-            end_tag = "assistant"
-
-        # current template for history and follow-up condensing before final QA
-        elif "Standalone question:" in prompt:
-            # Handle standalone question format
-            print("INFO - using standalone question template")
-            prompt = prompt.replace("Standalone question:", "Return only the standalone question in the next line, formatted with 'FINAL QUESTION: ', followed by the question itself.")
-            formatted_chat = prompt
-            end_tag = "FINAL QUESTION: "
-
-        # fallback to default if no template detected
-        else:
-            print("INFO - not able to detect template, will try without (debugging info below)")
-            print("DEBUG - special tokens: ", self.tokenizer.special_tokens_map)
-            print("DEBUG - prompt: ", prompt)
-            formatted_chat = prompt
-            end_tag = ""
-
-        batch = self.tokenizer(formatted_chat, return_tensors="pt", add_special_tokens=False)
+        batch = self.tokenizer(formatted_prompt, return_tensors="pt", add_special_tokens=False)
         batch = {k: v.to("cuda") for k, v in batch.items()}
 
         # perform inference
@@ -403,6 +366,175 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
 # setting class-level cache for HuggingFaceOpenLLM to store loaded models
 # prevents doubly loading the same model multiple times
 HuggingFaceOpenLLM._MODEL_CACHE = {}
+
+
+class HuggingFaceImageLLM(BaseCustomLLM):
+    """
+    Loading any image-based LLM available on Hugging Face. Make sure that the model
+    is downloaded and the base_model_path is linked to correct model.
+    Pick your favorite: https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/
+    Note you might need to change other parameters, e.g., max_new_tokens.
+    """
+    base_model: str = None
+    quantization: bool = False
+    min_pixels: int = 224*28*28 # got these numbers from the HuggingFace page for Qwen2.5-VL-Chat-7B-Instruct... boh
+    max_pixels: int = 1280*28*28
+    max_new_tokens: int = 1024
+    seed: int = None
+    do_sample: bool = False
+    min_length: int = None
+    use_cache: bool = True
+    top_p: float = .9
+    temperature: float = .6
+    top_k: int = 50
+    repetition_penalty: float = 1.0
+    length_penalty: int = 1
+    processor: Callable = None
+    hf_model: Callable = None
+
+    @classmethod
+    def get_cached_model(cls, key):
+        return cls._MODEL_CACHE.get(key)
+
+    @classmethod
+    def set_cached_model(cls, key, value):
+        cls._MODEL_CACHE[key] = value
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        #Packages needed
+        from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, AutoProcessor
+
+        # Set the seeds for reproducibility
+        if self.seed:
+            torch.manual_seed(self.seed)
+            torch.cuda.manual_seed(self.seed)
+
+        model_cache_key = (self.base_model, self.quantization, None)
+
+        print("CACHE IS AT:", id(HuggingFaceOpenLLM._MODEL_CACHE))
+        print("INFO - cache key:", model_cache_key)
+        print("INFO - current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
+
+        cached = self.get_cached_model(model_cache_key)
+        if cached:
+            print("INFO - model found in cache.")
+            self.processor, self.hf_model = cached
+        else:
+            print("INFO - model not in cache. Loading...")
+
+
+        self.processor = AutoProcessor.from_pretrained(self.base_model, min_pixels=self.min_pixels, max_pixels=self.max_pixels, local_files_only=False)
+
+        print(f"Processor type: {type(self.processor)}")
+        print(f"Processor class name: {self.processor.__class__.__name__}")
+        print(f"Has apply_chat_template: {hasattr(self.processor, 'apply_chat_template')}")
+        import inspect
+        if hasattr(self.processor, 'tokenizer'):
+            sig = inspect.signature(self.processor.tokenizer.__call__)
+            print(f"Tokenizer call parameters: {list(sig.parameters.keys())}")
+            
+        # Check processor's call signature
+        sig = inspect.signature(self.processor.__call__)
+        print(f"Processor call parameters: {list(sig.parameters.keys())}")
+        
+        self.hf_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            self.base_model,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            local_files_only=False,
+            use_safetensors=True,
+            cache_dir="/root/data/",  # load weights into dir mounted as volume so don't need to keep downloading when iterating
+        )
+
+        self.hf_model.eval()
+
+        self.set_cached_model(model_cache_key, (self.processor, self.hf_model))
+        print(f"[HuggingFaceImageLLM] - {self.base_model} model loaded and cached.")
+
+
+    @property
+    def _llm_type(self) -> str:
+        return "custom"
+
+
+    def _call(
+        self,
+        prompt: str = None,
+        images: List[Union[str, Any]] = None, # base64 encoded images
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+    ) -> str:
+
+        print(f"[HuggingFaceImageLLM] - Processing prompt: {prompt}")
+
+        # Single unified message format (like the official example)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    # Add images if they exist
+                    *([{"type": "image", "image": f"data:image/jpeg;base64,{img}"} 
+                    for img in images] if images else []),
+                    # Add text
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ]
+
+        print("Applying chat template")
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        print("Processing vision info")
+        image_inputs, video_inputs = process_vision_info(messages)
+
+        print("Tokenizing inputs")
+        inputs = self.processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        )
+        inputs = inputs.to("cuda")
+
+        # perform inference
+        print("performing inference")
+        with torch.no_grad():
+            generated_ids = self.hf_model.generate(
+                **inputs,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=self.do_sample,
+                top_p=self.top_p,
+                temperature=self.temperature,
+                min_length=self.min_length,
+                use_cache=self.use_cache,
+                top_k=self.top_k,
+                repetition_penalty=self.repetition_penalty,
+                length_penalty=self.length_penalty,
+            )
+
+        print("decoding output")
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+
+        output_text = self.processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
+
+        
+        return output_text
+
+
+HuggingFaceImageLLM._MODEL_CACHE = {}
+
+
 
 class OpenAILLM(ChatOpenAI):
     """
