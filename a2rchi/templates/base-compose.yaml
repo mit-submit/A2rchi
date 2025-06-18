@@ -27,6 +27,16 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
+    {% if use_gpu and not use_podman -%}
+    # TODO: docker GPU configuration more testing
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    {% endif %}
     secrets:
       {% if openai -%}
       - openai_api_key
@@ -50,11 +60,11 @@ services:
     ports:
       - {{ chat_port_host }}:{{ chat_port_container }}  # host:container
     restart: always
-    {% if use_gpu -%}
+    {% if use_gpu and use_podman -%}
+    # podman GPU configuration
     security_opt:
       - label:disable
-    devices:
-    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
+    #devices:
     # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
       #- "/dev/dri:/dev/dri"
@@ -65,7 +75,7 @@ services:
       #- "/dev/nvidiactl:/dev/nvidiactl"
       #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
       #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
-       - "nvidia.com/gpu=0"
+      # - "nvidia.com/gpu=0"
       #- "nvidia.com/gpu=1"
       #- "nvidia.com/gpu=2"
     annotations:

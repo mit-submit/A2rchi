@@ -129,7 +129,7 @@ utils:
         class: OpenAIEmbeddings
         kwargs:
           model: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.kwargs.model | default('text-embedding-3-small', true) }}
-        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.similarity_score_reference | default(0.4, true) }}
+        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.similarity_score_reference | default(10, true) }}
       HuggingFaceEmbeddings:
         class: HuggingFaceEmbeddings
         kwargs:
@@ -138,7 +138,7 @@ utils:
             device: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.model_kwargs.device | default('cpu', true) }}
           encode_kwargs: 
             normalize_embeddings: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
-        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(0.9, true) }}
+        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(10, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
