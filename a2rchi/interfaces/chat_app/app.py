@@ -366,7 +366,7 @@ class ChatWrapper:
             print("INFO - similarity score: ", score)
             print("INFO - source: ", source)
             if score < similarity_score_reference and source in sources.keys(): 
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + sources[source] + " target=\"_blank\" rel=\"noopener noreferrer\">Click here to read more</a></p>"
             else:
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
