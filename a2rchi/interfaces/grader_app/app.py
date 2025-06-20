@@ -121,16 +121,18 @@ class GradingWrapper:
     #     especially, most obviously, get_evaluation
 
     ##################
-    def __call__(self, official_explanation: str, student_solution: str, additional_comments: str = "") -> str:
+    def __call__(self, student_solution: str, official_explanation: str, additional_comments: str = "") -> str:
         """
         Main grading pipeline: run summary → analysis → final decision.
         Returns final evaluation text.
         """
         self.lock.acquire()
         try:
-            summary = self.run_summary_prompt(student_solution)
-            analysis = self.run_analysis_prompt(official_explanation, student_solution, summary)
-            final_decision = self.run_final_decision_prompt(official_explanation, student_solution, summary, analysis, additional_comments)
+            final_decision = self.grader(
+                submission_text=student_solution,
+                rubric_text=official_explanation,
+                additional_comments=additional_comments
+            )
         except Exception as e:
             print(f"ERROR - {str(e)}")
             final_decision = "Error during grading pipeline"
@@ -141,52 +143,6 @@ class GradingWrapper:
             if self.conn is not None:
                 self.conn.close()
         return final_decision
-
-    def run_summary_prompt(self, student_solution):
-        prompt = (
-            "You are a physics grader. Summarize student's solution:\n\n"
-            f"{student_solution}"
-        )
-        return self.get_evaluation(prompt)
-
-    def run_analysis_prompt(self, official_explanation, student_solution, summary):
-        prompt = (
-            "You are a physics grader. Analyze the solution based on rubric:\n\n"
-            f"Rubric:\n{official_explanation}\n\n"
-            f"Student Solution:\n{student_solution}\n\n"
-            f"Summary:\n{summary}"
-        )
-        return self.get_evaluation(prompt)
-
-    def run_final_decision_prompt(self, official_explanation, student_solution, summary, analysis, additional_comments):
-        prompt = (
-            "You are a physics grader. Final evaluation based on:\n\n"
-            f"Rubric:\n{official_explanation}\n\n"
-            f"Student Solution:\n{student_solution}\n\n"
-            f"Summary:\n{summary}\n\n"
-            f"Analysis:\n{analysis}\n\n"
-            f"Additional Comments:\n{additional_comments}"
-        )
-        return self.get_evaluation(prompt)
-
-    def get_evaluation(self, prompt):
-        normalized_prompt = " ".join(prompt.lower().split())
-        with self.cache_lock:
-            if normalized_prompt in self.evaluation_cache:
-                return self.evaluation_cache[normalized_prompt]
-        try:
-            response = self.openai_client.ChatCompletion.create(
-                model="gpt-4o",
-                temperature=0,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            result = response["choices"][0]["message"]["content"]
-            with self.cache_lock:
-                self.evaluation_cache[normalized_prompt] = result
-            return result
-        except Exception as e:
-            print(f"Evaluation run failed: {e}")
-            return "Evaluation failed due to API error."
 
 
 
@@ -500,8 +456,18 @@ class FlaskAppWrapper(object):
 
         grading_result = self.grader(final_student_solution, official_explanation, additional_comments)
 
-        earned_total, max_total = self.calculate_total_score(grading_result)
+        grading_result_score = grading_result["final_grade"]
+
+        earned_total, max_total = self.calculate_total_score(grading_result_score)
         final_score_eval = (earned_total / max_total) * 100 if max_total > 0 else 0
+
+        percentage = final_score_eval
+        if percentage <= 40:
+            performance_message = "unsatisfactory performance"
+        elif percentage <= 80:
+            performance_message = "satisfactory performance"
+        else:
+            performance_message = "excellent work"
 
         # need to return:
         # - performance_message
@@ -521,11 +487,11 @@ class FlaskAppWrapper(object):
 
         return render_template(
             "result.html",
-            performance_message="performance_message",
-            detailed_evaluation="detailed_evaluation",
-            student_evaluation="student_evaluation",
+            performance_message=performance_message,
+            detailed_evaluation="todo: detailed_evaluation",
+            student_evaluation="todo: student_evaluation",
             final_score_skeleton=222,
-            handwritten_explanation="handwritten_explanation",
+            handwritten_explanation="todo: handwritten_explanation",
             handwritten_images=base64_images,
             problem_number=problem_number,
             earned_total=earned_total,

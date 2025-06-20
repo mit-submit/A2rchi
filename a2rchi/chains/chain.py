@@ -14,7 +14,7 @@ from langchain.chains import ConversationChain
 import chromadb
 
 
-# maybe want to split into multiple chains...
+# at some point maybe won't make sense to keep one generic class...
 class Chain() :
 
     def __init__(self, image_processing=False, grading=False):
@@ -46,15 +46,14 @@ class Chain() :
         print("Using collection: ", self.collection_name)
 
         model_class_map = self.chain_config["MODEL_CLASS_MAP"]
-        model_name = self.chain_config["MODEL_NAME"]
+        model_name = self.chain_config.get("MODEL_NAME", None)
         condense_model_name = self.chain_config.get("CONDENSE_MODEL_NAME", model_name)
-        summary_model_name = self.chain_config.get("SUMMARY_MODEL_NAME", model_name)
 
         # for grading service
-        image_processing_model_name = self.chain_config.get("IMAGE_PROCESSING_MODEL_NAME", model_name)
-        grading_summary_model_name = self.chain_config.get("GRADING_SUMMARY_MODEL_NAME", model_name)
-        grading_analysis_model_name = self.chain_config.get("GRADING_ANALYSIS_MODEL_NAME", model_name)
-        grading_final_grade_model_name = self.chain_config.get("GRADING_FINAL_GRADE_MODEL_NAME", model_name)
+        image_processing_model_name = self.chain_config.get("IMAGE_PROCESSING_MODEL_NAME", None)
+        grading_final_grade_model_name = self.chain_config.get("GRADING_FINAL_GRADE_MODEL_NAME", None)
+        grading_summary_model_name = self.chain_config.get("GRADING_SUMMARY_MODEL_NAME", grading_final_grade_model_name)
+        grading_analysis_model_name = self.chain_config.get("GRADING_ANALYSIS_MODEL_NAME", grading_final_grade_model_name)
 
         ########################################################################################################################################################
 
@@ -77,7 +76,7 @@ class Chain() :
                 print("\t" , param_name , ": " , model_class_map[grading_final_grade_model_name]["kwargs"][param_name])
 
             if grading_final_grade_model_name == model_name or "GRADING_ANALYSIS" not in PROMPTS:
-                self.grading_final_grade_prompt = None
+                self.grading_analysis_prompt = None
                 self.grading_analysis_llm = None
             else:
                 self.grading_analysis_prompt = PROMPTS["GRADING_ANALYSIS"]

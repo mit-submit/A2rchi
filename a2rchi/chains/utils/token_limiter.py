@@ -1,14 +1,14 @@
 from langchain_core.documents import Document
 
 class TokenLimiter:
-    def __init__(self, llm, max_tokens: int):
+    def __init__(self, llm, max_tokens: int, reserved_tokens: int = 1000):
         """
         args:
             llm: The LLM object, must have get_num_tokens(text) method.
             max_tokens_limit: Max total token count allowed.
         """
         self.llm = llm
-        self.max_tokens = max_tokens
+        self.effective_max_tokens = max_tokens - reserved_tokens
         
     def reduce_tokens_below_limit(self, docs: list[Document]) -> list[Document]:
         """
@@ -24,7 +24,7 @@ class TokenLimiter:
         token_count = sum(tokens)
         num_docs = len(docs)
 
-        while token_count > self.max_tokens and num_docs > 0:
+        while token_count > self.effective_max_tokens and num_docs > 0:
             num_docs -= 1
             token_count -= tokens[num_docs] if num_docs >= 0 else 0
 

@@ -41,5 +41,5 @@ def validate_grading_analysis_prompt(prompt: str):
         raise ValueError(f"GRADING_ANALYSIS_PROMPT missing one of required keys. Found:\n{prompt}")
 
 def validate_grading_final_grade_prompt(prompt: str):
-    if not all(k in prompt for k in ["{final_student_solution}", "{official_explanation}", "{analysis_result}"]):
+    if not all(k in prompt for k in ["{rubric_text}", "{submission_text}", "{analysis}"]):
         raise ValueError(f"GRADING_FINAL_GRADE_PROMPT missing one of required keys. Found:\n{prompt}")

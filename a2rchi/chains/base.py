@@ -242,6 +242,8 @@ class BaseGradingChain:
         logger.add(logfile, colorize=True, enqueue=True)
         handler = FileCallbackHandler(logfile)
 
+        # TODO: for supporting different LLMs for each step, define _llm = ... for passing to summary and analysis chains
+
         # build chains
         if summary_prompt is not None:
             summary_chain = LLMChain(
@@ -250,6 +252,8 @@ class BaseGradingChain:
                 callbacks = [handler],
                 verbose=verbose,
             )
+        else:
+            summary_chain = None
 
         if analysis_prompt is not None:
             analysis_chain = LLMChain(
@@ -258,6 +262,8 @@ class BaseGradingChain:
                 callbacks = [handler],
                 verbose=verbose,
             )
+        else:
+            analysis_chain = None
 
         final_grade_chain = LLMChain(
             llm=llm,
@@ -294,7 +300,7 @@ class BaseGradingChain:
 
         token_limiter = TokenLimiter(
             llm=self.final_grade_chain.llm,
-            max_tokens=self.final_grade_chain.llm_chain.llm.max_tokens if hasattr(self.final_grade_chain.llm_chain.llm, 'max_tokens') else 7000,
+            max_tokens=self.final_grade_chain.llm.max_tokens if hasattr(self.final_grade_chain.llm, 'max_tokens') else 7000,
             reserved_tokens=self._estimate_grader_reserved_tokens(submission_text, rubric_text, summary if self.summary_chain else "", additional_comments)
         )
 
@@ -314,9 +320,8 @@ class BaseGradingChain:
             )
 
         final_grade = self.final_grade_chain.run(
-            submission_text=submission_text,
             rubric_text=rubric_text,
-            summary=summary if self.summary_chain else "",
+            submission_text=submission_text,
             analysis=analysis if self.analysis_chain else "No analysis summary, complete the final grading without it.",
             additional_comments=additional_comments,
         )
@@ -329,7 +334,7 @@ class BaseGradingChain:
         }
 
     
-    def _estimate_reserved_tokens(self, submission_text: str, rubric_text: str, summary: str, additional_comments: str) -> int:
+    def _estimate_grader_reserved_tokens(self, submission_text: str, rubric_text: str, summary: str, additional_comments: str) -> int:
         """
         Estimate the number of reserved tokens based on the input texts.
         """
