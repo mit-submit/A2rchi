@@ -1,5 +1,7 @@
 services:
   chat:
+    env_file: 
+      - ./.env
     image: {{ chat_image }}:{{ chat_tag }}
     build:
       context: .
