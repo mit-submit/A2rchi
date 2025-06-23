@@ -212,6 +212,7 @@ def cli():
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
+@click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'use_gpu', type=bool, default=False, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
@@ -222,6 +223,7 @@ def create(
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
+    include_piazza_service,
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
@@ -286,6 +288,9 @@ def create(
         'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
         'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
     ]
+    if include_piazza_service:
+        required_fields.append('utils.piazza.network_id')
+
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
         a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
@@ -372,6 +377,19 @@ def create(
 
          _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
          _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
+
+    compose_template_vars["include_piazza_service"] = include_piazza_service
+    if include_piazza_service:
+        _print_msg("Preparing Piazza Service")
+
+        compose_template_vars["piazza_image"] = f"piazza-{name}"
+        compose_template_vars["piazza_tag"] = tag
+
+        # piazza secrets
+        _prepare_secret(a2rchi_name_dir, "piazza_email", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
+
 
     compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
     if include_cleo_and_mailer:
