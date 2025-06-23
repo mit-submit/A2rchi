@@ -182,7 +182,6 @@ a2rchi delete --name my-a2rchi
 ```
 You can use the `--rmi` option to remove the images,
 ```
-```
 a2rchi delete --name my-a2rchi --rmi
 ```
 
