@@ -263,10 +263,9 @@ def create(
         "chromadb_tag": tag,
         "chromadb_container_name": f"chromadb-{name}",
         "postgres_container_name": f"postgres-{name}",
+        "use_podman": use_podman,
+        "use_gpu": use_gpu,
     }
-
-    # tell compose whether to look for gpus or not
-    compose_template_vars["use_gpu"] = use_gpu
 
     # piazza compose vars
     compose_template_vars["piazza_tag"] = tag
@@ -296,9 +295,6 @@ def create(
 
     locations_of_secrets = a2rchi_config["locations_of_secrets"]
 
-    
-
-
     # if deployment includes grafana, create docker volume and template deployment files
     compose_template_vars["include_grafana"] = include_grafana
     if include_grafana:
@@ -312,7 +308,6 @@ def create(
 
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
-        compose_template_vars["include_grafana"] = include_grafana
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
         compose_template_vars["grafana_image"] = f"docker.io/grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
@@ -411,13 +406,13 @@ def create(
     chain_config = a2rchi_config["chains"]["chain"]
 
     # Prepare secrets
-    if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDINGS_NAME", ""):
+    if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
         _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
         compose_template_vars["openai"] = True
     if any("Anthropic" in chain_config[model] for model in model_fields):
         _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
         compose_template_vars["anthropic"] = True
-    if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDINGS_NAME", ""):
+    if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
         _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
         compose_template_vars["huggingface"] = True
 
