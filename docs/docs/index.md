@@ -178,7 +178,11 @@ To access the chat interface, visit its corresponding port (` 0.0.0.0:7861` in t
 
 Lastly, to tear down the deployment, simply run:
 ```
-$ a2rchi delete --name my-a2rchi
+a2rchi delete --name my-a2rchi
+```
+You can use the `--rmi` option to remove the images,
+```
+a2rchi delete --name my-a2rchi --rmi
 ```
 
 ## Helpful Notes for Production Deployments
