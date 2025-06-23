@@ -208,13 +208,13 @@ def cli():
 
 
 @click.command()
-@click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
+@click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
-@click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
-@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
-@click.option('--gpu', 'use_gpu', type=bool, default=False, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
+@click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
+@click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
+@click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 
 def create(
@@ -475,9 +475,9 @@ def create(
 
 
 @click.command()
-@click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
-@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
-def delete(name, use_podman):
+@click.option('--name', type=str, help="Name of the a2rchi deployment.")
+@click.option('--rmi', is_flag=True, help="Remove images after deleting the deployment.")
+def delete(name, rmi):
     """
     Delete instance of RAG system with the specified name.
     """
@@ -489,14 +489,39 @@ def delete(name, use_podman):
             f"Please provide a name for the deployment using the --name flag."
         )
 
-    # stop compose
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
-    if use_podman:
-        compose_down = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
-    else:
-        compose_down = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
-    _print_msg("Stopping compose")
-    _run_bash_command(compose_down)
+    compose_file = os.path.join(a2rchi_name_dir, 'compose.yaml')
+    extra_args = ""
+
+    if rmi: extra_args += "--rmi all"
+
+    def is_installed(cmd):
+        return shutil.which(cmd) is not None
+
+    def is_running(compose_cmd):
+        try:
+            ps_cmd = f"{compose_cmd} -f {compose_file} ps"
+            stdout, _ = _run_bash_command(ps_cmd)
+            # If any service is listed as "Up", it's running
+            return any("Up" in line for line in stdout.splitlines())
+        except Exception:
+            return False
+
+    # check whether the images are running on either docker or podman
+    compose_stopped = False
+    if is_installed("podman"):
+        if is_running("podman compose"):
+            _print_msg("Stopping podman compose deployment")
+            _run_bash_command(f"podman compose -f {compose_file} down {extra_args}")
+            compose_stopped = True
+    if is_installed("docker"):
+        if is_running("docker compose"):
+            _print_msg("Stopping docker compose deployment")
+            _run_bash_command(f"docker compose -f {compose_file} down {extra_args}")
+            compose_stopped = True
+
+    if not compose_stopped:
+        _print_msg("No running docker or podman compose deployment found, or neither is installed.")
 
     # remove files in a2rchi directory
     _print_msg("Removing files in a2rchi directory")
