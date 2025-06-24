@@ -458,6 +458,8 @@ class FlaskAppWrapper(object):
 
         grading_result_score = grading_result["final_grade"]
 
+        print(f"Grading result score: {grading_result_score}")
+
         earned_total, max_total = self.calculate_total_score(grading_result_score)
         final_score_eval = (earned_total / max_total) * 100 if max_total > 0 else 0
 
@@ -488,18 +490,18 @@ class FlaskAppWrapper(object):
         return render_template(
             "result.html",
             performance_message=performance_message,
-            detailed_evaluation="todo: detailed_evaluation",
+            detailed_evaluation=grading_result_score,
             student_evaluation="todo: student_evaluation",
-            final_score_skeleton=222,
-            handwritten_explanation="todo: handwritten_explanation",
+            final_score_skeleton=222, # not running non-AI evaluation yet
+            handwritten_explanation=final_student_solution+"\n\nAdditional comments:\n\n"+additional_comments,
             handwritten_images=base64_images,
             problem_number=problem_number,
             earned_total=earned_total,
             max_total=max_total,
             total_problems=self.get_total_problems(),
             final_score_eval=final_score_eval,
-            avg_earned=222,
-            score_std=222,
+            avg_earned=222, # not running multiple evaluations yet
+            score_std=222, # not running multiple evaluations yet
             submission_id=submission_id,
             is_mobile=self.get_device_flags()[0],
             accessibility=self.get_device_flags()[1]
