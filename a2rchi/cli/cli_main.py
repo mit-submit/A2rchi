@@ -35,7 +35,7 @@ class InvalidCommandException(Exception):
 class BashCommandException(Exception):
     pass
 
-def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets, ext="txt"):
+def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets):
     """
     Prepares a secret by locating its file in the specified directories, 
     reading its content, and saving it to a target directory.
@@ -74,7 +74,7 @@ def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets, ext="txt
     os.makedirs(secrets_dir, exist_ok=True)
 
     # Look for the secret file in the specified locations
-    secret_filename = f"{secret_name.lower()}.{ext}"
+    secret_filename = f"{secret_name.lower()}.txt"
     found_secrets = []
 
     for location in locations_of_secrets:
@@ -94,22 +94,27 @@ def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets, ext="txt
 
     # Read the secret from the found file
     secret_file_path = found_secrets[0]
+    with open(secret_file_path, 'r') as secret_file:
+        secret_value = secret_file.read().strip()
 
-    if ext == "csv" or "solution_with_rubric" in secret_filename:
-        # If the secret is a users.csv file, copy it directly
-        target_secret_path = os.path.join(secrets_dir, secret_filename)
-        shutil.copyfile(secret_file_path, target_secret_path)
-        _print_msg(f"{secret_filename} secret prepared at {target_secret_path}.")
-        return
-    
-    else:
-        with open(secret_file_path, 'r') as secret_file:
-            secret_value = secret_file.read().strip()
+    # Write the secret to the target directory
+    target_secret_path = os.path.join(secrets_dir, secret_filename)
+    with open(target_secret_path, 'w') as target_file:
+        target_file.write(secret_value)
 
-        # Write the secret to the target directory
-        target_secret_path = os.path.join(secrets_dir, secret_filename)
-        with open(target_secret_path, 'w') as target_file:
-            target_file.write(secret_value)
+def _prepare_grading_rubrics(a2rchi_name_dir, rubric_dir, num_problems):
+        rubrics = []
+        for problem in range(1, num_problems + 1):
+            _print_msg(f"Preparing rubric for problem {problem}")
+            rubric_path = os.path.expanduser(os.path.join(rubric_dir, f"solution_with_rubric_{problem}.txt"))
+            if not os.path.isfile(rubric_path):
+                raise FileNotFoundError(f"Rubric file for problem {problem} not found at {rubric_path}")
+            target_rubric_path = os.path.join(a2rchi_name_dir, f"solution_with_rubric_{problem}.txt")
+            shutil.copyfile(rubric_path, target_rubric_path)
+            rubrics.append(f"solution_with_rubric_{problem}")
+            _print_msg(f"Rubric for problem {problem} prepared at {target_rubric_path}.")
+
+        return rubrics
 
 def _validate_config(config, required_fields):
     """
@@ -297,7 +302,9 @@ def create(
     if include_grader_service:
         required_fields = [
             'name',
-            'interfaces.grader_app.num_problems',
+            'global.TRAINED_ON',
+            'interfaces.grader_app.num_problems', 'interfaces.grader_app.local_rubric_dir', 'interfaces.grader_app.local_users_csv_dir',
+            'chains.input_lists',
             'chains.prompts.IMAGE_PROCESSING_PROMPT', 'chains.prompts.GRADING_FINAL_GRADE_PROMPT',
             'chains.chain.IMAGE_PROCESSING_MODEL_NAME', 'chains.chain.GRADING_FINAL_GRADE_MODEL_NAME',
         ]
@@ -322,20 +329,24 @@ def create(
         compose_template_vars["grader_volume_name"] = f"a2rchi-grader-{name}"
         _create_volume(compose_template_vars["grader_volume_name"], podman=use_podman)
 
-        _prepare_secret(a2rchi_name_dir, "users", locations_of_secrets, ext="csv")
         _prepare_secret(a2rchi_name_dir, "admin_password", locations_of_secrets)
 
-        
-        rubrics = []
-        for problem in range(1, a2rchi_config['interfaces']['grader_app']['num_problems'] + 1):
-            _print_msg(f"Preparing rubric for problem {problem}")
-            _prepare_secret(a2rchi_name_dir, f"solution_with_rubric_{problem}", locations_of_secrets)
-            rubrics.append(f"solution_with_rubric_{problem}")
+        # prepare grader app logins file (users.csv)
+        users_csv_dir = a2rchi_config['interfaces']['grader_app']['local_users_csv_dir']
+        users_csv_path = os.path.expanduser(os.path.join(users_csv_dir, "users.csv"))
+        _print_msg(f"Preparing users.csv from {users_csv_path}")
+        if not os.path.isfile(users_csv_path):
+            raise FileNotFoundError(f"users.csv file not found in directory {users_csv_dir}")
+        target_users_csv_path = os.path.join(a2rchi_name_dir, "users.csv")
+        shutil.copyfile(users_csv_path, target_users_csv_path)
+
+        # prepare rubrics for n problems (config: interfaces.grader_app.num_problems) 
+        rubric_dir = a2rchi_config['interfaces']['grader_app']['local_rubric_dir']
+        num_problems = a2rchi_config['interfaces']['grader_app']['num_problems']
+
+        rubrics = _prepare_grading_rubrics(a2rchi_name_dir, rubric_dir, num_problems)
 
         compose_template_vars["rubrics"] = rubrics
-
-
-
 
 
 

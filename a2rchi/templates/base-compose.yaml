@@ -5,8 +5,6 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if use_gpu else '' }}
-      args:
-        TAG: {{ chat_tag }}
     container_name: {{ chat_container_name }}
     depends_on:
       chromadb:
@@ -136,8 +134,6 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-uploader
-      args:
-        TAG: {{ uploader_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -173,8 +169,6 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-grader{{ '-gpu' if use_gpu else '' }}
-      args:
-        TAG: {{ grader_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -199,11 +193,7 @@ services:
       - anthropic_api_key
       - hf_token
       - pg_password
-      - users # csv file with user logins
       - admin_password
-      {%- for rubric in rubrics | default([]) %}
-      - {{ rubric }}
-      {%- endfor %}
     ports: 
       - {{ grader_port_host }}:{{ grader_port_container }}  # host:container
     volumes:
@@ -211,9 +201,9 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./image_processing.prompt:/root/A2rchi/image_processing.prompt
       - ./grading_final_grade.prompt:/root/A2rchi/grading_final_grade.prompt
-      - ./secrets/users.csv:/root/A2rchi/users.csv
+      - ./users.csv:/root/A2rchi/users.csv
       {%- for rubric in rubrics | default([]) %}
-      - ./secrets/{{ rubric }}.txt:/root/A2rchi/{{ rubric }}.txt
+      - ./{{ rubric }}.txt:/root/A2rchi/{{ rubric }}.txt
       {%- endfor %}
       # TODO: conditionally include grading summary and analysis prompts
     logging:
@@ -248,8 +238,6 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-piazza
-      args:
-        TAG: {{ piazza_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -283,8 +271,6 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-cleo{{ '-gpu' if use_gpu else '' }}
-      args:
-        TAG: {{ cleo_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -356,8 +342,6 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if use_gpu else '' }}
-      args:
-        TAG: {{ mailbox_tag }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -489,11 +473,5 @@ secrets:
     file: secrets/slack_webhook.txt
 
   # Grader secrets
-  users:
-    file: secrets/users.csv
   admin_password:
     file: secrets/admin_password.txt
-  {% for rubric in rubrics | default([]) %}
-  {{ rubric }}:
-    file: secrets/{{ rubric }}.txt
-  {%- endfor %}

@@ -300,7 +300,6 @@ class Chain() :
         image_processing_chain = self.update_vectorstore_and_create_chain()
 
         print("[Chain] converting solution images to text")
-        print("DEBUG - images: ", images)
         text_from_images = image_processing_chain.run(images=images)
         print("[Chain] images converted to text")
 

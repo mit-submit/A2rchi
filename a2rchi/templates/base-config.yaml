@@ -32,7 +32,8 @@ interfaces:
     HOSTNAME: {{ interfaces.grader_app.HOSTNAME | default("localhost", true) }}
     template_folder: {{ interfaces.grader_app.template_folder | default("/root/A2rchi/a2rchi/interfaces/grader_app/templates", true) }}
     num_problems: {{ interfaces.grader_app.num_problems | default(1, true) }}
-    # keep grading prompts (so not QA) in chains or here?
+    local_rubric_dir: {{ interfaces.grader_app.rubric_dir }}
+    local_users_csv_dir: {{ interfaces.grader_app.local_users_csv }}
   grafana:
     EXTERNAL_PORT: {{ interfaces.grafana.EXTERNAL_PORT | default(3000, true) }}
 
