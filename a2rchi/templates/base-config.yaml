@@ -105,7 +105,7 @@ chains:
       HuggingFaceOpenLLM:
         class: HuggingFaceOpenLLM
         kwargs:
-          base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.base_model | default("Qwen/Qwen2.5-14B-Instruct-1M", true) }}
+          base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.base_model | default("Qwen/Qwen2.5-7B-Instruct-1M", true) }}
           peft_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.peft_model | default("null", true) }}
           enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           quantization: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.quantization | default(true, true) }}
@@ -123,7 +123,7 @@ chains:
       HuggingFaceImageLLM:
         class: HuggingFaceImageLLM
         kwargs:
-          base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.base_model | default("Qwen/Qwen2.5-14B-Instruct-1M", true) }}
+          base_model: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.base_model | default("Qwen/Qwen2.5-VL-7B-Instruct", true) }}
           quantization: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.quantization | default(true, true) }}
           min_pixels: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.min_pixels | default(175616, true) }}
           max_pixels: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.max_pixels | default(1003520, true) }}

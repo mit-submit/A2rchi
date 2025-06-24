@@ -1,0 +1,26 @@
+name: grading_test
+
+global:
+  TRAINED_ON: "rubrics, class info, etc."
+
+locations_of_secrets:
+  - ~/.secrets/api_tokens
+  - ~/.secrets/salts_and_internal_passwords
+  - ~/.secrets/grader
+
+chains:
+  input_lists:
+    - configs/miscellanea.list
+  chain:
+    IMAGE_PROCESSING_MODEL_NAME: HuggingFaceImageLLM
+    GRADING_FINAL_GRADE_MODEL_NAME: HuggingFaceOpenLLM
+
+  prompts:
+    IMAGE_PROCESSING_PROMPT: configs/prompts/image_processing.prompt
+    GRADING_FINAL_GRADE_PROMPT: configs/prompts/grading_final_grade.prompt
+
+interfaces:
+  grader_app:
+    num_problems: 1
+    local_rubric_dir: ~/grading/my_rubrics
+    local_users_csv_dir: ~/grading/logins
