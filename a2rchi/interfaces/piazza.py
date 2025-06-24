@@ -106,7 +106,8 @@ class Piazza:
         with open(self.min_next_post_file, "r") as f:
             data = json.load(f)
             return data.get("min_next_post_nr")
-        
+    
+    # for now just processes "main" posts, i.e. not replies/follow-ups
     def process_posts(self):
         try:
             # get new post(s) and sort them by 'nr'
