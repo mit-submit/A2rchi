@@ -23,6 +23,9 @@ services:
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       {% endif %}
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      {% if jira -%}
+      JIRA_PAT_FILE: /run/secrets/jira_pat
+      {% endif %}
       {% if use_gpu -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
@@ -48,6 +51,9 @@ services:
       - hf_token
       {% endif %}
       - pg_password
+      {% if jira -%}
+      - jira_pat
+      {% endif %}
     volumes:
       - {{ chat_volume_name }}:/root/data/
       - ./config.yaml:/root/A2rchi/config.yaml
@@ -444,8 +450,7 @@ secrets:
   {% if huggingface -%}
   hf_token:
     file: secrets/hf_token.txt
-  {% endif %}
-  
+  {% endif %} 
   pg_password:
     file: secrets/pg_password.txt
 
@@ -485,3 +490,8 @@ secrets:
     file: secrets/piazza_password.txt
   slack_webhook:
     file: secrets/slack_webhook.txt
+  # JIRA secrets
+  {% if jira -%}
+  jira_pat:
+    file: secrets/jira_pat.txt
+  {% endif %}

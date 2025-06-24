@@ -27,6 +27,13 @@ interfaces:
     template_folder: {{ interfaces.uploader_app.template_folder | default("/root/A2rchi/a2rchi/interfaces/uploader_app/templates", true) }}
   grafana:
     EXTERNAL_PORT: {{ interfaces.grafana.EXTERNAL_PORT | default(3000, true) }}
+  jira:
+    JIRA_URL: {{ interfaces.jira.JIRA_URL }}
+    JIRA_PROJECTS: 
+      {%- for project in interfaces.jira.JIRA_PROJECTS %}
+      - {{ project }}
+      {%- endfor %}
+    ANONYMIZE_DATA: {{ interfaces.jira.ANONYMIZE_DATA | default(true, true) }}
 
 chains:
   input_lists:

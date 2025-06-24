@@ -212,6 +212,7 @@ def cli():
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
+@click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'use_gpu', type=bool, default=False, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
@@ -222,6 +223,7 @@ def create(
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
+    include_jira,
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
@@ -396,6 +398,11 @@ def create(
         _prepare_secret(a2rchi_name_dir, "sender_user", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
 
+    
+    if include_jira:
+        _prepare_secret(a2rchi_name_dir, "jira_pat", locations_of_secrets)
+        compose_template_vars["jira"] = True
+    
 
     _print_msg("Preparing Postgres")
     # prepare init.sql for postgres initialization
