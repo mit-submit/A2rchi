@@ -79,11 +79,63 @@ Once you have created an account, visit the outgoing port of the data manager do
 
 ## Piazza Interface
 
-TODO: add description of interface here
+Set up A2rchi to read posts from your Piazza forum and post draft responses to a specified slack channel (other options coming soon). To do this, a Piazza login (email and password) is required, plus the network ID of your Piazza channel, and lastly, a Webhook for the slack channel A2rchi will post to. See below for a step-by-step description of this.
+
+1. Go to https://api.slack.com/apps and sign in to workspace where you will eventually want A2rchi to post to (note doing this in MIT workspace will require approval of the app/bot).
+2. Click 'Create New App', and then 'From scratch'. Name your app and again select the correct workspace. Then hit 'Create App'
+3. Now you have your app, and there are a few things to configure before you can launch A2rchi:
+4. Go to Incoming Webhooks under Features, and toggle it on.
+5. Click 'Add New Webhook', and select the channel you want A2rchi to post to.
+6. Now, copy the 'Webhook URL' and paste it into a file called 'slack_webhook.txt', and handle it like any other secret!
 
 ### Secrets
 
+The necessary secrets for deploying the Piazza service are the following:
+
+- `slack_webhook.txt`
+- `piazza_email.txt`
+- `piazza_password.txt`
+
+The slack webhook secret is described above. The piazza email and password should be those of one of the class instructors. Remember to put this information in files named following what is written above.
+
 ### Configuration
+
+Beyond standard required configuration fields, the network ID of the Piazza channel is required (see below for an example config). You can get the network ID by simply navigating to the class homepage, and grabbing the sequence that follows 'https://piazza.com/class/'. For example, the 8.01 Fall 2024 homepage is: 'https://piazza.com/class/m0g3v0ahsqm2lg'. The network ID is thus 'm0g3v0ahsqm2lg'. Example minimal config for the Piazza interface:
+
+```
+name: bare_minimum_configuration #REQUIRED
+
+global:
+  TRAINED_ON: "Your class materials" #REQUIRED
+
+chains:
+  input_lists: #REQUIRED
+    - configs/class_info.list # list of websites with class info
+  chain:
+    - MODEL_NAME: OpenAIGPT4 #REQUIRED
+    - CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
+    - SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
+  prompts:
+    CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
+    MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
+    SUMMARY_PROMPT: config_old/prompts/summary.prompt #REQUIRED
+
+location_of_secrets: #REQUIRED
+  - ~/.secrets/a2rchi_base_secrets
+  - ~/.secrets/piazza
+
+utils:
+  piazza:
+    network_id: <your Piazza network ID here> # REQUIRED
+```
+
+### Running the Piazza service
+
+To run the Piazza service, simply add the piazza flag. For example:
+
+```
+a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza True
+```
 
 ## Cleo/Mailbox Interface
 
