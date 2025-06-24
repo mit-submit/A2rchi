@@ -144,7 +144,8 @@ utils:
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
     enable_warnings: {{ utils.scraper.enable_warnings | default(false, true) }}
   piazza:
-    network_id: {{ utils.piazza.network_id | default("m0g3v0ahsqm2lg", true) }} # default is for 8.01, should probably change this...
+    network_id: {{ utils.piazza.network_id }}
+    update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
   cleo: 
     cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
   mailbox: 

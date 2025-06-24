@@ -8,7 +8,9 @@ COPY LICENSE LICENSE
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-COPY config config
-COPY a2rchi a2rchi
+COPY a2rchi_code a2rchi
+COPY pyproject.toml pyproject.toml
+COPY weblists weblists
+RUN pip install --upgrade pip && pip install .
 
 CMD ["python", "-u", "a2rchi/bin/service_piazza.py"]
