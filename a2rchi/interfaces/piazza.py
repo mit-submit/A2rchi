@@ -61,7 +61,6 @@ class Piazza:
 
         # 
         self.min_next_post_file = "/root/data/min_next_post.json"
-        self.default_min_next_post_nr = 500 # should default to most recent post in the piazza + 1
         self.min_next_post_nr = self.read_min_next_post()
 
         # initialize PiazzaAIWrapper
@@ -93,11 +92,9 @@ class Piazza:
                 else:
                     # in case no posts exist
                     dynamic_min_next_post_nr = 1
-                    print("No posts found in feed, setting default_min_next_post_nr to 1.")
+                    print("No posts found in feed, setting dynamic_min_next_post_nr to 1.")
             except Exception as e:
-                print("ERROR - Failed to get latest post nr from feed, using default value.")
-                print(str(e))
-                dynamic_min_next_post_nr = self.default_min_next_post_nr
+                raise Exception(f"ERROR - Failed to get latest post nr from feed: {str(e)}") from e
 
             self.write_min_next_post(dynamic_min_next_post_nr)
             return dynamic_min_next_post_nr
