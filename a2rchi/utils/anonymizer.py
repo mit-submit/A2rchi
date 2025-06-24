@@ -28,6 +28,7 @@ class Anonymizer:
             re.compile(r"^\s*[-~]+\s*$"),
         ]
         self.email_pattern = re.compile(r"[\w\.-]+@[\w\.-]+\.\w+")
+        # TODO: This is JIRA specific, consider making it configurable
         self.username_pattern = re.compile(r'\[~[^\]]+\]')
 
     def anonymize(self, text: str) -> str:
