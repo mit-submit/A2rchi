@@ -269,9 +269,6 @@ def create(
         "use_gpu": use_gpu,
     }
 
-    # piazza compose vars
-    compose_template_vars["piazza_tag"] = tag
-
     # create docker volumes; these commands will no-op if they already exist
     _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
@@ -423,7 +420,7 @@ def create(
     model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME", "SUMMARY_MODEL_NAME"]
     chain_config = a2rchi_config["chains"]["chain"]
 
-    # Prepare secrets
+    # prepare needed api token secrets
     if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
         _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
         compose_template_vars["openai"] = True
