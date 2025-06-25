@@ -269,7 +269,10 @@ efcb7be30a6e   mdr223/a2rchi:chromadb-0.0.1   &quot;uvicorn chromadb.ap…&quot;
 <p>To access the chat interface, visit its corresponding port (<code>0.0.0.0:7861</code> in the above example )</p>
 <h3 id="removing-deployment">Removing deployment</h3>
 <p>Lastly, to tear down the deployment, simply run:</p>
-<pre><code>$ a2rchi delete --name my-a2rchi
+<pre><code>a2rchi delete --name my-a2rchi
+</code></pre>
+<p>You can use the <code>--rmi</code> option to remove the images,</p>
+<pre><code>a2rchi delete --name my-a2rchi --rmi
 </code></pre>
 <h2 id="helpful-notes-for-production-deployments">Helpful Notes for Production Deployments</h2>
 <p>You may wish to use the CLI in order to stage production deployments. This section covers some useful notes to keep in mind.</p>
@@ -340,5 +343,5 @@ utils:
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2025-03-06 15:16:22.971214+00:00
+Build Date UTC : 2025-06-25 02:50:45.542698+00:00
 -->
