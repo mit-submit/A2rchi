@@ -83,10 +83,10 @@ class Piazza:
             os.makedirs(os.path.dirname(self.min_next_post_file), exist_ok=True)
             # get latest post nr from piazza feed
             try:
-                feed = self.piazza_net.get_feed(limit=1, offset=0)
+                feed = self.piazza_net.get_feed(limit=999999, offset=0)
                 if feed['feed']:
-                    latest_post_nr = feed['feed'][0]['nr']
-                    # start from the latest post + 1
+                    post_nrs = sorted(list(map(lambda post: post['nr'], feed['feed'])))
+                    latest_post_nr = post_nrs[-1] if post_nrs else 0
                     dynamic_min_next_post_nr = latest_post_nr + 1
                     print(f"No min next post file found, using latest post nr {latest_post_nr} + 1 = {dynamic_min_next_post_nr} as default.")
                 else:
