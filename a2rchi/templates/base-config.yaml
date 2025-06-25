@@ -151,3 +151,10 @@ utils:
   mailbox: 
     IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
     mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}
+  jira:
+    JIRA_URL: {{ utils.jira.JIRA_URL }}
+    JIRA_PROJECTS: 
+      {%- for project in utils.jira.JIRA_PROJECTS %}
+      - {{ project }}
+      {%- endfor %}
+    ANONYMIZE_DATA: {{ utils.jira.ANONYMIZE_DATA | default(true, true) }}
