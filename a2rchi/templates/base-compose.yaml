@@ -246,6 +246,10 @@ services:
       - slack_webhook
     volumes:
       - {{ chat_volume_name }}:/root/data/
+      - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+      - ./summary.prompt:/root/A2rchi/summary.prompt
     logging:
       options:
         max-size: 10m
@@ -495,3 +499,4 @@ secrets:
   jira_pat:
     file: secrets/jira_pat.txt
   {% endif %}
+
