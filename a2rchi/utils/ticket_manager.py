@@ -1,7 +1,7 @@
 import os
 
 from a2rchi.utils.config_loader import Config_Loader
-from a2rchi.interfaces.jira.jira_reader import JiraReader
+from a2rchi.utils.jira import JiraClient
 
 
 class TicketManager():
@@ -16,10 +16,10 @@ class TicketManager():
         self.tickets_dir = os.path.join(self.data_path, "tickets")
         os.makedirs(self.tickets_dir, exist_ok=True)
 
-        self.jira_reader = JiraReader()
+        self.jira_client = JiraClient()
 
     def run(self):
         """
         Main function to run the TicketManager.
         """
-        self.jira_reader.run(tickets_dir=self.tickets_dir)
+        self.jira_client.run(tickets_dir=self.tickets_dir)

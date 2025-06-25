@@ -8,7 +8,7 @@ from a2rchi.utils.env import read_secret
 from a2rchi.utils.anonymizer import Anonymizer
 
 
-class JiraReader():
+class JiraClient():
     def __init__(self) -> None:
 
         # TODO: Move to this to the main application later

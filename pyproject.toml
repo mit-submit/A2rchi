@@ -32,7 +32,6 @@ packages = [
     "a2rchi.chains",
     "a2rchi.interfaces",
     "a2rchi.interfaces.chat_app",
-    "a2rchi.interfaces.jira",
     "a2rchi.interfaces.uploader_app",
     "a2rchi.templates",
     "a2rchi.templates.grafana",
