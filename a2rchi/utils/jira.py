@@ -15,8 +15,7 @@ class JiraClient():
         logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s')
 
         try:
-            print(Config_Loader().config["interfaces"])
-            self.jira_config = Config_Loader().config["interfaces"]["jira"]
+            self.jira_config = Config_Loader().config["utils"]["jira"]
             self.jira_url = self.jira_config["JIRA_URL"]
             self.jira_projects = self.jira_config["JIRA_PROJECTS"]
 
