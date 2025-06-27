@@ -249,9 +249,9 @@ class Chain() :
             return self._call_grading(*args, **kwargs)
 
         else:
-            return self._call_submit(*args, **kwargs)
+            return self._call_qa(*args, **kwargs)
 
-    def _call_submit(self, history, conversation_id = None):
+    def _call_qa(self, history, conversation_id = None):
         """
         Call for the chain to answer a question
 

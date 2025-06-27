@@ -1,0 +1,5 @@
+Your task is to extract the mathematical content and texts from the attached handwritten solution images.
+Convert all equations, expressions, and symbols into LaTeX format, and wrap each one individually using MathJax display math delimiters: \\[ ... \\].
+Return all content, including explanatory text, diagrams (as text description if needed), and derivations.
+Ensure all mathematical content and texts are captured in full detail, including steps, derivations, and final results.
+Match and format the handwritten solution's math and texts accordingly, without omitting any parts.
