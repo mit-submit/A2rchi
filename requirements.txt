@@ -1,4 +1,3 @@
-accelerate==1.0.1
 backoff==2.2.1
 beautifulsoup4==4.12.3 
 bitsandbytes==0.45.1
@@ -57,3 +56,4 @@ psycopg2-binary==2.9.10
 requests==2.32.3
 pyyaml==6.0.2
 protobuf==3.20.3
+qwen-vl-utils==0.0.11
