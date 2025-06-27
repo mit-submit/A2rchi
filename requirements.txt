@@ -51,6 +51,7 @@ chroma-hnswlib==0.7.3
 anthropic==0.34.2
 torch==2.2.0
 scipy==1.14.0
+urllib3==2.3.0
 pulsar-client==3.5.0
 psycopg2-binary==2.9.10
 requests==2.32.3

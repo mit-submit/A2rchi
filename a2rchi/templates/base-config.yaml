@@ -162,7 +162,7 @@ utils:
         class: OpenAIEmbeddings
         kwargs:
           model: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.kwargs.model | default('text-embedding-3-small', true) }}
-        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.similarity_score_reference | default(0.4, true) }}
+        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.OpenAIEmbeddings.similarity_score_reference | default(10, true) }}
       HuggingFaceEmbeddings:
         class: HuggingFaceEmbeddings
         kwargs:
@@ -171,13 +171,14 @@ utils:
             device: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.model_kwargs.device | default('cpu', true) }}
           encode_kwargs: 
             normalize_embeddings: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
-        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(0.9, true) }}
+        similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(10, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
     enable_warnings: {{ utils.scraper.enable_warnings | default(false, true) }}
   piazza:
-    network_id: {{ utils.piazza.network_id | default("m0g3v0ahsqm2lg", true) }} # default is for 8.01, should probably change this...
+    network_id: {{ utils.piazza.network_id }}
+    update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
   cleo: 
     cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
   mailbox: 

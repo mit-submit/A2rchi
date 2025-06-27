@@ -12,18 +12,40 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       {% if use_gpu -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
-      {%- endif %}
+      {% endif %}
+    {% if use_gpu and not use_podman -%}
+    # TODO: docker GPU configuration more testing
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    {% endif %}
     secrets:
+      {% if openai -%}
       - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       - hf_token
+      {% endif %}
       - pg_password
     volumes:
       - {{ chat_volume_name }}:/root/data/
@@ -36,11 +58,11 @@ services:
     ports:
       - {{ chat_port_host }}:{{ chat_port_container }}  # host:container
     restart: always
-    {% if use_gpu -%}
+    {% if use_gpu and use_podman -%}
+    # podman GPU configuration
     security_opt:
       - label:disable
     devices:
-    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
     # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
       #- "/dev/dri:/dev/dri"
@@ -51,7 +73,7 @@ services:
       #- "/dev/nvidiactl:/dev/nvidiactl"
       #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
       #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
-       - "nvidia.com/gpu=0"
+      - "nvidia.com/gpu=0"
       #- "nvidia.com/gpu=1"
       #- "nvidia.com/gpu=2"
     annotations:
@@ -142,15 +164,27 @@ services:
     environment:
       FLASK_UPLOADER_APP_SECRET_KEY_FILE: /run/secrets/flask_uploader_app_secret_key
       UPLOADER_SALT_FILE: /run/secrets/uploader_salt
+      {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
     secrets:
       - flask_uploader_app_secret_key
       - uploader_salt
+      {% if openai -%}
       - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       - hf_token
+      {% endif %}
     ports:
       - {{ uploader_port_host }}:{{ uploader_port_container }}  # host:container
     volumes:
@@ -244,21 +278,37 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
       PIAZZA_EMAIL_FILE: /run/secrets/piazza_email
       PIAZZA_PASSWORD_FILE: /run/secrets/piazza_password
       SLACK_WEBHOOK_FILE: /run/secrets/slack_webhook
     secrets:
+      {% if openai -%}
       - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       - hf_token
+      {% endif %}
       - piazza_email
       - piazza_password
       - slack_webhook
     volumes:
       - {{ chat_volume_name }}:/root/data/
+      - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+      - ./summary.prompt:/root/A2rchi/summary.prompt
     logging:
       options:
         max-size: 10m
@@ -286,9 +336,15 @@ services:
       SENDER_REPLYTO_FILE: /run/secrets/sender_replyto
       SENDER_USER_FILE: /run/secrets/sender_user
       SENDER_PW_FILE: /run/secrets/sender_pw
+      {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       {% if use_gpu -%}
       NVIDIA_VISIBLE_DEVICES: all
@@ -304,9 +360,15 @@ services:
       - sender_replyto
       - sender_user
       - sender_pw
+      {% if openai -%}
       - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       - hf_token
+      {% endif %}
       - pg_password
     volumes:
       - {{ chat_volume_name }}:/root/data/
@@ -359,9 +421,15 @@ services:
       SENDER_REPLYTO_FILE: /run/secrets/sender_replyto
       SENDER_USER_FILE: /run/secrets/sender_user
       SENDER_PW_FILE: /run/secrets/sender_pw
+      {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
       {% if use_gpu -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
@@ -378,9 +446,15 @@ services:
       - sender_replyto
       - sender_user
       - sender_pw
+      {% if openai -%}
       - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       - hf_token
+      {% endif %}
     volumes:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./main.prompt:/root/A2rchi/main.prompt
@@ -426,12 +500,19 @@ volumes:
 
 secrets:
   # Core secrets
+  {% if openai -%}
   openai_api_key:
     file: secrets/openai_api_key.txt
+  {% endif %}
+  {% if anthropic -%}
   anthropic_api_key:
     file: secrets/anthropic_api_key.txt
+  {% endif %}
+  {% if huggingface -%}
   hf_token:
     file: secrets/hf_token.txt
+  {% endif %}
+  
   pg_password:
     file: secrets/pg_password.txt
 

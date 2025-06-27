@@ -219,14 +219,15 @@ def cli():
 
 
 @click.command()
-@click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
+@click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
+@click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
 @click.option('--grader', '-grader', 'include_grader_service', type=bool, default=False, help="Boolean to add service for grading service (image to text, then grading, on web interface)")
-@click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
-@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
-@click.option('--gpu', 'use_gpu', type=bool, default=False, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
+@click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
+@click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
+@click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 
 def create(
@@ -234,6 +235,7 @@ def create(
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
+    include_piazza_service,
     include_grader_service,
     a2rchi_config_filepath,
     use_podman,
@@ -276,13 +278,9 @@ def create(
         "chromadb_tag": tag,
         "chromadb_container_name": f"chromadb-{name}",
         "postgres_container_name": f"postgres-{name}",
+        "use_podman": use_podman,
+        "use_gpu": use_gpu,
     }
-
-    # tell compose whether to look for gpus or not
-    compose_template_vars["use_gpu"] = use_gpu
-
-    # piazza compose vars
-    compose_template_vars["piazza_tag"] = tag
 
     # create docker volumes; these commands will no-op if they already exist
     _print_msg("Creating volumes")
@@ -299,6 +297,10 @@ def create(
         'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT',
         'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME',
     ]
+
+    if include_piazza_service:
+        required_fields.append('utils.piazza.network_id')
+
     if include_grader_service:
         required_fields = [
             'name',
@@ -308,6 +310,8 @@ def create(
             'chains.prompts.IMAGE_PROCESSING_PROMPT', 'chains.prompts.GRADING_FINAL_GRADE_PROMPT',
             'chains.chain.IMAGE_PROCESSING_MODEL_NAME', 'chains.chain.GRADING_FINAL_GRADE_MODEL_NAME',
         ]
+    
+
 
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
@@ -350,19 +354,21 @@ def create(
 
 
 
-    # fetch or generate grafana password
-    grafana_pg_password = os.environ.get("GRAFANA_PG_PASSWORD", secrets.token_hex(8))
-
     # if deployment includes grafana, create docker volume and template deployment files
     compose_template_vars["include_grafana"] = include_grafana
     if include_grafana:
         _create_volume(f"a2rchi-grafana-{name}", podman=use_podman)
 
+        # fetch grafana password or raise error if not set
+        if "GRAFANA_PG_PASSWORD" not in os.environ:
+            raise RuntimeError("Missing required environment variable for grafana service: GRAFANA_PG_PASSWORD")
+
+        grafana_pg_password = os.environ["GRAFANA_PG_PASSWORD"]
+
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
-        compose_template_vars["include_grafana"] = include_grafana
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
-        compose_template_vars["grafana_image"] = f"grafana-{name}"
+        compose_template_vars["grafana_image"] = f"docker.io/grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
@@ -384,7 +390,10 @@ def create(
             f.write(grafana_dashboards)
 
         a2rchi_dashboards_template = env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
-        a2rchi_dashboards = a2rchi_dashboards_template.render()
+        a2rchi_dashboards = a2rchi_dashboards_template.render(
+            prod_config_name=a2rchi_config["name"],
+            prod_model_name=a2rchi_config["chains"]["chain"]["MODEL_NAME"]
+        )
         with open(os.path.join(a2rchi_name_dir, "grafana", "a2rchi-default-dashboard.json"), 'w') as f:
             # json.dump(a2rchi_dashboards, f)
             f.write(a2rchi_dashboards)
@@ -417,6 +426,19 @@ def create(
 
          _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
          _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
+
+    compose_template_vars["include_piazza_service"] = include_piazza_service
+    if include_piazza_service:
+        _print_msg("Preparing Piazza Service")
+
+        compose_template_vars["piazza_image"] = f"piazza-{name}"
+        compose_template_vars["piazza_tag"] = tag
+
+        # piazza secrets
+        _prepare_secret(a2rchi_name_dir, "piazza_email", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
+
 
     compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
     if include_cleo_and_mailer:
@@ -452,10 +474,20 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
-    # Prepare secrets
-    _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME", "SUMMARY_MODEL_NAME"]
+    chain_config = a2rchi_config["chains"]["chain"]
+
+    # prepare needed api token secrets
+    if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
+        _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
+        compose_template_vars["openai"] = True
+    if any("Anthropic" in chain_config[model] for model in model_fields):
+        _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
+        compose_template_vars["anthropic"] = True
+    if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
+        _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+        compose_template_vars["huggingface"] = True
+
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
 
 
@@ -533,9 +565,9 @@ def create(
 
 
 @click.command()
-@click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
-@click.option('--podman', '-p', 'use_podman', type=bool, default=False, help="Boolean to use podman instead of docker.")
-def delete(name, use_podman):
+@click.option('--name', type=str, help="Name of the a2rchi deployment.")
+@click.option('--rmi', is_flag=True, help="Remove images after deleting the deployment.")
+def delete(name, rmi):
     """
     Delete instance of RAG system with the specified name.
     """
@@ -547,14 +579,39 @@ def delete(name, use_podman):
             f"Please provide a name for the deployment using the --name flag."
         )
 
-    # stop compose
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
-    if use_podman:
-        compose_down = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
-    else:
-        compose_down = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} down"
-    _print_msg("Stopping compose")
-    _run_bash_command(compose_down)
+    compose_file = os.path.join(a2rchi_name_dir, 'compose.yaml')
+    extra_args = ""
+
+    if rmi: extra_args += "--rmi all"
+
+    def is_installed(cmd):
+        return shutil.which(cmd) is not None
+
+    def is_running(compose_cmd):
+        try:
+            ps_cmd = f"{compose_cmd} -f {compose_file} ps"
+            stdout, _ = _run_bash_command(ps_cmd)
+            # If any service is listed as "Up", it's running
+            return any("Up" in line for line in stdout.splitlines())
+        except Exception:
+            return False
+
+    # check whether the images are running on either docker or podman
+    compose_stopped = False
+    if is_installed("podman"):
+        if is_running("podman compose"):
+            _print_msg("Stopping podman compose deployment")
+            _run_bash_command(f"podman compose -f {compose_file} down {extra_args}")
+            compose_stopped = True
+    if is_installed("docker"):
+        if is_running("docker compose"):
+            _print_msg("Stopping docker compose deployment")
+            _run_bash_command(f"docker compose -f {compose_file} down {extra_args}")
+            compose_stopped = True
+
+    if not compose_stopped:
+        _print_msg("No running docker or podman compose deployment found, or neither is installed.")
 
     # remove files in a2rchi directory
     _print_msg("Removing files in a2rchi directory")

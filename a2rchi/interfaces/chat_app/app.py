@@ -26,6 +26,7 @@ from flask import request, jsonify, render_template
 from flask_cors import CORS
 from threading import Lock
 from typing import List
+from urllib.parse import urlparse
 
 import mistune as mt
 import numpy as np
@@ -206,7 +207,7 @@ class ChatWrapper:
         return history
 
 
-    def insert_conversation(self, conversation_id, user_message, a2rchi_message, is_refresh=False) -> List[int]:
+    def insert_conversation(self, conversation_id, user_message, a2rchi_message, a2rchi_context_title, a2rchi_context, is_refresh=False) -> List[int]:
         """
         """
         print(" INFO - entered insert_conversation.")
@@ -218,13 +219,13 @@ class ChatWrapper:
         # construct insert_tups
         insert_tups = (
             [
-                # (conversation_id, sender, content, ts)
-                (conversation_id, user_sender, user_content, user_msg_ts, self.config_id),
-                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts, self.config_id),
+                # (conversation_id, sender, content, context title, context, ts)
+                (conversation_id, user_sender, user_content, '', '', user_msg_ts, self.config_id),
+                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_context_title, a2rchi_context, a2rchi_msg_ts, self.config_id),
             ]
             if not is_refresh
             else [
-                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_msg_ts, self.config_id),
+                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_context_title, a2rchi_context, a2rchi_msg_ts, self.config_id),
             ]
         )
 
@@ -365,8 +366,9 @@ class ChatWrapper:
             print("INFO - similarity score reference: ", similarity_score_reference)
             print("INFO - similarity score: ", score)
             print("INFO - source: ", source)
-            if score < similarity_score_reference and source in sources.keys(): 
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href= " + sources[source] + ">Click here to read more</a></p>"
+            if score < similarity_score_reference and source in sources.keys():
+                parsed_source = urlparse(sources[source])
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + sources[source] + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
             else:
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
@@ -374,8 +376,10 @@ class ChatWrapper:
             timestamps['a2rchi_message_ts'] = datetime.now()
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
+            a2rchi_context_title = result['source_documents'][0].metadata.get('title', 'No Title')
+            a2rchi_context = result['source_documents'][0].page_content if len(result['source_documents']) > 0 else ''
 
-            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, is_refresh)
+            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, a2rchi_context_title, a2rchi_context, is_refresh)
             timestamps['insert_convo_ts'] = datetime.now()
 
         except Exception as e:

@@ -112,9 +112,9 @@ class LlamaLLM(BaseCustomLLM):
         self.tokenizer = None
         self.tokenizer = LlamaTokenizer.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False)
         # removed "load_in_8bit" argument, need to install correct bitsandbytes version then use BitsAndBytesConfig object and pass that
-        base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False, device_map='auto', torch_dtype = torch.float16)
+        base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False, device_map='auto', torch_dtype = torch.float16, safetensors=True)
         if self.peft_model:
-            self.llama_model = PeftModel.from_pretrained(base_model, self.peft_model)
+            self.llama_model = PeftModel.from_pretrained(base_model, self.peft_model, safetensors=True)
         else:
             self.llama_model = base_model
         self.llama_model.eval()
@@ -201,7 +201,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
     """
     base_model: str = None     # location of the model (ex. meta-llama/Llama-2-70b)
     peft_model: str = None          # location of the finetuning of the model 
-    enable_salesforce_content_safety: bool = True
+    enable_salesforce_content_safety: bool = False
                                     # enable safety check with Salesforce safety flan t5
     quantization: bool = False       # enables 8-bit quantization
     max_new_tokens: int = 1024      # maximum numbers of tokens to generate
@@ -244,19 +244,19 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
 
         model_cache_key = (self.base_model, self.quantization, self.peft_model)
 
-        print("CACHE IS AT:", id(HuggingFaceOpenLLM._MODEL_CACHE))
-        print("INFO - cache key:", model_cache_key)
-        print("INFO - current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
+        print("[HuggingfaceOpenLLM] cache is at:", id(HuggingFaceOpenLLM._MODEL_CACHE))
+        print("[HuggingFaceOpenLLM] cache key:", model_cache_key, "(base_model, quantization, peft_model)")
+        print("[HuggingFaceOpenLLM] current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
 
         cached = self.get_cached_model(model_cache_key)
         if cached:
-            print("INFO - model found in cache.")
+            print("[HuggingFaceOpenLLM] model found in cache.")
             self.tokenizer, self.hf_model = cached
         else:
-            print("INFO - model not in cache. Loading...")
+            print("[HuggingFaceOpenLLM] model and tokenizer not in cache. Loading...")
 
             self.tokenizer = AutoTokenizer.from_pretrained(self.base_model, local_files_only=False)
-
+            print("[HuggingFaceOpenLLM] tokenizer loaded.")
             if self.quantization:
                 bnbconfig = BitsAndBytesConfig(load_in_8bit=True)
                 base_model = AutoModelForCausalLM.from_pretrained(
@@ -274,8 +274,10 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     device_map="auto",
                     torch_dtype=torch.float16,
                     use_safetensors=True,
-                    cache_dir="/root/data/", # load weights into dir mounted as volume so don't need to keepd downloading when iterating
+                    cache_dir="/root/data/",  # load weights into dir mounted as volume so don't need to keep downloading when iterating
                 )
+            
+            print("[HuggingFaceOpenLLM] base model loaded.")
 
             if self.peft_model:
                 self.hf_model = PeftModel.from_pretrained(base_model, self.peft_model)
@@ -285,10 +287,11 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
             self.hf_model.eval()
 
             self.set_cached_model(model_cache_key, (self.tokenizer, self.hf_model))
-            print("INFO - model loaded and cached.")
+            print("[HuggingFaceOpenLLM] model loaded and cached.")
 
         self.safety_checker = []
         if self.enable_salesforce_content_safety:
+            print("[HuggingFaceOpenLLM] Salesforce safety checker enabled.")
             self.safety_checker.append(SalesforceSafetyChecker())
 
 

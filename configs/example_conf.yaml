@@ -2,16 +2,21 @@
 name: bare_minimum_configuration #REQUIRED
 
 global:
-  TRAINED_ON: "subMIT and the people who started A2rchi" #REQUIRED
+  TRAINED_ON: "SubMIT and the people who started A2rchi" #REQUIRED
 
 chains:
-  input_lists: #REQUIRED
-    - config_old/submit.list
-    - config_old/miscellanea.list
+  chain:
+    MODEL_NAME: OpenAIGPT4
+    CONDENSE_MODEL_NAME: OpenAIGPT4
+    SUMMARY_MODEL_NAME: OpenAIGPT4
   prompts:
-    CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
-    MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
-    SUMMARY_PROMPT: config_old/prompts/summary.prompt #REQUIRED
+    CONDENSING_PROMPT: configs/prompts/condense.prompt #REQUIRED
+    MAIN_PROMPT: configs/prompts/submit.prompt #REQUIRED
+    SUMMARY_PROMPT: configs/prompts/summary.prompt #REQUIRED
+  input_lists: #REQUIRED
+    - configs/submit.list
+    - configs/miscellanea.list
 
-location_of_secrets: #REQUIRED
-  - ~/.secrets/a2rchi_base_secrets
+locations_of_secrets: #REQUIRED
+  - ~/.a2rchi/base
+  

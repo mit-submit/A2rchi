@@ -207,7 +207,7 @@ class Cleo:
                 cc = issue.custom_fields[1]['value']
                 note = ''
                 for record in issue.journals:
-                    if record.notes != '' and A2RCHI_PATTERN not in record.notes:
+                    if record.notes and record.notes != "" and A2RCHI_PATTERN not in record.notes:
                         note = record.notes
                 print(f"\n TO:{to}\n CC:{cc}\n SUBJECT:{subject}\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}\n\n> {issue.description}")
                 note = f"\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}"

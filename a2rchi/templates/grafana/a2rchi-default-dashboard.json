@@ -289,6 +289,35 @@
             ],
             "limit": 50
           }
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "P44368ADAD746BC27"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT extract(seconds from msg_duration) as {{ prod_model_name }}\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = '{{ prod_config_name }}'",
+          "refId": "D",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "A2rchi Response Time Histogram",
@@ -330,9 +359,9 @@
           "mappings": [
             {
               "options": {
-                "pattern": "like_all_gpt4.*",
+                "pattern": "like_with_context_{{ prod_config_name }}",
                 "result": {
-                  "color": "dark-green",
+                  "color": "green",
                   "index": 0
                 }
               },
@@ -340,9 +369,9 @@
             },
             {
               "options": {
-                "pattern": "dislike_all_gpt4.*",
+                "pattern": "like_no_context_{{ prod_config_name }}",
                 "result": {
-                  "color": "dark-red",
+                  "color": "light-green",
                   "index": 1
                 }
               },
@@ -350,9 +379,9 @@
             },
             {
               "options": {
-                "pattern": "like_all_gpt35.*",
+                "pattern": "dislike_with_context_{{ prod_config_name }}",
                 "result": {
-                  "color": "light-green",
+                  "color": "red",
                   "index": 2
                 }
               },
@@ -360,30 +389,10 @@
             },
             {
               "options": {
-                "pattern": "dislike_all_gpt35.*",
+                "pattern": "dislike_no_context_{{ prod_config_name }}",
                 "result": {
                   "color": "light-red",
                   "index": 3
-                }
-              },
-              "type": "regex"
-            },
-            {
-              "options": {
-                "pattern": "like_mgpt35_sgpt4",
-                "result": {
-                  "color": "semi-dark-green",
-                  "index": 4
-                }
-              },
-              "type": "regex"
-            },
-            {
-              "options": {
-                "pattern": "dislike_mgpt35_sgpt4",
-                "result": {
-                  "color": "semi-dark-red",
-                  "index": 5
                 }
               },
               "type": "regex"
@@ -443,7 +452,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n), filtered_feedback AS (\n  SELECT mid, config_name, feedback, max(feedback_ts)\n  FROM feedback JOIN msg_to_config ON feedback.mid = msg_to_config.message_id\n  GROUP BY mid, config_name, feedback\n)\nSELECT count(*), TRIM(TRAILING '_config' FROM feedback || '_' || config_name) as feedback, config_name FROM filtered_feedback GROUP BY config_name, feedback;\n",
+          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n),\nfiltered_feedback AS (\n  SELECT mid, config_name, feedback, \n         MAX(feedback_ts) AS feedback_ts,\n         CASE \n           WHEN feedback = 'like' AND context IS NOT NULL THEN 'like_with_context'\n           WHEN feedback = 'like' AND context IS NULL THEN 'like_no_context'\n           WHEN feedback = 'dislike' AND context IS NOT NULL THEN 'dislike_with_context'\n           WHEN feedback = 'dislike' AND context IS NULL THEN 'dislike_no_context'\n         END AS context_label\n  FROM feedback\n  JOIN msg_to_config ON feedback.mid = msg_to_config.message_id\n  JOIN conversations ON feedback.mid = conversations.message_id\n  GROUP BY mid, config_name, feedback, context\n)\nSELECT \n  COUNT(*) AS count,\n  context_label || '_' || config_name AS feedback,\n  config_name\nFROM filtered_feedback\nGROUP BY context_label, config_name\nORDER BY context_label;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -553,7 +562,200 @@
       ],
       "title": "Conversations Length Histogram",
       "type": "histogram"
-    }
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "P44368ADAD746BC27"
+      },
+      "description": "Conversation messages with inspectable clean text and extracted links.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "conversation_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "130"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sender"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "70"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ts"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "180"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "clean_text"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "auto"
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "auto"
+              },
+              {
+                "id": "custom.cellDisplayMode",
+                "value": "expand"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "link"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "auto"
+              },
+              {
+                "id": "custom.cellDisplayMode",
+                "value": "expand"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open link",
+                    "url": "${__value.raw}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "context_title"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "auto"
+              },
+              {
+                "id": "custom.cellDisplayMode",
+                "value": "expand"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "context"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "auto"
+              },
+              {
+                "id": "custom.cellDisplayMode",
+                "value": "expand"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          }                    
+        ]
+      },
+      "gridPos": {
+        "h": 15,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "id": 9,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ts",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "E",
+          "format": "table",
+          "datasource": {
+            "type": "postgres",
+            "uid": "P44368ADAD746BC27"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "WITH cleaned AS (\n  SELECT\n    conversation_id,\n    sender,\n    ts,\n    regexp_replace(content, '<[^>]*>', '', 'g')::text AS clean_text,\n    CASE\n      WHEN sender = 'A2rchi' THEN substring(content from '<a href= ([^ >]*)>Click here to read more</a>')::text\n      ELSE ''\n    END AS link,\n    context_title,\n    context\n  FROM conversations\n)\nSELECT conversation_id, sender, ts, clean_text, link, context_title, context\nFROM cleaned\nWHERE ts >= $__timeFrom() AND ts < $__timeTo()\nORDER BY ts DESC\nLIMIT 100",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 100
+          },
+          "table": "conversations"
+        }
+      ],
+      "title": "Recent Conversation Messages (Clean Text, Links, Context)",
+      "type": "table"
+    }         
   ],
   "refresh": "",
   "schemaVersion": 38,
