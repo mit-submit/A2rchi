@@ -286,6 +286,8 @@ def create(
     _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
     _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
+    if use_gpu:
+        _create_volume(f"a2rchi-models", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"
 
@@ -474,7 +476,7 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
-    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME", "SUMMARY_MODEL_NAME"]
+    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not include_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
     chain_config = a2rchi_config["chains"]["chain"]
 
     # prepare needed api token secrets
@@ -485,8 +487,9 @@ def create(
         _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
         compose_template_vars["anthropic"] = True
     if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
-        _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
-        compose_template_vars["huggingface"] = True
+        _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
+        #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+        #compose_template_vars["huggingface"] = True
 
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
 
@@ -615,7 +618,7 @@ def delete(name, rmi):
 
     # remove files in a2rchi directory
     _print_msg("Removing files in a2rchi directory")
-    _run_bash_command(f"rm -r {a2rchi_name_dir}")
+    _run_bash_command(f"rm -rf {a2rchi_name_dir}")
 
 
 @click.command()

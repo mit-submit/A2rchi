@@ -4,7 +4,7 @@ RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
 
 # maybe just throw everything into the same requirements file in the first place....
-COPY requirements_grader.txt requirements.txt
+COPY requirements.txt requirements.txt
 COPY LICENSE LICENSE
 
 RUN pip install --upgrade pip && pip install -r requirements.txt

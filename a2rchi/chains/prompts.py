@@ -1,7 +1,7 @@
 # flake8: noqa
 from langchain_core.prompts import PromptTemplate
 from a2rchi.utils.config_loader import Config_Loader
-from a2rchi.chains.utils.prompt_validators import ValidatedPromptTemplate
+from a2rchi.chains.utils.prompt_validator import ValidatedPromptTemplate
 
 config = Config_Loader().config["chains"]["prompts"]
 
@@ -46,6 +46,7 @@ def read_prompt(prompt_filepath: str) -> str:
 
 PROMPTS = {
     name: ValidatedPromptTemplate(
+        name=name,
         prompt_template=read_prompt(info["path"]),
         input_variables=info["input_variables"]
     )

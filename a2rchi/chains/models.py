@@ -265,7 +265,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     device_map="auto",
                     quantization_config=bnbconfig,
                     use_safetensors=True,
-                    cache_dir="/root/data/", # load weights into dir mounted as volume so don't need to keepd downloading when iterating
+                    cache_dir="/root/models/", # load weights into dir mounted as volume so don't need to keepd downloading when iterating
                 )
             else:
                 base_model = AutoModelForCausalLM.from_pretrained(
@@ -274,7 +274,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     device_map="auto",
                     torch_dtype=torch.float16,
                     use_safetensors=True,
-                    cache_dir="/root/data/",  # load weights into dir mounted as volume so don't need to keep downloading when iterating
+                    cache_dir="/root/models/",  # load weights into dir mounted as volume so don't need to keep downloading when iterating
                 )
             
             print("[HuggingFaceOpenLLM] base model loaded.")
@@ -410,6 +410,7 @@ class HuggingFaceImageLLM(BaseCustomLLM):
 
         #Packages needed
         from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, AutoProcessor
+        
 
         # Set the seeds for reproducibility
         if self.seed:
@@ -450,7 +451,7 @@ class HuggingFaceImageLLM(BaseCustomLLM):
             torch_dtype=torch.float16,
             local_files_only=False,
             use_safetensors=True,
-            cache_dir="/root/data/",  # load weights into dir mounted as volume so don't need to keep downloading when iterating
+            cache_dir="/root/models/",  # load weights into dir mounted as volume so don't need to keep downloading when iterating
         )
 
         self.hf_model.eval()

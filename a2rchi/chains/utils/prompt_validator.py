@@ -13,13 +13,14 @@ class ValidatedPromptTemplate(PromptTemplate):
             input_variables (Optional[List[str]]): List of input variable names.
         """
 
-        self._validate_prompt(name, prompt_template)
+        self._validate_prompt(name, prompt_template, input_variables)
         super().__init__(template=prompt_template, input_variables=input_variables)
 
 
-    def _validate_prompt(self, name, prompt_template: str):
-        template_vars = [f"{{{var}}}" for var in self.input_variables]
-        for template_var in template_vars:
-            if template_var not in prompt_template:
-                raise ValueError(f"Input variable '{template_var}' not found in the main prompt template.")
-        print(f"Prompt '{name}' is valid with input variables: {self.input_variables}")
+    def _validate_prompt(self, name, prompt_template: str, input_variables: Optional[List[str]]):
+        if input_variables:
+            template_vars = [f"{{{var}}}" for var in input_variables]
+            for template_var in template_vars:
+                if template_var not in prompt_template:
+                    raise ValueError(f"Input variable '{template_var}' not found in the main prompt template.")
+        print(f"Prompt '{name}' is valid with input variables: {input_variables}")

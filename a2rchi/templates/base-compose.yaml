@@ -52,6 +52,9 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
+      {% if use_gpu -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
     logging:
       options:
         max-size: 10m
@@ -73,7 +76,7 @@ services:
       #- "/dev/nvidiactl:/dev/nvidiactl"
       #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
       #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
-      - "nvidia.com/gpu=0"
+      - "nvidia.com/gpu=3"
       #- "nvidia.com/gpu=1"
       #- "nvidia.com/gpu=2"
     annotations:
@@ -209,9 +212,15 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       {% if use_gpu -%}
       NVIDIA_VISIBLE_DEVICES: all
@@ -223,9 +232,15 @@ services:
       {{ rubric }}_FILE: /run/secrets/{{ rubric }}
       {%- endfor %}
     secrets:
+      {% if openai -%}
       - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
       - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
       - hf_token
+      {% endif %}
       - pg_password
       - admin_password
     ports: 
@@ -239,6 +254,9 @@ services:
       {%- for rubric in rubrics | default([]) %}
       - ./{{ rubric }}.txt:/root/A2rchi/{{ rubric }}.txt
       {%- endfor %}
+      {% if use_gpu -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
       # TODO: conditionally include grading summary and analysis prompts
     logging:
       options:
@@ -309,6 +327,9 @@ services:
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
       - ./summary.prompt:/root/A2rchi/summary.prompt
+      {% if use_gpu -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
     logging:
       options:
         max-size: 10m
@@ -375,6 +396,9 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
+      {% if use_gpu -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
     logging:
       options:
         max-size: 10m
@@ -459,6 +483,9 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
+      {% if use_gpu -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
     logging:
       options:
         max-size: 10m
@@ -495,6 +522,10 @@ volumes:
   {%- endif %}
   {% if include_grader_service -%}
   {{ grader_volume_name }}:
+    external: true
+  {%- endif %}
+  {% if use_gpu -%}
+  a2rchi-models:
     external: true
   {%- endif %}
 

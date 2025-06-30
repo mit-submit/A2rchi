@@ -7,6 +7,8 @@ coloredlogs==15.0.1
 duckdb==0.8.1
 fastapi==0.109.0
 flask==3.0.3
+flask-login==0.6.3
+flask-session==0.8.0
 flask-cors==5.0.0
 flatbuffers==23.5.26
 hnswlib==0.7.0
@@ -57,3 +59,5 @@ requests==2.32.3
 pyyaml==6.0.2
 protobuf==3.20.3
 qwen-vl-utils==0.0.11
+torchvision==0.17.0
+rapidfuzz==3.13.0
