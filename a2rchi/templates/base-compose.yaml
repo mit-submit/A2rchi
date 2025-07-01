@@ -85,7 +85,7 @@ services:
   {%- endif %}
   
   chromadb:
-    image: {{ chromadb_image }}:{{ chromadb_tag }} # need to specify localhost/ here ?? or does short name recognition actually work here...
+    image: {{ chromadb_image }}:{{ chromadb_tag }}
     build:
       context: .
       dockerfile:  a2rchi_code/templates/dockerfiles/Dockerfile-chroma

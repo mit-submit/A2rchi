@@ -370,7 +370,7 @@ def create(
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
-        compose_template_vars["grafana_image"] = f"docker.io/grafana-{name}"
+        compose_template_vars["grafana_image"] = f"grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
@@ -554,8 +554,6 @@ def create(
     shutil.copytree("a2rchi", os.path.join(a2rchi_name_dir, "a2rchi_code"))
     shutil.copyfile("pyproject.toml", os.path.join(a2rchi_name_dir, "pyproject.toml"))
     shutil.copyfile("requirements.txt", os.path.join(a2rchi_name_dir, "requirements.txt"))
-    if include_grader_service:
-        shutil.copyfile("requirements_grader.txt", os.path.join(a2rchi_name_dir, "requirements_grader.txt"))
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
 
     # create a2rchi system using docker

@@ -55,9 +55,6 @@ class Chain() :
         grading_summary_model_name = self.chain_config.get("GRADING_SUMMARY_MODEL_NAME", grading_final_grade_model_name)
         grading_analysis_model_name = self.chain_config.get("GRADING_ANALYSIS_MODEL_NAME", grading_final_grade_model_name)
 
-        ########################################################################################################################################################
-
-        # MOVE THIS TO A DEDICATED FUNCTION, TOO UGLY FOR HERE
 
         if self.image_processing:
             self.image_processing_prompt = PROMPTS["IMAGE_PROCESSING"]
