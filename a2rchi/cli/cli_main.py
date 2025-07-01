@@ -311,7 +311,7 @@ def create(
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
-        compose_template_vars["grafana_image"] = f"docker.io/grafana-{name}"
+        compose_template_vars["grafana_image"] = f"grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
