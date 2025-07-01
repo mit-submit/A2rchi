@@ -91,7 +91,11 @@ class JiraClient():
                 'issue_id': str(issue),
                 'created_at': getattr(issue.fields, "created", ""),
             }
-            issue_text = f"Title: {issue}\nSummary: {getattr(issue.fields, 'summary', '')}\n"
+            issue_text = (
+                f"Title: {issue}\n"
+                f"Summary: {getattr(issue.fields, 'summary', '')}\n"
+                f"Description: {getattr(issue.fields, 'description', '')}\n"
+            )
 
             comments = self.client.comments(issue)
             for comment in comments:
