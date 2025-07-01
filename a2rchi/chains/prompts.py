@@ -1,36 +1,54 @@
 # flake8: noqa
 from langchain_core.prompts import PromptTemplate
 from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.chains.utils.prompt_validator import ValidatedPromptTemplate
 
 config = Config_Loader().config["chains"]["prompts"]
 
-def read_prompt(prompt_filepath, is_condense_prompt=False, is_main_prompt=False):
-    with open(prompt_filepath, "r") as f:
-        raw_prompt = f.read()
+prompt_config = {
+    "QA": {
+        "path": config["MAIN_PROMPT"],
+        "input_variables": ["context", "question"],
+    },
+    "CONDENSE_QUESTION": {
+        "path": config["CONDENSING_PROMPT"],
+        "input_variables": ["chat_history", "question"],
+    },
+    "IMAGE_PROCESSING": {
+        "path": config["IMAGE_PROCESSING_PROMPT"],
+        "input_variables": [],
+    },
+    "GRADING_SUMMARY": {
+        "path": config["GRADING_SUMMARY_PROMPT"],
+        "input_variables": ["submission_text"],
+    },
+    "GRADING_ANALYSIS": {
+        "path": config["GRADING_ANALYSIS_PROMPT"],
+        "input_variables": ["rubric_text", "submission_text", "summary"],
+    },
+    "GRADING_FINAL_GRADE": {
+        "path": config["GRADING_FINAL_GRADE_PROMPT"],
+        "input_variables": ["submission_text", "rubric_text", "analysis"],
+    }
+}
 
-    prompt = ""
-    for line in raw_prompt.split("\n"):
-        if len(line.lstrip())>0 and line.lstrip()[0:1] != "#":
-            prompt += line + "\n"
+def read_prompt(prompt_filepath: str) -> str:
 
-    # TODO: how do we make the prompt templates + chains more flexible to end users?
-    if is_condense_prompt and ("{chat_history}" not in prompt or "{question}" not in prompt):
-        raise ValueError("""Condensing prompt must contain \"{chat_history}\" and \"{question}\" tags. Instead, found prompt to be:
-                         """ + prompt)
-    if is_main_prompt and ("{context}" not in prompt or "{question}" not in prompt):
-        raise ValueError("""Condensing prompt must contain \"{context}\" and \"{question}\" tags. Instead, found prompt to be:
-                         """ + prompt)
+    try:
+        with open(prompt_filepath, "r") as f:
+            raw_prompt = f.read()
 
-    return prompt
+        return "\n".join(
+            line for line in raw_prompt.split("\n") if not line.lstrip().startswith("#")
+        )
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Prompt file not found: {prompt_filepath}")
 
-QA_PROMPT = PromptTemplate(
-    template=read_prompt(config["MAIN_PROMPT"], is_main_prompt=True), input_variables=["context", "question"]
-)
-
-CONDENSE_QUESTION_PROMPT = PromptTemplate(
-    template=read_prompt(config["CONDENSING_PROMPT"], is_condense_prompt=True), input_variables=["chat_history", "question"]
-)
-
-#SUMMARY_PROMPT = PromptTemplate(
-#    template=read_prompt(config["SUMMARY_PROMPT"]), input_variables=["summary", "new_lines"]
-#)
+PROMPTS = {
+    name: ValidatedPromptTemplate(
+        name=name,
+        prompt_template=read_prompt(info["path"]),
+        input_variables=info["input_variables"]
+    )
+    for name, info in prompt_config.items() if info["path"] != ""
+}

@@ -102,6 +102,20 @@ def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets):
     with open(target_secret_path, 'w') as target_file:
         target_file.write(secret_value)
 
+def _prepare_grading_rubrics(a2rchi_name_dir, rubric_dir, num_problems):
+        rubrics = []
+        for problem in range(1, num_problems + 1):
+            _print_msg(f"Preparing rubric for problem {problem}")
+            rubric_path = os.path.expanduser(os.path.join(rubric_dir, f"solution_with_rubric_{problem}.txt"))
+            if not os.path.isfile(rubric_path):
+                raise FileNotFoundError(f"Rubric file for problem {problem} not found at {rubric_path}")
+            target_rubric_path = os.path.join(a2rchi_name_dir, f"solution_with_rubric_{problem}.txt")
+            shutil.copyfile(rubric_path, target_rubric_path)
+            rubrics.append(f"solution_with_rubric_{problem}")
+            _print_msg(f"Rubric for problem {problem} prepared at {target_rubric_path}.")
+
+        return rubrics
+
 def _validate_config(config, required_fields):
     """
     a function to validate presence of required fields in nested dictionaries
@@ -183,7 +197,7 @@ def _create_volume(volume_name, podman=False):
 
 def _read_prompts(a2rchi_config):
     # initialize variables
-    main_prompt, condense_prompt, summary_prompt = None, None, None
+    main_prompt, condense_prompt = None, None
 
     # read prompts and return them
     with open(a2rchi_config['main_prompt'], 'r') as f:
@@ -192,10 +206,7 @@ def _read_prompts(a2rchi_config):
     with open(a2rchi_config['condense_prompt'], 'r') as f:
         condense_prompt = f.read()
 
-    with open(a2rchi_config['summary_prompt'], 'r') as f:
-        summary_prompt = f.read()
-
-    return main_prompt, condense_prompt, summary_prompt
+    return main_prompt, condense_prompt
 
 
 def _print_msg(msg):
@@ -213,6 +224,7 @@ def cli():
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
+@click.option('--grader', '-grader', 'include_grader_service', type=bool, default=False, help="Boolean to add service for grading service (image to text, then grading, on web interface)")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
@@ -224,6 +236,7 @@ def create(
     include_uploader_service, 
     include_cleo_and_mailer,
     include_piazza_service,
+    include_grader_service,
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
@@ -273,6 +286,8 @@ def create(
     _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
     _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
+    if use_gpu:
+        _create_volume(f"a2rchi-models", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"
 
@@ -281,11 +296,24 @@ def create(
         'name', 
         'global.TRAINED_ON',
         'chains.input_lists', 
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
-        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
+        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT',
+        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME',
     ]
+
     if include_piazza_service:
         required_fields.append('utils.piazza.network_id')
+
+    if include_grader_service:
+        required_fields = [
+            'name',
+            'global.TRAINED_ON',
+            'interfaces.grader_app.num_problems', 'interfaces.grader_app.local_rubric_dir', 'interfaces.grader_app.local_users_csv_dir',
+            'chains.input_lists',
+            'chains.prompts.IMAGE_PROCESSING_PROMPT', 'chains.prompts.GRADING_FINAL_GRADE_PROMPT',
+            'chains.chain.IMAGE_PROCESSING_MODEL_NAME', 'chains.chain.GRADING_FINAL_GRADE_MODEL_NAME',
+        ]
+    
+
 
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
@@ -296,6 +324,37 @@ def create(
             a2rchi_config["collection_name"] = f"collection_{name}"
 
     locations_of_secrets = a2rchi_config["locations_of_secrets"]
+
+    # prepare grader service if requested
+    compose_template_vars["include_grader_service"] = include_grader_service
+    if include_grader_service:
+        _print_msg("Preparing Grader Service")
+        compose_template_vars["grader_image"] = f"grader-{name}"
+        compose_template_vars["grader_tag"] = tag
+
+        compose_template_vars["grader_volume_name"] = f"a2rchi-grader-{name}"
+        _create_volume(compose_template_vars["grader_volume_name"], podman=use_podman)
+
+        _prepare_secret(a2rchi_name_dir, "admin_password", locations_of_secrets)
+
+        # prepare grader app logins file (users.csv)
+        users_csv_dir = a2rchi_config['interfaces']['grader_app']['local_users_csv_dir']
+        users_csv_path = os.path.expanduser(os.path.join(users_csv_dir, "users.csv"))
+        _print_msg(f"Preparing users.csv from {users_csv_path}")
+        if not os.path.isfile(users_csv_path):
+            raise FileNotFoundError(f"users.csv file not found in directory {users_csv_dir}")
+        target_users_csv_path = os.path.join(a2rchi_name_dir, "users.csv")
+        shutil.copyfile(users_csv_path, target_users_csv_path)
+
+        # prepare rubrics for n problems (config: interfaces.grader_app.num_problems) 
+        rubric_dir = a2rchi_config['interfaces']['grader_app']['local_rubric_dir']
+        num_problems = a2rchi_config['interfaces']['grader_app']['num_problems']
+
+        rubrics = _prepare_grading_rubrics(a2rchi_name_dir, rubric_dir, num_problems)
+
+        compose_template_vars["rubrics"] = rubrics
+
+
 
     # if deployment includes grafana, create docker volume and template deployment files
     compose_template_vars["include_grafana"] = include_grafana
@@ -311,7 +370,7 @@ def create(
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
-        compose_template_vars["grafana_image"] = f"docker.io/grafana-{name}"
+        compose_template_vars["grafana_image"] = f"grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
@@ -417,7 +476,7 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
-    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME", "SUMMARY_MODEL_NAME"]
+    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not include_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
     chain_config = a2rchi_config["chains"]["chain"]
 
     # prepare needed api token secrets
@@ -428,16 +487,29 @@ def create(
         _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
         compose_template_vars["anthropic"] = True
     if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
-        _prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
-        compose_template_vars["huggingface"] = True
+        _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
+        #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+        #compose_template_vars["huggingface"] = True
 
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
 
 
-    # copy prompts
-    shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
-    shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
-    shutil.copyfile(a2rchi_config["chains"]["prompts"]["SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "summary.prompt"))
+    # copy prompts (make this cleaner prob)
+    if include_grader_service:
+        shutil.copyfile(a2rchi_config["chains"]["prompts"]["IMAGE_PROCESSING_PROMPT"], os.path.join(a2rchi_name_dir, "image_processing.prompt"))
+        shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_FINAL_GRADE_PROMPT"], os.path.join(a2rchi_name_dir, "grading_final_grade.prompt"))
+        try:
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "grading_summary.prompt"))
+        except KeyError:
+            _print_msg("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
+        try:
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_ANALYSIS_PROMPT"], os.path.join(a2rchi_name_dir, "grading_analysis.prompt"))
+        except KeyError:
+            _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
+    else:
+        shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
+        shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
+
 
     # copy input lists
     weblists_path = os.path.join(a2rchi_name_dir, "weblists")
@@ -465,6 +537,10 @@ def create(
     chromadb_port_host = filled_config.get('utils').get('data_manager').get('chromadb_external_port')
     compose_template_vars['chromadb_port_host'] = chromadb_port_host
     # Postgres service ports are never externally exposed, so they don't need to be managed!
+
+    # grader service ports
+    compose_template_vars["grader_port_host"] = filled_config.get('interfaces').get('grader_app').get('EXTERNAL_PORT')
+    compose_template_vars["grader_port_container"] = filled_config.get('interfaces').get('grader_app').get('PORT')
 
     # load compose template
     _print_msg("Preparing Compose")
@@ -540,7 +616,7 @@ def delete(name, rmi):
 
     # remove files in a2rchi directory
     _print_msg("Removing files in a2rchi directory")
-    _run_bash_command(f"rm -r {a2rchi_name_dir}")
+    _run_bash_command(f"rm -rf {a2rchi_name_dir}")
 
 
 @click.command()
@@ -573,7 +649,7 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
     config = config_template.render(**a2rchi_config)
 
     # write final templated configuration to keep consistent w/state of container
-    a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
+    a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-grader-{name}")
     a2rchi_config_rendered_fp = os.path.join(a2rchi_name_dir, "config.yaml")
     with open(a2rchi_config_rendered_fp, 'w') as f:
         f.write(config)
@@ -581,12 +657,11 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
     # copy prompts to keep consistent w/state of container
     shutil.copyfile(a2rchi_config["main_prompt"], os.path.join(a2rchi_name_dir, "main.prompt"))
     shutil.copyfile(a2rchi_config["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
-    shutil.copyfile(a2rchi_config["summary_prompt"], os.path.join(a2rchi_name_dir, "summary.prompt"))
 
     _print_msg("Updating config")
 
     # read prompts
-    main_prompt, condense_prompt, summary_prompt = _read_prompts(a2rchi_config)
+    main_prompt, condense_prompt = _read_prompts(a2rchi_config)
 
     # get config containing hostname and port for chat service
     config_dict = yaml.load(config, Loader=yaml.FullLoader)
@@ -598,7 +673,6 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
             "config": config,
             "main_prompt": main_prompt,
             "condense_prompt": condense_prompt,
-            "summary_prompt": summary_prompt,
         }
     )
     _print_msg(resp.json()['response'])

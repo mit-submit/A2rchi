@@ -112,9 +112,9 @@ chains:
   input_lists: #REQUIRED
     - configs/class_info.list # list of websites with class info
   chain:
-    - MODEL_NAME: OpenAIGPT4 #REQUIRED
-    - CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
-    - SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
+    MODEL_NAME: OpenAIGPT4 #REQUIRED
+    CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
+    SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
   prompts:
     CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
     MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
@@ -169,3 +169,89 @@ Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean
 ### Secrets
 
 ### Configuration
+
+## Grader Interface
+
+Interface to launch a website which for a provided solution and rubric (and a couple of other things detailed below), will grade scanned images of a handwritten solution for the specified problem(s).
+
+Nota bene: this is not yet fully generalized and "service" ready, but instead for testing grading pipelines and a base off of which to build a potential grading app.
+
+### Requirements
+
+To launch the service the following files are required:
+
+- `users.csv`. This file is .csv file that contains two columns: "MIT email" and "Unique code", e.g.:
+
+```
+MIT email,Unique code
+username@mit.edu,222
+```
+
+For now, the system requires the emails to be in the MIT domain, namely, contain "@mit.edu". TODO: make this an argument that is passed (e.g., school/email domain)
+
+- `solution_with_rubric_*.txt`. These are .txt files that contain the problem solution followed by the rubric. The naming of the files should follow exactly, where the `*` is the problem number. There should be one of these files for every problem you want the app to be able to grade. The top of the file should be the problem name with a line of dashes ("-") below, e.g.:
+
+```
+Anti-Helmholtz Coils
+---------------------------------------------------
+```
+
+These files should live in a directory which you will pass to the config, and A2rchi will handle the rest.
+
+- `admin_password.txt`. This file will be passed as a secret and be the admin code to login in to the page where you can reset attempts for students.
+
+### Secrets
+
+The only grading specific secret is the admin password, which like shown above, should be put in the following file
+
+```
+admin_password.txt
+```
+
+Then it behaves like any other secret.
+
+### Configuration
+
+The required fields in the configuration file are different from the rest of the A2rchi services. Below is an example:
+
+```
+name: grading_test # REQUIRED
+
+global:
+  TRAINED_ON: "rubrics, class info, etc." # REQUIRED
+
+locations_of_secrets: # REQUIRED
+  - ~/.secrets/api_tokens
+  - ~/.secrets/salts_and_internal_passwords
+  - ~/.secrets/grader
+
+chains:
+  input lists:
+    - configs/miscellanea.list
+  chain:
+    IMAGE_PROCESSING_MODEL_NAME: HuggingFaceImageLLM # REQUIRED
+    GRADING_FINAL_GRADE_MODEL_NAME: HuggingFaceOpenLLM # REQUIRED
+
+  prompts:
+    IMAGE_PROCESSING_PROMPT: configs/prompts/image_processing.prompt # REQUIRED
+    GRADING_FINAL_GRADE_PROMPT: configs/prompts/grading_final_grade.prompt # REQUIRED
+
+interfaces:
+  grader_app:
+    num_problems: 1 # REQUIRED
+    local_rubric_dir: ~/grading/my_rubrics # REQUIRED
+    local_users_csv_dir: ~/grading/logins # REQUIRED
+```
+
+1. `name` -- The name you give to your configuration.
+2. `global.TRAINED_ON` -- A brief description of what you are giving to A2rchi.
+3. `chains.input_lists` -- .list files of websites you want A2rchi to be able to RAG. If you don't want to do any RAG, you can pass an empty file.
+4. `chains.chain.IMAGE_PROCESSING_MODEL_NAME` -- The class of model you want to use. For now, only `HuggingFaceImageLLM` is supported. The default model used is `Qwen/Qwen2.5-VL-7B-Instruct`. If you want to try others, specify with `chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.base_model`. Note -- for now you must remove or comment out `MODEL_NAME` and `CONDENSE_MODEL_NAME`.
+5. `chains.chain.GRADING_FINAL_GRADE_MODEL_NAME` -- The class of model you want to use (HuggingFaceOpenLLM, OpenAIGPT4, etc.). The default HuggingFace model is `Qwen/Qwen2.5-7B-Instruct-1M`. If you want to try others, specify with `chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.base_model`.
+6. `chains.prompts.IMAGE_PROCESSING_PROMPT` -- A prompt for processing images, which should only be a string (no templating).
+7. `chains.prompts.GRADING_FINAL_GRADE_PROMPT` -- A prompt for grading a student's solution.
+8. `interfaces.grader_app.num_problems` -- number of problems the grading service should expect (note should match the number of rubric files...)
+9. `interfaces.grader_app.local_rubric_dir` -- The directory where the `solution_with_rubric_*.txt` files are.
+10. `interfaces.grader_app.local_rubric_dir` -- The directory where the `users.csv` file is.
+
+
