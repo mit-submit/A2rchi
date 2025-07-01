@@ -401,15 +401,18 @@ class FlaskAppWrapper(object):
 
             # IMAGE PROCESSING CALLED HERE !!!
 
-            response = self.image_processor(base64_images)
+            raw_response = self.image_processor(base64_images)[0]
+            normalized_response = self.normalize_llm_response(raw_response)
 
             #################################
 
-            if '--- Notes ---' in response:
-                parts = response.split('--- Notes ---', 1)
+            if '--- Notes ---' in normalized_response:
+                parts = normalized_response.split('--- Notes ---', 1)
                 response_final = parts[0].strip()
             else:
-                response_final = response
+                response_final = normalized_response
+
+            response_final = self.clean_latex_output(response_final)
 
             session['submission_id'] = submission_id
             session['base64_images'] = base64_images
@@ -428,7 +431,34 @@ class FlaskAppWrapper(object):
                 accessibility=accessibility,
             )
 
+    def clean_latex_output(self, text: str) -> str:
+        text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+        text = re.sub(r'```.*', '', text)
+        
+        text = re.sub(r'\\begin{.*?}.*?\\end{.*?}', '', text, flags=re.DOTALL)
+        text = re.sub(r'\\section{.*?}', '', text)
+        text = re.sub(r'\\subsection{.*?}', '', text)
+        
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        
+        # fix double backslashes in math delimiters for MathJax
+        text = text.replace('\\\\[', '\\[').replace('\\\\]', '\\]')
+        text = text.replace('\\\\(', '\\(').replace('\\\\)', '\\)')
+        
+        return text.strip()
     
+    def normalize_llm_response(self, response: str) -> str:
+        response = response.strip()
+
+        if response.startswith("[") and response.endswith("]"):
+            # Handle both single or double quoted list strings: ['...'] or ["..."]
+            if (response.startswith("['") and response.endswith("']")) or \
+            (response.startswith('["') and response.endswith('"]')):
+                response = response[2:-2]  # Remove [' or [" and '] or "]
+                response = response.replace("\\n", "\n").replace("\\t", "\t")
+                return response
+
+        return response
 
 
     def finalize_submission(self, problem_number):
