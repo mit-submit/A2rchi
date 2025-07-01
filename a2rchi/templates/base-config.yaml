@@ -165,7 +165,7 @@ utils:
       - {{ word }}
       {%- endfor %}
     greeting_patterns: 
-      {%- for pattern in utils.anonymizer.greeting_patterns | default(['^(hi|hello|hey|greetings|dear)\\b', '^\\w+,\\s*|\\w+\\s+']) %}
+      {%- for pattern in utils.anonymizer.greeting_patterns | default(['^(hi|hello|hey|greetings|dear)\\b', '^\\w+,\\s*']) %}
       - {{ pattern }}
       {%- endfor %}
     signoff_patterns: 
