@@ -158,3 +158,21 @@ utils:
       - {{ project }}
       {%- endfor %}
     ANONYMIZE_DATA: {{ utils.jira.ANONYMIZE_DATA | default(true, true) }}
+  anonymizer:
+    nlp_model: {{ utils.anonymizer.nlp_model | default('en_core_web_sm', true) }}
+    excluded_words: 
+      {%- for word in utils.anonymizer.excluded_words | default(['John', 'Jane', 'Doe']) %}
+      - {{ word }}
+      {%- endfor %}
+    greeting_patterns: 
+      {%- for pattern in utils.anonymizer.greeting_patterns | default(['^(hi|hello|hey|greetings|dear)\\b', '^\\w+,\\s*|\\w+\\s+']) %}
+      - {{ pattern }}
+      {%- endfor %}
+    signoff_patterns: 
+      {%- for pattern in utils.anonymizer.signoff_patterns | default(['\\b(regards|sincerely|best regards|cheers|thank you)\\b', '^\\s*[-~]+\\s*$']) %}
+      - {{ pattern }}
+      {%- endfor %}
+    email_pattern: '{{ utils.anonymizer.email_pattern | default("[\\w\\.-]+@[\\w\\.-]+\\.\\w+") }}'
+    # This is a JIRA specific username pattern
+    username_pattern: '{{ utils.anonymizer.username_pattern | default("\\[~[^\\]]+\\]") }}'
+  

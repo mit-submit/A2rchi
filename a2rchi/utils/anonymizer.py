@@ -6,30 +6,33 @@ import re
 import spacy
 from typing import Set, List
 
+from a2rchi.utils.config_loader import Config_Loader
+
 
 class Anonymizer:
-    def __init__(self, excluded_words: Set[str] = None):
+    def __init__(self):
         """
         Initialize the Anonymizer.
         """
+        self.anonymizer_config = Config_Loader().config["utils"]["anonymizer"]
+        nlp_model = self.anonymizer_config["nlp_model"]
+        excluded_words = self.anonymizer_config["excluded_words"]
+        greeting_patterns = self.anonymizer_config["greeting_patterns"]
+        signoff_patterns = self.anonymizer_config["signoff_patterns"]
+        email_pattern = self.anonymizer_config["email_pattern"]
+        username_pattern = self.anonymizer_config["username_pattern"]
+
         try:
-            self.nlp = spacy.load("en_core_web_sm")
+            self.nlp = spacy.load(nlp_model)
         except OSError:
-            spacy.cli.download("en_core_web_sm")
-            self.nlp = spacy.load("en_core_web_sm")
-        # TODO: Move the following patters into the config file
-        self.EXCLUDED_WORDS = excluded_words or {"John", "Jane", "Doe"}
-        self.GREETING_PATTERNS = [
-            re.compile(r"^(hi|hello|hey|greetings|dear)\b", re.IGNORECASE),
-            re.compile(r"^(\w+,\s*|\w+\s+)", re.IGNORECASE),
-        ]
-        self.SIGNOFF_PATTERNS = [
-            re.compile(r"\b(regards|sincerely|best regards|cheers|thank you)\b", re.IGNORECASE),
-            re.compile(r"^\s*[-~]+\s*$"),
-        ]
-        self.email_pattern = re.compile(r"[\w\.-]+@[\w\.-]+\.\w+")
-        # TODO: This is JIRA specific, consider making it configurable
-        self.username_pattern = re.compile(r'\[~[^\]]+\]')
+            spacy.cli.download(nlp_model)
+            self.nlp = spacy.load(nlp_model)
+
+        self.EXCLUDED_WORDS = excluded_words
+        self.GREETING_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in greeting_patterns]
+        self.SIGNOFF_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in signoff_patterns]
+        self.EMAIL_PATTERN = re.compile(email_pattern)
+        self.USERNAME_PATTERN = re.compile(username_pattern)
 
     def anonymize(self, text: str) -> str:
         """
@@ -42,8 +45,8 @@ class Anonymizer:
         }
 
         # Remove email addresses and usernames
-        text = self.email_pattern.sub("", text)
-        text = self.username_pattern.sub("", text)
+        text = self.EMAIL_PATTERN.sub("", text)
+        text = self.USERNAME_PATTERN.sub("", text)
 
         # Remove greetings and sign-offs
         lines = text.splitlines()
