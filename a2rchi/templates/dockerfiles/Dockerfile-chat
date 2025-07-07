@@ -12,6 +12,22 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # ensure this directory is present for prod-801 deployment
 # RUN if [ "$BUILD_ENV" = "prod-801" ] ; then mkdir /root/data/801-content ; fi
 
+# Install Firefox and Geckodriver with improved error handling
+RUN apt-get update && apt-get install -y \
+    firefox-esr \
+    wget \
+    gnupg \
+    ca-certificates \
+    --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Geckodriver
+RUN wget -q "https://github.com/mozilla/geckodriver/releases/download/v0.36.0/geckodriver-v0.36.0-linux64.tar.gz" \
+    && tar -xzf "geckodriver-v0.36.0-linux64.tar.gz" -C /usr/local/bin \
+    && chmod +x /usr/local/bin/geckodriver \
+    && rm "geckodriver-v0.36.0-linux64.tar.gz"
+
 COPY a2rchi_code a2rchi
 COPY pyproject.toml pyproject.toml
 COPY weblists weblists

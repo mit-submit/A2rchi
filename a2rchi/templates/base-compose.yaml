@@ -1,5 +1,7 @@
 services:
   chat:
+    env_file: 
+      - ./.env
     image: {{ chat_image }}:{{ chat_tag }}
     build:
       context: .
@@ -87,6 +89,10 @@ services:
     annotations:
       org.opencontainers.image.nvidia/gpu.devices: all
     {% endif %}
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
+
   
   chromadb:
     image: {{ chromadb_image }}:{{ chromadb_tag }}
@@ -110,6 +116,9 @@ services:
       retries: 3
       start_period: 10s
       start_interval: 5s
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %} 
 
   postgres:
     image: docker.io/postgres:16
@@ -132,6 +141,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
 
   {% if include_grafana -%}
   grafana:
@@ -155,6 +167,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
   {% endif %}
 
   {% if include_uploader_service -%}
@@ -203,6 +218,10 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
+
   {% endif %}
 
   {% if include_piazza_service -%}
@@ -254,6 +273,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
   {% endif %}
 
   {% if include_cleo_and_mailer -%}
@@ -342,6 +364,9 @@ services:
     annotations:
       org.opencontainers.image.nvidia/gpu.devices: all
     {% endif %}
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
 
   mailbox:
     image: {{ mailbox_image }}:{{ mailbox_tag }}
@@ -428,6 +453,9 @@ services:
       - "nvidia.com/gpu=2"
     annotations:
       org.opencontainers.image.nvidia/gpu.devices: all
+    {% endif %}
+    {% if host_mode -%}
+    network_mode: host
     {% endif %}
 {% endif %}
 

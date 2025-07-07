@@ -218,6 +218,7 @@ def cli():
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
+@click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode for the containers. This is useful for contianers running on CERN puppet managed machines.")
 
 def create(
     name, 
@@ -229,7 +230,8 @@ def create(
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
-    image_tag
+    image_tag,
+    host_mode
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -271,6 +273,15 @@ def create(
         "use_gpu": use_gpu,
     }
 
+    # tell compose whether to look for gpus or not
+    compose_template_vars["use_gpu"] = use_gpu
+    
+    # if using host mode, set the host mode variable
+    compose_template_vars["host_mode"] = host_mode
+
+    # piazza compose vars
+    compose_template_vars["piazza_tag"] = tag
+
     # create docker volumes; these commands will no-op if they already exist
     _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
@@ -293,7 +304,17 @@ def create(
     with open(a2rchi_config_filepath, 'r') as f:
         a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
         _validate_config(a2rchi_config, required_fields=required_fields)
-        a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
+        if host_mode:
+            a2rchi_config["postgres_hostname"] = "localhost"
+            # Set chromadb_host to localhost when in host mode
+            if "utils" not in a2rchi_config:
+                a2rchi_config["utils"] = {}
+            if "data_manager" not in a2rchi_config["utils"]:
+                a2rchi_config["utils"]["data_manager"] = {}
+            a2rchi_config["utils"]["data_manager"]["chromadb_host"] = "localhost"
+        else:
+            a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
+        
         if "collection_name" not in a2rchi_config:
             a2rchi_config["collection_name"] = f"collection_{name}"
 
@@ -446,6 +467,9 @@ def create(
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
     shutil.copyfile(a2rchi_config["chains"]["prompts"]["SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "summary.prompt"))
 
+    # TODO: remove this in favor of config file and get sso creds from secrets
+    print("Copying .env file to a2rchi directory", a2rchi_name_dir)
+    shutil.copyfile('./.env', os.path.join(a2rchi_name_dir, ".env"))
     # copy input lists
     weblists_path = os.path.join(a2rchi_name_dir, "weblists")
     os.makedirs(weblists_path, exist_ok=True)
