@@ -381,7 +381,8 @@ class FlaskAppWrapper(object):
                     urls=[url],
                     upload_dir=self.app.config['WEBSITE_FOLDER'],
                     sources_path=self.sources_path,
-                    verify_urls=True,
+                    #verify_urls=True,
+                    verify_urls=False,
                     enable_warnings=True,
                 )
                 added_to_urls = True
