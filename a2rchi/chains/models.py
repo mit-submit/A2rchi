@@ -1,3 +1,4 @@
+import os
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
@@ -8,6 +9,8 @@ from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.llms import LLM
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_core.caches import BaseCache 
+from langchain_core.callbacks import Callbacks 
 
 import requests
 from typing import Optional, List
@@ -17,6 +20,7 @@ class BaseCustomLLM(LLM):
     Abstract class used to load a custom LLM
     """
     n_tokens: int = 100 # this has to be here for parent LLM class
+    cache: Union[BaseCache, bool, None] = None
 
     @property
     def _llm_type(self) -> str:
@@ -188,6 +192,69 @@ class LlamaLLM(BaseCustomLLM):
         return output_text[output_text.rfind("[/INST]") + len("[/INST]"):]
 
 
+class VLLM():
+    """
+    Loading a vLLM Model using the vllm Python package.
+    Make sure the vllm package is installed and the model is available locally or remotely.
+    """
+    base_model: str = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'    # Model name or path (e.g., "meta-llama/Llama-2-7b-hf")
+    max_new_tokens: int = 1024
+    temperature: float = 0.7
+    top_p: float = 0.95
+    top_k: int = 50
+    repetition_penalty: float = 1.0
+    seed: int = None
+
+    vllm_engine: object = None
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        from vllm import LLM as vllmLLM
+
+        if self.seed is not None:
+            torch.manual_seed(self.seed)
+
+        # set some environment variables to avoid issues
+        os.environ['MKL_THREADING_LAYER']='GNU'
+        os.environ['MKL_SERVICE_FORCE_INTEL']='1'
+
+        # Load vLLM engine
+        self.vllm_engine = vllmLLM(model=self.base_model)
+
+    @property
+    def _llm_type(self) -> str:
+        return "custom"
+
+    def _call(
+        self,
+        prompt: str = None,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+    ) -> str:
+        
+        from vllm import SamplingParams
+
+        sampling_params = SamplingParams(
+            temperature=self.temperature,
+            top_p=self.top_p,
+            top_k=self.top_k,
+            max_tokens=self.max_new_tokens,
+            repetition_penalty=self.repetition_penalty,
+            stop=stop
+        )
+
+        # vLLM expects a list of prompts
+        outputs = self.vllm_engine.generate([prompt], sampling_params)
+        # outputs is a list of RequestOutput, each has .outputs (list of generations)
+        if outputs and outputs[0].outputs:
+            return outputs[0].outputs[0].text
+        else:
+            return ""
+
+
 class HuggingFaceOpenLLM(BaseCustomLLM):
     """
     Loading any chat-based LLM available on Hugging Face. Make sure that the model
@@ -261,6 +328,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     device_map="auto",
                     quantization_config=bnbconfig,
                     use_safetensors=True,
+                    cache_dir="/root/data/"
                 )
             else:
                 base_model = AutoModelForCausalLM.from_pretrained(
@@ -269,6 +337,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     device_map="auto",
                     torch_dtype=torch.float16,
                     use_safetensors=True,
+                    cache_dir="/root/data/"
                 )
             
             print("[HuggingFaceOpenLLM] base model loaded.")
@@ -459,27 +528,6 @@ class SalesforceSafetyChecker():
             report += "|" + "|".join(f"{n:^10}" for n in scores.values()) + "|\n"
         return "Salesforce Content Safety Flan T5 Base", is_safe, report
 
-
-
-
-class BaseCustomLLM(LLM):
-    """
-    Abstract class used to load a custom LLM
-    """
-    n_tokens: int = 100 # this has to be here for parent LLM class
-
-    @property
-    def _llm_type(self) -> str:
-        return "custom"
-
-    @abstractmethod
-    def _call(
-        self,
-        prompt: str,
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-    ) -> str:
-        pass
 
 
 class ClaudeLLM(BaseCustomLLM):

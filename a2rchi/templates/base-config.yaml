@@ -105,6 +105,16 @@ chains:
           repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.repetition_penalty | default(1.0, true) }}
           length_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.length_penalty | default(1, true) }}
           max_padding_length: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.max_padding_length | default("null", true) }}
+      VLLM:
+        class: VLLM
+        kwargs:
+          base_model: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.base_model | default("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", true) }}
+          seed: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.seed | default("null", true) }}
+          max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.max_new_tokens | default(4096, true) }}
+          top_p: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_p | default(0.9, true) }}
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.temperature | default(0.6, true) }}
+          top_k: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_k | default(50, true) }}
+          repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.repetition_penalty | default(1.0, true) }}
     chain_update_time: {{ chains.chain.chain_update_time | default(10, true) }}
 
 utils:
