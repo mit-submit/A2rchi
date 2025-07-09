@@ -387,8 +387,6 @@ class HuggingFaceImageLLM(BaseCustomLLM):
     do_sample: bool = False
     min_length: int = None
     use_cache: bool = True
-    top_p: float = .9
-    temperature: float = .6
     top_k: int = 50
     repetition_penalty: float = 1.0
     length_penalty: int = 1
@@ -514,8 +512,6 @@ class HuggingFaceImageLLM(BaseCustomLLM):
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=self.do_sample,
-                top_p=self.top_p,
-                temperature=self.temperature,
                 min_length=self.min_length,
                 use_cache=self.use_cache,
                 top_k=self.top_k,

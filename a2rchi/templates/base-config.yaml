@@ -132,8 +132,6 @@ chains:
           do_sample: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.do_sample | default(false, false) }}
           min_length: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.min_length | default("null", true) }}
           use_cache: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.use_cache | default(true, true) }}
-          top_p: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.top_p | default(0.9, true) }}
-          temperature: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.temperature | default(0.6, true) }}
           top_k: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.top_k | default(50, true) }}
           repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.repetition_penalty | default(1.0, true) }}
           length_penalty: {{ chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.length_penalty | default(1, true) }}

@@ -4,7 +4,7 @@ services:
     image: {{ chat_image }}:{{ chat_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if use_gpu else '' }}
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ chat_container_name }}
     depends_on:
       chromadb:
@@ -22,11 +22,11 @@ services:
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       {% endif %}
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
-    {% if use_gpu and not use_podman -%}
+    {% if gpu_ids and not use_podman -%}
     # TODO: docker GPU configuration needs testing
     deploy:
       resources:
@@ -52,7 +52,7 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       - a2rchi-models:/root/models/
       {%- endif %}
     logging:
@@ -197,7 +197,7 @@ services:
     image: {{ grader_image }}:{{ grader_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-grader{{ '-gpu' if use_gpu else '' }}
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-grader{{ '-gpu' if gpu_ids else '' }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -214,7 +214,7 @@ services:
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       {% endif %}
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {%- endif %}
@@ -242,11 +242,17 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./image_processing.prompt:/root/A2rchi/image_processing.prompt
       - ./grading_final_grade.prompt:/root/A2rchi/grading_final_grade.prompt
+      {% if analysis -%}
+      - ./grading_analysis.prompt:/root/A2rchi/grading_analysis.prompt
+      {%- endif %}
+      {% if summary -%}
+      - ./grading_summary.prompt:/root/A2rchi/grading_summary.prompt
+      {%- endif %}
       - ./users.csv:/root/A2rchi/users.csv
       {%- for rubric in rubrics | default([]) %}
       - ./{{ rubric }}.txt:/root/A2rchi/{{ rubric }}.txt
       {%- endfor %}
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       - a2rchi-models:/root/models/
       {%- endif %}
       # TODO: conditionally include grading summary and analysis prompts
@@ -313,7 +319,7 @@ services:
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
       - ./summary.prompt:/root/A2rchi/summary.prompt
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       - a2rchi-models:/root/models/
       {%- endif %}
     logging:
@@ -327,7 +333,7 @@ services:
     image: {{ cleo_image }}:{{ cleo_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-cleo{{ '-gpu' if use_gpu else '' }}
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-cleo{{ '-gpu' if gpu_ids else '' }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -353,7 +359,7 @@ services:
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       {% endif %}
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {%- endif %}
@@ -382,7 +388,7 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       - a2rchi-models:/root/models/
       {%- endif %}
     logging:
@@ -408,7 +414,7 @@ services:
     image: {{ mailbox_image }}:{{ mailbox_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if use_gpu else '' }}
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if gpu_ids else '' }}
     depends_on:
       chromadb:
         condition: service_healthy
@@ -435,7 +441,7 @@ services:
       {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       {% endif %}
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {%- endif %}
@@ -464,7 +470,7 @@ services:
       - ./config.yaml:/root/A2rchi/config.yaml
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
-      {% if use_gpu -%}
+      {% if gpu_ids -%}
       - a2rchi-models:/root/models/
       {%- endif %}
     logging:
@@ -500,26 +506,19 @@ volumes:
   {{ grader_volume_name }}:
     external: true
   {%- endif %}
-  {% if use_gpu -%}
+  {% if gpu_ids -%}
   a2rchi-models:
     external: true
   {%- endif %}
 
 secrets:
   # Core secrets
-  {% if openai -%}
   openai_api_key:
     file: secrets/openai_api_key.txt
-  {% endif %}
-  {% if anthropic -%}
   anthropic_api_key:
     file: secrets/anthropic_api_key.txt
-  {% endif %}
-  {% if huggingface -%}
   hf_token:
     file: secrets/hf_token.txt
-  {% endif %}
-  
   pg_password:
     file: secrets/pg_password.txt
 

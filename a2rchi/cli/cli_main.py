@@ -209,7 +209,7 @@ def _read_prompts(a2rchi_config):
     return main_prompt, condense_prompt
 
 
-def _parse_gpu_option(ctx, param, value):
+def _parse_gpu_ids_option(ctx, param, value):
     if value is None:
         return None
     if value.lower() == "all":
@@ -217,7 +217,7 @@ def _parse_gpu_option(ctx, param, value):
     try:
         return [int(x.strip()) for x in value.split(",")]
     except ValueError:
-        raise click.BadParameter('GPU option must be "all" or comma-separated integers (e.g., "0,1") to specify which GPUs to use (try nvidia-smi to see available GPUs and respective available memory)')
+        raise click.BadParameter('--gpu-ids option must be "all" (or equivalently just the --gpu flag) or comma-separated integers (e.g., "0,1") to specify which GPUs to use (try nvidia-smi to see available GPUs and respective available memory)')
 
 
 def _print_msg(msg):
@@ -238,7 +238,8 @@ def cli():
 @click.option('--grader', '-grader', 'include_grader_service', type=bool, default=False, help="Boolean to add service for grading service (image to text, then grading, on web interface)")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
-@click.option('--gpu', 'gpu_ids', flag_value="all", callback=_parse_gpu_option, help='GPU configuration: "all" (or just the --gpu flag) or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
+@click.option('--gpu', 'all_gpus', flag_value="all", help='Flag option for GPUs. Same as "--gpu-ids all"')
+@click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 
 def create(
@@ -250,6 +251,7 @@ def create(
     include_grader_service,
     a2rchi_config_filepath,
     use_podman,
+    all_gpus,
     gpu_ids,
     image_tag
 ):
@@ -268,9 +270,10 @@ def create(
     if name is not None:
         name = name.strip()
     else:
-        raise InvalidCommandException(
-            f"Please provide a name for the deployment using the --name flag."
-        )
+        raise click.ClickException(f"Please provide a name for the deployment using the --name flag.")
+    
+    if all_gpus and gpu_ids:
+        raise click.ClickException("Use either the --gpu flag or --gpu-ids, not both!")
 
     if a2rchi_config_filepath is not None:
         a2rchi_config_filepath = a2rchi_config_filepath.strip()
@@ -290,14 +293,14 @@ def create(
         "chromadb_container_name": f"chromadb-{name}",
         "postgres_container_name": f"postgres-{name}",
         "use_podman": use_podman,
-        "gpu_ids": gpu_ids,
+        "gpu_ids": gpu_ids or all_gpus,
     }
 
     # create docker volumes; these commands will no-op if they already exist
     _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
     _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
-    if gpu_ids:
+    if gpu_ids or all_gpus:
         _create_volume(f"a2rchi-models", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"
@@ -509,13 +512,17 @@ def create(
     if include_grader_service:
         shutil.copyfile(a2rchi_config["chains"]["prompts"]["IMAGE_PROCESSING_PROMPT"], os.path.join(a2rchi_name_dir, "image_processing.prompt"))
         shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_FINAL_GRADE_PROMPT"], os.path.join(a2rchi_name_dir, "grading_final_grade.prompt"))
+        compose_template_vars["summary"] = True
+        compose_template_vars["analysis"] = True
         try:
             shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "grading_summary.prompt"))
         except KeyError:
+            compose_template_vars["summary"] = False
             _print_msg("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
         try:
             shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_ANALYSIS_PROMPT"], os.path.join(a2rchi_name_dir, "grading_analysis.prompt"))
         except KeyError:
+            compose_template_vars["analysis"] = False
             _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
     else:
         shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
