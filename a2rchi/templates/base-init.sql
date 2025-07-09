@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS timing (
 );
 
 -- create grafana user if it does not exist
-{% if include_grafana -%}
+{% if my_grafana -%}
 DO
 $do$
 BEGIN
