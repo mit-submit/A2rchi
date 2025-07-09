@@ -193,8 +193,10 @@ class FlaskAppWrapper(object):
     def __init__(self, app, **configs):
         # load global config
         self.global_config = Config_Loader().config["global"]
+        #self.config = Config_Loader().config["interfaces"]["uploader_app"]
         self.data_path = self.global_config["DATA_PATH"]
         self.salt = read_secret("UPLOADER_SALT")
+        self.uploader_app = interfaces["uploader_app"]
 
         # store flask app and set secret key
         self.app = app
@@ -381,8 +383,7 @@ class FlaskAppWrapper(object):
                     urls=[url],
                     upload_dir=self.app.config['WEBSITE_FOLDER'],
                     sources_path=self.sources_path,
-                    #verify_urls=True,
-                    verify_urls=False,
+                    verify_urls=self.uploader_app["verify_urls"],
                     enable_warnings=True,
                 )
                 added_to_urls = True
