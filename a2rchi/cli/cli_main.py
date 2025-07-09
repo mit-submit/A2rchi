@@ -212,6 +212,8 @@ def cli():
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
+@click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
+@click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
@@ -222,6 +224,8 @@ def create(
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
+    include_jira,
+    include_piazza_service,
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
@@ -267,9 +271,6 @@ def create(
         "use_gpu": use_gpu,
     }
 
-    # piazza compose vars
-    compose_template_vars["piazza_tag"] = tag
-
     # create docker volumes; these commands will no-op if they already exist
     _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
@@ -284,6 +285,9 @@ def create(
         'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
         'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
     ]
+    if include_piazza_service:
+        required_fields.append('utils.piazza.network_id')
+
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
         a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
@@ -308,7 +312,7 @@ def create(
         _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
-        compose_template_vars["grafana_image"] = f"docker.io/grafana-{name}"
+        compose_template_vars["grafana_image"] = f"grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
@@ -367,6 +371,19 @@ def create(
          _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
          _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
 
+    compose_template_vars["include_piazza_service"] = include_piazza_service
+    if include_piazza_service:
+        _print_msg("Preparing Piazza Service")
+
+        compose_template_vars["piazza_image"] = f"piazza-{name}"
+        compose_template_vars["piazza_tag"] = tag
+
+        # piazza secrets
+        _prepare_secret(a2rchi_name_dir, "piazza_email", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
+
+
     compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
     if include_cleo_and_mailer:
         _print_msg("Preparing Cleo and Emailer Service")
@@ -390,6 +407,11 @@ def create(
         _prepare_secret(a2rchi_name_dir, "sender_user", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
 
+    
+    if include_jira:
+        _prepare_secret(a2rchi_name_dir, "jira_pat", locations_of_secrets)
+        compose_template_vars["jira"] = True
+    
 
     _print_msg("Preparing Postgres")
     # prepare init.sql for postgres initialization
@@ -404,7 +426,7 @@ def create(
     model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME", "SUMMARY_MODEL_NAME"]
     chain_config = a2rchi_config["chains"]["chain"]
 
-    # Prepare secrets
+    # prepare needed api token secrets
     if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
         _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
         compose_template_vars["openai"] = True

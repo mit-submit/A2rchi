@@ -1,4 +1,5 @@
 from a2rchi.utils.scraper import Scraper
+from a2rchi.utils.ticket_manager import TicketManager
 
 from chromadb.config import Settings
 from langchain_community.document_loaders.text import TextLoader
@@ -33,6 +34,11 @@ class DataManager():
         print("Scraping documents onto filesystem")
         scraper = Scraper()
         scraper.hard_scrape(verbose=True)
+
+        # Fetch ticket data via APIs and copy onto the filesystem
+        print("Fetching ticket data onto filesystem")
+        ticket_manager = TicketManager()
+        ticket_manager.run()
 
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
