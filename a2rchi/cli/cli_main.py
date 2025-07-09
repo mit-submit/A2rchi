@@ -281,7 +281,6 @@ def create(
     required_fields = [
         'name', 
         'global.TRAINED_ON',
-        #'chains.input_lists', 
         'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
         'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
     ]
