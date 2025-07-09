@@ -26,6 +26,14 @@ class BaseCustomLLM(LLM):
     def _llm_type(self) -> str:
         return "custom"
 
+    @classmethod
+    def get_cached_model(cls, key):
+        return cls._MODEL_CACHE.get(key)
+
+    @classmethod
+    def set_cached_model(cls, key, value):
+        cls._MODEL_CACHE[key] = value
+
     @abstractmethod
     def _call(
         self,
@@ -34,6 +42,7 @@ class BaseCustomLLM(LLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         pass
+
 
 class DumbLLM(BaseCustomLLM):
     """
@@ -192,7 +201,7 @@ class LlamaLLM(BaseCustomLLM):
         return output_text[output_text.rfind("[/INST]") + len("[/INST]"):]
 
 
-class VLLM():
+class VLLM(BaseCustomLLM):
     """
     Loading a vLLM Model using the vllm Python package.
     Make sure the vllm package is installed and the model is available locally or remotely.
@@ -221,8 +230,14 @@ class VLLM():
         os.environ['MKL_THREADING_LAYER']='GNU'
         os.environ['MKL_SERVICE_FORCE_INTEL']='1'
 
-        # Load vLLM engine
-        self.vllm_engine = vllmLLM(model=self.base_model)
+        model_cache_key = (self.base_model, "", "")
+        cached = self.get_cached_model(model_cache_key)
+        if cached:
+            _, self.vllm_engine = cached
+        else:
+            # Load vLLM engine
+            self.vllm_engine = vllmLLM(model=self.base_model)
+            self.set_cached_model(model_cache_key, (None, self.vllm_engine))
 
     @property
     def _llm_type(self) -> str:
@@ -253,6 +268,8 @@ class VLLM():
             return outputs[0].outputs[0].text
         else:
             return ""
+        
+VLLM._MODEL_CACHE = {}
 
 
 class HuggingFaceOpenLLM(BaseCustomLLM):
@@ -282,14 +299,6 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
     tokenizer: Callable = None
     hf_model: Callable = None
     safety_checker: List = None
-
-    @classmethod
-    def get_cached_model(cls, key):
-        return cls._MODEL_CACHE.get(key)
-
-    @classmethod
-    def set_cached_model(cls, key, value):
-        cls._MODEL_CACHE[key] = value
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -328,7 +337,6 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     device_map="auto",
                     quantization_config=bnbconfig,
                     use_safetensors=True,
-                    cache_dir="/root/data/"
                 )
             else:
                 base_model = AutoModelForCausalLM.from_pretrained(
@@ -337,7 +345,6 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     device_map="auto",
                     torch_dtype=torch.float16,
                     use_safetensors=True,
-                    cache_dir="/root/data/"
                 )
             
             print("[HuggingFaceOpenLLM] base model loaded.")
