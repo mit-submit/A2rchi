@@ -68,29 +68,21 @@ There are a few required fields that must be included in every configuration. Th
 
 2. **`global:TRAINED_ON`**: A quick couple words describing the data that you want A2rchi to specialize in. For example, "introductory classical mechanics" or "the subMIT cluster at MIT."
 
-3. **`chains:input_lists`**: A list of file(s), each containing a list of websites seperated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, `configs/miscellanea.list` contains information of the MIT proffessors who started the A2rchi project:
+3. **`chains:prompts:CONDENSING_PROMPT`**: A condensing prompt is a prompt used to condense a chat history and a follow up question into a stand alone question. This configuration line gives the path, relative to the root of the repo, of a file containing a condensing prompt. All condensing prompts must have the following tags in them, which will be filled with the appropriate information: `{chat_history}` and `{question}`. A very general prompt for condensing histories can be found at `configs/prompts/condense.prompt`, so for base installs it will not need to be modified. 
 
-```
-# web pages of various people
-https://people.csail.mit.edu/kraska
-https://physics.mit.edu/faculty/christoph-paus
-```
+4. **`chains:prompts:SUMMARY_PROMPT`**: #TODO: I don't actually know what this does... For now just link it a blank file....
 
-4. **`chains:prompts:CONDENSING_PROMPT`**: A condensing prompt is a prompt used to condense a chat history and a follow up question into a stand alone question. This configuration line gives the path, relative to the root of the repo, of a file containing a condensing prompt. All condensing prompts must have the following tags in them, which will be filled with the appropriate information: `{chat_history}` and `{question}`. A very general prompt for condensing histories can be found at `configs/prompts/condense.prompt`, so for base installs it will not need to be modified. 
+5. **`chains:prompts:MAIN_PROMPT:`**: A main prompt is a prompt used to qurery LLM with appropriate context and question. This configuration line gives the path, relative to the root of the repo, of a file containing a main prompt. All main prompts must have the following tags in them, which will be filled with the appropriate information: `{question}` and `{context}`. An example prompt specific to subMIT can be found here: `configs/prompts/submit.prompt` (it will not perform well for other applications where it is recommeneded to write your own prompt and change it in the config)
 
-5. **`chains:prompts:SUMMARY_PROMPT`**: #TODO: I don't actually know what this does... For now just link it a blank file....
+6. **`chains:chain:MODEL_NAME`**: Model name for the choice of LLM (OpenAIGPT4, OpenAIGPT35, AnthropicLLM, DumbLLM, etc)
 
-6. **`chains:prompts:MAIN_PROMPT:`**: A main prompt is a prompt used to qurery LLM with appropriate context and question. This configuration line gives the path, relative to the root of the repo, of a file containing a main prompt. All main prompts must have the following tags in them, which will be filled with the appropriate information: `{question}` and `{context}`. An example prompt specific to subMIT can be found here: `configs/prompts/submit.prompt` (it will not perform well for other applications where it is recommeneded to write your own prompt and change it in the config)
+7. **`chains:chain:CONDENSE_MODEL_NAME`**: Model name for condensing chat histories.
 
-7. **`chains:chain:MODEL_NAME`**: Model name for the choice of LLM (OpenAIGPT4, OpenAIGPT35, AnthropicLLM, DumbLLM, etc)
+8. **`chains:chain:SUMMARY_MODEL_NAME`**: Model name for summarizing.
 
-8. **`chains:chain:CONDENSE_MODEL_NAME`**: Model name for condensing chat histories.
+9. **`location_of_secrets`**: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. 
 
-9. **`chains:chain:SUMMARY_MODEL_NAME`**: Model name for summarizing.
-
-10. **`location_of_secrets`**: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. 
-
-Below is an example of a bare minimum condifiguration file:
+Below is an example of a bare minimum configuration file:
 ```
 # stored in file example_conf.yaml
 name: bare_minimum_configuration #REQUIRED
@@ -115,6 +107,16 @@ location_of_secrets: #REQUIRED
   - ~/.secrets/a2rchi_base_secrets
 ```
 To view the full list of configuration variables, please refer to the users guide. 
+
+### Optional configuration fields
+
+1. **`chains:input_lists`**: A list of file(s), each containing a list of websites separated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, `configs/miscellanea.list` contains information of the MIT Professors who started the A2rchi project:
+
+```
+# web pages of various people
+https://people.csail.mit.edu/kraska
+https://physics.mit.edu/faculty/christoph-paus
+```
 
 ### Create new instance
 
