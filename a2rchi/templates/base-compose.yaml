@@ -27,7 +27,7 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
     {% if use_gpu and not use_podman -%}
-    # TODO: docker GPU configuration more testing
+    # TODO: docker GPU configuration needs testing
     deploy:
       resources:
         reservations:
@@ -61,26 +61,19 @@ services:
     ports:
       - {{ chat_port_host }}:{{ chat_port_container }}  # host:container
     restart: always
-    {% if use_gpu and use_podman -%}
+    {% if gpu_ids and use_podman -%}
     # podman GPU configuration
     security_opt:
       - label:disable
     devices:
-    # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
-      #- "/dev/dri:/dev/dri"
-      #- "/dev/nvidia0:/dev/nvidia0"
-      #- "/dev/nvidia1:/dev/nvidia1"
-      #- "/dev/nvidia2:/dev/nvidia2"
-      #- "/dev/nvidia3:/dev/nvidia3"
-      #- "/dev/nvidiactl:/dev/nvidiactl"
-      #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
-      #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
-      - "nvidia.com/gpu=3"
-      #- "nvidia.com/gpu=1"
-      #- "nvidia.com/gpu=2"
-    annotations:
-      org.opencontainers.image.nvidia/gpu.devices: all
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
+    {%- endif %}
     {%- endif %}
   {%- endif %}
   
@@ -193,7 +186,6 @@ services:
     volumes:
       - {{ chat_volume_name }}:/root/data/
       - ./config.yaml:/root/A2rchi/config.yaml
-      - ./secrets/solution_with_rubric_1.txt:/root/A2rchi/solution_with_rubric_1.txt
     logging:
       options:
         max-size: 10m
@@ -261,26 +253,20 @@ services:
     logging:
       options:
         max-size: 10m
-    {% if use_gpu -%}
+    restart: always
+    {% if gpu_ids and use_podman -%}
+    # podman GPU configuration
     security_opt:
       - label:disable
     devices:
-    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
-    # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
-      #- "/dev/dri:/dev/dri"
-      #- "/dev/nvidia0:/dev/nvidia0"
-      #- "/dev/nvidia1:/dev/nvidia1"
-      #- "/dev/nvidia2:/dev/nvidia2"
-      #- "/dev/nvidia3:/dev/nvidia3"
-      #- "/dev/nvidiactl:/dev/nvidiactl"
-      #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
-      #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
-      #- "nvidia.com/gpu=0"
-      #- "nvidia.com/gpu=1"
-      - "nvidia.com/gpu=2"
-      - "nvidia.com/gpu=3"
-    restart: always
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
+    {%- endif %}
     {%- endif %}
   {%- endif %}
 
@@ -403,24 +389,19 @@ services:
       options:
         max-size: 10m
     restart: always
-    {% if use_gpu -%}
+    {% if gpu_ids and use_podman -%}
+    # podman GPU configuration
     security_opt:
       - label:disable
     devices:
-    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
-    # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
-      #- "/dev/dri:/dev/dri"
-      #- "/dev/nvidia0:/dev/nvidia0"
-      #- "/dev/nvidia1:/dev/nvidia1"
-      #- "/dev/nvidia2:/dev/nvidia2"
-      #- "/dev/nvidia3:/dev/nvidia3"
-      #- "/dev/nvidiactl:/dev/nvidiactl"
-      #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
-      #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
-      - "nvidia.com/gpu=1"
-    annotations:
-      org.opencontainers.image.nvidia/gpu.devices: all
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
+    {%- endif %}
     {%- endif %}
 
   mailbox:
@@ -490,26 +471,21 @@ services:
       options:
         max-size: 10m
     restart: always
-    {% if use_gpu -%}
+    {% if gpu_ids and use_podman -%}
+    # podman GPU configuration
     security_opt:
       - label:disable
     devices:
-    # selecting devices (nvidiaX or gpu=X) overrides visible devices and annotations. comment out any devices you don't need. syntax varies between docker and podman.
-    # TODO: make this configurable outside of this file
     # N.B. even smallest models will load across multiple GPUs if available.
-      #- "/dev/dri:/dev/dri"
-      #- "/dev/nvidia0:/dev/nvidia0"
-      #- "/dev/nvidia1:/dev/nvidia1"
-      #- "/dev/nvidia2:/dev/nvidia2"
-      #- "/dev/nvidia3:/dev/nvidia3"
-      #- "/dev/nvidiactl:/dev/nvidiactl"
-      #- "/dev/nvidia-uvm:/dev/nvidia-uvm"
-      #- "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
-      - "nvidia.com/gpu=2"
-    annotations:
-      org.opencontainers.image.nvidia/gpu.devices: all
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
     {%- endif %}
-{%- endif %}
+    {%- endif %}
+  {%- endif %}
 
 volumes:
   {{ chat_volume_name }}:

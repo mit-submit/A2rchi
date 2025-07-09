@@ -55,7 +55,7 @@ class BaseSubMITChain(BaseConversationalRetrievalChain):
     get_chat_history: Optional[Callable[[List[Tuple[str, str]]], str]] = _get_chat_history
 
 
-    # defined for compatibility with the BaseConversationalRetrievalChain, which expects _get_docs and _aget_docs in its __call__
+    # defined for compatibility with the BaseConversationalRetrievalChain, which expects _get_docs and _aget_docs in its _call
     def _get_docs(self, question: str, inputs: Dict[str, Any]) -> List[Document]:
 
         docs = self.retriever.invoke(question)

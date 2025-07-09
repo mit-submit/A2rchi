@@ -209,6 +209,17 @@ def _read_prompts(a2rchi_config):
     return main_prompt, condense_prompt
 
 
+def _parse_gpu_option(ctx, param, value):
+    if value is None:
+        return None
+    if value.lower() == "all":
+        return "all"
+    try:
+        return [int(x.strip()) for x in value.split(",")]
+    except ValueError:
+        raise click.BadParameter('GPU option must be "all" or comma-separated integers (e.g., "0,1") to specify which GPUs to use (try nvidia-smi to see available GPUs and respective available memory)')
+
+
 def _print_msg(msg):
     print(f"[a2rchi]>> {msg}")
 
@@ -227,7 +238,7 @@ def cli():
 @click.option('--grader', '-grader', 'include_grader_service', type=bool, default=False, help="Boolean to add service for grading service (image to text, then grading, on web interface)")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
-@click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
+@click.option('--gpu', 'gpu_ids', flag_value="all", callback=_parse_gpu_option, help='GPU configuration: "all" (or just the --gpu flag) or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 
 def create(
@@ -239,7 +250,7 @@ def create(
     include_grader_service,
     a2rchi_config_filepath,
     use_podman,
-    use_gpu,
+    gpu_ids,
     image_tag
 ):
     """
@@ -279,14 +290,14 @@ def create(
         "chromadb_container_name": f"chromadb-{name}",
         "postgres_container_name": f"postgres-{name}",
         "use_podman": use_podman,
-        "use_gpu": use_gpu,
+        "gpu_ids": gpu_ids,
     }
 
     # create docker volumes; these commands will no-op if they already exist
     _print_msg("Creating volumes")
     _create_volume(f"a2rchi-{name}", podman=use_podman)
     _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
-    if use_gpu:
+    if gpu_ids:
         _create_volume(f"a2rchi-models", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"

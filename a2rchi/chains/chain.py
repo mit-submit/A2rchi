@@ -55,22 +55,15 @@ class Chain() :
         grading_summary_model_name = self.chain_config.get("GRADING_SUMMARY_MODEL_NAME", grading_final_grade_model_name)
         grading_analysis_model_name = self.chain_config.get("GRADING_ANALYSIS_MODEL_NAME", grading_final_grade_model_name)
 
-
         if self.image_processing:
             self.image_processing_prompt = PROMPTS["IMAGE_PROCESSING"]
             self.image_processing_model = model_class_map[image_processing_model_name]["class"](**model_class_map[image_processing_model_name]["kwargs"])
-
-            print("Using image processing model ", image_processing_model_name, " with parameters: ")
-            for param_name in model_class_map[image_processing_model_name]["kwargs"].keys():
-                print("\t" , param_name , ": " , model_class_map[image_processing_model_name]["kwargs"][param_name])
+            self._print_params("image processing", image_processing_model_name, model_class_map)
 
         elif self.grading:
             self.grading_final_grade_prompt = PROMPTS["GRADING_FINAL_GRADE"]
             self.grading_final_grade_llm = model_class_map[grading_final_grade_model_name]["class"](**model_class_map[grading_final_grade_model_name]["kwargs"])
-
-            print("Using grading final grade model ", grading_final_grade_model_name, " with parameters: ")
-            for param_name in model_class_map[grading_final_grade_model_name]["kwargs"].keys():
-                print("\t" , param_name , ": " , model_class_map[grading_final_grade_model_name]["kwargs"][param_name])
+            self._print_params("grading final grade", grading_final_grade_model_name, model_class_map)
 
             if grading_final_grade_model_name == model_name or "GRADING_ANALYSIS" not in PROMPTS:
                 self.grading_analysis_prompt = None
@@ -78,10 +71,7 @@ class Chain() :
             else:
                 self.grading_analysis_prompt = PROMPTS["GRADING_ANALYSIS"]
                 self.grading_analysis_llm = model_class_map[grading_analysis_model_name]["class"](**model_class_map[grading_analysis_model_name]["kwargs"])
-
-                print("Using grading analysis model ", grading_analysis_model_name, " with parameters: ")
-                for param_name in model_class_map[grading_analysis_model_name]["kwargs"].keys():
-                    print("\t" , param_name , ": " , model_class_map[grading_analysis_model_name]["kwargs"][param_name])
+                self._print_params("grading analysis", grading_analysis_model_name, model_class_map)
 
             if grading_summary_model_name == model_name or "GRADING_SUMMARY" not in PROMPTS:
                 self.grading_summary_prompt = None
@@ -89,10 +79,7 @@ class Chain() :
             else:
                 self.grading_summary_prompt = PROMPTS["GRADING_SUMMARY"]
                 self.grading_summary_llm = model_class_map[grading_summary_model_name]["class"](**model_class_map[grading_summary_model_name]["kwargs"])
-
-                print("Using grading summary model ", grading_summary_model_name, " with parameters: ")
-                for param_name in model_class_map[grading_summary_model_name]["kwargs"].keys():
-                    print("\t" , param_name , ": " , model_class_map[grading_summary_model_name]["kwargs"][param_name])
+                self._print_params("grading summary", grading_summary_model_name, model_class_map)
 
         else:
             self.qa_prompt = PROMPTS["QA"]
@@ -104,13 +91,8 @@ class Chain() :
             else:
                 self.condense_llm = model_class_map[condense_model_name]["class"](**model_class_map[condense_model_name]["kwargs"])
 
-            print("Using model ", model_name, " with parameters: ")
-            for param_name in model_class_map[model_name]["kwargs"].keys():
-                print("\t" , param_name , ": " , model_class_map[model_name]["kwargs"][param_name])
-            print("Using condense model ", condense_model_name, " with parameters: ")
-            for param_name in model_class_map[condense_model_name]["kwargs"].keys():
-                print("\t" , param_name , ": " , model_class_map[condense_model_name]["kwargs"][param_name])
-
+            self._print_params("qa", model_name, model_class_map)
+            self._print_params("condense", condense_model_name, model_class_map)
 
         # TODO: may want to add this back if we allow ConversationChain + ConversationSummaryMemory
         # self.memory_map = {}
@@ -328,3 +310,10 @@ class Chain() :
         del grading_chain
 
         return grading_result
+
+    
+    def _print_params(self, name, model_name, model_class_map):
+        """ Print the parameters of the model. """
+        print(f"Using {name} model {model_name} with parameters: ")
+        for param_name in model_class_map[model_name]["kwargs"].keys():
+            print("\t" , param_name , ": " , model_class_map[model_name]["kwargs"][param_name])
