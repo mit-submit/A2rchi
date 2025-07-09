@@ -3,7 +3,6 @@ name = "a2rchi"
 version = "0.1.0"
 description = "An AI Augmented Research Chat Intelligence (A2rchi)"
 requires-python = ">=3.7"
-# sorted alphabetically by last name
 authors = [
     {name="Pietro Lugato", email="pmlugato@mit.edu"},
     {name="Julius Heitkoetter", email="juliush@mit.edu"},
