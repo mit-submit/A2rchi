@@ -223,9 +223,9 @@ def create(
     name, 
     use_grafana, 
     use_uploader_service, 
-    use_cleo_and_mailer, #requires arg
-    use_jira, #check secrets
-    use_piazza_service, #requires arg
+    use_cleo_and_mailer,
+    use_jira,
+    use_piazza_service,
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
