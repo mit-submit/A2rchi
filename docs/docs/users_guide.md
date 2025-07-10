@@ -255,3 +255,16 @@ interfaces:
 10. `interfaces.grader_app.local_rubric_dir` -- The directory where the `users.csv` file is.
 
 
+### Grader-Specific Optional Configuration Fields
+
+1. `chains.chain.GRADING_ANALYSIS_MODEL_NAME` and `chains.prompts.GRADING_ANALYSIS_PROMPT` -- The model name and path to the analysis prompt, respectively, if you want to include the analysis step in the grading chain (recommended to include summary step as well, but not required).
+2. `chains.chain.GRADING_SUMMARY_MODEL_NAME` and `chains.prompts.GRADING_SUMMARY_PROMPT` -- The model name and path to the summary prompt, respectively, if you want to include the summary step in the grading chain (this is only used in the analysis step, so you shouldn't include the summary step without it).
+
+
+### Deployment
+
+With a minimal configuration like that detailed above that is required for the grading service, we are ready to deploy! For example, to launch the grader interface on a machine with gpus (for now, only support open-source models for grader so **--gpu is required**) and podman, the following command will launch a2rchi:
+
+```
+a2rchi create --name grader --a2rchi-config configs/my_grading_config.yaml --podman --gpu --grader
+```

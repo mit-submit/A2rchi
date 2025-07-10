@@ -235,7 +235,7 @@ def cli():
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
-@click.option('--grader', '-grader', 'include_grader_service', type=bool, default=False, help="Boolean to add service for grading service (image to text, then grading, on web interface)")
+@click.option('--grader', '-grader', 'include_grader_service', is_flag=True, help="Flag to add service for grading service (image to text, then grading, on web interface)")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'all_gpus', flag_value="all", help='Flag option for GPUs. Same as "--gpu-ids all"')
@@ -667,7 +667,7 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
     config = config_template.render(**a2rchi_config)
 
     # write final templated configuration to keep consistent w/state of container
-    a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-grader-{name}")
+    a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
     a2rchi_config_rendered_fp = os.path.join(a2rchi_name_dir, "config.yaml")
     with open(a2rchi_config_rendered_fp, 'w') as f:
         f.write(config)
