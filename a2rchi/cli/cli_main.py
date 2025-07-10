@@ -209,23 +209,23 @@ def cli():
 
 @click.command()
 @click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
-@click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
-@click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
-@click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
-@click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
-@click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
+@click.option('--grafana', '-g', 'use_grafana', is_flag=True, help="Flag to add Grafana dashboard in deployment.")
+@click.option('--document-uploader', '-du', 'use_uploader_service', is_flag=True, help="Flag to add service for admins to upload data")
+@click.option('--cleo-and-mailer', '-cm', 'use_cleo_and_mailer', is_flag=True, help="Flag to add service for a2rchi interface with cleo and a mailer")
+@click.option('--jira', '-j', 'use_jira', is_flag=True, help="Flag to add service for a2rchi interface with Jira")
+@click.option('--piazza', '-piazza', 'use_piazza_service', is_flag=True, help="Flag to add piazza service to read piazza posts and suggest answers to a slack channel.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
-@click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
-@click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
+@click.option('--podman', '-p', 'use_podman', is_flag=True, help="Flag to use podman instead of docker.")
+@click.option('--gpu', 'use_gpu', is_flag=True, help="Flag to use GPU for a2rchi. Current support for podman to do this.")
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 
 def create(
     name, 
-    include_grafana, 
-    include_uploader_service, 
-    include_cleo_and_mailer,
-    include_jira,
-    include_piazza_service,
+    use_grafana, 
+    use_uploader_service, 
+    use_cleo_and_mailer,
+    use_jira,
+    use_piazza_service,
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
@@ -282,10 +282,11 @@ def create(
     required_fields = [
         'name', 
         'global.TRAINED_ON',
+        'chains.input_lists', 
         'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
         'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
     ]
-    if include_piazza_service:
+    if use_piazza_service:
         required_fields.append('utils.piazza.network_id')
 
     # load user configuration of A2rchi
@@ -299,8 +300,8 @@ def create(
     locations_of_secrets = a2rchi_config["locations_of_secrets"]
 
     # if deployment includes grafana, create docker volume and template deployment files
-    compose_template_vars["include_grafana"] = include_grafana
-    if include_grafana:
+    compose_template_vars["use_grafana"] = use_grafana
+    if use_grafana:
         _create_volume(f"a2rchi-grafana-{name}", podman=use_podman)
 
         # fetch grafana password or raise error if not set
@@ -352,12 +353,12 @@ def create(
         grafana_port_host = a2rchi_config.get('interfaces', {}).get('grafana', {}).get('EXTERNAL_PORT', 3000)
         compose_template_vars['grafana_port_host'] = grafana_port_host
 
-    compose_template_vars["include_uploader_service"] = include_uploader_service
-    if include_uploader_service:
+    compose_template_vars["use_uploader_service"] = use_uploader_service
+    if use_uploader_service:
          _print_msg("Preparing Uploader Service")
 
          # Add uploader service to compose
-         compose_template_vars["include_uploader_service"] = include_uploader_service
+         compose_template_vars["use_uploader_service"] = use_uploader_service
          compose_template_vars["uploader_image"] = f"uploader-{name}"
          compose_template_vars["uploader_tag"] = tag
 
@@ -371,8 +372,8 @@ def create(
          _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
          _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
 
-    compose_template_vars["include_piazza_service"] = include_piazza_service
-    if include_piazza_service:
+    compose_template_vars["use_piazza_service"] = use_piazza_service
+    if use_piazza_service:
         _print_msg("Preparing Piazza Service")
 
         compose_template_vars["piazza_image"] = f"piazza-{name}"
@@ -384,12 +385,12 @@ def create(
         _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
 
 
-    compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
-    if include_cleo_and_mailer:
+    compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
+    if use_cleo_and_mailer:
         _print_msg("Preparing Cleo and Emailer Service")
 
         # Add uploader service to compose
-        compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
+        compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
         compose_template_vars["cleo_image"] = f"cleo-{name}"
         compose_template_vars["cleo_tag"] = tag
         compose_template_vars["mailbox_image"] = f"mailbox-{name}"
@@ -408,7 +409,7 @@ def create(
         _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
 
     
-    if include_jira:
+    if use_jira:
         _prepare_secret(a2rchi_name_dir, "jira_pat", locations_of_secrets)
         compose_template_vars["jira"] = True
     
@@ -417,8 +418,8 @@ def create(
     # prepare init.sql for postgres initialization
     init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
     init_sql = init_sql_template.render({
-        "include_grafana": include_grafana,
-        "grafana_pg_password": grafana_pg_password if include_grafana else "",
+        "use_grafana": use_grafana,
+        "grafana_pg_password": grafana_pg_password if use_grafana else "",
     })
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
@@ -451,6 +452,7 @@ def create(
     web_input_lists = a2rchi_config["chains"].get("input_lists", [])
     web_input_lists = web_input_lists or [] # protect against NoneType
     for web_input_list in web_input_lists:
+    for web_input_list in a2rchi_config["chains"]["input_lists"]:
         shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
 
     # load and render config template
