@@ -449,6 +449,9 @@ def create(
     # copy input lists
     weblists_path = os.path.join(a2rchi_name_dir, "weblists")
     os.makedirs(weblists_path, exist_ok=True)
+    web_input_lists = a2rchi_config["chains"].get("input_lists", [])
+    web_input_lists = web_input_lists or [] # protect against NoneType
+    for web_input_list in web_input_lists:
     for web_input_list in a2rchi_config["chains"]["input_lists"]:
         shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
 
