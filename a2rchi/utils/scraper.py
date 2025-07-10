@@ -26,7 +26,10 @@ class Scraper():
         self.websites_dir = os.path.join(self.data_path, "websites")
         os.makedirs(self.websites_dir, exist_ok=True)
 
-        self.input_lists = Config_Loader().config["chains"]["input_lists"]
+        self.input_lists = Config_Loader().config["chains"].get("input_lists", [])
+        if self.input_lists is None:
+            self.input_lists = []
+        print(Config_Loader().config["chains"])
         print(f"input lists: {self.input_lists}")
 
         # # log in to piazza

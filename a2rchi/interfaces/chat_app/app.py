@@ -298,7 +298,7 @@ class ChatWrapper:
             # NOTE: we log the error message but do not return here, as a failure
             # to update the data manager does not necessarily mean A2rchi cannot
             # process and respond to the message
-            print(f"ERROR - {str(e)}")
+            print(f"ERROR updating vectorstore - {str(e)}")
 
         finally:
             self.lock.release()
@@ -366,7 +366,7 @@ class ChatWrapper:
             print("INFO - similarity score reference: ", similarity_score_reference)
             print("INFO - similarity score: ", score)
             print("INFO - source: ", source)
-            if score < similarity_score_reference and source in sources.keys():
+            if source is not None and score < similarity_score_reference and source in sources.keys():
                 parsed_source = urlparse(sources[source])
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + sources[source] + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
             else:
@@ -376,7 +376,7 @@ class ChatWrapper:
             timestamps['a2rchi_message_ts'] = datetime.now()
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
-            a2rchi_context_title = result['source_documents'][0].metadata.get('title', 'No Title')
+            a2rchi_context_title = result['source_documents'][0].metadata.get('title', 'No Title') if len(result['source_documents']) > 0 else ''
             a2rchi_context = result['source_documents'][0].page_content if len(result['source_documents']) > 0 else ''
 
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, a2rchi_context_title, a2rchi_context, is_refresh)
