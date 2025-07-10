@@ -240,7 +240,7 @@ class VLLM(BaseCustomLLM):
             _, self.vllm_engine = cached
         else:
             # Load vLLM engine
-            self.vllm_engine = vllmLLM(model=self.base_model)
+            self.vllm_engine = vllmLLM(model=self.base_model, gpu_memory_utilization=0.5) # TODO: gpu_memory_utilization to config, plus other options, like distributed...
             self.set_cached_model(model_cache_key, (None, self.vllm_engine))
 
     @property

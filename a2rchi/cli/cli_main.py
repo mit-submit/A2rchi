@@ -323,7 +323,6 @@ def create(
             'name',
             'global.TRAINED_ON',
             'interfaces.grader_app.num_problems', 'interfaces.grader_app.local_rubric_dir', 'interfaces.grader_app.local_users_csv_dir',
-            'chains.input_lists',
             'chains.prompts.IMAGE_PROCESSING_PROMPT', 'chains.prompts.GRADING_FINAL_GRADE_PROMPT',
             'chains.chain.IMAGE_PROCESSING_MODEL_NAME', 'chains.chain.GRADING_FINAL_GRADE_MODEL_NAME',
         ]

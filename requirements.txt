@@ -61,5 +61,4 @@ vllm==0.9.1
 jira==3.8.0
 spacy==3.8.7
 qwen-vl-utils==0.0.11
-torchvision==0.17.0
 rapidfuzz==3.13.0
