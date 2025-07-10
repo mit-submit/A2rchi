@@ -234,6 +234,7 @@ def cli():
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
+@click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
 @click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
 @click.option('--grader', '-grader', 'include_grader_service', is_flag=True, help="Flag to add service for grading service (image to text, then grading, on web interface)")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
@@ -247,6 +248,7 @@ def create(
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
+    include_jira,
     include_piazza_service,
     include_grader_service,
     a2rchi_config_filepath,
@@ -309,7 +311,6 @@ def create(
     required_fields = [
         'name', 
         'global.TRAINED_ON',
-        'chains.input_lists', 
         'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT',
         'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME',
     ]
@@ -479,6 +480,11 @@ def create(
         _prepare_secret(a2rchi_name_dir, "sender_user", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
 
+    
+    if include_jira:
+        _prepare_secret(a2rchi_name_dir, "jira_pat", locations_of_secrets)
+        compose_template_vars["jira"] = True
+    
 
     _print_msg("Preparing Postgres")
     # prepare init.sql for postgres initialization
@@ -532,7 +538,9 @@ def create(
     # copy input lists
     weblists_path = os.path.join(a2rchi_name_dir, "weblists")
     os.makedirs(weblists_path, exist_ok=True)
-    for web_input_list in a2rchi_config["chains"]["input_lists"]:
+    web_input_lists = a2rchi_config["chains"].get("input_lists", [])
+    web_input_lists = web_input_lists or [] # protect against NoneType
+    for web_input_list in web_input_lists:
         shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
 
     # load and render config template

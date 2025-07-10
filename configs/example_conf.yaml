@@ -4,6 +4,10 @@ name: bare_minimum_configuration #REQUIRED
 global:
   TRAINED_ON: "SubMIT and the people who started A2rchi" #REQUIRED
 
+interfaces:
+  uploader_app:
+    verify_urls: False
+
 chains:
   chain:
     MODEL_NAME: OpenAIGPT4

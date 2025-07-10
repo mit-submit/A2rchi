@@ -55,4 +55,4 @@ Your contributions are always welcome! 🎉
 ---
 
 📜 Licensed under [MIT License](#).  
-For inquiries and support, contact **cpaus@mit.edu**.
+For inquiries and support, contact **paus@mit.edu**.
