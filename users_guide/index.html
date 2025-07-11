@@ -92,6 +92,20 @@
     </li>
         </ul>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#grader-interface">Grader Interface</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#requirements">Requirements</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets_4">Secrets</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_4">Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#grader-specific-optional-configuration-fields">Grader-Specific Optional Configuration Fields</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#deployment">Deployment</a>
+    </li>
+        </ul>
+    </li>
     </ul>
                 </li>
               </ul>
@@ -206,9 +220,9 @@ chains:
   input_lists: #REQUIRED
     - configs/class_info.list # list of websites with class info
   chain:
-    - MODEL_NAME: OpenAIGPT4 #REQUIRED
-    - CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
-    - SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
+    MODEL_NAME: OpenAIGPT4 #REQUIRED
+    CONDENSE_MODEL: OpenAIGPT4 #REQUIRED
+    SUMMARY_MODEL_NAME: OpenAIGPT4 #REQUIRED
   prompts:
     CONDENSING_PROMPT: config_old/prompts/condense.prompt #REQUIRED
     MAIN_PROMPT: config_old/prompts/submit.prompt #REQUIRED
@@ -248,6 +262,83 @@ d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 
 Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options &gt; Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes. Pro tip 2: If you want to download all of the information from any panel as a CSV, go to the same three dots and click "Inspect", and you should see the option.</p>
 <h3 id="secrets_3">Secrets</h3>
 <h3 id="configuration_3">Configuration</h3>
+<h2 id="grader-interface">Grader Interface</h2>
+<p>Interface to launch a website which for a provided solution and rubric (and a couple of other things detailed below), will grade scanned images of a handwritten solution for the specified problem(s).</p>
+<p>Nota bene: this is not yet fully generalized and "service" ready, but instead for testing grading pipelines and a base off of which to build a potential grading app.</p>
+<h3 id="requirements">Requirements</h3>
+<p>To launch the service the following files are required:</p>
+<ul>
+<li><code>users.csv</code>. This file is .csv file that contains two columns: "MIT email" and "Unique code", e.g.:</li>
+</ul>
+<pre><code>MIT email,Unique code
+username@mit.edu,222
+</code></pre>
+<p>For now, the system requires the emails to be in the MIT domain, namely, contain "@mit.edu". TODO: make this an argument that is passed (e.g., school/email domain)</p>
+<ul>
+<li><code>solution_with_rubric_*.txt</code>. These are .txt files that contain the problem solution followed by the rubric. The naming of the files should follow exactly, where the <code>*</code> is the problem number. There should be one of these files for every problem you want the app to be able to grade. The top of the file should be the problem name with a line of dashes ("-") below, e.g.:</li>
+</ul>
+<pre><code>Anti-Helmholtz Coils
+---------------------------------------------------
+</code></pre>
+<p>These files should live in a directory which you will pass to the config, and A2rchi will handle the rest.</p>
+<ul>
+<li><code>admin_password.txt</code>. This file will be passed as a secret and be the admin code to login in to the page where you can reset attempts for students.</li>
+</ul>
+<h3 id="secrets_4">Secrets</h3>
+<p>The only grading specific secret is the admin password, which like shown above, should be put in the following file</p>
+<pre><code>admin_password.txt
+</code></pre>
+<p>Then it behaves like any other secret.</p>
+<h3 id="configuration_4">Configuration</h3>
+<p>The required fields in the configuration file are different from the rest of the A2rchi services. Below is an example:</p>
+<pre><code>name: grading_test # REQUIRED
+
+global:
+  TRAINED_ON: &quot;rubrics, class info, etc.&quot; # REQUIRED
+
+locations_of_secrets: # REQUIRED
+  - ~/.secrets/api_tokens
+  - ~/.secrets/salts_and_internal_passwords
+  - ~/.secrets/grader
+
+chains:
+  input lists:
+    - configs/miscellanea.list
+  chain:
+    IMAGE_PROCESSING_MODEL_NAME: HuggingFaceImageLLM # REQUIRED
+    GRADING_FINAL_GRADE_MODEL_NAME: HuggingFaceOpenLLM # REQUIRED
+
+  prompts:
+    IMAGE_PROCESSING_PROMPT: configs/prompts/image_processing.prompt # REQUIRED
+    GRADING_FINAL_GRADE_PROMPT: configs/prompts/grading_final_grade.prompt # REQUIRED
+
+interfaces:
+  grader_app:
+    num_problems: 1 # REQUIRED
+    local_rubric_dir: ~/grading/my_rubrics # REQUIRED
+    local_users_csv_dir: ~/grading/logins # REQUIRED
+</code></pre>
+<ol>
+<li><code>name</code> -- The name you give to your configuration.</li>
+<li><code>global.TRAINED_ON</code> -- A brief description of what you are giving to A2rchi.</li>
+<li><code>chains.input_lists</code> -- .list files of websites you want A2rchi to be able to RAG. If you don't want to do any RAG, you can pass an empty file.</li>
+<li><code>chains.chain.IMAGE_PROCESSING_MODEL_NAME</code> -- The class of model you want to use. For now, only <code>HuggingFaceImageLLM</code> is supported. The default model used is <code>Qwen/Qwen2.5-VL-7B-Instruct</code>. If you want to try others, specify with <code>chains.chain.MODEL_CLASS_MAP.HuggingFaceImageLLM.kwargs.base_model</code>. Note -- for now you must remove or comment out <code>MODEL_NAME</code> and <code>CONDENSE_MODEL_NAME</code>.</li>
+<li><code>chains.chain.GRADING_FINAL_GRADE_MODEL_NAME</code> -- The class of model you want to use (HuggingFaceOpenLLM, OpenAIGPT4, etc.). The default HuggingFace model is <code>Qwen/Qwen2.5-7B-Instruct-1M</code>. If you want to try others, specify with <code>chains.chain.MODEL_CLASS_MAP.HuggingFaceOpenLLM.kwargs.base_model</code>.</li>
+<li><code>chains.prompts.IMAGE_PROCESSING_PROMPT</code> -- A prompt for processing images, which should only be a string (no templating).</li>
+<li><code>chains.prompts.GRADING_FINAL_GRADE_PROMPT</code> -- A prompt for grading a student's solution.</li>
+<li><code>interfaces.grader_app.num_problems</code> -- number of problems the grading service should expect (note should match the number of rubric files...)</li>
+<li><code>interfaces.grader_app.local_rubric_dir</code> -- The directory where the <code>solution_with_rubric_*.txt</code> files are.</li>
+<li><code>interfaces.grader_app.local_rubric_dir</code> -- The directory where the <code>users.csv</code> file is.</li>
+</ol>
+<h3 id="grader-specific-optional-configuration-fields">Grader-Specific Optional Configuration Fields</h3>
+<ol>
+<li><code>chains.chain.GRADING_ANALYSIS_MODEL_NAME</code> and <code>chains.prompts.GRADING_ANALYSIS_PROMPT</code> -- The model name and path to the analysis prompt, respectively, if you want to include the analysis step in the grading chain (recommended to include summary step as well, but not required).</li>
+<li><code>chains.chain.GRADING_SUMMARY_MODEL_NAME</code> and <code>chains.prompts.GRADING_SUMMARY_PROMPT</code> -- The model name and path to the summary prompt, respectively, if you want to include the summary step in the grading chain (this is only used in the analysis step, so you shouldn't include the summary step without it).</li>
+</ol>
+<h3 id="deployment">Deployment</h3>
+<p>With a minimal configuration like that detailed above that is required for the grading service, we are ready to deploy! For example, to launch the grader interface on a machine with gpus (for now, only support open-source models for grader so <strong>--gpu is required</strong>) and podman, the following command will launch a2rchi:</p>
+<pre><code>a2rchi create --name grader --a2rchi-config configs/my_grading_config.yaml --podman --gpu --grader
+</code></pre>
               
             </div>
           </div><footer>

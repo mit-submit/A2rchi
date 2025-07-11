@@ -52,6 +52,8 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#required-configuration-fields">Required configuration fields</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#optional-configuration-fields">Optional configuration fields</a>
+    </li>
     <li class="toctree-l3"><a class="reference internal" href="#create-new-instance">Create new instance</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#removing-deployment">Removing deployment</a>
@@ -118,13 +120,10 @@
 <h2 id="system-requirements">System Requirements</h2>
 <p>A2rchi is containized and is deployed with a python-based CLI. Therefore, it requires:</p>
 <ul>
-<li>
-<p><code>docker</code> version 24+ (for containers)</p>
-</li>
-<li>
-<p><code>python 3.10.0+</code> (for CLI)</p>
-</li>
+<li><code>docker</code> version 24+ or <code>podman</code> version 5.4.0+ (for containers)</li>
+<li><code>python 3.10.0+</code> (for CLI)</li>
 </ul>
+<p>Note: make sure you have nvidia drivers installed, then for the containers to access GPUs if you plan on running open source models, please follow the instructions at the link to install the nvidia container toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html. Then, for Podman, run <code>sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml</code> (https://podman-desktop.io/docs/podman/gpu). If you have Docker, run <code>sudo nvidia-ctk runtime configure --runtime=docker</code> (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuration).</p>
 <h2 id="install">Install</h2>
 <p>A2rchi's CLI can be used to <code>create</code> and <code>delete</code> instances of an a2rchi deployment and provides the installation needed for A2rchi. </p>
 <p>To install the CLI, first clone the a2rchi repo:</p>
@@ -163,15 +162,6 @@ a2rchi delete --name &lt;name&gt;
 <p><strong><code>global:TRAINED_ON</code></strong>: A quick couple words describing the data that you want A2rchi to specialize in. For example, "introductory classical mechanics" or "the subMIT cluster at MIT."</p>
 </li>
 <li>
-<p><strong><code>chains:input_lists</code></strong>: A list of file(s), each containing a list of websites seperated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, <code>configs/miscellanea.list</code> contains information of the MIT proffessors who started the A2rchi project:</p>
-</li>
-</ol>
-<pre><code># web pages of various people
-https://people.csail.mit.edu/kraska
-https://physics.mit.edu/faculty/christoph-paus
-</code></pre>
-<ol>
-<li>
 <p><strong><code>chains:prompts:CONDENSING_PROMPT</code></strong>: A condensing prompt is a prompt used to condense a chat history and a follow up question into a stand alone question. This configuration line gives the path, relative to the root of the repo, of a file containing a condensing prompt. All condensing prompts must have the following tags in them, which will be filled with the appropriate information: <code>{chat_history}</code> and <code>{question}</code>. A very general prompt for condensing histories can be found at <code>configs/prompts/condense.prompt</code>, so for base installs it will not need to be modified. </p>
 </li>
 <li>
@@ -193,7 +183,7 @@ https://physics.mit.edu/faculty/christoph-paus
 <p><strong><code>location_of_secrets</code></strong>: A list of the absolute paths of folders containing secrets (passwords, API keys, etc.), discussed explicitly in the previous section. </p>
 </li>
 </ol>
-<p>Below is an example of a bare minimum condifiguration file:</p>
+<p>Below is an example of a bare minimum configuration file:</p>
 <pre><code># stored in file example_conf.yaml
 name: bare_minimum_configuration #REQUIRED
 
@@ -217,6 +207,14 @@ location_of_secrets: #REQUIRED
   - ~/.secrets/a2rchi_base_secrets
 </code></pre>
 <p>To view the full list of configuration variables, please refer to the users guide. </p>
+<h3 id="optional-configuration-fields">Optional configuration fields</h3>
+<ol>
+<li><strong><code>chains:input_lists</code></strong>: A list of file(s), each containing a list of websites separated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, <code>configs/miscellanea.list</code> contains information of the MIT Professors who started the A2rchi project:</li>
+</ol>
+<pre><code># web pages of various people
+https://people.csail.mit.edu/kraska
+https://physics.mit.edu/faculty/christoph-paus
+</code></pre>
 <h3 id="create-new-instance">Create new instance</h3>
 <p>Now, to create an instance of an A2rchi deployment called <code>my-a2rchi</code>, simply create a file called <code>example_conf.yaml</code> with the contents like the ones above and run:</p>
 <pre><code>$ a2rchi create --name my-a2rchi --a2rchi-config example_conf.yaml
@@ -343,5 +341,5 @@ utils:
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2025-06-25 02:50:45.542698+00:00
+Build Date UTC : 2025-07-11 17:00:49.425007+00:00
 -->
