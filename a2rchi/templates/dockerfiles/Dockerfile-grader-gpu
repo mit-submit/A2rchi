@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+FROM docker.io/pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
+RUN mkdir -p /root/A2rchi
+WORKDIR /root/A2rchi
+
+# maybe just throw everything into the same requirements file in the first place....
+COPY requirements.txt requirements.txt
+COPY LICENSE LICENSE
+
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+RUN apt-get update && apt-get install -y \
+    nvidia-utils-550 \
+    libnvidia-compute-550 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY a2rchi_code a2rchi
+COPY pyproject.toml pyproject.toml
+COPY weblists weblists
+RUN pip install --upgrade pip && pip install .
+CMD ["python", "-u", "a2rchi/bin/service_grader.py"]
+# service_grader.py will just run the flask app as in service_chat.py ... don't even need the janky javascript templating function

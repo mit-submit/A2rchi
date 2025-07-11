@@ -15,6 +15,7 @@ dependencies = [
     "click==8.1.7",
     "jinja2==3.1.3",
     "requests==2.31.0",
+    "podman-compose==1.4.0",
     "mkdocs"
 ]
 
@@ -30,9 +31,11 @@ packages = [
     "a2rchi.bin",
     "a2rchi.cli",
     "a2rchi.chains",
+    "a2rchi.chains.utils",
     "a2rchi.interfaces",
     "a2rchi.interfaces.chat_app",
     "a2rchi.interfaces.uploader_app",
+    "a2rchi.interfaces.grader_app",
     "a2rchi.templates",
     "a2rchi.templates.grafana",
     "a2rchi.utils",
