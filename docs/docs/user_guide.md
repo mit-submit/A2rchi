@@ -1,4 +1,4 @@
-# Users Guide
+# User Guide
 
 A2rchi is built with several interfaces which collaborate with a CORE in order to create a customized RAG system. If you haven't already, read out `Getting Started` page to install, create, and run the CORE. 
 
@@ -15,7 +15,20 @@ TODO: add description of interface here
 
 ### Secrets
 
-### Configuration
+### Optional configuration fields (see required in Getting Started page)
+
+1. **`chains:input_lists`**: A list of file(s), each containing a list of websites separated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, `configs/miscellanea.list` contains information of the MIT Professors who started the A2rchi project:
+```
+# web pages of various people
+https://people.csail.mit.edu/kraska
+https://physics.mit.edu/faculty/christoph-paus
+```
+Then, include the file in the config:
+```
+chains:
+  input_lists:
+    - configs/miscellanea.list
+```
 
 ## Adding Documents and the Uploader Interface
 
