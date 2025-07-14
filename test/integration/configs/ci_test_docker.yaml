@@ -1,0 +1,35 @@
+name: ci-test-docker
+
+global:
+  TRAINED_ON: "CI/CD integration testing with Docker"
+
+chains:
+  input_lists: []
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt
+    MAIN_PROMPT: configs/prompts/submit.prompt
+  chain:
+    MODEL_NAME: DumbLLM
+    CONDENSE_MODEL_NAME: DumbLLM
+
+interfaces:
+  chat_app:
+    PORT: 7861
+    EXTERNAL_PORT: 7861
+    HOST: "0.0.0.0"
+    HOSTNAME: "localhost"
+    num_responses_until_feedback: 5
+    include_copy_button: true
+
+utils:
+  data_manager:
+    CHUNK_SIZE: 500
+    CHUNK_OVERLAP: 0
+    chromadb_external_port: 8000
+    reset_collection: true
+    num_documents_to_retrieve: 3
+  embeddings:
+    EMBEDDING_NAME: HuggingFaceEmbeddings
+
+locations_of_secrets:
+  - ~/.a2rchi-test-secrets

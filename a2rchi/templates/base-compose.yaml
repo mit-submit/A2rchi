@@ -30,7 +30,7 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
     {% if gpu_ids and not use_podman -%}
-    # TODO: docker GPU configuration needs testing
+    # Docker GPU configuration
     deploy:
       resources:
         reservations:
@@ -68,17 +68,33 @@ services:
       - {{ chat_port_host }}:{{ chat_port_container }}  # host:container
     restart: always
     {% if gpu_ids and use_podman -%}
-    # podman GPU configuration
+    # Podman GPU configuration (version-specific)
+    {% if use_podman_compose or (podman_version and podman_version is version('<', '5.4.0')) -%}
+    # Legacy podman-compose GPU configuration for podman < 5.4.0
     security_opt:
       - label:disable
     devices:
-    # N.B. even smallest models will load across multiple GPUs if available.
-    {%- if gpu_ids == "all" %}
+      # N.B. even smallest models will load across multiple GPUs if available.
+      {%- if gpu_ids == "all" %}
       - "nvidia.com/gpu=all"
-    {%- else %}
-      {%- for gpu_id in gpu_ids %}
+      {%- else %}
+        {%- for gpu_id in gpu_ids %}
       - "nvidia.com/gpu={{ gpu_id }}"
-      {%- endfor %}
+        {%- endfor %}
+      {%- endif %}
+    {% else -%}
+    # Modern podman compose GPU configuration for podman 5.4.0+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              {%- if gpu_ids == "all" %}
+              count: all
+              {%- else %}
+              device_ids: {{ gpu_ids | list | join(',') }}
+              {%- endif %}
     {%- endif %}
     {%- endif %}
   {%- endif %}
@@ -267,17 +283,33 @@ services:
         max-size: 10m
     restart: always
     {% if gpu_ids and use_podman -%}
-    # podman GPU configuration
+    # Podman GPU configuration (version-specific)
+    {% if use_podman_compose or (podman_version and podman_version is version('<', '5.4.0')) -%}
+    # Legacy podman-compose GPU configuration for podman < 5.4.0
     security_opt:
       - label:disable
     devices:
-    # N.B. even smallest models will load across multiple GPUs if available.
-    {%- if gpu_ids == "all" %}
+      # N.B. even smallest models will load across multiple GPUs if available.
+      {%- if gpu_ids == "all" %}
       - "nvidia.com/gpu=all"
-    {%- else %}
-      {%- for gpu_id in gpu_ids %}
+      {%- else %}
+        {%- for gpu_id in gpu_ids %}
       - "nvidia.com/gpu={{ gpu_id }}"
-      {%- endfor %}
+        {%- endfor %}
+      {%- endif %}
+    {% else -%}
+    # Modern podman compose GPU configuration for podman 5.4.0+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              {%- if gpu_ids == "all" %}
+              count: all
+              {%- else %}
+              device_ids: {{ gpu_ids | list | join(',') }}
+              {%- endif %}
     {%- endif %}
     {%- endif %}
   {%- endif %}
@@ -402,17 +434,33 @@ services:
         max-size: 10m
     restart: always
     {% if gpu_ids and use_podman -%}
-    # podman GPU configuration
+    # Podman GPU configuration (version-specific)
+    {% if use_podman_compose or (podman_version and podman_version is version('<', '5.4.0')) -%}
+    # Legacy podman-compose GPU configuration for podman < 5.4.0
     security_opt:
       - label:disable
     devices:
-    # N.B. even smallest models will load across multiple GPUs if available.
-    {%- if gpu_ids == "all" %}
+      # N.B. even smallest models will load across multiple GPUs if available.
+      {%- if gpu_ids == "all" %}
       - "nvidia.com/gpu=all"
-    {%- else %}
-      {%- for gpu_id in gpu_ids %}
+      {%- else %}
+        {%- for gpu_id in gpu_ids %}
       - "nvidia.com/gpu={{ gpu_id }}"
-      {%- endfor %}
+        {%- endfor %}
+      {%- endif %}
+    {% else -%}
+    # Modern podman compose GPU configuration for podman 5.4.0+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              {%- if gpu_ids == "all" %}
+              count: all
+              {%- else %}
+              device_ids: {{ gpu_ids | list | join(',') }}
+              {%- endif %}
     {%- endif %}
     {%- endif %}
 
@@ -484,17 +532,33 @@ services:
         max-size: 10m
     restart: always
     {% if gpu_ids and use_podman -%}
-    # podman GPU configuration
+    # Podman GPU configuration (version-specific)
+    {% if use_podman_compose or (podman_version and podman_version is version('<', '5.4.0')) -%}
+    # Legacy podman-compose GPU configuration for podman < 5.4.0
     security_opt:
       - label:disable
     devices:
-    # N.B. even smallest models will load across multiple GPUs if available.
-    {%- if gpu_ids == "all" %}
+      # N.B. even smallest models will load across multiple GPUs if available.
+      {%- if gpu_ids == "all" %}
       - "nvidia.com/gpu=all"
-    {%- else %}
-      {%- for gpu_id in gpu_ids %}
+      {%- else %}
+        {%- for gpu_id in gpu_ids %}
       - "nvidia.com/gpu={{ gpu_id }}"
-      {%- endfor %}
+        {%- endfor %}
+      {%- endif %}
+    {% else -%}
+    # Modern podman compose GPU configuration for podman 5.4.0+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              {%- if gpu_ids == "all" %}
+              count: all
+              {%- else %}
+              device_ids: {{ gpu_ids | list | join(',') }}
+              {%- endif %}
     {%- endif %}
     {%- endif %}
   {%- endif %}

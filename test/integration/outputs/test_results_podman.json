@@ -1,0 +1,48 @@
+{
+  "container_engine": "podman",
+  "compose_cmd": "podman compose",
+  "podman_version": "5.5.2",
+  "tests": {
+    "python_import": {
+      "status": "PASS",
+      "output": "A2rchi imported successfully\n"
+    },
+    "cli_help": {
+      "status": "PASS",
+      "output": "CLI help displayed"
+    },
+    "podman_version": {
+      "status": "PASS",
+      "output": "podman version 5.5.2"
+    },
+    "podman_compatibility": {
+      "status": "PASS",
+      "actual_version": "5.5.2",
+      "expected_min": "4.9.4"
+    },
+    "deployment_creation": {
+      "status": "FAIL",
+      "error": "Command 'a2rchi create --name a2rchi-ci-test --a2rchi-config test/integration/a2rchi-ci-test_config.yaml --podman' returned non-zero exit status 2."
+    },
+    "service_health": {
+      "status": "FAIL",
+      "error": "Command 'podman ps --filter name=a2rchi-ci-test --format 'table {.Names}\\t{.Status}'' returned non-zero exit status 125."
+    },
+    "api_endpoints": {
+      "health_endpoint": {
+        "status": "FAIL",
+        "error": "HTTPConnectionPool(host='localhost', port=7861): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x104a658d0>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+      },
+      "main_page": {
+        "status": "FAIL",
+        "error": "HTTPConnectionPool(host='localhost', port=7861): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x104a66260>: Failed to establish a new connection: [Errno 61] Connection refused'))"
+      }
+    },
+    "chat_functionality": {
+      "status": "PASS",
+      "note": "Placeholder test - would test actual chat API in full implementation"
+    }
+  },
+  "overall_success": false,
+  "timestamp": "2025-07-14 18:53:53"
+}

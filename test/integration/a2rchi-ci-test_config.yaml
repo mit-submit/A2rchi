@@ -1,0 +1,17 @@
+
+name: a2rchi-ci-test
+
+global:
+  TRAINED_ON: "CI/CD integration testing"
+
+chains:
+  input_lists: []
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt
+    MAIN_PROMPT: configs/prompts/submit.prompt
+  chain:
+    MODEL_NAME: DumbLLM
+    CONDENSE_MODEL_NAME: DumbLLM
+
+locations_of_secrets:
+  - ~/.a2rchi-test-secrets

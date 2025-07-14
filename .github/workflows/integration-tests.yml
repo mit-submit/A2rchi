@@ -1,0 +1,183 @@
+name: A2rchi Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          pip install .
+          
+      - name: Run unit tests
+        run: |
+          pytest test/ -v --cov=a2rchi --cov-report=xml
+          
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        container-engine: [docker, podman-4.9, podman-5.4]
+        include:
+          - container-engine: docker
+            engine-cmd: docker
+            compose-cmd: docker compose
+          - container-engine: podman-4.9
+            engine-cmd: podman
+            compose-cmd: podman-compose
+            podman-version: "4.9.4"
+          - container-engine: podman-5.4
+            engine-cmd: podman
+            compose-cmd: podman compose
+            podman-version: "5.4.0"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install A2rchi CLI
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+          
+      - name: Setup Docker (if needed)
+        if: matrix.container-engine == 'docker'
+        run: |
+          sudo systemctl start docker
+          sudo usermod -aG docker $USER
+          
+      - name: Setup Podman
+        if: startsWith(matrix.container-engine, 'podman')
+        run: |
+          # Install podman
+          sudo apt-get update
+          sudo apt-get install -y podman
+          
+          # Install specific podman version if specified
+          if [ "${{ matrix.podman-version }}" != "" ]; then
+            echo "Installing podman version ${{ matrix.podman-version }}"
+            # This would need platform-specific package management
+            # For now, we'll use the available version and mock version detection
+          fi
+          
+          # Setup podman for rootless operation
+          sudo sysctl kernel.unprivileged_userns_clone=1
+          
+          # Install podman-compose if needed
+          if [ "${{ matrix.compose-cmd }}" = "podman-compose" ]; then
+            pip install podman-compose
+          fi
+          
+      - name: Create test secrets
+        run: |
+          mkdir -p ~/.a2rchi-test-secrets
+          echo "dummy_key_for_testing" > ~/.a2rchi-test-secrets/openai_api_key.txt
+          echo "dummy_key_for_testing" > ~/.a2rchi-test-secrets/anthropic_api_key.txt
+          echo "test_password_123" > ~/.a2rchi-test-secrets/pg_password.txt
+          
+      - name: Run A2rchi integration tests
+        env:
+          CONTAINER_ENGINE: ${{ matrix.engine-cmd }}
+          COMPOSE_CMD: ${{ matrix.compose-cmd }}
+          PODMAN_VERSION: ${{ matrix.podman-version }}
+        run: |
+          # Run the integration test script
+          python test/integration/test_deployment.py
+          
+      - name: Cleanup test deployment
+        if: always()
+        run: |
+          # Cleanup any running containers
+          if [ "${{ matrix.engine-cmd }}" = "docker" ]; then
+            docker ps -q --filter "name=a2rchi-ci-test" | xargs -r docker stop
+            docker ps -aq --filter "name=a2rchi-ci-test" | xargs -r docker rm
+          else
+            podman ps -q --filter "name=a2rchi-ci-test" | xargs -r podman stop
+            podman ps -aq --filter "name=a2rchi-ci-test" | xargs -r podman rm
+          fi
+          
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-results-${{ matrix.container-engine }}
+          path: |
+            test/integration/logs/
+            test/integration/outputs/
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+          pip install pytest-benchmark
+          
+      - name: Run performance tests
+        run: |
+          pytest test/performance/ -v --benchmark-only --benchmark-json=benchmark.json
+          
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'pytest'
+          output-file-path: benchmark.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true

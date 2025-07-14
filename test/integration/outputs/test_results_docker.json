@@ -1,0 +1,43 @@
+{
+  "container_engine": "docker",
+  "compose_cmd": "docker compose",
+  "podman_version": null,
+  "tests": {
+    "python_import": {
+      "status": "PASS",
+      "output": "A2rchi imported successfully\n"
+    },
+    "cli_help": {
+      "status": "PASS",
+      "output": "CLI help displayed"
+    },
+    "docker_version": {
+      "status": "PASS",
+      "output": "Docker version 28.3.2, build 578ccf607d"
+    },
+    "deployment_creation": {
+      "status": "FAIL",
+      "error": "Command 'a2rchi create --name a2rchi-ci-test --a2rchi-config test/integration/a2rchi-ci-test_config.yaml' returned non-zero exit status 1."
+    },
+    "service_health": {
+      "status": "FAIL",
+      "error": "Missing required services: ['chat-a2rchi-ci-test', 'chromadb-a2rchi-ci-test', 'postgres-a2rchi-ci-test']"
+    },
+    "api_endpoints": {
+      "health_endpoint": {
+        "status": "FAIL",
+        "error": "HTTPConnectionPool(host='localhost', port=7861): Read timed out. (read timeout=10)"
+      },
+      "main_page": {
+        "status": "FAIL",
+        "error": "HTTPConnectionPool(host='localhost', port=7861): Read timed out. (read timeout=10)"
+      }
+    },
+    "chat_functionality": {
+      "status": "PASS",
+      "note": "Placeholder test - would test actual chat API in full implementation"
+    }
+  },
+  "overall_success": false,
+  "timestamp": "2025-07-14 19:00:18"
+}

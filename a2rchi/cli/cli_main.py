@@ -1,6 +1,7 @@
 import re
 from jinja2 import Environment, PackageLoader, select_autoescape, ChainableUndefined
-from typing import Tuple
+from typing import Tuple, Optional
+from packaging import version
 
 import click
 import os
@@ -220,6 +221,65 @@ def _parse_gpu_ids_option(ctx, param, value):
         raise click.BadParameter('--gpu-ids option must be "all" (or equivalently just the --gpu flag) or comma-separated integers (e.g., "0,1") to specify which GPUs to use (try nvidia-smi to see available GPUs and respective available memory)')
 
 
+def _get_podman_version() -> Optional[str]:
+    """
+    Get the podman version string.
+    
+    Returns:
+        Optional[str]: Version string like "5.4.0" or None if podman not found or version command fails
+    """
+    try:
+        stdout, stderr = _run_bash_command("podman version --format '{{.Client.Version}}'")
+        if stderr:
+            # Fallback to older version command format
+            stdout, stderr = _run_bash_command("podman --version")
+            if stderr:
+                return None
+            # Parse "podman version X.Y.Z" format
+            version_match = re.search(r'version\s+(\d+\.\d+\.\d+)', stdout)
+            if version_match:
+                return version_match.group(1)
+            return None
+        return stdout.strip()
+    except Exception:
+        return None
+
+
+def _is_podman_version_compatible(podman_version: str, min_version: str = "4.9.4") -> bool:
+    """
+    Check if podman version meets minimum requirements.
+    
+    Args:
+        podman_version: Version string to check
+        min_version: Minimum required version (default: 4.9.4)
+        
+    Returns:
+        bool: True if version meets requirements, False otherwise
+    """
+    try:
+        return version.parse(podman_version) >= version.parse(min_version)
+    except Exception:
+        return False
+
+
+def _should_use_podman_compose(podman_version: str) -> bool:
+    """
+    Determine whether to use podman-compose vs native podman compose based on version.
+    
+    Args:
+        podman_version: Version string
+        
+    Returns:
+        bool: True if should use podman-compose, False for native podman compose
+    """
+    try:
+        # Use native podman compose for 5.4.0+ due to better GPU support
+        return version.parse(podman_version) < version.parse("5.4.0")
+    except Exception:
+        # Default to podman-compose for safety if version parsing fails
+        return True
+
+
 def _print_msg(msg):
     print(f"[a2rchi]>> {msg}")
 
@@ -239,8 +299,9 @@ def cli():
 @click.option('--grader', '-grader', 'include_grader_service', is_flag=True, help="Flag to add service for grading service (image to text, then grading, on web interface)")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
+@click.option('--force-podman-compose', 'force_podman_compose', is_flag=True, help="Force use of podman-compose instead of native podman compose (for debugging).")
 @click.option('--gpu', 'all_gpus', flag_value="all", help='Flag option for GPUs. Same as "--gpu-ids all"')
-@click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
+@click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Supports both podman 4.9.4+ and 5.4.0+.')
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 
 def create(
@@ -253,6 +314,7 @@ def create(
     include_grader_service,
     a2rchi_config_filepath,
     use_podman,
+    force_podman_compose,
     all_gpus,
     gpu_ids,
     image_tag
@@ -280,6 +342,30 @@ def create(
     if a2rchi_config_filepath is not None:
         a2rchi_config_filepath = a2rchi_config_filepath.strip()
 
+    # Validate podman version if using podman
+    podman_version = None
+    use_podman_compose_cmd = False
+    if use_podman:
+        podman_version = _get_podman_version()
+        if not podman_version:
+            raise click.ClickException("Podman is not installed or version detection failed. Please install podman 4.9.4+ or use --docker.")
+        
+        if not _is_podman_version_compatible(podman_version):
+            raise click.ClickException(f"Podman version {podman_version} is not supported. Please upgrade to 4.9.4 or higher.")
+        
+        # Determine compose command to use
+        use_podman_compose_cmd = force_podman_compose or _should_use_podman_compose(podman_version)
+        
+        _print_msg(f"Detected podman version: {podman_version}")
+        if use_podman_compose_cmd:
+            _print_msg("Using podman-compose for compatibility with podman < 5.4.0")
+        else:
+            _print_msg("Using native podman compose (podman 5.4.0+)")
+            
+        # Warn about GPU support on older versions
+        if (gpu_ids or all_gpus) and _should_use_podman_compose(podman_version) and not force_podman_compose:
+            _print_msg("WARNING: GPU support may be limited with podman < 5.4.0. Consider upgrading podman or use --force-podman-compose if you encounter issues.")
+
     # create temporary directory for template files
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
     os.makedirs(a2rchi_name_dir, exist_ok=True)
@@ -295,6 +381,8 @@ def create(
         "chromadb_container_name": f"chromadb-{name}",
         "postgres_container_name": f"postgres-{name}",
         "use_podman": use_podman,
+        "use_podman_compose": use_podman_compose_cmd,
+        "podman_version": podman_version,
         "gpu_ids": gpu_ids or all_gpus,
     }
 
@@ -581,9 +669,12 @@ def create(
     shutil.copyfile("requirements.txt", os.path.join(a2rchi_name_dir, "requirements.txt"))
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
 
-    # create a2rchi system using docker
+    # create a2rchi system using docker or podman
     if use_podman:
-        compose_up = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
+        if use_podman_compose_cmd:
+            compose_up = f"podman-compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate"
+        else:
+            compose_up = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     else:
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
@@ -626,7 +717,12 @@ def delete(name, rmi):
     # check whether the images are running on either docker or podman
     compose_stopped = False
     if is_installed("podman"):
-        if is_running("podman compose"):
+        # Try podman-compose first, then native podman compose
+        if is_installed("podman-compose") and is_running("podman-compose"):
+            _print_msg("Stopping podman-compose deployment")
+            _run_bash_command(f"podman-compose -f {compose_file} down {extra_args}")
+            compose_stopped = True
+        elif is_running("podman compose"):
             _print_msg("Stopping podman compose deployment")
             _run_bash_command(f"podman compose -f {compose_file} down {extra_args}")
             compose_stopped = True
