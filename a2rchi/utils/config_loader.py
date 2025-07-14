@@ -1,4 +1,4 @@
-from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM, HuggingFaceOpenLLM, VLLM
+from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM, HuggingFaceOpenLLM, HuggingFaceImageLLM, VLLM
 
 from langchain_openai import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -34,6 +34,7 @@ class Config_Loader:
                 "DumbLLM": DumbLLM,
                 "LlamaLLM": LlamaLLM,
                 "HuggingFaceOpenLLM": HuggingFaceOpenLLM,
+                "HuggingFaceImageLLM": HuggingFaceImageLLM,
                 "VLLM": VLLM,
             }
             for model in config["chains"]["chain"]["MODEL_CLASS_MAP"].keys():

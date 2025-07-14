@@ -12,9 +12,10 @@ At it's core, A2rchi is a RAG chat model which takes in a corpus of data and ret
 
 A2rchi is containized and is deployed with a python-based CLI. Therefore, it requires:
 
-- `docker` version 24+ (for containers)
-
+- `docker` version 24+ or `podman` version 5.4.0+ (for containers)
 - `python 3.10.0+` (for CLI)
+
+Note: make sure you have nvidia drivers installed, then for the containers to access GPUs if you plan on running open source models, please follow the instructions at the link to install the nvidia container toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html. Then, for Podman, run `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` (https://podman-desktop.io/docs/podman/gpu). If you have Docker, run `sudo nvidia-ctk runtime configure --runtime=docker` (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuration).
 
 ## Install
 
