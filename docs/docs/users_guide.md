@@ -6,7 +6,7 @@ The user's guide is broken up into detailing the various interfaces and the secr
 
 To include an interface, simply add it's tag at the end of the `create` CLI command. For example, to include the document uploader, run:
 ```
-$ a2rchi create --name my-a2rchi --a2rchi-config example_conf.yaml --document-uploader True
+$ a2rchi create --name my-a2rchi --a2rchi-config example_conf.yaml --document-uploader
 ```
 
 ## CORE Interface
@@ -56,15 +56,15 @@ When you restart the service, all the documents will be uploaded to the vector s
 
 #### Manual Uploader
 
-In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: 
+In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional podman service by adding the following argument to the CLI command: 
 ```
---document-uploader True
+--document-uploader
 ```
-The exact port may vary based on configuration (default is `5001`). A simple `docker ps -a` command run on the server will inform which port it's being run on.
+The exact port may vary based on configuration (default is `5001`). A simple `podman ps -a` command run on the server will inform which port it's being run on.
 
-In order to access the manager, one must first make an account. To do this, first get the ID or name of the uploader container using `docker ps -a`. Then, acces the container using
+In order to access the manager, one must first make an account. To do this, first get the ID or name of the uploader container using `podman ps -a`. Then, acces the container using
 ```
-docker exec -it <CONTAINER-ID> bash
+podman exec -it <CONTAINER-ID> bash
 ```
 so you can run
 ```
@@ -74,7 +74,7 @@ from the `/root/A2rchi/a2rchi` directory.·
 
 This script will guide you through creating an account. Note that we do not garuntee the security of this account, so never upload critical passwords to create it.·
 
-Once you have created an account, visit the outgoing port of the data manager docker service and then log in. The GUI will then allow you to upload documents while a2rchi is still running. Note that it may take a few minutes for all the documents to upload.
+Once you have created an account, visit the outgoing port of the data manager podman service and then log in. The GUI will then allow you to upload documents while a2rchi is still running. Note that it may take a few minutes for all the documents to upload.
 
 
 ## Piazza Interface
@@ -134,7 +134,7 @@ utils:
 To run the Piazza service, simply add the piazza flag. For example:
 
 ```
-a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza True
+a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza
 ```
 
 ## Cleo/Mailbox Interface
@@ -153,7 +153,7 @@ export GRAFANA_PG_PASSWORD=<your_password>
 ```
 Once this is set, add the following argument to your a2rchi create command, e.g.,
 ```
-a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana True
+a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana
 ```
 and you should see something like this
 ```

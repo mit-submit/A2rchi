@@ -137,7 +137,7 @@ services:
       timeout: 5s
       retries: 5
 
-  {% if include_grafana -%}
+  {% if use_grafana -%}
   grafana:
     image: {{ grafana_image }}:{{ grafana_tag }}
     build:
@@ -164,7 +164,7 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_uploader_service -%}
+  {% if use_uploader_service -%}
   uploader:
     image: {{ uploader_image }}:{{ uploader_tag }}
     build:
@@ -300,7 +300,7 @@ services:
     {%- endif %}
   {%- endif %}
 
-  {% if include_piazza_service -%}
+  {% if use_piazza_service -%}
   piazza:
     image: {{ piazza_image }}:{{ piazza_tag }}
     build:
@@ -355,7 +355,7 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_cleo_and_mailer -%}
+  {% if use_cleo_and_mailer -%}
   cleo:
     image: {{ cleo_image }}:{{ cleo_tag }}
     build:
@@ -531,7 +531,7 @@ volumes:
     external: true
   {{ postgres_volume_name }}:
     external: true
-  {% if include_grafana -%}
+  {% if use_grafana -%}
   {{ grafana_volume_name }}:
     external: true
   {%- endif %}
