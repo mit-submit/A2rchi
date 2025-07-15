@@ -57,7 +57,7 @@ There are a few additional options you can pass to the `create` command that are
         https://people.csail.mit.edu/kraska
         ttps://physics.mit.edu/faculty/christoph-paus
     
-    Then, include the file in the config:yoyodd
+    Then, include the file in the config:
     
         chains:
           input_lists:
@@ -102,12 +102,13 @@ Additional configuration options for the chatbot, deployed automatically with A2
 
 ### Adding Documents
 
-There are two main ways to add documents to A2rchi's vector database. They are
-·
+There are two main ways to add documents to A2rchi's vector database. They are:
+
 - Adding lists of online pdf sources to the configuration to be uploaded at start up
 - Manually adding files while the service is running via the uploader.
+- Directly copying files into the container, in a pinch
 
-Both methods are outlined below
+These methods are outlined below
 
 #### Document Lists
 
@@ -138,13 +139,13 @@ When you restart the service, all the documents will be uploaded to the vector s
 #### Manual Uploader
 
 In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: 
-```
+```nohighlight
 --document-uploader True
 ```
 The exact port may vary based on configuration (default is `5001`). A simple `docker ps -a` command run on the server will inform which port it's being run on.
 
 In order to access the manager, one must first make an account. To do this, first get the ID or name of the uploader container using `docker ps -a`. Then, acces the container using
-```
+```nohighlight
 docker exec -it <CONTAINER-ID> bash
 ```
 so you can run
@@ -159,7 +160,7 @@ Once you have created an account, visit the outgoing port of the data manager do
 
 #### For quick alternative
 
-The documents used for RAG live in the container at `/root/data/<directory>/<files>`. Thus, in a pinch, you can `docker/podman cp` a file at this directory level, e.g., `podman/docker cp myfile.pdf <container name or ID>:/root/data/<new_dir>/`. If you need to make a new directory in the container, you can do `podman exec -it <container name or ID> mkdir /root/data/<new_dir>`.
+The documents used for RAG live in the chat container at `/root/data/<directory>/<files>`. Thus, in a pinch, you can `docker/podman cp` a file at this directory level, e.g., `podman/docker cp myfile.pdf <container name or ID>:/root/data/<new_dir>/`. If you need to make a new directory in the container, you can do `podman exec -it <container name or ID> mkdir /root/data/<new_dir>`.
 
 
 ## Piazza Interface
@@ -236,6 +237,9 @@ To run the grafana service, you first need to specify a password for the grafana
 ```nohighlight
 export GRAFANA_PG_PASSWORD=<your_password>
 ```
+
+Note, if you are deploying a version of A2rchi you have already used (i.e., you haven't removed the images/volumes for a given `--name`), the postgres will have already been created without the grafana user created, and it will not work, so make sure to deploy a fresh instance.
+
 Once this is set, add the following argument to your a2rchi create command, e.g.,
 ```nohighlight
 a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana True
