@@ -312,8 +312,6 @@ def create(
     required_fields = [
         'name', 
         'global.TRAINED_ON',
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT', 'chains.prompts.SUMMARY_PROMPT',
-        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME', 'chains.chain.SUMMARY_MODEL_NAME'
     ]
     if use_piazza_service:
         required_fields.append('utils.piazza.network_id')
@@ -540,7 +538,6 @@ def create(
     web_input_lists = a2rchi_config["chains"].get("input_lists", [])
     web_input_lists = web_input_lists or [] # protect against NoneType
     for web_input_list in web_input_lists:
-    for web_input_list in a2rchi_config["chains"]["input_lists"]:
         shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
 
     # load and render config template
