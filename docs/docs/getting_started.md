@@ -15,31 +15,7 @@ A2rchi is containized and is deployed with a python-based CLI. Therefore, it req
 - `docker` version 24+ or `podman` version 5.4.0+ (for containers)
 - `python 3.10.0+` (for CLI)
 
-Note: If you plan to run open source models on your machine's GPUs, first, make sure you have nvidia drivers installed. Then, for the containers where a2rchi will run to access the GPUs, please install the [nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Then, for Podman, run
-```nohighlight
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-```
-Then, the following command
-```nohighlight
-nvidia-ctk cdi list
-```
-should show an output that includes
-```nohighlight
-INFO[0000] Found 9 CDI devices 
-...
-nvidia.com/gpu=0
-nvidia.com/gpu=1
-...
-nvidia.com/gpu=all
-```
-These listed "CDI devices" will be referenced to run A2rchi on the GPUs, so make sure this is there. To see more about accessing GPUs with Podman [click, here](https://podman-desktop.io/docs/podman/gpu).
-If you have Docker, run
-```nohighlight
-sudo nvidia-ctk runtime configure --runtime=docker
-```
-What follows should be the same as above -- NOTE: this has not been tested yet with Docker. To see more about accessing GPUs with Docker, [click here](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuration).
-
-See more below on how to specify running A2rchi on GPUs from the CLI.
+Note: If you plan to run open source models on your machine's GPUs, please check out the `User Guide` for more information.
 
 ## Install
 
