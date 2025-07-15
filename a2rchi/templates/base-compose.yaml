@@ -67,6 +67,9 @@ services:
     ports:
       - {{ chat_port_host }}:{{ chat_port_container }}  # host:container
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
     {% if gpu_ids and use_podman -%}
     # podman GPU configuration
     security_opt:
@@ -97,6 +100,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
     # healthcheck originates from inside container; so use container port
     healthcheck:
       test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"] #health check uses container port
@@ -122,6 +128,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U a2rchi -d a2rchi-db"]
       interval: 10s
@@ -150,6 +159,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
   {%- endif %}
 
   {% if include_uploader_service -%}
@@ -196,6 +208,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
   {%- endif %}
 
   {% if include_grader_service -%}
@@ -266,6 +281,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
     {% if gpu_ids and use_podman -%}
     # podman GPU configuration
     security_opt:
@@ -332,6 +350,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
   {%- endif %}
 
   {% if include_cleo_and_mailer -%}
@@ -401,6 +422,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
     {% if gpu_ids and use_podman -%}
     # podman GPU configuration
     security_opt:
@@ -483,6 +507,9 @@ services:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
     {% if gpu_ids and use_podman -%}
     # podman GPU configuration
     security_opt:
