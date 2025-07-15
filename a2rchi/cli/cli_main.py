@@ -242,7 +242,7 @@ def cli():
 @click.option('--gpu', 'all_gpus', flag_value="all", help='Flag option for GPUs. Same as "--gpu-ids all"')
 @click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
-
+@click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode networking for the containers.")
 def create(
     name, 
     include_grafana, 
@@ -255,7 +255,8 @@ def create(
     use_podman,
     all_gpus,
     gpu_ids,
-    image_tag
+    image_tag,
+    host_mode
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -306,6 +307,8 @@ def create(
         _create_volume(f"a2rchi-models", podman=use_podman)
     compose_template_vars["chat_volume_name"] = f"a2rchi-{name}"
     compose_template_vars["postgres_volume_name"] = f"a2rchi-pg-{name}"
+     # if using host mode, set the host mode variable
+    compose_template_vars["host_mode"] = host_mode
 
     # Define required fields in user configuration of A2rchi
     required_fields = [
@@ -333,7 +336,11 @@ def create(
     with open(a2rchi_config_filepath, 'r') as f:
         a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
         _validate_config(a2rchi_config, required_fields=required_fields)
-        a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
+        if host_mode:
+            a2rchi_config["postgres_hostname"] = "localhost"
+            a2rchi_config.setdefault("utils", {}).setdefault("data_manager", {})["chromadb_host"] = "localhost"
+        else:   
+            a2rchi_config["postgres_hostname"] = compose_template_vars["postgres_container_name"]
         if "collection_name" not in a2rchi_config:
             a2rchi_config["collection_name"] = f"collection_{name}"
 
