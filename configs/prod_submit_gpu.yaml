@@ -15,7 +15,6 @@ chains:
   chain:
     MODEL_NAME: HuggingFaceOpenLLM
     CONDENSE_MODEL_NAME: HuggingFaceOpenLLM
-    SUMMARY_MODEL_NAME: HuggingFaceOpenLLM
     MODEL_CLASS_MAP:
       HuggingFaceOpenLLM:
         kwargs:
@@ -25,7 +24,6 @@ chains:
   prompts:
     CONDENSING_PROMPT: configs/prompts/condense.prompt  
     MAIN_PROMPT: configs/prompts/submit.prompt  
-    SUMMARY_PROMPT: configs/prompts/summary.prompt  
 
 utils:
   embeddings:

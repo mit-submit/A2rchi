@@ -174,11 +174,11 @@ To access the chat interface, visit its corresponding port (`0.0.0.0:7868` in th
 ### Removing deployment
 
 Lastly, to tear down the deployment, simply run:
-```
+```nohighlight
 a2rchi delete --name my-a2rchi
 ```
 You can use the `--rmi` option to remove the images,
-```
+```nohighlight
 a2rchi delete --name my-a2rchi --rmi
 ```
 
@@ -208,11 +208,11 @@ utils:
 ### Persisting data between deployments
 
 Volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo this every time you deploy. Of course, if you are editing any data, you should explicitly remove this infromation from the volume, or simply remove the volume itself with
-```
+```nohighlight
 docker/podman volume rm <volume name>
 ```
 
 You can see what volumes are currently up with
-```
+```nohighlight
 docker/podman volume ls
 ```

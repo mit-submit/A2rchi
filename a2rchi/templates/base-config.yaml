@@ -158,7 +158,7 @@ utils:
     CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(1000, true) }}
     CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
     use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
-    chromadb_host: {{ utils.data_manager.chromadb_host | default('chromadb', true) }}
+    chromadb_host: {{ utils.data_manager.chromadb_host | default('chromadb', true) }} # This should not be changed, it corresponds to the service name, 'chromadb', specified in the compose.yaml
     chromadb_port: {{ utils.data_manager.chromadb_port | default(8000, true) }} # This should never really need to be changed off of 8000
     chromadb_external_port:  {{ utils.data_manager.chromadb_external_port | default(8000, true) }}
     collection_name: {{ collection_name }}
