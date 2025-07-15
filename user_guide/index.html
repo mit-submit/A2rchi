@@ -5,15 +5,15 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="shortcut icon" href="../img/favicon.ico" />
-    <title>User's Guide - A2rchi Docs</title>
+    <title>User Guide - A2rchi Docs</title>
     <link rel="stylesheet" href="../css/theme.css" />
     <link rel="stylesheet" href="../css/theme_extra.css" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
     
       <script>
         // Current page data
-        var mkdocs_page_name = "User\u0027s Guide";
-        var mkdocs_page_input_path = "users_guide.md";
+        var mkdocs_page_name = "User Guide";
+        var mkdocs_page_input_path = "user_guide.md";
         var mkdocs_page_url = null;
       </script>
     
@@ -40,19 +40,21 @@
 
       <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="..">Getting Started</a>
+                <li class="toctree-l1"><a class="reference internal" href="../getting_started/">Getting Started</a>
                 </li>
               </ul>
               <ul class="current">
-                <li class="toctree-l1 current"><a class="reference internal current" href="#">User's Guide</a>
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">User Guide</a>
     <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#core-interface">CORE Interface</a>
-        <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#secrets">Secrets</a>
+    <li class="toctree-l2"><a class="reference internal" href="#optional-command-line-options">Optional command line options</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#configuration">Configuration</a>
+    <li class="toctree-l2"><a class="reference internal" href="#optional-configuration-fields-see-required-in-getting-started-page">Optional configuration fields (see required in Getting Started page)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#rag-related-options">RAG-related options</a>
     </li>
         </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#chat-service">Chat Service</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#adding-documents-and-the-uploader-interface">Adding Documents and the Uploader Interface</a>
         <ul>
@@ -62,15 +64,17 @@
     </li>
     <li class="toctree-l4"><a class="reference internal" href="#manual-uploader">Manual Uploader</a>
     </li>
+    <li class="toctree-l4"><a class="reference internal" href="#for-quick-alternative">For quick alternative</a>
+    </li>
         </ul>
     </li>
         </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#piazza-interface">Piazza Interface</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#secrets_1">Secrets</a>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets">Secrets</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#configuration_1">Configuration</a>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration">Configuration</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#running-the-piazza-service">Running the Piazza service</a>
     </li>
@@ -78,17 +82,17 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#cleomailbox-interface">Cleo/Mailbox Interface</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#secrets_2">Secrets</a>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets_1">Secrets</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#configuration_2">Configuration</a>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_1">Configuration</a>
     </li>
         </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#grafana-interface">Grafana Interface</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#secrets_3">Secrets</a>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets_2">Secrets</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#configuration_3">Configuration</a>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_2">Configuration</a>
     </li>
         </ul>
     </li>
@@ -96,9 +100,9 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#requirements">Requirements</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#secrets_4">Secrets</a>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets_3">Secrets</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#configuration_4">Configuration</a>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_3">Configuration</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#grader-specific-optional-configuration-fields">Grader-Specific Optional Configuration Fields</a>
     </li>
@@ -110,7 +114,7 @@
                 </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../developers/">Developer's Guide</a>
+                <li class="toctree-l1"><a class="reference internal" href="../developer_guide/">Developer Guide</a>
                 </li>
               </ul>
               <ul>
@@ -131,7 +135,7 @@
         <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
   <ul class="wy-breadcrumbs">
     <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
-      <li class="breadcrumb-item active">User's Guide</li>
+      <li class="breadcrumb-item active">User Guide</li>
     <li class="wy-breadcrumbs-aside">
     </li>
   </ul>
@@ -140,23 +144,120 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
             <div class="section" itemprop="articleBody">
               
-                <h1 id="users-guide">Users Guide</h1>
-<p>A2rchi is built with several interfaces which collaborate with a CORE in order to create a customized RAG system. If you haven't already, read out <code>Getting Started</code> page to install, create, and run the CORE. </p>
-<p>The user's guide is broken up into detailing the various interfaces and the secrets/configurations needed for those interfaces. </p>
-<p>To include an interface, simply add it's tag at the end of the <code>create</code> CLI command. For example, to include the document uploader, run:</p>
-<pre><code>$ a2rchi create --name my-a2rchi --a2rchi-config example_conf.yaml --document-uploader True
+                <h1 id="user-guide">User Guide</h1>
+<p>A2rchi is built with several interfaces which supplement a base deployment in order to create a customized RAG system. If you haven't already, read the <code>Getting Started</code> page to install and deploy a basic version of A2rchi.</p>
+<p>The user's guide is broken up into detailing the additional command line options, the different parameters accessible via the configuration file, and the various interfaces and the secrets/configurations they require.</p>
+<h3 id="optional-command-line-options">Optional command line options</h3>
+<p>There are a few additional options you can pass to the <code>create</code> command that are not specific to a given interface.</p>
+<ol>
+<li>
+<p><strong><code>--podman</code></strong>: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker.</p>
+</li>
+<li>
+<p><strong><code>--gpu</code></strong>: This will deploy A2rchi onto the GPUs on your machine, which you will need to do should you decide to run open-source models. NOTE: this has only been tested with Podman, so will likely not work with Docker, for now.</p>
+<p>There are a few additional system requirements for this to work:</p>
+<p>First, make sure you have nvidia drivers installed. Then, for the containers where a2rchi will run to access the GPUs, please install the <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html">nvidia container toolkit</a>. Then, for Podman, run</p>
+<pre><code>  sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 </code></pre>
-<h2 id="core-interface">CORE Interface</h2>
-<p>TODO: add description of interface here</p>
-<h3 id="secrets">Secrets</h3>
-<h3 id="configuration">Configuration</h3>
+<p>Then, the following command</p>
+<pre><code>  nvidia-ctk cdi list
+</code></pre>
+<p>should show an output that includes</p>
+<pre><code>  INFO[0000] Found 9 CDI devices 
+  ...
+  nvidia.com/gpu=0
+  nvidia.com/gpu=1
+  ...
+  nvidia.com/gpu=all
+</code></pre>
+<p>These listed "CDI devices" will be referenced to run A2rchi on the GPUs, so make sure this is there. To see more about accessing GPUs with Podman, click <a href="https://podman-desktop.io/docs/podman/gpu">here</a>.
+If you have Docker, run</p>
+<pre><code>  sudo nvidia-ctk runtime configure --runtime=docker
+</code></pre>
+<p>What follows should be the same as above -- NOTE: this has not been tested yet with Docker. To see more about accessing GPUs with Docker, click <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuration">here</a>.</p>
+<p>Once these requirements are met, the <code>--gpu</code> option will automatically deploy A2rchi across all GPUs on the machine. If you want to instead select specific GPUs see the <code>--gpu-ids</code> options below</p>
+</li>
+<li>
+<p><strong><code>--gpu-ids</code></strong>: Instead of <code>--gpu</code>, you can select one or more specific GPU ids, e.g., in case some are in use. Options are <code>all</code> (same as <code>--gpu</code>), or integers, e.g., <code>0</code> or <code>0,1</code> (multiple ids should be separated by commas)</p>
+</li>
+<li>
+<p><strong><code>--tag</code></strong>: The tag for the images that are built locally. Can be useful when trying different configurations.</p>
+</li>
+</ol>
+<h3 id="optional-configuration-fields-see-required-in-getting-started-page">Optional configuration fields (see required in Getting Started page)</h3>
+<h4 id="rag-related-options">RAG-related options</h4>
+<ol>
+<li>
+<p><strong><code>chains:input_lists</code></strong>: A list of file(s), each containing a list of websites separated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, <code>configs/miscellanea.list</code> contains information of the MIT Professors who started the A2rchi project:</p>
+<pre><code># web pages of various people
+https://people.csail.mit.edu/kraska
+ttps://physics.mit.edu/faculty/christoph-paus
+</code></pre>
+<p>Then, include the file in the config:</p>
+<pre><code>chains:
+  input_lists:
+    - configs/miscellanea.list
+</code></pre>
+</li>
+<li>
+<p><strong><code>utils:data_manager:CHUNK_SIZE</code></strong>: Number of characters that define a "chunk", i.e., a string that will get embdedded and stored in the vector database. Default is <code>1000</code>.</p>
+</li>
+<li>
+<p><strong><code>utils:data_manager:CHUNK_OVERLAP</code></strong>: When splitting documents into chunks, how much should they overlap. Default is <code>0</code>.</p>
+</li>
+<li>
+<p><strong><code>utils:data_manager:num_documents_to_retrieve</code></strong>: How many chunks to query in order of decreasing similarity (so 1 would return the most similar only, 2 the next most similar, etc.).</p>
+</li>
+<li>
+<p><strong><code>utils:embeddings:EMBEDDING_NAME</code></strong>: <code>OpenAIEmbeddings</code> (default) or <code>HuggingFaceEmbeddings</code>. To choose the specific model, see next lines.</p>
+</li>
+<li>
+<p><strong><code>utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:kwargs:model_name</code></strong>: The OpenAI embedding model you want to use. Default is <code>text-embedding-3-small</code>.</p>
+</li>
+<li>
+<p><strong><code>utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:similarity_score_reference</code></strong>: The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more <a href="https://docs.trychroma.com/docs/collections/configure">here</a>), so smaller values represent higher similarity. The link will be included if the score is <em>below</em> the chosen value. Default is <code>10</code> (scores are usually order 1, so default is to always include link).</p>
+</li>
+<li>
+<p><strong><code>utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_name</code></strong>: The HuggingFace embedding model you want to use. Default is <code>sentence-transformers/all-MiniLM-L6-v2</code>. TODO: fix logic to require token if private model is requested.</p>
+</li>
+<li>
+<p><strong><code>utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_kwargs:device</code></strong>: Argument passed to embedding model initialization, to load onto <code>cpu</code> (default) or <code>cuda</code> (GPU), which you can select if you are deploying a2rchi onto GPU.</p>
+</li>
+<li>
+<p><strong><code>utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:encode_kwargs:normalize_embeddings</code></strong>: Whether to normalize the embedded vectors or not. Default is <code>true</code>. Note, the default distance metric that chromadb uses is l2, which mesasures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.</p>
+</li>
+<li>
+<p><strong><code>utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference</code></strong>: Same as #7.</p>
+</li>
+</ol>
+<h2 id="chat-service">Chat Service</h2>
+<p>Additional configuration options for the chatbot, deployed automatically with A2rchi:</p>
+<ol>
+<li>
+<p><strong><code>interfaces:chat_app:PORT</code></strong>: Internal port that the Flask application binds to inside the container. This is the port the Flask server listens on within the container's network namespace. Usually don't need to change this unless you have port conflicts within the container. Default is <code>7861</code>.</p>
+</li>
+<li>
+<p><strong><code>interfaces:chat_app:EXTERNAL_PORT</code></strong>: External port that maps to the container's internal port, making the chat application accessible from outside the container. This is the port users will connect to in their browser (e.g., <code>your-hostname:7861</code>). When running multiple deployments on the same machine, each deployment must use a different external port to avoid conflicts. Default is <code>7861</code>.</p>
+</li>
+<li>
+<p><strong><code>interfaces:chat_app:HOST</code></strong>: Network interface address that the Flask application binds to inside the container. Setting this to <code>0.0.0.0</code> allows the application to accept connections from any network interface, which is necessary for the application to be accessible from outside the container. Shouldn't remain unchanged unless you have specific networking requirements. Default is <code>0.0.0.0</code>.</p>
+</li>
+<li>
+<p><strong><code>interfaces:chat_app:HOSTNAME</code></strong>: The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using <code>localhost</code> will only work if accessing the application from the same machine. Default is <code>localhost</code>.</p>
+</li>
+<li>
+<p><strong><code>interfaces:chat_app:num_responses_until_feedback</code></strong>: Number of responses before the user is encouraged to provide feedback.</p>
+</li>
+</ol>
 <h2 id="adding-documents-and-the-uploader-interface">Adding Documents and the Uploader Interface</h2>
 <h3 id="adding-documents">Adding Documents</h3>
-<p>There are two main ways to add documents to A2rchi's vector database. They are
-·
-- Adding lists of online pdf sources to the configuration to be uploaded at start up
-- Manually adding files while the service is running via the uploader.</p>
-<p>Both methods are outlined below</p>
+<p>There are two main ways to add documents to A2rchi's vector database. They are:</p>
+<ul>
+<li>Adding lists of online pdf sources to the configuration to be uploaded at start up</li>
+<li>Manually adding files while the service is running via the uploader.</li>
+<li>Directly copying files into the container, in a pinch</li>
+</ul>
+<p>These methods are outlined below</p>
 <h4 id="document-lists">Document Lists</h4>
 <p>Before starting the a2rchi service, one can create a document list, which is a <code>.list</code> file containing <em>links</em> that point to either <code>html</code>, <code>txt</code>, or <code>pdf</code> files. <code>.list</code> files are also able to support comments, using "#". They are also generally stored in the <code>config</code> folder of the repository. For example, the below may be a list</p>
 <pre><code># Documents for the 6.5830 class
@@ -179,11 +280,11 @@ https://dsg.csail.mit.edu/6.5830/lectures/lec3-notes.pdf
 <p>When you restart the service, all the documents will be uploaded to the vector store. Note, this may take a few minutes.</p>
 <h4 id="manual-uploader">Manual Uploader</h4>
 <p>In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: </p>
-<pre><code>--document-uploader True
+<pre><code class="language-nohighlight">--document-uploader True
 </code></pre>
 <p>The exact port may vary based on configuration (default is <code>5001</code>). A simple <code>docker ps -a</code> command run on the server will inform which port it's being run on.</p>
 <p>In order to access the manager, one must first make an account. To do this, first get the ID or name of the uploader container using <code>docker ps -a</code>. Then, acces the container using</p>
-<pre><code>docker exec -it &lt;CONTAINER-ID&gt; bash
+<pre><code class="language-nohighlight">docker exec -it &lt;CONTAINER-ID&gt; bash
 </code></pre>
 <p>so you can run</p>
 <pre><code>python bin/service_create_account.py
@@ -191,6 +292,8 @@ https://dsg.csail.mit.edu/6.5830/lectures/lec3-notes.pdf
 <p>from the <code>/root/A2rchi/a2rchi</code> directory.·</p>
 <p>This script will guide you through creating an account. Note that we do not garuntee the security of this account, so never upload critical passwords to create it.·</p>
 <p>Once you have created an account, visit the outgoing port of the data manager docker service and then log in. The GUI will then allow you to upload documents while a2rchi is still running. Note that it may take a few minutes for all the documents to upload.</p>
+<h4 id="for-quick-alternative">For quick alternative</h4>
+<p>The documents used for RAG live in the chat container at <code>/root/data/&lt;directory&gt;/&lt;files&gt;</code>. Thus, in a pinch, you can <code>docker/podman cp</code> a file at this directory level, e.g., <code>podman/docker cp myfile.pdf &lt;container name or ID&gt;:/root/data/&lt;new_dir&gt;/</code>. If you need to make a new directory in the container, you can do <code>podman exec -it &lt;container name or ID&gt; mkdir /root/data/&lt;new_dir&gt;</code>.</p>
 <h2 id="piazza-interface">Piazza Interface</h2>
 <p>Set up A2rchi to read posts from your Piazza forum and post draft responses to a specified slack channel (other options coming soon). To do this, a Piazza login (email and password) is required, plus the network ID of your Piazza channel, and lastly, a Webhook for the slack channel A2rchi will post to. See below for a step-by-step description of this.</p>
 <ol>
@@ -201,7 +304,7 @@ https://dsg.csail.mit.edu/6.5830/lectures/lec3-notes.pdf
 <li>Click 'Add New Webhook', and select the channel you want A2rchi to post to.</li>
 <li>Now, copy the 'Webhook URL' and paste it into a file called 'slack_webhook.txt', and handle it like any other secret!</li>
 </ol>
-<h3 id="secrets_1">Secrets</h3>
+<h3 id="secrets">Secrets</h3>
 <p>The necessary secrets for deploying the Piazza service are the following:</p>
 <ul>
 <li><code>slack_webhook.txt</code></li>
@@ -209,7 +312,7 @@ https://dsg.csail.mit.edu/6.5830/lectures/lec3-notes.pdf
 <li><code>piazza_password.txt</code></li>
 </ul>
 <p>The slack webhook secret is described above. The piazza email and password should be those of one of the class instructors. Remember to put this information in files named following what is written above.</p>
-<h3 id="configuration_1">Configuration</h3>
+<h3 id="configuration">Configuration</h3>
 <p>Beyond standard required configuration fields, the network ID of the Piazza channel is required (see below for an example config). You can get the network ID by simply navigating to the class homepage, and grabbing the sequence that follows 'https://piazza.com/class/'. For example, the 8.01 Fall 2024 homepage is: 'https://piazza.com/class/m0g3v0ahsqm2lg'. The network ID is thus 'm0g3v0ahsqm2lg'. Example minimal config for the Piazza interface:</p>
 <pre><code>name: bare_minimum_configuration #REQUIRED
 
@@ -238,18 +341,19 @@ utils:
 </code></pre>
 <h3 id="running-the-piazza-service">Running the Piazza service</h3>
 <p>To run the Piazza service, simply add the piazza flag. For example:</p>
-<pre><code>a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza True
+<pre><code class="language-nohighlight">a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza True
 </code></pre>
 <h2 id="cleomailbox-interface">Cleo/Mailbox Interface</h2>
 <p>TODO: add description of interface here</p>
-<h3 id="secrets_2">Secrets</h3>
-<h3 id="configuration_2">Configuration</h3>
+<h3 id="secrets_1">Secrets</h3>
+<h3 id="configuration_1">Configuration</h3>
 <h2 id="grafana-interface">Grafana Interface</h2>
 <p>To run the grafana service, you first need to specify a password for the grafana to access the postgres database that stores the information. Simply set the environment variable as follows:</p>
-<pre><code>export GRAFANA_PG_PASSWORD=&lt;your_password&gt;
+<pre><code class="language-nohighlight">export GRAFANA_PG_PASSWORD=&lt;your_password&gt;
 </code></pre>
+<p>Note, if you are deploying a version of A2rchi you have already used (i.e., you haven't removed the images/volumes for a given <code>--name</code>), the postgres will have already been created without the grafana user created, and it will not work, so make sure to deploy a fresh instance.</p>
 <p>Once this is set, add the following argument to your a2rchi create command, e.g.,</p>
-<pre><code>a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana True
+<pre><code class="language-nohighlight">a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana True
 </code></pre>
 <p>and you should see something like this</p>
 <pre><code>CONTAINER ID  IMAGE                                     COMMAND               CREATED        STATUS                  PORTS                             NAMES
@@ -258,10 +362,11 @@ d27482864238  localhost/chromadb-gtesting2:2000         uvicorn chromadb....  9 
 40130e8e23de  docker.io/library/grafana-gtesting2:2000                        9 minutes ago  Up 9 minutes            0.0.0.0:3000-&gt;3000/tcp, 3000/tcp  grafana-gtesting2
 d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861-&gt;7861/tcp            chat-gtesting2
 </code></pre>
-<p>where the grafana interface is accessible at <code>0.0.0.0:3000</code>. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu &gt; Dashboards &gt; A2rchi &gt; A2rchi Usage.
-Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options &gt; Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes. Pro tip 2: If you want to download all of the information from any panel as a CSV, go to the same three dots and click "Inspect", and you should see the option.</p>
-<h3 id="secrets_3">Secrets</h3>
-<h3 id="configuration_3">Configuration</h3>
+<p>where the grafana interface is accessible at <code>your-hostname:3000</code>. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu &gt; Dashboards &gt; A2rchi &gt; A2rchi Usage. Note, <code>your-hostname</code> here is the just name of the machine. Grafana uses its default configuration which is <code>localhost</code> but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.</p>
+<p>Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options &gt; Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes.</p>
+<p>Pro tip 2: If you want to download all of the information from any panel as a CSV, go to the same three dots and click "Inspect", and you should see the option.</p>
+<h3 id="secrets_2">Secrets</h3>
+<h3 id="configuration_2">Configuration</h3>
 <h2 id="grader-interface">Grader Interface</h2>
 <p>Interface to launch a website which for a provided solution and rubric (and a couple of other things detailed below), will grade scanned images of a handwritten solution for the specified problem(s).</p>
 <p>Nota bene: this is not yet fully generalized and "service" ready, but instead for testing grading pipelines and a base off of which to build a potential grading app.</p>
@@ -270,7 +375,7 @@ Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean
 <ul>
 <li><code>users.csv</code>. This file is .csv file that contains two columns: "MIT email" and "Unique code", e.g.:</li>
 </ul>
-<pre><code>MIT email,Unique code
+<pre><code class="language-nohighlight">MIT email,Unique code
 username@mit.edu,222
 </code></pre>
 <p>For now, the system requires the emails to be in the MIT domain, namely, contain "@mit.edu". TODO: make this an argument that is passed (e.g., school/email domain)</p>
@@ -284,12 +389,12 @@ username@mit.edu,222
 <ul>
 <li><code>admin_password.txt</code>. This file will be passed as a secret and be the admin code to login in to the page where you can reset attempts for students.</li>
 </ul>
-<h3 id="secrets_4">Secrets</h3>
+<h3 id="secrets_3">Secrets</h3>
 <p>The only grading specific secret is the admin password, which like shown above, should be put in the following file</p>
 <pre><code>admin_password.txt
 </code></pre>
 <p>Then it behaves like any other secret.</p>
-<h3 id="configuration_4">Configuration</h3>
+<h3 id="configuration_3">Configuration</h3>
 <p>The required fields in the configuration file are different from the rest of the A2rchi services. Below is an example:</p>
 <pre><code>name: grading_test # REQUIRED
 
@@ -337,14 +442,14 @@ interfaces:
 </ol>
 <h3 id="deployment">Deployment</h3>
 <p>With a minimal configuration like that detailed above that is required for the grading service, we are ready to deploy! For example, to launch the grader interface on a machine with gpus (for now, only support open-source models for grader so <strong>--gpu is required</strong>) and podman, the following command will launch a2rchi:</p>
-<pre><code>a2rchi create --name grader --a2rchi-config configs/my_grading_config.yaml --podman --gpu --grader
+<pre><code class="language-nohighlight">a2rchi create --name grader --a2rchi-config configs/my_grading_config.yaml --podman --gpu --grader
 </code></pre>
               
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href=".." class="btn btn-neutral float-left" title="Getting Started"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../developers/" class="btn btn-neutral float-right" title="Developer's Guide">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="../getting_started/" class="btn btn-neutral float-left" title="Getting Started"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../developer_guide/" class="btn btn-neutral float-right" title="Developer Guide">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -367,10 +472,10 @@ interfaces:
   <span class="rst-current-version" data-toggle="rst-current-version">
     
     
-      <span><a href=".." style="color: #fcfcfc">&laquo; Previous</a></span>
+      <span><a href="../getting_started/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
-      <span><a href="../developers/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="../developer_guide/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>
