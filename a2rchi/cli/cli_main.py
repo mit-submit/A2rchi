@@ -518,6 +518,9 @@ def create(
         #compose_template_vars["huggingface"] = True
 
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
+    # SSO secrets
+    _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
 
 
     # copy prompts (make this cleaner prob)
