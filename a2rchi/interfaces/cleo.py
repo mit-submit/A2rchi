@@ -5,8 +5,14 @@ from a2rchi.utils.env import read_secret
 
 from redminelib import Redmine
 
-import re
 import datetime
+import psycopg2
+import psycopg2.extras
+import os
+import re
+import yaml
+
+from a2rchi.utils.sql import SQL_INSERT_CONVO
 
 # DEFINITIONS
 A2RCHI_PATTERN = '-- A2rchi --'
@@ -25,7 +31,68 @@ class CleoAIWrapper:
         self.data_manager = DataManager()
         self.data_manager.update_vectorstore()
 
-    def __call__(self, history):
+        self.utils_config = self.config["utils"]
+
+        # postgres connection info
+        self.pg_config = {
+            "password": read_secret("POSTGRES_PASSWORD"),
+            **self.utils_config["postgres"],
+        }
+        self.conn = None
+        self.cursor = None
+
+    def prepare_context_for_storage(self, source_documents):
+        
+        # load the present list of sources
+        try:
+            with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
+                sources = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            sources = dict()
+
+        num_retrieved_docs = len(source_documents)
+        context = ""
+        if num_retrieved_docs > 0:
+            for k in range(num_retrieved_docs):
+                document = source_documents[k]
+                document_source_hash = document.metadata['source']
+                if '/' in document_source_hash and '.' in document_source_hash:
+                    document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
+                link_k = "link not available"
+                if document_source_hash in sources:
+                    link_k = sources[document_source_hash]
+                multiple_newlines = r'\n{2,}'
+                content = re.sub(multiple_newlines, '\n', document.page_content)
+                context += f"Source {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\n\n{content}\n\n\n\n"
+
+        return context
+
+    def insert_conversation(self, issue_id, user_message, a2rchi_message, link, a2rchi_context, ts):
+        print(" INFO - storing interaction to postgres")
+
+        service = "Cleo"
+
+        insert_tups = (
+            [
+                # (service, issue_id, sender, content, context, ts) -- same ts for both just to have, not as interested in timing info for cleo service...
+                (service, issue_id, "User", user_message, '', '', ts, self.config_id),
+                (service, issue_id, "A2rchi", a2rchi_message, link, a2rchi_context, ts, self.config_id),
+            ]
+        )
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONVO, insert_tups)
+        self.conn.commit()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+
+    def __call__(self, history, issue_id):
         # create formatted history
         reformatted_history = []
         for entry in history:
@@ -41,8 +108,18 @@ class CleoAIWrapper:
         # update vectorstore
         self.data_manager.update_vectorstore()
 
-        # execute chain and return answer
-        return self.chain(reformatted_history)["answer"]
+        # execute chain and get answer
+        result = self.chain(reformatted_history)
+        answer = result["answer"]
+
+        # prepare other information for storage
+        history = "Question: " + reformatted_history[-1][1] + "\n\nHistory:\n\n" + "\n\n".join(post[0] + ": " + post[1] for post in reversed(reformatted_history[:-1]))
+        link, context = self.prepare_context_for_storage(self, result['source_documents'])
+        ts = datetime.datetime.now()
+
+        self.insert_conversation(issue_id, history, answer, link, context, ts)
+        
+        return answer
 
     @staticmethod
     def get_substring_between(text, start_word, end_word):
@@ -183,7 +260,7 @@ class Cleo:
                         history += f"\n next entry: {record.notes}"                    
                 print("History input: ",history)
                 try:
-                    answer = self.ai_wrapper(self.get_issue_history(issue.id))
+                    answer = self.ai_wrapper(self.get_issue_history(issue.id), issue.id)
                 except Exception as e:
                     print(f"ERROR: {e}")
                     answer = "I am sorry, I am not able to process this request at the moment. Please continue with this ticket manually."
