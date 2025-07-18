@@ -18,6 +18,8 @@ class Scraper():
         self.global_config = Config_Loader().config["global"]
         self.piazza_config = Config_Loader().config["utils"].get("piazza", None)
         self.data_path = self.global_config["DATA_PATH"]
+        # get SSO configuration
+        self.sso_config = Config_Loader().config["utils"].get("sso", None)
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
@@ -79,6 +81,7 @@ class Scraper():
             sources_path=os.path.join(self.data_path, 'sources.yml'),
             verify_urls=self.config["verify_urls"],
             enable_warnings=self.config["enable_warnings"],
+            sso_config=self.sso_config,
         )
 
         if verbose:
@@ -98,7 +101,7 @@ class Scraper():
         return urls
     
     @staticmethod
-    def scrape_urls(urls, upload_dir, sources_path, verify_urls, enable_warnings):
+    def scrape_urls(urls, upload_dir, sources_path, verify_urls, enable_warnings, sso_config=None):
         print(f" SOURCE: {sources_path}")
         try:
             # load existing sources or initialize as empty dictionary
@@ -113,24 +116,63 @@ class Scraper():
                 import urllib3
                 urllib3.disable_warnings()
 
-            # request web page
-            resp = requests.get(url, verify=verify_urls)
-
-            # write the html output to a file
-            identifier = hashlib.md5()
-            identifier.update(url.encode('utf-8'))
-            file_name = str(int(identifier.hexdigest(), 16))[0:12]
-
-            if (url.split('.')[-1] == 'pdf'):
-                print(f" Store: {upload_dir}/{file_name}.pdf : {url}")
-                with open(f"{upload_dir}/{file_name}.pdf", 'wb') as file:
-                    file.write(resp.content)
+            if url.startswith("sso-"):
+                # split to get the url 
+                url = re.split("sso-", url)[1]
+                try:
+                    # Use SSO scraper from config if available
+                    if sso_config and sso_config.get("ENABLED", False):
+                        sso_class_name = sso_config.get("SSO_CLASS", "CERNSSOScraper")
+                        sso_class_map = sso_config.get("SSO_CLASS_MAP", {})
+                        
+                        if sso_class_name in sso_class_map:
+                            sso_class = sso_class_map[sso_class_name]["class"]
+                            sso_kwargs = sso_class_map[sso_class_name].get("kwargs", {})
+                            
+                            with sso_class(**sso_kwargs) as sso_scraper:
+                                crawled_data = sso_scraper.crawl(url)
+                                sso_scraper.save_crawled_data(upload_dir)
+                                
+                                for i, page in enumerate(crawled_data):
+                                    print(f"SSO Crawled {i+1}. {page['title']} - {page['url']}")
+                                    identifier = hashlib.md5()
+                                    identifier.update(page['url'].encode('utf-8'))
+                                    file_name = str(int(identifier.hexdigest(), 16))[0:12]
+                                    sources[file_name] = page['url']
+                        else:
+                            print(f"SSO class {sso_class_name} not found in SSO_CLASS_MAP")
+                            raise Exception(f"SSO class {sso_class_name} not configured")
+                    else:
+                        print("SSO is disabled or not configured")
+                        raise Exception("SSO is disabled or not configured") 
+                except Exception as e:
+                    print(f"SSO scraping failed for {url}: {str(e)}")
+                    print("Falling back to regular HTTP request...")
+                    try:
+                        # request web page without SSO
+                        resp = requests.get(url, verify=verify_urls)
+                    except Exception as e2:
+                        print(f"Regular request also failed for {url}: {str(e2)}")
             else:
-                print(f" Store: {upload_dir}/{file_name}.html : {url}")
-                with open(f"{upload_dir}/{file_name}.html", 'w') as file:
-                    file.write(resp.text)
 
-            sources[file_name] = url 
+                # request web page
+                resp = requests.get(url, verify=verify_urls)
+
+                # write the html output to a file
+                identifier = hashlib.md5()
+                identifier.update(url.encode('utf-8'))
+                file_name = str(int(identifier.hexdigest(), 16))[0:12]
+
+                if (url.split('.')[-1] == 'pdf'):
+                    print(f" Store: {upload_dir}/{file_name}.pdf : {url}")
+                    with open(f"{upload_dir}/{file_name}.pdf", 'wb') as file:
+                        file.write(resp.content)
+                else:
+                    print(f" Store: {upload_dir}/{file_name}.html : {url}")
+                    with open(f"{upload_dir}/{file_name}.html", 'w') as file:
+                        file.write(resp.text)
+
+                sources[file_name] = url 
 
         # store list of files with urls to file 
         with open(sources_path, 'w') as file:
