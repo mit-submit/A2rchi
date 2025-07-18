@@ -577,6 +577,22 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "service"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": "100"
+              },
+              {
+                "id": "custom.align",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "conversation_id"
             },
             "properties": [
@@ -625,7 +641,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "clean_text"
+              "options": "message"
             },
             "properties": [
               {
@@ -649,7 +665,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "link"
+              "options": "top_link"
             },
             "properties": [
               {
@@ -673,26 +689,6 @@
                     "targetBlank": true
                   }
                 ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "context_title"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": "auto"
-              },
-              {
-                "id": "custom.cellDisplayMode",
-                "value": "expand"
-              },
-              {
-                "id": "custom.align",
-                "value": "left"
               }
             ]
           },
@@ -744,7 +740,7 @@
           },
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "WITH cleaned AS (\n  SELECT\n    conversation_id,\n    sender,\n    ts,\n    regexp_replace(content, '<[^>]*>', '', 'g')::text AS clean_text,\n    CASE\n      WHEN sender = 'A2rchi' THEN substring(content from '<a href= ([^ >]*)>Click here to read more</a>')::text\n      ELSE ''\n    END AS link,\n    context_title,\n    context\n  FROM conversations\n)\nSELECT conversation_id, sender, ts, clean_text, link, context_title, context\nFROM cleaned\nWHERE ts >= $__timeFrom() AND ts < $__timeTo()\nORDER BY ts DESC\nLIMIT 100",
+          "rawSql": "WITH cleaned AS (\n  SELECT\n    a2rchi_service AS service,\n    conversation_id,\n    sender,\n    ts,\n    message_id,\n    regexp_replace(content, '<[^>]*>', '', 'g')::text AS clean_content,\n    link AS top_link,\n    context\n  FROM conversations\n)\nSELECT \n  service, \n  conversation_id, \n  sender, \n  ts, \n  CASE \n    WHEN service = 'Chatbot' THEN\n      clean_content || E'\\n\\n\\n\\nHistory:\\n\\n' ||\n      COALESCE((\n        SELECT string_agg(c2.sender || ': ' || c2.clean_content, E'\\n\\n' ORDER BY c2.message_id DESC)\n        FROM cleaned c2 \n        WHERE c2.conversation_id = cleaned.conversation_id \n        AND c2.message_id < cleaned.message_id\n      ), '')\n    ELSE clean_content\n  END AS message,\n  top_link, \n  context\nFROM cleaned\nWHERE ts >= $__timeFrom() AND ts < $__timeTo()\nORDER BY ts DESC\nLIMIT 100",
           "sql": {
             "columns": [],
             "groupBy": [],
@@ -753,7 +749,7 @@
           "table": "conversations"
         }
       ],
-      "title": "Recent Conversation Messages (Clean Text, Links, Context)",
+      "title": "Recent Conversations (Messages and Context)",
       "type": "table"
     }         
   ],

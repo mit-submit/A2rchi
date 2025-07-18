@@ -6,11 +6,12 @@ CREATE TABLE IF NOT EXISTS configs (
     PRIMARY KEY (config_id)
 );
 CREATE TABLE IF NOT EXISTS conversations (
+    a2rchi_service TEXT NOT NULL,
     conversation_id INTEGER NOT NULL,
     message_id SERIAL,
     sender TEXT NOT NULL,
     content TEXT NOT NULL,
-    context_title TEXT NOT NULL,
+    link TEXT NOT NULL,
     context TEXT NOT NULL,
     ts TIMESTAMP NOT NULL,
     conf_id INTEGER NOT NULL,
