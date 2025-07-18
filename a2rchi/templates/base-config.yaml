@@ -181,6 +181,15 @@ utils:
           encode_kwargs: 
             normalize_embeddings: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
         similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(10, true) }}
+  sso:
+    ENABLED: {{ utils.sso.ENABLED | default(false, true) }}
+    SSO_CLASS: {{ utils.sso.SSO_CLASS | default('CERNSSOScraper', true) }}
+    SSO_CLASS_MAP:
+      CERNSSOScraper:
+        class: CERNSSOScraper
+        kwargs:
+          headless: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.headless | default(true, true) }}
+          max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(50, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
