@@ -14,7 +14,7 @@ from a2rchi.utils.env import read_secret
 class SSOScraper(ABC):
     """Generic base class for SSO-authenticated web scrapers."""
     
-    def __init__(self, username=None, password=None, headless=True, site_type="generic"):
+    def __init__(self, username=None, password=None, headless=True, site_type="generic", max_depth=50):
         """Initialize the SSO scraper with credentials and browser settings.
         
         Args:
@@ -22,10 +22,12 @@ class SSOScraper(ABC):
             password (str, optional): SSO password. If None, will try to get from env vars.
             headless (bool): Whether to run the browser in headless mode.
             site_type (str): Type of site to scrape ('generic' or 'mkdocs')
+            max_depth (int): Maximum number of pages to crawl per page.
         """
         self.username = username or self.get_username_from_env()
         self.password = password or self.get_password_from_env()
         self.headless = headless
+        self.max_depth = max_depth
         self.site_type = site_type
         self.driver = None
         self.visited_urls = set()
@@ -150,16 +152,16 @@ class SSOScraper(ABC):
                 
         return list(set(links))  # Remove duplicates
     
-    def crawl(self, start_url, max_pages=50):
+    def crawl(self, start_url):
         """Crawl pages starting from the given URL, storing title and content of each page.
         
         Args:
             start_url (str): The URL to start crawling from
-            max_pages (int): Maximum number of pages to crawl
             
         Returns:
             list: List of dictionaries containing page data (url, title, content)
         """
+        max_depth = self.max_depth
         if not self.driver:
             self.setup_driver()
             
@@ -177,14 +179,14 @@ class SSOScraper(ABC):
         
         pages_visited = 0
         
-        while to_visit and pages_visited < max_pages:
+        while to_visit and pages_visited < max_depth:
             current_url = to_visit.pop(0)
             
             # Skip if we've already visited this URL
             if current_url in self.visited_urls:
                 continue
                 
-            print(f"Crawling page {pages_visited + 1}/{max_pages}: {current_url}")
+            print(f"Crawling page {pages_visited + 1}/{max_depth}: {current_url}")
             
             try:
                 # Navigate to the page

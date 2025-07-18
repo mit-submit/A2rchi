@@ -519,8 +519,11 @@ def create(
 
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
     # SSO secrets
-    _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
-    _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
+    if a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
+        _print_msg("Preparing SSO secrets")
+        compose_template_vars["sso"] = True
+        _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
 
 
     # copy prompts (make this cleaner prob)

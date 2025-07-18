@@ -12,8 +12,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      {% if sso -%}
       SSO_USERNAME_FILE: /run/secrets/sso_username
       SSO_PASSWORD_FILE: /run/secrets/sso_password
+      {% endif %}
       {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       {% endif %}
@@ -42,8 +44,10 @@ services:
               capabilities: [gpu]
     {% endif %}
     secrets:
+      {% if sso -%}
       - sso_username
       - sso_password
+      {% endif %}
       {% if openai -%}
       - openai_api_key
       {% endif %}
