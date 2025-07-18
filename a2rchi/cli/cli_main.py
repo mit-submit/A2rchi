@@ -214,6 +214,7 @@ def cli():
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
 @click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
 @click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
+@click.option('--mattermost', '-mattermost', 'include_mattermost_service', type=bool, default=False, help="Boolean to add mattermost service to read mattermost posts and suggest answers to a mattermost channel.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'use_gpu', is_flag=True, help="Boolean to use GPU for a2rchi. Current support for podman to do this.")
@@ -226,6 +227,7 @@ def create(
     include_cleo_and_mailer,
     include_jira,
     include_piazza_service,
+    include_mattermost_service,
     a2rchi_config_filepath,
     use_podman,
     use_gpu,
@@ -287,6 +289,9 @@ def create(
     ]
     if include_piazza_service:
         required_fields.append('utils.piazza.network_id')
+
+#    if include_mattermost_service:
+#        required_fields.append('utils.mattermost.network_id')
 
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
@@ -383,6 +388,18 @@ def create(
         _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
 
+    compose_template_vars["include_mattermost_service"] = include_mattermost_service
+    if include_mattermost_service:
+        _print_msg("Preparing Mattermost Service")
+
+        compose_template_vars["mattermost_image"] = f"mattermost-{name}"
+        compose_template_vars["mattermost_tag"] = tag
+
+        # mattermost secrets
+        _prepare_secret(a2rchi_name_dir, "mattermost_webhook", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_read", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_write", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_pak", locations_of_secrets)
 
     compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
     if include_cleo_and_mailer:
@@ -495,7 +512,7 @@ def create(
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
     stdout, stderr = _run_bash_command(compose_up, verbose=True, cwd=a2rchi_name_dir)
-
+    _print_msg("DONE compose")
 
 @click.command()
 @click.option('--name', type=str, help="Name of the a2rchi deployment.")
