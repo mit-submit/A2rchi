@@ -238,6 +238,7 @@ def cli():
 @click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
 @click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
 @click.option('--grader', '-grader', 'include_grader_service', is_flag=True, help="Flag to add service for grading service (image to text, then grading, on web interface)")
+@click.option('--mattermost', '-mattermost', 'include_mattermost_service', type=bool, default=False, help="Boolean to add mattermost service to read mattermost posts and suggest answers to a mattermost channel.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'all_gpus', flag_value="all", help='Flag option for GPUs. Same as "--gpu-ids all"')
 @click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
@@ -253,6 +254,7 @@ def create(
     include_jira,
     include_piazza_service,
     include_grader_service,
+    include_mattermost_service,
     use_podman,
     all_gpus,
     gpu_ids,
@@ -332,7 +334,6 @@ def create(
             'chains.chain.IMAGE_PROCESSING_MODEL_NAME', 'chains.chain.GRADING_FINAL_GRADE_MODEL_NAME',
         ]
     
-
 
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
@@ -464,6 +465,18 @@ def create(
         _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
 
+    compose_template_vars["include_mattermost_service"] = include_mattermost_service
+    if include_mattermost_service:
+        _print_msg("Preparing Mattermost Service")
+
+        compose_template_vars["mattermost_image"] = f"mattermost-{name}"
+        compose_template_vars["mattermost_tag"] = tag
+
+        # mattermost secrets
+        _prepare_secret(a2rchi_name_dir, "mattermost_webhook", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_read", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_write", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_pak", locations_of_secrets)
 
     compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
     if include_cleo_and_mailer:
@@ -603,7 +616,7 @@ def create(
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
     stdout, stderr = _run_bash_command(compose_up, verbose=True, cwd=a2rchi_name_dir)
-
+    _print_msg("DONE compose")
 
 @click.command()
 @click.option('--name', type=str, help="Name of the a2rchi deployment.")

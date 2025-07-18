@@ -363,6 +363,59 @@ services:
     {% endif %}
   {%- endif %}
 
+  {% if include_mattermost_service -%}
+  mattermost:
+    image: {{ mattermost_image }}:{{ mattermost_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mattermost
+      args:
+        TAG: {{ mattermost_tag }}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      {% if openai -%}
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
+      ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
+      MATTERMOST_WEBHOOK_FILE: /run/secrets/mattermost_webhook
+      MATTERMOST_CHANNEL_ID_READ_FILE: /run/secrets/mattermost_channel_id_read
+      MATTERMOST_CHANNEL_ID_WRITE_FILE: /run/secrets/mattermost_channel_id_write
+      MATTERMOST_PAK_FILE: /run/secrets/mattermost_pak
+    secrets:
+      {% if openai -%}
+      - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
+      - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
+      - hf_token
+      {% endif %}
+      - mattermost_webhook
+      - mattermost_channel_id_read
+      - mattermost_channel_id_write
+      - mattermost_pak
+    volumes:
+      - {{ chat_volume_name }}:/root/data/
+      - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+      - ./summary.prompt:/root/A2rchi/summary.prompt
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+  {% endif %}
+
   {% if include_cleo_and_mailer -%}
   cleo:
     image: {{ cleo_image }}:{{ cleo_tag }}
@@ -600,9 +653,20 @@ secrets:
   slack_webhook:
     file: secrets/slack_webhook.txt
 
+
   # Grader secrets
   admin_password:
     file: secrets/admin_password.txt
+
+  # Mattermost secrets
+  mattermost_webhook:
+    file: secrets/mattermost_webhook.txt
+  mattermost_channel_id_read:
+    file: secrets/mattermost_channel_id_read.txt
+  mattermost_channel_id_write:
+    file: secrets/mattermost_channel_id_write.txt
+  mattermost_pak:
+    file: secrets/mattermost_pak.txt
 
   # JIRA secrets
   jira_pat:

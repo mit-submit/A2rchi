@@ -205,6 +205,8 @@ utils:
   piazza:
     network_id: {{ utils.piazza.network_id }}
     update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
+  mattermost:
+    update_time: {{ utils.mattermost.update_time | default(60, true) }} # seconds
   cleo: 
     cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
   mailbox: 
