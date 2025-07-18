@@ -1,3 +1,4 @@
+from a2rchi.utils.config_loader import Config_Loader, CONFIG_PATH
 from a2rchi.chains.chain import Chain
 from a2rchi.utils import sender
 from a2rchi.utils.data_manager import DataManager
@@ -31,7 +32,11 @@ class CleoAIWrapper:
         self.data_manager = DataManager()
         self.data_manager.update_vectorstore()
 
+        # configs
+        self.config = Config_Loader().config
+        self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.data_path = self.global_config["DATA_PATH"]
 
         # postgres connection info
         self.pg_config = {
@@ -40,6 +45,8 @@ class CleoAIWrapper:
         }
         self.conn = None
         self.cursor = None
+
+        self.config_id = 1 # TODO: make dynamic a la chat_app/app.py
 
     def prepare_context_for_storage(self, source_documents):
         
@@ -61,11 +68,13 @@ class CleoAIWrapper:
                 link_k = "link not available"
                 if document_source_hash in sources:
                     link_k = sources[document_source_hash]
+                if k == 0:
+                    link = link_k
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
                 context += f"Source {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\n\n{content}\n\n\n\n"
 
-        return context
+        return link, context
 
     def insert_conversation(self, issue_id, user_message, a2rchi_message, link, a2rchi_context, ts):
         print(" INFO - storing interaction to postgres")
@@ -113,8 +122,8 @@ class CleoAIWrapper:
         answer = result["answer"]
 
         # prepare other information for storage
-        history = "Question: " + reformatted_history[-1][1] + "\n\nHistory:\n\n" + "\n\n".join(post[0] + ": " + post[1] for post in reversed(reformatted_history[:-1]))
-        link, context = self.prepare_context_for_storage(self, result['source_documents'])
+        history = "Question: " + reformatted_history[-1][1] + "\n\n\n\nHistory:\n\n" + "\n\n".join(post[0] + ": " + post[1] for post in reversed(reformatted_history[:-1]))
+        link, context = self.prepare_context_for_storage(result['source_documents'])
         ts = datetime.datetime.now()
 
         self.insert_conversation(issue_id, history, answer, link, context, ts)
