@@ -325,14 +325,13 @@ class ChatWrapper:
             print("INFO - released lock file update vectorstore")
 
         try:
-            print('tuple')
             # convert the message to native A2rchi form (because javascript does not have tuples)
             sender, content = tuple(message[0])
 
             # TODO: incr. from 0?
             # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
             conversation_id = conversation_id or np.random.randint(100000, 999999)
-            print('get history')
+
             # fetch history given conversation_id
             history = self.query_conversation_history(conversation_id)
             timestamps['query_convo_history_ts'] = datetime.now()
