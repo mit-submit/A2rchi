@@ -158,7 +158,7 @@ utils:
     CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(1000, true) }}
     CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
     use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
-    chromadb_host: {{ utils.data_manager.chromadb_host | default('chromadb', true) }}
+    chromadb_host: {{ utils.data_manager.chromadb_host | default('chromadb', true) }} # This should not be changed, it corresponds to the service name, 'chromadb', specified in the compose.yaml
     chromadb_port: {{ utils.data_manager.chromadb_port | default(8000, true) }} # This should never really need to be changed off of 8000
     chromadb_external_port:  {{ utils.data_manager.chromadb_external_port | default(8000, true) }}
     collection_name: {{ collection_name }}
@@ -181,6 +181,15 @@ utils:
           encode_kwargs: 
             normalize_embeddings: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
         similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(10, true) }}
+  sso:
+    ENABLED: {{ utils.sso.ENABLED | default(false, true) }}
+    SSO_CLASS: {{ utils.sso.SSO_CLASS | default('CERNSSOScraper', true) }}
+    SSO_CLASS_MAP:
+      CERNSSOScraper:
+        class: CERNSSOScraper
+        kwargs:
+          headless: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.headless | default(true, true) }}
+          max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(50, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}

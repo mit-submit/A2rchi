@@ -37,6 +37,7 @@ import psycopg2.extras
 import yaml
 import json
 import time
+import re
 
 # DEFINITIONS
 QUERY_LIMIT = 10000 # max queries per conversation
@@ -206,12 +207,31 @@ class ChatWrapper:
 
         return history
 
+    def prepare_context_for_storage(self, source_documents, sources):
 
-    def insert_conversation(self, conversation_id, user_message, a2rchi_message, a2rchi_context_title, a2rchi_context, is_refresh=False) -> List[int]:
+        num_retrieved_docs = len(source_documents)
+        context = ""
+        if num_retrieved_docs > 0:
+            for k in range(num_retrieved_docs):
+                document = source_documents[k]
+                document_source_hash = document.metadata['source']
+                if '/' in document_source_hash and '.' in document_source_hash:
+                    document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
+                link_k = "link not available"
+                if document_source_hash in sources:
+                    link_k = sources[document_source_hash]
+                multiple_newlines = r'\n{2,}'
+                content = re.sub(multiple_newlines, '\n', document.page_content)
+                context += f"Source {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\n\n{content}\n\n\n\n"
+
+        return context
+
+    def insert_conversation(self, conversation_id, user_message, a2rchi_message, link, a2rchi_context, is_refresh=False) -> List[int]:
         """
         """
         print(" INFO - entered insert_conversation.")
 
+        service = "Chatbot"
         # parse user message / a2rchi message
         user_sender, user_content, user_msg_ts = user_message
         a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
@@ -219,13 +239,13 @@ class ChatWrapper:
         # construct insert_tups
         insert_tups = (
             [
-                # (conversation_id, sender, content, context title, context, ts)
-                (conversation_id, user_sender, user_content, '', '', user_msg_ts, self.config_id),
-                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_context_title, a2rchi_context, a2rchi_msg_ts, self.config_id),
+                # (service, conversation_id, sender, content, context, ts)
+                (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.config_id),
+                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.config_id),
             ]
             if not is_refresh
             else [
-                (conversation_id, a2rchi_sender, a2rchi_content, a2rchi_context_title, a2rchi_context, a2rchi_msg_ts, self.config_id),
+                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.config_id),
             ]
         )
 
@@ -365,10 +385,12 @@ class ChatWrapper:
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
             print("INFO - similarity score reference: ", similarity_score_reference)
             print("INFO - similarity score: ", score)
-            print("INFO - source: ", source)
+            link = ""
             if source is not None and score < similarity_score_reference and source in sources.keys():
-                parsed_source = urlparse(sources[source])
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + sources[source] + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
+                link = sources[source]
+                print("INFO - source: ", link)
+                parsed_source = urlparse(link)
+                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
             else:
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
@@ -376,10 +398,9 @@ class ChatWrapper:
             timestamps['a2rchi_message_ts'] = datetime.now()
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
-            a2rchi_context_title = result['source_documents'][0].metadata.get('title', 'No Title') if len(result['source_documents']) > 0 else ''
-            a2rchi_context = result['source_documents'][0].page_content if len(result['source_documents']) > 0 else ''
+            context = self.prepare_context_for_storage(result['source_documents'], sources)
 
-            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, a2rchi_context_title, a2rchi_context, is_refresh)
+            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, link, context, is_refresh)
             timestamps['insert_convo_ts'] = datetime.now()
 
         except Exception as e:

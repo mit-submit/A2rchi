@@ -1,7 +1,9 @@
 site_name: A2rchi Docs
 nav:
-  - Getting Started: index.md
-  - User's Guide: users_guide.md
-  - Developer's Guide: developers.md
+  - Home: index.md
+  - User Guide: user_guide.md
+  - Developer Guide: developer_guide.md
   - About: about.md
 theme: readthedocs
+repo_url: https://github.com/mit-submit/A2rchi
+repo_name: 'GitHub'

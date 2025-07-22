@@ -1,7 +1,7 @@
 """SQL queries used by A2rchi"""
 SQL_INSERT_CONVO = """
 INSERT INTO conversations (
-    conversation_id, sender, content, context_title, context, ts, conf_id
+    a2rchi_service, conversation_id, sender, content, link, context, ts, conf_id
 )
 VALUES %s
 RETURNING message_id;
