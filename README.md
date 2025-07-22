@@ -24,7 +24,7 @@ Welcome to **A2rchi**, the cutting-edge Research and Education Assistant! Origin
 - 📖 **[Getting Started](https://mit-submit.github.io/A2rchi/)**  
   Start your A2rchi journey here! Learn about system requirements, installation, and configuration.
 
-- 🛠️ **[User's Guide](https://mit-submit.github.io/A2rchi/users_guide/)**  
+- 🛠️ **[User's Guide](https://mit-submit.github.io/A2rchi/user_guide/)**  
   Explore detailed instructions for using A2rchi’s features and interfaces.
 
 - 🐙 **[GitHub Repository](https://github.com/mit-submit/A2rchi)**  
