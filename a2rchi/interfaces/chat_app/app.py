@@ -471,6 +471,10 @@ class FlaskAppWrapper(object):
         else:
             logger.info("ChromaDB API endpoints disabled by config")
 
+    @app.route("/api/health")
+    def health():
+        return jsonify({"status": "OK"}, 200)
+
     def configs(self, **configs):
         for config, value in configs:
             self.app.config[config.upper()] = value
