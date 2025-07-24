@@ -2,4 +2,7 @@
 FROM ghcr.io/chroma-core/chroma:0.4.12
 RUN apt-get update -y && apt-get install -y curl
 
+# permissions for OpenShift/OKD
+RUN chmod g+rx /root; chmod -R g+rwx /chroma
+
 CMD ["uvicorn", "chromadb.app:app", "--reload", "--workers", "1", "--host", "0.0.0.0", "--port", "8000", "--log-config", "chromadb/log_config.yml"]
