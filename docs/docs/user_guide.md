@@ -46,6 +46,8 @@ There are a few additional options you can pass to the `create` command that are
 
 4. **`--tag`**: The tag for the images that are built locally. Can be useful when trying different configurations.
 
+5. **`--jira`**: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.
+
 
 ### Optional configuration fields (see required in Getting Started page)
 
@@ -84,7 +86,7 @@ There are a few additional options you can pass to the `create` command that are
 11. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference`**: Same as #7.
 
 
-## Chat Service
+#### Chat Service
 
 Additional configuration options for the chatbot, deployed automatically with A2rchi:
 
@@ -97,6 +99,30 @@ Additional configuration options for the chatbot, deployed automatically with A2
 4. **`interfaces:chat_app:HOSTNAME`**: The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using `localhost` will only work if accessing the application from the same machine. Default is `localhost`.
 
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
+
+#### JIRA
+
+Find below the configuration fields for JIRA feature.
+
+1. **`utils:jira:JIRA_URL`**: The URL of the JIRA instance from which A2rchi will fetch data. Its type is string. This option is required if `--jira` flag is used.
+2. **`utils:jira:JIRA_PROJECTS`**: List of JIRA project names that A2rchi will fetch data from. Its type is a list of strings. This option is required if `--jira` flag is used.
+3. **`utils:jira:ANONYMIZE_DATA`**: Boolean flag indicating whether the fetched data from JIRA should be anonymized or not. This option is optional if `--jira` flag is used. Its default value is True.
+
+##### JIRA secret
+
+A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be put in a jira called `jira_pat.txt`. This file should be put in the secrets folder
+
+#### Anonymizer
+
+Find below the configuration fields for anonymization feature. All of them are optional.
+
+1. **`utils:anonymizer:nlp_model`**: The NLP model that the `spacy` library will use to perform Name Entity Recognition (NER). Its type is string. 
+2. **`utils:anonymizer:excluded_words`**: The list of words that the anonymizer should remove. Its type is list of strings. 
+3. **`utils:anonymizer:greeting_patterns`**: The list of greeting patterns that the anonymizer should remove. Its type is list of strings. 
+4. **`utils:anonymizer:signoff_patterns`**: The list of signoff patterns that the anonymizer should remove. Its type is list of strings. 
+5. **`utils:anonymizer:email_pattern`**: The regex pattern to use match and remove email addresses. Its type is string.
+6. **`utils:anonymizer:username_pattern`**: The regex pattern to use match and remove JIRA usernames. Its type is string.
+
 
 ## Adding Documents and the Uploader Interface
 
