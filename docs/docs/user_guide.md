@@ -110,7 +110,7 @@ Find below the configuration fields for JIRA feature.
 
 ##### JIRA secret
 
-A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be put in a jira called `jira_pat.txt`. This file should be put in the secrets folder
+A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be put in a file called `jira_pat.txt`. This file should be put in the secrets folder.
 
 #### Anonymizer
 
@@ -118,8 +118,8 @@ Find below the configuration fields for anonymization feature. All of them are o
 
 1. **`utils:anonymizer:nlp_model`**: The NLP model that the `spacy` library will use to perform Name Entity Recognition (NER). Its type is string. 
 2. **`utils:anonymizer:excluded_words`**: The list of words that the anonymizer should remove. Its type is list of strings. 
-3. **`utils:anonymizer:greeting_patterns`**: The list of greeting patterns that the anonymizer should remove. Its type is list of strings. 
-4. **`utils:anonymizer:signoff_patterns`**: The list of signoff patterns that the anonymizer should remove. Its type is list of strings. 
+3. **`utils:anonymizer:greeting_patterns`**: The regex pattern to use match and remove greeting patterns. Its type is string.
+4. **`utils:anonymizer:signoff_patterns`**: The regex pattern to use match and remove signoff patterns. Its type is string.
 5. **`utils:anonymizer:email_pattern`**: The regex pattern to use match and remove email addresses. Its type is string.
 6. **`utils:anonymizer:username_pattern`**: The regex pattern to use match and remove JIRA usernames. Its type is string.
 
