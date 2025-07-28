@@ -65,19 +65,44 @@ class Mattermost:
 
         print('mattermost_webhook =', self.mattermost_webhook)
         print('mattermost_channel_id_read =', self.mattermost_channel_id_read)        
+        print('mattermost_channel_id_write =', self.mattermost_channel_id_write)
         print('PAK =', self.PAK)
-        
+
         # initialize MattermostAIWrapper
         self.ai_wrapper = MattermostAIWrapper()
-        
+
+        #
+        self.min_next_post_file = "/root/data/LPC2025/min_next_post.json"
+
     def post_response(self, response):
 
+#        url = f"{self.mattermost_url}/api/v4/posts"
+#        print('GOING TO WRITE HERE: ',url)
+
+#        payload = {
+#            "channel_id": self.mattermost_channel_id_write,
+#            "message": response
+#        }
         # send response to MM
+        #r = requests.post(url, data=json.dumps(payload), headers=self.mattermost_headers)
         r = requests.post(self.mattermost_webhook, data=json.dumps({"text": response,"channel" : "town-square"}), headers=self.mattermost_headers)
+
         print(r.text)
+        print("STATUS CODE",r.status_code)
         return
 
+    def write_min_next_post(self, answered_key):
+        try:
+            # create directory if it does not exist
+            os.makedirs(os.path.dirname(self.min_next_post_file), exist_ok=True)
+            with open(self.min_next_post_file, "w") as f:
+                json.dump({"answered_id": answered_key}, f)
+            print(f"Updated answered_id {answered_key}")
+        except Exception as e:
+            print(f"ERROR - Failed to write answered_key to file: {e}")
+
     def get_active_posts(self):
+
         print('HELLO inside get_active_posts')
         content = f"api/v4/channels/{self.mattermost_channel_id_read}/posts"
         r = requests.get(self.mattermost_url + content, headers=self.mattermost_headers)
@@ -94,7 +119,13 @@ class Mattermost:
         r = requests.get(self.mattermost_url + content, headers=self.mattermost_headers)
         data = r.json()
         posts = data.get('posts', {})
-        sorted_posts = sorted(posts.values(), key=lambda x: x['create_at'], reverse=True)
+        excluded_a2rchi_id = "ajb6wyizpinqir7m16owntod7o"
+        filtered_posts = {
+            post_id: post
+            for post_id, post in posts.items()
+            if post.get("user_id") != excluded_a2rchi_id
+        }
+        sorted_posts = sorted(filtered_posts.values(), key=lambda x: x['create_at'], reverse=True)
 
         if sorted_posts:
             latest = sorted_posts[0]
@@ -105,6 +136,36 @@ class Mattermost:
 
         return sorted_posts[0]
 
+    def checkAnswerExist(self, tmpID):
+
+        # Check if file exists
+        if not os.path.exists(self.min_next_post_file):
+            print("File does not exist, creating new one.")
+            data = {"answered_id": []}  # Initialize with empty list
+            return False
+        else:
+            # Load existing data
+            with open(self.min_next_post_file, "r") as f:
+                data = json.load(f)
+                print("Loaded data:", data)
+
+        answered_ids = data.get("answered_id", [])
+
+        # Ensure it's a list
+        if not isinstance(answered_ids, list):
+            answered_ids = [answered_ids]
+
+        # Only append if not already in the list (optional)
+        if tmpID in answered_ids:
+            print(f"{tmpID} already exists")
+            return True
+        else:
+            answered_ids.append(tmpID)
+            data["answered_id"] = answered_ids  # Overwrite with new ID
+            with open(self.min_next_post_file, "w") as f:
+                json.dump(data, f, indent=2)
+            print(f"Added {tmpID} for next iterations")
+            return False
 
     # for now just processes "main" posts, i.e. not replies/follow-ups
     def process_posts(self):
@@ -112,12 +173,14 @@ class Mattermost:
         try:
             # get last post
             topic = self.get_last_post()
+            #active_posts = self.get_active_posts()
+            #print(active_posts.keys())
         except Exception as e:
             print("ERROR - Failed to parse feed due to the following exception:")
             print(str(e))
             return
 
-        if topic["reply_count"]!=0 :
+        if self.checkAnswerExist(topic['id']) :
              # no need to answer someone already answered
              print('no need to answer someone already answered')
         else:
@@ -126,6 +189,7 @@ class Mattermost:
                 answer, post_str = self.ai_wrapper(topic)
                 print('topic',topic,' \n ANSWER: ',answer)
                 postedMM = self.post_response(answer)
+                post_str = self.write_min_next_post(topic['id'])
 
             except Exception as e:
                 print(f"ERROR - Failed to process post {topic['id']} due to the following exception:")
