@@ -52,9 +52,17 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#rag-related-options">RAG-related options</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#chat-service">Chat Service</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#jira">JIRA</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#jira-secret">JIRA secret</a>
+    </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#chat-service">Chat Service</a>
+    <li class="toctree-l3"><a class="reference internal" href="#anonymizer">Anonymizer</a>
+    </li>
+        </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#adding-documents-and-the-uploader-interface">Adding Documents and the Uploader Interface</a>
         <ul>
@@ -184,6 +192,9 @@ If you have Docker, run</p>
 <li>
 <p><strong><code>--tag</code></strong>: The tag for the images that are built locally. Can be useful when trying different configurations.</p>
 </li>
+<li>
+<p><strong><code>--jira</code></strong>: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.</p>
+</li>
 </ol>
 <h3 id="optional-configuration-fields-see-required-in-getting-started-page">Optional configuration fields (see required in Getting Started page)</h3>
 <h4 id="rag-related-options">RAG-related options</h4>
@@ -231,7 +242,7 @@ ttps://physics.mit.edu/faculty/christoph-paus
 <p><strong><code>utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference</code></strong>: Same as #7.</p>
 </li>
 </ol>
-<h2 id="chat-service">Chat Service</h2>
+<h4 id="chat-service">Chat Service</h4>
 <p>Additional configuration options for the chatbot, deployed automatically with A2rchi:</p>
 <ol>
 <li>
@@ -249,6 +260,25 @@ ttps://physics.mit.edu/faculty/christoph-paus
 <li>
 <p><strong><code>interfaces:chat_app:num_responses_until_feedback</code></strong>: Number of responses before the user is encouraged to provide feedback.</p>
 </li>
+</ol>
+<h4 id="jira">JIRA</h4>
+<p>Find below the configuration fields for JIRA feature.</p>
+<ol>
+<li><strong><code>utils:jira:JIRA_URL</code></strong>: The URL of the JIRA instance from which A2rchi will fetch data. Its type is string. This option is required if <code>--jira</code> flag is used.</li>
+<li><strong><code>utils:jira:JIRA_PROJECTS</code></strong>: List of JIRA project names that A2rchi will fetch data from. Its type is a list of strings. This option is required if <code>--jira</code> flag is used.</li>
+<li><strong><code>utils:jira:ANONYMIZE_DATA</code></strong>: Boolean flag indicating whether the fetched data from JIRA should be anonymized or not. This option is optional if <code>--jira</code> flag is used. Its default value is True.</li>
+</ol>
+<h5 id="jira-secret">JIRA secret</h5>
+<p>A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be put in a file called <code>jira_pat.txt</code>. This file should be put in the secrets folder.</p>
+<h4 id="anonymizer">Anonymizer</h4>
+<p>Find below the configuration fields for anonymization feature. All of them are optional.</p>
+<ol>
+<li><strong><code>utils:anonymizer:nlp_model</code></strong>: The NLP model that the <code>spacy</code> library will use to perform Name Entity Recognition (NER). Its type is string. </li>
+<li><strong><code>utils:anonymizer:excluded_words</code></strong>: The list of words that the anonymizer should remove. Its type is list of strings. </li>
+<li><strong><code>utils:anonymizer:greeting_patterns</code></strong>: The regex pattern to use match and remove greeting patterns. Its type is string.</li>
+<li><strong><code>utils:anonymizer:signoff_patterns</code></strong>: The regex pattern to use match and remove signoff patterns. Its type is string.</li>
+<li><strong><code>utils:anonymizer:email_pattern</code></strong>: The regex pattern to use match and remove email addresses. Its type is string.</li>
+<li><strong><code>utils:anonymizer:username_pattern</code></strong>: The regex pattern to use match and remove JIRA usernames. Its type is string.</li>
 </ol>
 <h2 id="adding-documents-and-the-uploader-interface">Adding Documents and the Uploader Interface</h2>
 <h3 id="adding-documents">Adding Documents</h3>
@@ -363,7 +393,7 @@ d27482864238  localhost/chromadb-gtesting2:2000         uvicorn chromadb....  9 
 40130e8e23de  docker.io/library/grafana-gtesting2:2000                        9 minutes ago  Up 9 minutes            0.0.0.0:3000-&gt;3000/tcp, 3000/tcp  grafana-gtesting2
 d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861-&gt;7861/tcp            chat-gtesting2
 </code></pre>
-<p>where the grafana interface is accessible at <code>your-hostname:3000</code>. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu &gt; Dashboards &gt; A2rchi &gt; A2rchi Usage. Note, <code>your-hostname</code> here is the just name of the machine. Grafana uses its default configuration which is <code>localhost</code> but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.</p>
+<p>where the grafana interface is accessible at <code>your-hostname:3000</code>. To change the external port from <code>3000</code>, you can do this in the config at <code>interfaces:grafana:EXTERNAL_PORT</code>. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu &gt; Dashboards &gt; A2rchi &gt; A2rchi Usage. Note, <code>your-hostname</code> here is the just name of the machine. Grafana uses its default configuration which is <code>localhost</code> but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.</p>
 <p>Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options &gt; Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes.</p>
 <p>Pro tip 2: If you want to download all of the information from any panel as a CSV, go to the same three dots and click "Inspect", and you should see the option.</p>
 <h3 id="secrets_2">Secrets</h3>
