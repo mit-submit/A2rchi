@@ -21,7 +21,7 @@ chains:
           base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
           quantization: True
           max_model_len: 32768
-          tensor_parallel_size: 1
+          tensor_parallel_size: 2
           repetition_penalty: 1.0
           gpu_memory_utilization: 0.9
 

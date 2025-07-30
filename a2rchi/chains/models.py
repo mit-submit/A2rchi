@@ -266,6 +266,10 @@ class VLLM(BaseCustomLLM):
 
         model_cache_key = (self.base_model, "", "")
         cached = self.get_cached_model(model_cache_key)
+
+        import multiprocessing as mp
+        mp.set_start_method("spawn", force=True)
+
         if cached:
             _, self.vllm_engine = cached
         else:

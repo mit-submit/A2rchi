@@ -73,4 +73,6 @@ RUN pip install --upgrade pip && pip install .
 #RUN sed -i 's/AutoConfig.register("aimv2", AIMv2Config)/AutoConfig.register("aimv2", AIMv2Config, exist_ok=True)/' \
 #    /opt/conda/lib/python3.10/site-packages/vllm/transformers_utils/configs/ovis.py
 
+ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
+
 CMD ["python", "-u", "a2rchi/bin/service_chat.py"]
