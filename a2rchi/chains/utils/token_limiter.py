@@ -7,7 +7,7 @@ class TokenLimiter:
     def __init__(self, llm, max_tokens: int, reserved_tokens: int = 1000):
         """
         args:
-            llm: The LLM object, must have get_num_tokens(text) method.
+            llm: The LLM object, should have the get_num_tokens(text) method, else 4 chars per token is used 
             max_tokens_limit: Max total token count allowed.
         """
         self.llm = llm
@@ -20,9 +20,18 @@ class TokenLimiter:
         if not docs:
             return []
 
-        tokens = [
-            self.llm.get_num_tokens(doc.page_content) for doc in docs
-        ]
+        tokens = []
+        for i, doc in enumerate(docs):
+            try:
+                doc_tokens = self.llm.get_num_tokens(doc.page_content)
+                if doc_tokens is None or doc_tokens < 0:
+                    doc_tokens = max(len(doc.page_content) // 4, 1)
+                    logger.warning(f"Doc {i}: get_num_tokens returned {doc_tokens}, using fallback estimation")
+                tokens.append(doc_tokens)
+            except Exception as e:
+                fallback_tokens = max(len(doc.page_content) // 4, 1)
+                tokens.append(fallback_tokens)
+                logger.warning(f"Doc {i}: get_num_tokens failed ({e}), using fallback: {fallback_tokens}")
 
         token_count = sum(tokens)
         num_docs = len(docs)
@@ -33,6 +42,7 @@ class TokenLimiter:
 
         reduced_docs = docs[:num_docs]
         
-        logger.info(f"Reduced documents from {len(docs)}, {sum(tokens)} tokens to {len(reduced_docs)}, {token_count} tokens")
+        if token_count < sum(tokens):
+            logger.info(f"Reduced documents from {len(docs)}, {sum(tokens)} tokens to {len(reduced_docs)}, {token_count} tokens")
 
         return reduced_docs
