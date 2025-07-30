@@ -1,4 +1,4 @@
-from a2rchi.chains.base import BaseSubMITChain, BaseGradingChain, BaseImageProcessingChain
+from a2rchi.chains.base import BaseQAChain, BaseGradingChain, BaseImageProcessingChain
 from a2rchi.chains.prompts import read_prompt
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.logging import get_logger
@@ -156,7 +156,7 @@ class Chain() :
                 search_kwargs={"k": self.utils_config["data_manager"]["num_documents_to_retrieve"]},
             )
 
-            chain = BaseSubMITChain.from_llm(
+            chain = BaseQAChain.from_llm(
                 self.llm,
                 retriever=retriever,
                 qa_prompt=self.qa_prompt,
@@ -252,24 +252,27 @@ class Chain() :
         else:
             logger.error("No question found")
             question = ""
-        logger.info("Question: {question}")
+        logger.info(f"Question: {question}")
 
         # get chat history if it exists
         chat_history = history[:-1] if history is not None else None
 
-        # make the request to the chain 
-        answer = chain({"question": question, "chat_history": chat_history})
+        # make the request to the chain
+        inputs = {"question": question, "chat_history": chat_history}
+        result = chain.invoke(inputs)
 
         # TODO: this was used with ConversationChain w/ConversationSummaryMemory
         # answer = chain(question)
         # answer['answer'] = answer['response']
         # answer['source_documents'] = []
-        logger.info(f"Answer, chat history, and sources:\n\t{answer}")
+        logger.info(f"Answer: {result['answer']}")
+        logger.debug(f"Chat history: {result['chat_history']}")
+        logger.debug(f"Sources: {result['source_documents']}")
 
         # delete chain object to release chain, vectorstore, and client for garbage collection
         del chain
 
-        return answer
+        return result
 
     def _call_image_processing(self, images):
         """
