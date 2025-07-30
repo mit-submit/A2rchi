@@ -47,7 +47,7 @@ class DataManager():
         # the actual name of the collection is the name given by config with the embeddings specified
         embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
-        logger.info("Using collection: ", self.collection_name)
+        logger.info(f"Using collection: {self.collection_name}")
 
         # delete the existing collection if specified
         self.delete_existing_collection_if_reset()
@@ -248,9 +248,9 @@ class DataManager():
                     time_hash = str(int(time_hash) + 1)
                 ids.append(str(filehash) + str(chunk_hash) + str(time_hash))
 
-            logger.info("Ids: ",ids)
+            logger.info(f"Ids: {ids}")
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            logger.info("successfully added file ", filename)
+            logger.info(f"Successfully added file {filename}")
 
         return collection
 

@@ -386,8 +386,8 @@ class ChatWrapper:
             # if the score is low enough, include the source as a link, otherwise give just the answer
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
-            logger.info(f"Similarity score reference:  {similarity_score_reference}")
-            logger.info(f"Similarity score:  {top_score}")
+            logger.debug(f"Similarity score reference:  {similarity_score_reference}")
+            logger.debug(f"Similarity score:  {score}")
             link = ""
             if source is not None and score < similarity_score_reference and source in sources.keys():
                 link = sources[source]
@@ -408,7 +408,7 @@ class ChatWrapper:
 
         except Exception as e:
             # NOTE: we log the error message and return here
-            logger.error(f"Failed to produce response:  {str(e)}")
+            logger.error(f"Failed to produce response: {e}", exc_info=True)
             return None, None, None, timestamps, 500
 
         finally:

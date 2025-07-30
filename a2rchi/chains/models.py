@@ -323,9 +323,9 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
 
         model_cache_key = (self.base_model, self.quantization, self.peft_model)
 
-        logger.debug("Cache is at:", id(HuggingFaceOpenLLM._MODEL_CACHE))
-        logger.debug("Cache key:", model_cache_key, "(base_model, quantization, peft_model)")
-        logger.debug("Current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
+        logger.debug(f"Cache is at: {id(HuggingFaceOpenLLM._MODEL_CACHE)}")
+        logger.debug(f"Cache key: {model_cache_key} (base_model, quantization, peft_model)")
+        logger.debug(f"Current keys: {list(HuggingFaceOpenLLM._MODEL_CACHE.keys())}")
 
         cached = self.get_cached_model(model_cache_key)
         if cached:
@@ -496,9 +496,9 @@ class HuggingFaceImageLLM(BaseCustomLLM):
 
         model_cache_key = (self.base_model, self.quantization, None)
 
-        logger.debug("Cache is at:", id(HuggingFaceOpenLLM._MODEL_CACHE))
-        logger.debug("Cache key:", model_cache_key)
-        logger.debug("Current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
+        logger.debug(f"Cache is at: {id(HuggingFaceOpenLLM._MODEL_CACHE)}")
+        logger.debug(f"Cache key: {model_cache_key} (base_model, quantization, peft_model)")
+        logger.debug(f"Current keys: {list(HuggingFaceOpenLLM._MODEL_CACHE.keys())}")
 
         cached = self.get_cached_model(model_cache_key)
         if cached:

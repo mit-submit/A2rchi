@@ -47,7 +47,7 @@ class JiraClient():
         try:
             return jira.JIRA(self.jira_url, token_auth=pat, timeout=30)
         except Exception as e:
-            logger.error("Failed to log in to JIRA: ", str(e))
+            logger.error(f"Failed to log in to JIRA: {e}")
 
     def run(self, tickets_dir: str) -> None:   
         """
