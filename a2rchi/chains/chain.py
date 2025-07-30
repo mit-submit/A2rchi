@@ -45,6 +45,8 @@ class Chain() :
         embedding_name = self.utils_config["embeddings"]["EMBEDDING_NAME"]
         self.embedding_model = embedding_class_map[embedding_name]["class"](**embedding_class_map[embedding_name]["kwargs"])
         self.collection_name = self.utils_config["data_manager"]["collection_name"] + "_with_" + embedding_name
+        self.embedding_instructions = self.utils_config["embeddings"]["query_embedding_instructions"]
+        self.num_docs_to_retrieve = self.utils_config["data_manager"]["num_documents_to_retrieve"]
 
         logger.info(f"Using collection: {self.collection_name}")
 
@@ -137,7 +139,7 @@ class Chain() :
         elif self.grading:
             retriever = GradingRetriever(
                 vectorstore=vectorstore,
-                search_kwargs={"k": self.utils_config["data_manager"]["num_documents_to_retrieve"]},
+                search_kwargs={"k": self.num_docs_to_retrieve}
             )
 
             chain = BaseGradingChain.from_llm(
@@ -153,7 +155,8 @@ class Chain() :
         else:
             retriever = SubMITRetriever(
                 vectorstore=vectorstore,
-                search_kwargs={"k": self.utils_config["data_manager"]["num_documents_to_retrieve"]},
+                search_kwargs={"k": self.num_docs_to_retrieve},
+                instructions=self.embedding_instructions
             )
 
             chain = BaseQAChain.from_llm(
@@ -209,18 +212,19 @@ class Chain() :
         )
 
         # perform similarity search
-        similarity_result = vectorstore.similarity_search_with_score(input)
-        score = (
+        similarity_result = vectorstore.similarity_search_with_score(input, k=self.num_docs_to_retrieve)
+        top_score = (
             vectorstore.similarity_search_with_score(input)[0][1]
             if len(similarity_result) > 0
             else 1e10
         )
+        scores = [similarity_result[i][1] for i in range(len(similarity_result))]
 
         # clean up vectorstore and client
         del vectorstore
         del client
 
-        return score
+        return top_score, scores
 
     def __call__(self, *args, **kwargs):
 

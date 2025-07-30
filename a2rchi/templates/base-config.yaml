@@ -164,6 +164,7 @@ utils:
     collection_name: {{ collection_name }}
     reset_collection: {{ utils.data_manager.reset_collection | default(true, true) }}
     num_documents_to_retrieve: {{ utils.data_manager.num_documents_to_retrieve | default(5, true) }}
+    distance_metric: {{ utils.data_manager.distance_metric | default('cosine', true) }}
   embeddings:
     EMBEDDING_NAME: {{ utils.embeddings.EMBEDDING_NAME | default('OpenAIEmbeddings', true) }}
     EMBEDDING_CLASS_MAP:
@@ -181,6 +182,7 @@ utils:
           encode_kwargs: 
             normalize_embeddings: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
         similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(10, true) }}
+    query_embedding_instructions: {{ utils.embeddings.query_embedding_instructions | default("null", true) }}
   sso:
     ENABLED: {{ utils.sso.ENABLED | default(false, true) }}
     SSO_CLASS: {{ utils.sso.SSO_CLASS | default('CERNSSOScraper', true) }}

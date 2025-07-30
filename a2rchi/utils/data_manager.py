@@ -21,6 +21,7 @@ import time
 
 logger = get_logger(__name__)
 
+SUPPORTED_DISTANCE_METRICS = ['l2', 'cosine', 'ip']
 
 class DataManager():
 
@@ -48,6 +49,11 @@ class DataManager():
         embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
         logger.info(f"Using collection: {self.collection_name}")
+
+        # distance metric to use for similarity search for RAG later on
+        self.distance_metric = self.config["data_manager"]["distance_metric"]
+        if self.distance_metric not in SUPPORTED_DISTANCE_METRICS:
+            raise ValueError(f"The selected distance metrics, '{self.distance_metric}', is not supported. Must be one of {SUPPORTED_DISTANCE_METRICS}")
 
         # delete the existing collection if specified
         self.delete_existing_collection_if_reset()
@@ -107,7 +113,12 @@ class DataManager():
                 path=self.global_config["LOCAL_VSTORE_PATH"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
-        collection = client.get_or_create_collection(self.collection_name)
+        collection = client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={
+                "hnsw:space": self.distance_metric
+            }
+        )
 
         logger.info(f"N in collection: {collection.count()}")
         return collection
