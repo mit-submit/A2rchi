@@ -6,6 +6,7 @@ WORKDIR /root/A2rchi
 COPY requirements.txt requirements.txt
 COPY LICENSE LICENSE
 
+RUN pip install --upgrade pip setuptools wheel
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 RUN apt-get update && apt-get install -y \
@@ -68,5 +69,8 @@ COPY a2rchi_code a2rchi
 COPY pyproject.toml pyproject.toml
 COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
+
+#RUN sed -i 's/AutoConfig.register("aimv2", AIMv2Config)/AutoConfig.register("aimv2", AIMv2Config, exist_ok=True)/' \
+#    /opt/conda/lib/python3.10/site-packages/vllm/transformers_utils/configs/ovis.py
 
 CMD ["python", "-u", "a2rchi/bin/service_chat.py"]

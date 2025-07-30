@@ -19,6 +19,9 @@ from typing import Optional, List
 
 from a2rchi.chains.utils.prompt_formatters import PromptFormatter
 
+import html
+import re
+
 class BaseCustomLLM(LLM):
     """
     Abstract class used to load a custom LLM
@@ -204,28 +207,49 @@ class LlamaLLM(BaseCustomLLM):
 
         return output_text[output_text.rfind("[/INST]") + len("[/INST]"):]
 
-
 class VLLM(BaseCustomLLM):
     """
     Loading a vLLM Model using the vllm Python package.
     Make sure the vllm package is installed and the model is available locally or remotely.
+    Caveat: so far an older version 0.8.5 is used, thus older version of packadges are used, requirements_VLLN8.txt
+    The newer version has introduced a bug in the VLLM, leading to errors:  TypeError: XFormersImpl.__init__() got an unexpected keyword argument 'layer_idx'
     """
-    base_model: str = 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'    # Model name or path (e.g., "meta-llama/Llama-2-7b-hf")
-    max_new_tokens: int = 1024
+    base_model: str = 'Qwen/Qwen2.5-7B-Instruct-1M'    # Model name or path (e.g., "meta-llama/Llama-2-7b-hf")
     temperature: float = 0.7
     top_p: float = 0.95
     top_k: int = 50
-    repetition_penalty: float = 1.0
+    repetition_penalty: float = 1.5
     seed: int = None
+    max_new_tokens: int = 2048      # maximum numbers of tokens to generate
+
+    gpu_memory_utilization: float = 0.7
+    tensor_parallel_size: int = 1
+    trust_remote_code: bool = True
+    tokenizer_mode: str = "auto"
+    max_model_len: Optional[int] = None
+    length_penalty: int = 1 
 
     vllm_engine: object = None
+    #tokenizer: Optional[Any] = None
+
+    tokenizer: Callable = None
+    hf_model: Callable = None
+    safety_checker: List = None
 
     def __init__(self, **kwargs):
         super().__init__()
+        print("[VLLM DEBUG] kwargs received:", kwargs)
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+        try:
+            import xformers
+            print(f"[DEBUG] xformers version: {xformers.__version__}")
+        except ImportError:
+            print("[DEBUG] xformers is NOT installed.") 
+
         from vllm import LLM as vllmLLM
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
         if self.seed is not None:
             torch.manual_seed(self.seed)
@@ -233,6 +257,12 @@ class VLLM(BaseCustomLLM):
         # set some environment variables to avoid issues
         os.environ['MKL_THREADING_LAYER']='GNU'
         os.environ['MKL_SERVICE_FORCE_INTEL']='1'
+        os.environ["VLLM_DEFAULT_DTYPE"] = "float16"
+
+        # create tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(self.base_model, local_files_only=False)
+        #from transformers import AutoTokenizer
+        #self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
 
         model_cache_key = (self.base_model, "", "")
         cached = self.get_cached_model(model_cache_key)
@@ -240,12 +270,62 @@ class VLLM(BaseCustomLLM):
             _, self.vllm_engine = cached
         else:
             # Load vLLM engine
-            self.vllm_engine = vllmLLM(model=self.base_model, gpu_memory_utilization=0.5) # TODO: gpu_memory_utilization to config, plus other options, like distributed...
+            self.vllm_engine = vllmLLM(
+                model=self.base_model,
+                gpu_memory_utilization=self.gpu_memory_utilization,
+                #trust_remote_code=self.trust_remote_code,
+                tokenizer_mode=self.tokenizer_mode,
+                tensor_parallel_size=self.tensor_parallel_size,
+                dtype="float16",
+                max_model_len=self.max_model_len,
+            )
+            #self.vllm_engine = vllmLLM(model=self.base_model, gpu_memory_utilization=0.5) # TODO: gpu_memory_utilization to config, plus other options, like distributed...
             self.set_cached_model(model_cache_key, (None, self.vllm_engine))
+
+        print(f"[VLLM] input nGPU={self.tensor_parallel_size}")
 
     @property
     def _llm_type(self) -> str:
         return "custom"
+
+
+    def _truncate_prompt(self, prompt: str) -> str:
+        print("[VLLM DEBUG] Full original prompt:\n", prompt)
+
+        # Split header and chat history
+        if "Chat History:\nUser:" not in prompt:
+            return prompt
+
+        header, chat = prompt.split("Chat History:\nUser:", maxsplit=1)
+        user_blocks = chat.split("User:")
+        user_blocks = ["User:" + block for block in user_blocks if block.strip()]
+
+        max_blocks = min(10, len(user_blocks))
+        while max_blocks > 0:
+            truncated_body = ''.join(user_blocks[-max_blocks:])
+            final_prompt = f"{header}Chat History:\n{truncated_body}"
+            input_ids = self.tokenizer(final_prompt, return_tensors="pt", truncation=False).input_ids[0]
+            if self.max_model_len is None or len(input_ids) <= self.max_model_len:
+                print(f"[VLLM DEBUG] Using last {max_blocks} User: blocks. Token length = {len(input_ids)}")
+                print("[VLLM DEBUG] Final prompt after truncation:\n", final_prompt)
+                return final_prompt
+            max_blocks -= 1
+
+        # fallback: token-level truncation keeping header + last user block
+        fallback_body = ''.join(user_blocks[-1:]) if user_blocks else ""
+        fallback_input_ids = self.tokenizer(fallback_body, return_tensors="pt", truncation=False).input_ids[0]
+        truncated_ids = fallback_input_ids[-self.max_model_len:]
+        truncated_body = self.tokenizer.decode(truncated_ids, skip_special_tokens=True)
+        final_prompt = f"{header}Chat History:\n{truncated_body}"
+        print("[VLLM DEBUG] Fallback token-level truncation used.\n", final_prompt)
+        return final_prompt
+
+    @staticmethod
+    def strip_all_html(text: str) -> str:
+        from html import unescape
+        import re
+        text = unescape(text)
+        return re.sub(r'<[^>]+>', '', text)
 
     def _call(
         self,
@@ -256,19 +336,32 @@ class VLLM(BaseCustomLLM):
         
         from vllm import SamplingParams
 
+        print("[VLLM DEBUG] Full original prompt:\n", prompt)
+        prompt = self.strip_all_html(prompt)
+        prompt = self._truncate_prompt(prompt)
+        print("[VLLM DEBUG] formatted prompt:\n", prompt)
+        formatter = PromptFormatter(self.tokenizer)
+        formatted_prompt, end_tag = formatter.format_prompt(prompt)
+
+        print("[DEBUG] Sent prompt to model:\n", formatted_prompt)
+
+
         sampling_params = SamplingParams(
             temperature=self.temperature,
             top_p=self.top_p,
             top_k=self.top_k,
             max_tokens=self.max_new_tokens,
             repetition_penalty=self.repetition_penalty,
-            stop=stop
+            stop = stop
         )
 
         # vLLM expects a list of prompts
-        outputs = self.vllm_engine.generate([prompt], sampling_params)
+        outputs = self.vllm_engine.generate([formatted_prompt], sampling_params)
+        #outputs = self.vllm_engine.generate([prompt], sampling_params)
         # outputs is a list of RequestOutput, each has .outputs (list of generations)
         if outputs and outputs[0].outputs:
+            #text = outputs[0].outputs[0].text
+            #return text.replace("</think>", "").strip()
             return outputs[0].outputs[0].text
         else:
             return ""
@@ -382,6 +475,9 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         stop: Optional[List[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
+
+
+        print("[HUGGING DEBUG] Full original prompt:\n", prompt)
 
         # check if input is safe:
         safety_results = [check(prompt) for check in self.safety_checker]
