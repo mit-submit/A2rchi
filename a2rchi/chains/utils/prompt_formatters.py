@@ -32,7 +32,7 @@ class PromptFormatter:
             return f"[INST] {prompt} [/INST]", "[/INST]"
 
         elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []) and context_start != -1 and question_start != -1:
-            logger.info("Using chat template")
+            logger.info("Using chat template for QA prompt")
             question_end = prompt.rfind("Helpful Answer:") if 'Helpful Answer:' in prompt else len(prompt)
             message = [
                 {"role": "system", "content": prompt[:context_start]},
@@ -56,7 +56,7 @@ class PromptFormatter:
             return f"[INST] {prompt} [/INST]", "[/INST]"
 
         elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []) and chat_history_start != -1 and follow_up_input_start != -1:
-            logger.info("Using chat template")
+            logger.info("Using chat template for condense prompt")
             message = [
                 {"role": "system", "content": prompt[:chat_history_start].strip()},
                 {"role": "user", "content": prompt[chat_history_start + len("Chat History:"):follow_up_input_start].strip()},
