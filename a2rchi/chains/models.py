@@ -18,6 +18,9 @@ import requests
 from typing import Optional, List
 
 from a2rchi.chains.utils.prompt_formatters import PromptFormatter
+from a2rchi.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 class BaseCustomLLM(LLM):
     """
@@ -62,7 +65,7 @@ class DumbLLM(BaseCustomLLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         sleep_time = np.random.normal(self.sleep_time_mean, 1)
-        print(f"DumbLLM: sleeping {sleep_time}")
+        logger.info(f"DumbLLM: sleeping {sleep_time}")
         time.sleep(sleep_time)
         return "I am just a dumb LLM, I will give you a number: " + str(np.random.randint(10000, 99999))
 
@@ -152,12 +155,12 @@ class LlamaLLM(BaseCustomLLM):
         safety_results = [check(prompt) for check in self.safety_checker]
         are_safe = all([r[1] for r in safety_results])
         if not are_safe:
-            print("User prompt deemed unsafe.")
+            logger.info("User prompt deemed unsafe.")
             for method, is_safe, report in safety_results:
                 if not is_safe:
-                    print(method)
-                    print(report)
-            print("Skipping the Llama2 inference as the prompt is not safe.")
+                    logger.info(method)
+                    logger.info(report)
+            logger.info("Skipping the Llama2 inference as the prompt is not safe.")
             return """It looks as if your question may be unsafe. 
                     
                     This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
@@ -189,11 +192,11 @@ class LlamaLLM(BaseCustomLLM):
         safety_results = [check(output_text) for check in self.safety_checker]
         are_safe = all([r[1] for r in safety_results])
         if not are_safe:
-            print("Model output deemed unsafe.")
+            logger.info("Model output deemed unsafe.")
             for method, is_safe, report in safety_results:
                 if not is_safe:
-                    print(method)
-                    print(report)
+                    logger.info(method)
+                    logger.info(report)
             return """The response to your question may be unsafe.
 
                     This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
@@ -320,19 +323,19 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
 
         model_cache_key = (self.base_model, self.quantization, self.peft_model)
 
-        print("[HuggingfaceOpenLLM] cache is at:", id(HuggingFaceOpenLLM._MODEL_CACHE))
-        print("[HuggingFaceOpenLLM] cache key:", model_cache_key, "(base_model, quantization, peft_model)")
-        print("[HuggingFaceOpenLLM] current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
+        logger.debug("Cache is at:", id(HuggingFaceOpenLLM._MODEL_CACHE))
+        logger.debug("Cache key:", model_cache_key, "(base_model, quantization, peft_model)")
+        logger.debug("Current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
 
         cached = self.get_cached_model(model_cache_key)
         if cached:
-            print("[HuggingFaceOpenLLM] model found in cache.")
+            logger.info("Model and tokenizer found in cache")
             self.tokenizer, self.hf_model = cached
         else:
-            print("[HuggingFaceOpenLLM] model and tokenizer not in cache. Loading...")
+            logger.info("Model and tokenizer not in cache. Loading...")
 
             self.tokenizer = AutoTokenizer.from_pretrained(self.base_model, local_files_only=False)
-            print("[HuggingFaceOpenLLM] tokenizer loaded.")
+            logger.info("Tokenizer loaded.")
             if self.quantization:
                 bnbconfig = BitsAndBytesConfig(load_in_8bit=True)
                 base_model = AutoModelForCausalLM.from_pretrained(
@@ -353,7 +356,7 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     cache_dir="/root/models/",  # load weights into dir mounted as volume so don't need to keep downloading when iterating
                 )
             
-            print("[HuggingFaceOpenLLM] base model loaded.")
+            logger.info("Base model loaded.")
 
             if self.peft_model:
                 self.hf_model = PeftModel.from_pretrained(base_model, self.peft_model)
@@ -363,11 +366,11 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
             self.hf_model.eval()
 
             self.set_cached_model(model_cache_key, (self.tokenizer, self.hf_model))
-            print("[HuggingFaceOpenLLM] model loaded and cached.")
+            logger.info("Model loaded and cached.")
 
         self.safety_checker = []
         if self.enable_salesforce_content_safety:
-            print("[HuggingFaceOpenLLM] Salesforce safety checker enabled.")
+            logger.info("Salesforce safety checker enabled.")
             self.safety_checker.append(SalesforceSafetyChecker())
 
 
@@ -387,12 +390,12 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         safety_results = [check(prompt) for check in self.safety_checker]
         are_safe = all([r[1] for r in safety_results])
         if not are_safe:
-            print("User prompt deemed unsafe.")
+            logger.info("User prompt deemed unsafe.")
             for method, is_safe, report in safety_results:
                 if not is_safe:
-                    print(method)
-                    print(report)
-            print(f"Skipping the {self.hf_model} inference as the prompt is not safe.")
+                    logger.info(method)
+                    logger.info(report)
+            logger.info(f"Skipping the {self.hf_model} inference as the prompt is not safe.")
             return """It looks as if your question may be unsafe. 
                     
                     This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
@@ -420,18 +423,18 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
                     length_penalty=self.length_penalty,
                 )
             
-        print("INFO - inference completed, decoding output.")
+        logger.info("Inference completed, decoding output")
         output_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
         # safety check of the model output
         safety_results = [check(output_text) for check in self.safety_checker]
         are_safe = all([r[1] for r in safety_results])
         if not are_safe:
-            print("Model output deemed unsafe.")
+            logger.info("Model output deemed unsafe.")
             for method, is_safe, report in safety_results:
                 if not is_safe:
-                    print(method)
-                    print(report)
+                    logger.info(method)
+                    logger.info(report)
             return """The response to your question may be unsafe.
 
                     This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
@@ -493,31 +496,31 @@ class HuggingFaceImageLLM(BaseCustomLLM):
 
         model_cache_key = (self.base_model, self.quantization, None)
 
-        print("CACHE IS AT:", id(HuggingFaceOpenLLM._MODEL_CACHE))
-        print("INFO - cache key:", model_cache_key)
-        print("INFO - current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
+        logger.debug("Cache is at:", id(HuggingFaceOpenLLM._MODEL_CACHE))
+        logger.debug("Cache key:", model_cache_key)
+        logger.debug("Current keys:", list(HuggingFaceOpenLLM._MODEL_CACHE.keys()))
 
         cached = self.get_cached_model(model_cache_key)
         if cached:
-            print("INFO - model found in cache.")
+            logger.info("Model found in cache")
             self.processor, self.hf_model = cached
         else:
-            print("INFO - model not in cache. Loading...")
+            logger.info("Model not in cache. Loading...")
 
 
         self.processor = AutoProcessor.from_pretrained(self.base_model, min_pixels=self.min_pixels, max_pixels=self.max_pixels, local_files_only=False)
 
-        print(f"Processor type: {type(self.processor)}")
-        print(f"Processor class name: {self.processor.__class__.__name__}")
-        print(f"Has apply_chat_template: {hasattr(self.processor, 'apply_chat_template')}")
+        logger.debug(f"Processor type: {type(self.processor)}")
+        logger.debug(f"Processor class name: {self.processor.__class__.__name__}")
+        logger.debug(f"Has apply_chat_template: {hasattr(self.processor, 'apply_chat_template')}")
         import inspect
         if hasattr(self.processor, 'tokenizer'):
             sig = inspect.signature(self.processor.tokenizer.__call__)
-            print(f"Tokenizer call parameters: {list(sig.parameters.keys())}")
+            logger.debug(f"Tokenizer call parameters: {list(sig.parameters.keys())}")
             
         # Check processor's call signature
         sig = inspect.signature(self.processor.__call__)
-        print(f"Processor call parameters: {list(sig.parameters.keys())}")
+        logger.debug(f"Processor call parameters: {list(sig.parameters.keys())}")
         
         self.hf_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.base_model,
@@ -531,7 +534,7 @@ class HuggingFaceImageLLM(BaseCustomLLM):
         self.hf_model.eval()
 
         self.set_cached_model(model_cache_key, (self.processor, self.hf_model))
-        print(f"[HuggingFaceImageLLM] - {self.base_model} model loaded and cached.")
+        logger.info(f"{self.base_model} model loaded and cached.")
 
 
     @property
@@ -547,7 +550,7 @@ class HuggingFaceImageLLM(BaseCustomLLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
 
-        print(f"[HuggingFaceImageLLM] - Processing prompt: {prompt}")
+        logger.info(f"Processing prompt: {prompt}")
 
         # Single unified message format (like the official example)
         messages = [
@@ -563,15 +566,15 @@ class HuggingFaceImageLLM(BaseCustomLLM):
             }
         ]
 
-        print("Applying chat template")
+        logger.info("Applying chat template")
         text = self.processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
 
-        print("Processing vision info")
+        logger.info("Processing vision info")
         image_inputs, video_inputs = process_vision_info(messages)
 
-        print("Tokenizing inputs")
+        logger.info("Tokenizing inputs")
         inputs = self.processor(
             text=[text],
             images=image_inputs,
@@ -582,7 +585,7 @@ class HuggingFaceImageLLM(BaseCustomLLM):
         inputs = inputs.to("cuda")
 
         # perform inference
-        print("performing inference")
+        logger.info("Performing inference")
         with torch.no_grad():
             generated_ids = self.hf_model.generate(
                 **inputs,
@@ -595,7 +598,7 @@ class HuggingFaceImageLLM(BaseCustomLLM):
                 length_penalty=self.length_penalty,
             )
 
-        print("decoding output")
+        logger.info("Decoding output")
         generated_ids_trimmed = [
             out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
         ]
@@ -644,7 +647,7 @@ class SalesforceSafetyChecker():
         input_ids = self.tokenizer(prefix + " <Text> " + output_text + " <Context> ", return_tensors="pt").input_ids
         
         if len(input_ids[0]) > 512:
-            print("Input length is > 512 token. Safety check result could be incorrect.")
+            logger.warning("Input length is > 512 token. Safety check result could be incorrect.")
 
         with torch.no_grad():
             outputs = self.model.generate(input_ids,output_scores = True,return_dict_in_generate = True,max_new_tokens = 20)
@@ -684,10 +687,10 @@ class ClaudeLLM(BaseCustomLLM):
     ) -> str:
 
         if stop is not None:
-            print("WARNING : currently this model does not support stop tokens")
+            logger.warning("Currently this model does not support stop tokens")
 
         if self.verbose:
-            print(f"INFO : Starting call to Claude with prompt: {prompt}")
+            logger.info(f"Starting call to Claude with prompt: {prompt}")
 
         headers = {
             "x-api-key": self.api_key,  # Use the API key for the x-api-key header
@@ -705,7 +708,7 @@ class ClaudeLLM(BaseCustomLLM):
         }
 
         if self.verbose:
-            print("INFO: Sending request to Claude API")
+            logger.info("Sending request to Claude API")
 
         # Send request to Claude API
         response = requests.post(self.base_url, headers=headers, json=payload)
@@ -713,7 +716,7 @@ class ClaudeLLM(BaseCustomLLM):
         if response.status_code == 200:
             completion = response.json()["content"][0]["text"]
             if self.verbose:
-                print(f"INFO : received response from Claude API: {completion}")
+                logger.info(f"Received response from Claude API: {completion}")
             return completion
         else:
             raise Exception(f"API request to Claude failed with status {response.status_code}, {response.text}")

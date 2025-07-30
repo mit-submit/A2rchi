@@ -6,7 +6,6 @@ from a2rchi.interfaces.uploader_app.app import add_username_password
 import getpass
 import os
 
-
 # load config and create accounts path if it doesn't exist
 global_config = Config_Loader().config["global"]
 os.makedirs(global_config["ACCOUNTS_PATH"], exist_ok=True)

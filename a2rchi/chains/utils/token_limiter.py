@@ -1,4 +1,7 @@
 from langchain_core.documents import Document
+from a2rchi.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 class TokenLimiter:
     def __init__(self, llm, max_tokens: int, reserved_tokens: int = 1000):
@@ -30,6 +33,6 @@ class TokenLimiter:
 
         reduced_docs = docs[:num_docs]
         
-        print(f"[TokenLimiter] Reduced documents from {len(docs)}, {sum(tokens)} tokens to {len(reduced_docs)}, {token_count} tokens")
+        logger.info(f"Reduced documents from {len(docs)}, {sum(tokens)} tokens to {len(reduced_docs)}, {token_count} tokens")
 
         return reduced_docs

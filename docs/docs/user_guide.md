@@ -48,6 +48,8 @@ There are a few additional options you can pass to the `create` command that are
 
 5. **`--jira`**: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.
 
+6. **`--debug`**: Flag to set logging level to DEBUG. Default is INFO.
+
 
 ### Optional configuration fields (see required in Getting Started page)
 

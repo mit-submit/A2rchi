@@ -3,9 +3,14 @@ from a2rchi.interfaces import cleo
 from a2rchi.utils import mailbox
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import setup_logging
 
 import os
 import time
+
+# set basicConfig for logging
+debug = Config_Loader().config["debug"]
+setup_logging(debug)
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")

@@ -227,3 +227,4 @@ utils:
     # This is a JIRA specific username pattern
     username_pattern: '{{ utils.anonymizer.username_pattern | default("\\[~[^\\]]+\\]") }}'
   
+debug: {{ debug | default(false, true) }}

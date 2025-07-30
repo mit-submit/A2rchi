@@ -2,10 +2,15 @@
 from a2rchi.interfaces.chat_app.app import FlaskAppWrapper
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import setup_logging
 
 from flask import Flask
 
 import os
+
+# set basicConfig for logging
+debug = Config_Loader().config["debug"]
+setup_logging(debug)
 
 # set openai
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
@@ -13,8 +18,7 @@ os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 config = Config_Loader().config["interfaces"]["chat_app"]
 global_config = Config_Loader().config["global"]
-print(f"Starting Chat Service with (host, port): ({config['HOST']}, {config['PORT']})")
-print(f"Accessible externally at (host, port): ({config['HOSTNAME']}, {config['EXTERNAL_PORT']})")
+
 
 def generate_script(config):
     """

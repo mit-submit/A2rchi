@@ -7,6 +7,7 @@ from langchain_core.callbacks.file import FileCallbackHandler
 from a2rchi.chains.prompts import PROMPTS
 from a2rchi.chains.utils.token_limiter import TokenLimiter
 from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.logging import get_logger
 
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain # deprecated, should update
@@ -21,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from typing import Callable
 import os 
 
+logger = get_logger(__name__)
 
 # DEFINITIONS
 config = Config_Loader().config["chains"]["base"]
@@ -195,7 +197,7 @@ class BaseImageProcessingChain:
         if not self.image_processing_chain:
             raise ValueError("Image processing chain is not defined.")
         
-        print(f"[BaseImageProcessingChain] Processing {len(images)} images.")
+        logger.info(f"[BaseImageProcessingChain] Processing {len(images)} images.")
         text_from_image = self.image_processing_chain.invoke(
             input={"images": images},
             config={}
@@ -290,7 +292,7 @@ class BaseGradingChain:
         """
         
         if not self.summary_chain:
-            print("Summary prompt, and thus chain, is not defined. Skipping summary step.")
+            logger.info("Summary prompt, and thus chain, is not defined. Skipping summary step.")
         else:
             summary = self.summary_chain.run(
                 submission_text=submission_text,
@@ -311,7 +313,7 @@ class BaseGradingChain:
             retrieved_context = "\n\n".join(doc.page_content for doc in reduced_docs)
 
         if not self.analysis_chain:
-            print("Analysis prompt, and thus chain, is not defined. Skipping analysis step.")
+            logger.info("Analysis prompt, and thus chain, is not defined. Skipping analysis step.")
         else:
             analysis = self.analysis_chain.run(
                 submission_text=submission_text,
@@ -344,6 +346,6 @@ class BaseGradingChain:
         reserved_tokens += self.final_grade_chain.llm.get_num_tokens(summary)
         reserved_tokens += self.final_grade_chain.llm.get_num_tokens(additional_comments)
 
-        print(f"[BaseGradingChain] Estimated reserved tokens: {reserved_tokens}")
+        logger.info(f"[BaseGradingChain] Estimated reserved tokens: {reserved_tokens}")
 
         return reserved_tokens
