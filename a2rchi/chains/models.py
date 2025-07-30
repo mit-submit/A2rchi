@@ -261,14 +261,9 @@ class VLLM(BaseCustomLLM):
 
         # create tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model, local_files_only=False)
-        #from transformers import AutoTokenizer
-        #self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
 
         model_cache_key = (self.base_model, "", "")
         cached = self.get_cached_model(model_cache_key)
-
-        import multiprocessing as mp
-        mp.set_start_method("spawn", force=True)
 
         if cached:
             _, self.vllm_engine = cached
@@ -283,7 +278,6 @@ class VLLM(BaseCustomLLM):
                 dtype="float16",
                 max_model_len=self.max_model_len,
             )
-            #self.vllm_engine = vllmLLM(model=self.base_model, gpu_memory_utilization=0.5) # TODO: gpu_memory_utilization to config, plus other options, like distributed...
             self.set_cached_model(model_cache_key, (None, self.vllm_engine))
 
         print(f"[VLLM] input nGPU={self.tensor_parallel_size}")
@@ -291,7 +285,6 @@ class VLLM(BaseCustomLLM):
     @property
     def _llm_type(self) -> str:
         return "custom"
-
 
     def _truncate_prompt(self, prompt: str) -> str:
         print("[VLLM DEBUG] Full original prompt:\n", prompt)
