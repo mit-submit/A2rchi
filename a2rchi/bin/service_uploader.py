@@ -5,14 +5,11 @@ from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import setup_logging
 
 from flask import Flask
-from threading import Thread
 
 import os
-import time
 
 # set basicConfig for logging
-debug = Config_Loader().config["debug"]
-setup_logging(debug)
+debug = setup_logging()
 
 # set openai
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
@@ -35,4 +32,4 @@ run_dynamically = data_manager_config["use_HTTP_chromadb_client"]
 
 if run_dynamically:
     app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))
-    app.run(debug=False, port=uploader_config["PORT"], host=uploader_config["HOST"])
+    app.run(debug=debug, port=uploader_config["PORT"], host=uploader_config["HOST"])
