@@ -18,6 +18,7 @@ import requests
 from typing import Optional, List
 
 from a2rchi.chains.utils.prompt_formatters import PromptFormatter
+from a2rchi.chains.utils.truncate_utils import truncate_prompt
 
 import html
 import re
@@ -286,37 +287,6 @@ class VLLM(BaseCustomLLM):
     def _llm_type(self) -> str:
         return "custom"
 
-    def _truncate_prompt(self, prompt: str) -> str:
-        print("[VLLM DEBUG] Full original prompt:\n", prompt)
-
-        # Split header and chat history
-        if "Chat History:\nUser:" not in prompt:
-            return prompt
-
-        header, chat = prompt.split("Chat History:\nUser:", maxsplit=1)
-        user_blocks = chat.split("User:")
-        user_blocks = ["User:" + block for block in user_blocks if block.strip()]
-
-        max_blocks = min(10, len(user_blocks))
-        while max_blocks > 0:
-            truncated_body = ''.join(user_blocks[-max_blocks:])
-            final_prompt = f"{header}Chat History:\n{truncated_body}"
-            input_ids = self.tokenizer(final_prompt, return_tensors="pt", truncation=False).input_ids[0]
-            if self.max_model_len is None or len(input_ids) <= self.max_model_len:
-                print(f"[VLLM DEBUG] Using last {max_blocks} User: blocks. Token length = {len(input_ids)}")
-                print("[VLLM DEBUG] Final prompt after truncation:\n", final_prompt)
-                return final_prompt
-            max_blocks -= 1
-
-        # fallback: token-level truncation keeping header + last user block
-        fallback_body = ''.join(user_blocks[-1:]) if user_blocks else ""
-        fallback_input_ids = self.tokenizer(fallback_body, return_tensors="pt", truncation=False).input_ids[0]
-        truncated_ids = fallback_input_ids[-self.max_model_len:]
-        truncated_body = self.tokenizer.decode(truncated_ids, skip_special_tokens=True)
-        final_prompt = f"{header}Chat History:\n{truncated_body}"
-        print("[VLLM DEBUG] Fallback token-level truncation used.\n", final_prompt)
-        return final_prompt
-
     @staticmethod
     def strip_all_html(text: str) -> str:
         from html import unescape
@@ -335,7 +305,7 @@ class VLLM(BaseCustomLLM):
 
         print("[VLLM DEBUG] Full original prompt:\n", prompt)
         prompt = self.strip_all_html(prompt)
-        prompt = self._truncate_prompt(prompt)
+        prompt = truncate_prompt(prompt, self.tokenizer, self.max_model_len)
         print("[VLLM DEBUG] formatted prompt:\n", prompt)
         formatter = PromptFormatter(self.tokenizer)
         formatted_prompt, end_tag = formatter.format_prompt(prompt)
@@ -354,11 +324,8 @@ class VLLM(BaseCustomLLM):
 
         # vLLM expects a list of prompts
         outputs = self.vllm_engine.generate([formatted_prompt], sampling_params)
-        #outputs = self.vllm_engine.generate([prompt], sampling_params)
         # outputs is a list of RequestOutput, each has .outputs (list of generations)
         if outputs and outputs[0].outputs:
-            #text = outputs[0].outputs[0].text
-            #return text.replace("</think>", "").strip()
             return outputs[0].outputs[0].text
         else:
             return ""
