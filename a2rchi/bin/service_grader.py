@@ -21,4 +21,4 @@ app = FlaskAppWrapper(Flask(
     template_folder=config["template_folder"],
 ))
 
-app.run(debug=True, use_reloader=False, port=config["PORT"], host=config["HOST"])
+app.run(debug=config["flask_debug_mode"], use_reloader=False, port=config["PORT"], host=config["HOST"])
