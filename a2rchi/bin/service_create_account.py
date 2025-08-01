@@ -7,7 +7,7 @@ from a2rchi.interfaces.uploader_app.app import add_username_password
 import getpass
 import os
 
-_ = setup_logging()
+setup_logging()
 logger = get_logger(__name__)
 
 # load config and create accounts path if it doesn't exist

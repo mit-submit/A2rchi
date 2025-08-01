@@ -7,7 +7,7 @@ import os
 import time
 
 # set basicConfig for logging
-_ = setup_logging()
+setup_logging()
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")

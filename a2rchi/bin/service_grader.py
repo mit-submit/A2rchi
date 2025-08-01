@@ -9,7 +9,7 @@ from flask import Flask
 import os
 
 # set basicConfig for logging and get debug value for flask app
-debug = setup_logging()
+setup_logging()
 
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
@@ -21,4 +21,4 @@ app = FlaskAppWrapper(Flask(
     template_folder=config["template_folder"],
 ))
 
-app.run(debug=debug, use_reloader=False, port=config["PORT"], host=config["HOST"])
+app.run(debug=True, use_reloader=False, port=config["PORT"], host=config["HOST"])

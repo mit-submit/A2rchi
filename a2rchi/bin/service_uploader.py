@@ -9,7 +9,7 @@ from flask import Flask
 import os
 
 # set basicConfig for logging
-debug = setup_logging()
+setup_logging()
 
 # set openai
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
@@ -32,4 +32,4 @@ run_dynamically = data_manager_config["use_HTTP_chromadb_client"]
 
 if run_dynamically:
     app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))
-    app.run(debug=debug, port=uploader_config["PORT"], host=uploader_config["HOST"])
+    app.run(debug=True, port=uploader_config["PORT"], host=uploader_config["HOST"])
