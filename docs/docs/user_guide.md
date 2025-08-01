@@ -102,6 +102,8 @@ Additional configuration options for the chatbot, deployed automatically with A2
 
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
 
+6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
+
 #### JIRA
 
 Find below the configuration fields for JIRA feature.
