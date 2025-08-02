@@ -48,6 +48,8 @@ There are a few additional options you can pass to the `create` command that are
 
 5. **`--jira`**: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.
 
+6. **`--debug`**: Flag to set logging level to DEBUG. Default is INFO.
+
 
 ### Optional configuration fields (see required in Getting Started page)
 
@@ -99,6 +101,8 @@ Additional configuration options for the chatbot, deployed automatically with A2
 4. **`interfaces:chat_app:HOSTNAME`**: The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using `localhost` will only work if accessing the application from the same machine. Default is `localhost`.
 
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
+
+6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
 
 #### JIRA
 

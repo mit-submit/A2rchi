@@ -2,12 +2,16 @@
 from a2rchi.interfaces.chat_app.app import FlaskAppWrapper
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import setup_logging
 
 from flask import Flask
 
 import os
 import multiprocessing as mp
 
+
+# set basicConfig for logging
+setup_logging()
 
 # set openai
 def main():

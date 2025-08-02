@@ -1,26 +1,23 @@
 import jira
-import logging
 import os
 from typing import Iterator, Optional
 
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.anonymizer import Anonymizer
+from a2rchi.utils.logging import get_logger
 
+logger = get_logger(__name__)
 
 class JiraClient():
     def __init__(self) -> None:
-
-        # TODO: Move to this to the main application later
-        logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s')
-
         try:
             self.jira_config = Config_Loader().config["utils"]["jira"]
             self.jira_url = self.jira_config["JIRA_URL"]
             self.jira_projects = self.jira_config["JIRA_PROJECTS"]
 
             if not self.jira_url or not self.jira_projects:
-                logging.info("JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA")
+                logger.info("JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA")
                 return
         except KeyError as e:
             raise KeyError(f"JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA: {str(e)}")
@@ -50,7 +47,7 @@ class JiraClient():
         try:
             return jira.JIRA(self.jira_url, token_auth=pat, timeout=30)
         except Exception as e:
-            print("Failed to log in to JIRA: ", str(e))
+            logger.error(f"Failed to log in to JIRA: {e}")
 
     def run(self, tickets_dir: str) -> None:   
         """
@@ -66,7 +63,7 @@ class JiraClient():
         """
         max_results = 100  # You can adjust this up to 1000 for JIRA Cloud
         for project in self.jira_projects:
-            logging.debug(f"Fetching issues for project: {project}")
+            logger.debug(f"Fetching issues for project: {project}")
             query = f'project={project}'
             start_at = 0
             while True:
@@ -106,7 +103,7 @@ class JiraClient():
             issue_data['issue_text'] = issue_text
             yield issue_data
 
-            logging.debug(f"Issue data: {issue_data}")
+            logger.debug(f"Issue data: {issue_data}")
 
     def write_jira_data(self,
                         tickets_dir: Optional[str],
@@ -114,7 +111,7 @@ class JiraClient():
         """
         Writes each JIRA ticket into separate text files in the ticket tickets_dir
         """
-        print(f"Saving the ticket data into {tickets_dir}")
+        logger.debug(f"Saving the ticket data into {tickets_dir}")
         for issue in jira_data:
             with open(os.path.join(tickets_dir, f"jira_{issue['issue_id']}.txt"), "w", encoding="utf-8") as f:
                 f.write(issue['created_at'] + "\n")
