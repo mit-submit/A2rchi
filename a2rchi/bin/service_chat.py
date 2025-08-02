@@ -7,19 +7,32 @@ from a2rchi.utils.logging import setup_logging
 from flask import Flask
 
 import os
+import multiprocessing as mp
+
 
 # set basicConfig for logging
 setup_logging()
 
 # set openai
-os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
-os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
-os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
-config = Config_Loader().config["interfaces"]["chat_app"]
-global_config = Config_Loader().config["global"]
+def main():
+    os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
+    os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
+    os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
+    config = Config_Loader().config["interfaces"]["chat_app"]
+    global_config = Config_Loader().config["global"]
+    print(f"Starting Chat Service with (host, port): ({config['HOST']}, {config['PORT']})")
+    print(f"Accessible externally at (host, port): ({config['HOSTNAME']}, {config['EXTERNAL_PORT']})")
+
+    generate_script(config,global_config)
+    app = FlaskAppWrapper(Flask(
+        __name__,
+        template_folder=config["template_folder"],
+        static_folder=config["static_folder"],
+    ))
+    app.run(debug=True, use_reloader=False, port=config["PORT"], host=config["HOST"])
 
 
-def generate_script(config):
+def generate_script(config,global_config):
     """
     This is not elegant but it creates the javascript file from the template using the config.yaml parameters
     """
@@ -38,10 +51,7 @@ def generate_script(config):
 
     return
 
-generate_script(config)
-app = FlaskAppWrapper(Flask(
-    __name__,
-    template_folder=config["template_folder"],
-    static_folder=config["static_folder"],
-))
-app.run(debug=config["flask_debug_mode"], use_reloader=False, port=config["PORT"], host=config["HOST"])
+if __name__ == "__main__":
+    mp.set_start_method("spawn", force=True)
+    main()
+
