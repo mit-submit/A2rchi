@@ -1,11 +1,14 @@
 #!/bin/python
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import setup_logging, get_logger
 from a2rchi.interfaces.uploader_app.app import add_username_password
 
 import getpass
 import os
 
+setup_logging()
+logger = get_logger(__name__)
 
 # load config and create accounts path if it doesn't exist
 global_config = Config_Loader().config["global"]
@@ -24,10 +27,10 @@ while True:
 
     if password == password_2nd_time:
         add_username_password(username, password, salt, global_config["ACCOUNTS_PATH"])
-        print("Account created")
-        print()
-    else:
-        print("Passwords did not match, please try again")
-        print()
+        logger.info("Account created")
 
-print("Exiting.")
+    else:
+        logger.error("Passwords did not match, please try again")
+
+
+logger.info("Exiting.")

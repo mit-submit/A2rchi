@@ -1,5 +1,7 @@
 from typing import Tuple
+from a2rchi.utils.logging import get_logger
 
+logger = get_logger(__name__)
 
 class PromptFormatter:
     def __init__(self, tokenizer, image=False):
@@ -26,11 +28,11 @@ class PromptFormatter:
         question_start = prompt.rfind("Question:")
 
         if "[INST]" in self.special_tokens.get("additional_special_tokens", []):
-            print("[PromptFormatter] using instructor template")
+            logger.info("Using instructor template")
             return f"[INST] {prompt} [/INST]", "[/INST]"
 
         elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []) and context_start != -1 and question_start != -1:
-            print("[PromptFormatter] using chat template")
+            logger.info("Using chat template for QA prompt")
             question_end = prompt.rfind("Helpful Answer:") if 'Helpful Answer:' in prompt else len(prompt)
             message = [
                 {"role": "system", "content": prompt[:context_start]},
@@ -40,7 +42,7 @@ class PromptFormatter:
             return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"
 
         else:
-            print("[PromptFormatter] using default formatting")
+            logger.info("Using default formatting")
             return prompt, prompt[len(prompt)-15:]
 
     
@@ -50,11 +52,11 @@ class PromptFormatter:
         follow_up_input_start = prompt.rfind("Follow Up Input:")
 
         if "[INST]" in self.special_tokens.get("additional_special_tokens", []):
-            print("[PromptFormatter] using instructor template")
+            logger.info("Using instructor template")
             return f"[INST] {prompt} [/INST]", "[/INST]"
 
         elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []) and chat_history_start != -1 and follow_up_input_start != -1:
-            print("[PromptFormatter] using chat template")
+            logger.info("Using chat template for condense prompt")
             message = [
                 {"role": "system", "content": prompt[:chat_history_start].strip()},
                 {"role": "user", "content": prompt[chat_history_start + len("Chat History:"):follow_up_input_start].strip()},
@@ -63,23 +65,23 @@ class PromptFormatter:
             return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"
 
         else:
-            print("[PromptFormatter] using default formatting")
+            logger.info("Using default formatting")
             return prompt, prompt[len(prompt)-15:]
 
 
     def _grading_prompt_formatting_basic(self, prompt: str) -> Tuple[str, str]:
 
         if "[INST]" in self.special_tokens.get("additional_special_tokens", []):
-            print("[PromptFormatter] using instructor template")
+            logger.info("Using instructor template")
             return f"[INST] {prompt} [/INST]", "[/INST]"
 
         elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []):
-            print("[PromptFormatter] using chat template")
+            logger.info("Using chat template")
             message = [
                 {"role": "user", "content": prompt}
             ]
             return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"
 
         else:
-            print("[PromptFormatter] using default formatting")
+            logger.info("Using default formatting")
             return prompt, prompt[len(prompt)-15:]

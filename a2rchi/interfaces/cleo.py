@@ -3,6 +3,7 @@ from a2rchi.chains.chain import Chain
 from a2rchi.utils import sender
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger
 
 from redminelib import Redmine
 
@@ -14,6 +15,8 @@ import re
 import yaml
 
 from a2rchi.utils.sql import SQL_INSERT_CONVO
+
+logger = get_logger(__name__)
 
 # DEFINITIONS
 A2RCHI_PATTERN = '-- A2rchi --'
@@ -77,7 +80,7 @@ class CleoAIWrapper:
         return link, context
 
     def insert_conversation(self, issue_id, user_message, a2rchi_message, link, a2rchi_context, ts):
-        print(" INFO - storing interaction to postgres")
+        logger.info("Storing interaction to postgres")
 
         service = "Cleo"
 
@@ -267,16 +270,16 @@ class Cleo:
                 for record in issue.journals:
                     if record.notes != "":
                         history += f"\n next entry: {record.notes}"                    
-                print("History input: ",history)
+                logger.info("History input: ",history)
                 try:
                     answer = self.ai_wrapper(self.get_issue_history(issue.id), issue.id)
                 except Exception as e:
-                    print(f"ERROR: {e}")
+                    logger.error(str(e))
                     answer = "I am sorry, I am not able to process this request at the moment. Please continue with this ticket manually."
                 self.add_note_to_issue(issue.id,answer)
-                print("A2rchi's response:\n",answer)
+                logger.info("A2rchi's response:\n",answer)
                 self.feedback_issue(issue.id)
-        print(" cleo.process_new_issues: %d"%(len(issue_ids)))
+        logger.info("cleo.process_new_issues: %d"%(len(issue_ids)))
         return issue_ids
 
     def process_resolved_issues(self):
@@ -286,7 +289,7 @@ class Cleo:
         issue_ids = []
         for issue in self.project.issues:
             if issue.status.id == self.status_dict['Resolved']:
-                print(f" process_resolved_issues: {issue.id}")
+                logger.info("Process_resolved_issues: {issue.id}")
                 issue_ids.append(issue.id)
                 subject = f"Re:{issue.subject}"
                 to = issue.custom_fields[0]['value']
@@ -295,12 +298,12 @@ class Cleo:
                 for record in issue.journals:
                     if record.notes and record.notes != "" and A2RCHI_PATTERN not in record.notes:
                         note = record.notes
-                print(f"\n TO:{to}\n CC:{cc}\n SUBJECT:{subject}\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}\n\n> {issue.description}")
+                logger.info(f"\n TO:{to}\n CC:{cc}\n SUBJECT:{subject}\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}\n\n> {issue.description}")
                 note = f"\nISSUE_ID:{issue.id} (leave for reference)\n\n{note}"
                 addon = issue.description.replace("\n","\n > ")
                 self.smtp.send_message(to,cc,subject,f"{note}\n\nInitial request:\n > {addon}")
                 self.close_issue(issue.id,note)
-        print(" cleo.process_resolved_issues: %d"%(len(issue_ids)))
+        logger.info("cleo.process_resolved_issues: %d"%(len(issue_ids)))
         return issue_ids
         
     def remove_format(self,string,tag):
@@ -328,15 +331,15 @@ class Cleo:
         Show issue with given id as presently in the cleo system
         """
         issue = self.project.issues.get(issue_id)
-        print(f" ==== id: {issue.id}")
-        print(f" subject: {issue.subject}")
-        print(f" description: {issue.description}")
-        print(f" tracker: {issue.tracker} ({issue.tracker.id})")
-        print(f" status: {issue.status} ({issue.status.id})")
+        logger.info(f"ID: {issue.id}")
+        logger.info(f"Subject: {issue.subject}")
+        logger.info(f"Description: {issue.description}")
+        logger.info(f"Tracker: {issue.tracker} ({issue.tracker.id})")
+        logger.info(f"Status: {issue.status} ({issue.status.id})")
         for record in issue.journals:
-            print(dir(record))
+            logger.info(dir(record))
             user = self.redmine.user.get(record.user.id)
-            print(f" {record} ({user.login}):\n{record.notes}")
+            logger.info(f" {record} ({user.login}):\n{record.notes}")
         return
             
     def show_issues(self):
@@ -347,8 +350,8 @@ class Cleo:
         for issue in self.project.issues:
             if first:
                 first = False
-                print("   Id status -- subject")
-                print("========================")
+                logger.info("ID status -- subject")
+                logger.info("========================")
             #print(" %04d %s -- %s"%(issue.id,issue.status,issue.subject))
             self.show_issue(issue.id)
         return
@@ -357,7 +360,7 @@ class Cleo:
         """
         Open the redmine web site called cleo
         """
-        print(f" Open redmine (URL:{self.cleo_url} U:{self.cleo_user} P:*********)")
+        logger.info(f"Open redmine (URL:{self.cleo_url} U:{self.cleo_user} P:*********)")
         rd = Redmine(self.cleo_url, username=self.cleo_user, password=self.cleo_pw)
         return rd
         
@@ -366,6 +369,6 @@ class Cleo:
         Make sure the environment is setup
         """
         if self.cleo_url == None or self.cleo_user == None or self.cleo_pw == None:
-            print(" Did not find all cleo configs: CLEO_URL, CLEO_USER, CLEO_PW (source ~/.cleo).")
+            logger.info("Did not find all cleo configs: CLEO_URL, CLEO_USER, CLEO_PW (source ~/.cleo).")
             return False
         return True

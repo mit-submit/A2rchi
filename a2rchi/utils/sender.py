@@ -1,4 +1,5 @@
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -6,6 +7,7 @@ from email.utils import formataddr, parseaddr, getaddresses
 
 import smtplib
 
+logger = get_logger(__name__)
 
 class Sender:
     """A class to send emails in an uncomplicated fashion."""
@@ -20,7 +22,7 @@ class Sender:
         self.password = read_secret('SENDER_PW')
         self.reply_to = read_secret('SENDER_REPLYTO')
 
-        print(f" Open smtp (SERVER:{self.server_name} PORT:{self.port} U:{self.user} P:*********)")
+        logger.info(f"Open smtp (SERVER:{self.server_name} PORT:{self.port} U:{self.user} P:*********)")
 
 
     def send_message(self, to, cc, subject, body):
@@ -39,9 +41,9 @@ class Sender:
             msg.add_header('reply-to', self.reply_to)
 
         # show what we are going to do
-        print(f" Sending message - TO: {to}, CC: {cc}, REPLYTO: {self.reply_to}")
-        print(f" ===============\n SUBJECT: {subject}")
-        print(f" BODY:\n{body}")
+        logger.info(f"Sending message - TO: {to}, CC: {cc}, REPLYTO: {self.reply_to}")
+        logger.info(f"SUBJECT: {subject}")
+        logger.info(f"BODY: {body}")
 
         # Prepare the recipient list
         recipient_list = []
@@ -55,9 +57,9 @@ class Sender:
             formataddr(addr) for addr in getaddresses([cc])
             ])
 
-        print("Recipient List:", recipient_list)
+        logger.info("Recipient List:", recipient_list)
         smtp_recipient_list = [addr[1] for addr in getaddresses([to, cc]) if addr[1]]
-        print("SMTP Recipient List:", smtp_recipient_list)
+        logger.debug("SMTP Recipient List:", smtp_recipient_list)
 
         # Send the email
         msg.attach(MIMEText(body, 'plain'))

@@ -2,6 +2,7 @@ from a2rchi.chains.chain import Chain
 from a2rchi.utils.config_loader import Config_Loader, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger
 from a2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG
 
 from flask import Flask, request, render_template, redirect, url_for, flash, Response, session
@@ -37,14 +38,10 @@ import time
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
+logger = get_logger(__name__)
+
 # Increase CSV field size limit
 csv.field_size_limit(sys.maxsize)
-
-##########
-
-# image processing model wrapper
-
-##########
 
 class ImageToTextWrapper:
     def __init__(self):
@@ -76,7 +73,7 @@ class ImageToTextWrapper:
             # LOGGING AND DATABASE !!! (later)
 
         except Exception as e:
-            print(f"ERROR - {str(e)}")
+            logger.error(f"Failed to convert image to text: {str(e)}")
             text = "Error processing images"
 
         finally:
@@ -134,7 +131,7 @@ class GradingWrapper:
                 additional_comments=additional_comments
             )
         except Exception as e:
-            print(f"ERROR - {str(e)}")
+            logger.error(f"Failed to grade submission: {str(e)}")
             final_decision = "Error during grading pipeline"
         finally:
             self.lock.release()
@@ -143,16 +140,6 @@ class GradingWrapper:
             if self.conn is not None:
                 self.conn.close()
         return final_decision
-
-
-
-
-
-##########
-
-# grading wrapper (a la chat wrapper)
-
-##########
 
 
 
@@ -307,7 +294,7 @@ class FlaskAppWrapper(object):
         is_mobile, accessibility = self.get_device_flags()
 
         total_problems = self.get_total_problems()
-        print(f"Total problems: {total_problems}")
+        logger.info(f"Total problems: {total_problems}")
 
 
         if problem_number < 1 or problem_number > total_problems:
@@ -488,7 +475,7 @@ class FlaskAppWrapper(object):
 
         grading_result_score = grading_result["final_grade"]
 
-        print(f"Grading result score: {grading_result_score}")
+        logger.info(f"Grading result score: {grading_result_score}")
 
         earned_total, max_total = self.calculate_total_score(grading_result_score)
         final_score_eval = (earned_total / max_total) * 100 if max_total > 0 else 0
@@ -569,7 +556,7 @@ class FlaskAppWrapper(object):
             flash(f"Successfully reset attempts for {student_email} on Problem {problem_number}.")
 
         except Exception as e:
-            print(f"Error resetting attempts: {str(e)}")
+            logger.error(f"Error resetting attempts: {str(e)}")
             flash("Error resetting attempts.")
 
         update_grades_cache()
