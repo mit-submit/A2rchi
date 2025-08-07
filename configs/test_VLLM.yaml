@@ -1,0 +1,39 @@
+name: prod_submit
+
+global:
+  TRAINED_ON: "the SubMIT Cluster"  
+
+locations_of_secrets:
+  - ~/.secrets/
+  - ~/.secrets/submit_cleo_and_mailer_passwords
+
+chains:
+  input_lists:  
+    - configs/submit.list
+    - configs/miscellanea.list
+  chain:
+    MODEL_NAME: VLLM
+    CONDENSE_MODEL_NAME: VLLM
+    SUMMARY_MODEL_NAME: VLLM
+    MODEL_CLASS_MAP:
+      VLLM:
+        kwargs:
+          base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
+          quantization: True
+          max_model_len: 32768
+          tensor_parallel_size: 2
+          repetition_penalty: 1.0
+          gpu_memory_utilization: 0.7
+
+
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt  
+    MAIN_PROMPT: configs/prompts/submit.prompt  
+    SUMMARY_PROMPT: configs/prompts/summary.prompt  
+
+utils:
+  data_manager:
+    chromadb_external_port: 8009
+interfaces:
+  chat_app:
+    HOSTNAME: "submit76.mit.edu" 

@@ -1,16 +1,15 @@
 #!/bin/python
 from a2rchi.interfaces.uploader_app.app import FlaskAppWrapper
 from a2rchi.utils.config_loader import Config_Loader
-from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
-from a2rchi.utils.scraper import Scraper
+from a2rchi.utils.logging import setup_logging
 
 from flask import Flask
-from threading import Thread
 
 import os
-import time
 
+# set basicConfig for logging
+setup_logging()
 
 # set openai
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
@@ -30,36 +29,7 @@ uploader_config = Config_Loader().config["interfaces"]["uploader_app"]
 #   is not run.
 
 run_dynamically = data_manager_config["use_HTTP_chromadb_client"]
-print(f" Dynamic: {run_dynamically}")
-
-# # scrape data onto the filesystem
-# scraper = Scraper()
-# scraper.hard_scrape(verbose=True)
-
-# def run_data_manager():
-#     """
-#     function which runs the data manager
-#     """
-#     data_manager = DataManager()
-#     stop = False
-#     while not stop:
-
-#         # check to see if this function should only be run once or should be run indefinitely
-#         if not run_dynamically:
-#             stop = True
-
-#         # do updating of vectorstore
-#         print("Starting update vectorstore")
-#         data_manager.update_vectorstore()
-
-#         print(f"Completed vectorstore update (sleep {data_manager_config['vectordb_update_time']} seconds)\n")
-#         time.sleep(int(data_manager_config["vectordb_update_time"]))
-
-#     return
-
-# data_manager_thread = Thread(target=run_data_manager)
-# data_manager_thread.start()
 
 if run_dynamically:
     app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))
-    app.run(debug=False, port=uploader_config["PORT"], host=uploader_config["HOST"])
+    app.run(debug=uploader_config["flask_debug_mode"], port=uploader_config["PORT"], host=uploader_config["HOST"])

@@ -46,6 +46,10 @@ There are a few additional options you can pass to the `create` command that are
 
 4. **`--tag`**: The tag for the images that are built locally. Can be useful when trying different configurations.
 
+5. **`--jira`**: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.
+
+6. **`--debug`**: Flag to set logging level to DEBUG. Default is INFO.
+
 
 ### Optional configuration fields (see required in Getting Started page)
 
@@ -84,7 +88,7 @@ There are a few additional options you can pass to the `create` command that are
 11. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference`**: Same as #7.
 
 
-## Chat Service
+#### Chat Service
 
 Additional configuration options for the chatbot, deployed automatically with A2rchi:
 
@@ -97,6 +101,32 @@ Additional configuration options for the chatbot, deployed automatically with A2
 4. **`interfaces:chat_app:HOSTNAME`**: The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using `localhost` will only work if accessing the application from the same machine. Default is `localhost`.
 
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
+
+6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
+
+#### JIRA
+
+Find below the configuration fields for JIRA feature.
+
+1. **`utils:jira:JIRA_URL`**: The URL of the JIRA instance from which A2rchi will fetch data. Its type is string. This option is required if `--jira` flag is used.
+2. **`utils:jira:JIRA_PROJECTS`**: List of JIRA project names that A2rchi will fetch data from. Its type is a list of strings. This option is required if `--jira` flag is used.
+3. **`utils:jira:ANONYMIZE_DATA`**: Boolean flag indicating whether the fetched data from JIRA should be anonymized or not. This option is optional if `--jira` flag is used. Its default value is True.
+
+##### JIRA secret
+
+A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be put in a file called `jira_pat.txt`. This file should be put in the secrets folder.
+
+#### Anonymizer
+
+Find below the configuration fields for anonymization feature. All of them are optional.
+
+1. **`utils:anonymizer:nlp_model`**: The NLP model that the `spacy` library will use to perform Name Entity Recognition (NER). Its type is string. 
+2. **`utils:anonymizer:excluded_words`**: The list of words that the anonymizer should remove. Its type is list of strings. 
+3. **`utils:anonymizer:greeting_patterns`**: The regex pattern to use match and remove greeting patterns. Its type is string.
+4. **`utils:anonymizer:signoff_patterns`**: The regex pattern to use match and remove signoff patterns. Its type is string.
+5. **`utils:anonymizer:email_pattern`**: The regex pattern to use match and remove email addresses. Its type is string.
+6. **`utils:anonymizer:username_pattern`**: The regex pattern to use match and remove JIRA usernames. Its type is string.
+
 
 ## Adding Documents and the Uploader Interface
 
@@ -252,7 +282,7 @@ d27482864238  localhost/chromadb-gtesting2:2000         uvicorn chromadb....  9 
 40130e8e23de  docker.io/library/grafana-gtesting2:2000                        9 minutes ago  Up 9 minutes            0.0.0.0:3000->3000/tcp, 3000/tcp  grafana-gtesting2
 d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861->7861/tcp            chat-gtesting2
 ```
-where the grafana interface is accessible at `your-hostname:3000`. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu > Dashboards > A2rchi > A2rchi Usage. Note, `your-hostname` here is the just name of the machine. Grafana uses its default configuration which is `localhost` but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.
+where the grafana interface is accessible at `your-hostname:3000`. To change the external port from `3000`, you can do this in the config at `interfaces:grafana:EXTERNAL_PORT`. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu > Dashboards > A2rchi > A2rchi Usage. Note, `your-hostname` here is the just name of the machine. Grafana uses its default configuration which is `localhost` but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.
 
 Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options > Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes.
 
