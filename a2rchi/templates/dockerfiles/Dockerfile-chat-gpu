@@ -6,6 +6,7 @@ WORKDIR /root/A2rchi
 COPY requirements.txt requirements.txt
 COPY LICENSE LICENSE
 
+RUN pip install --upgrade pip setuptools wheel
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 RUN apt-get update && apt-get install -y \
@@ -68,5 +69,7 @@ COPY a2rchi_code a2rchi
 COPY pyproject.toml pyproject.toml
 COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
+
+ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
 
 CMD ["python", "-u", "a2rchi/bin/service_chat.py"]

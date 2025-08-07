@@ -48,6 +48,8 @@ class Piazza:
     """
     def __init__(self):
 
+        logger.info("Initializing Piazza service")
+
         self.piazza_config = Config_Loader().config["utils"].get("piazza", None)
 
         # login to piazza

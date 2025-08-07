@@ -243,7 +243,7 @@ def cli():
 @click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 @click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode networking for the containers.")
-@click.option('--debug', 'debug', is_flag=True, help="Flag to set logging level to DEBUG. Default is INFO")
+@click.option('--verbosity', '-v', 'verbosity', type=int, default=3, help="Set verbosity level for python's logging module. Default is 3. Mapping is 0: CRITICAL, 1: ERROR, 2: WARNING, 3: INFO, 4: DEBUG.")
 def create(
     name, 
     a2rchi_config_filepath,
@@ -258,7 +258,7 @@ def create(
     gpu_ids,
     image_tag,
     host_mode,
-    debug
+    verbosity
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -559,7 +559,7 @@ def create(
 
     # load and render config template
     config_template = env.get_template(BASE_CONFIG_TEMPLATE)
-    config = config_template.render(debug=debug, **a2rchi_config)
+    config = config_template.render(verbosity=verbosity, **a2rchi_config)
 
     # write final templated configuration
     with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:

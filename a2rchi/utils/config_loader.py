@@ -1,5 +1,3 @@
-from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM, HuggingFaceOpenLLM, HuggingFaceImageLLM, VLLM
-from a2rchi.utils.sso_scraper import CERNSSOScraper
 from langchain_openai import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -18,6 +16,8 @@ class Config_Loader:
         """
         Small function for loading the config.yaml file
         """
+        from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM, HuggingFaceOpenLLM, HuggingFaceImageLLM, VLLM
+        from a2rchi.utils.sso_scraper import CERNSSOScraper
         # env = os.getenv("RUNTIME_ENV")
         # try:
         #     with open(f"./config/{env}-config.yaml", "r") as f:
@@ -59,3 +59,18 @@ class Config_Loader:
 
         except Exception as e: 
             raise e
+        
+        
+def load_config_file():
+    """
+    Lightweight alternative import that doesn't do any class mapping, so doesn't require class imports
+    """
+    config_path = "/root/A2rchi/config.yaml"
+    try:
+        with open(config_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+
+        return config
+
+    except Exception as e: 
+        raise e

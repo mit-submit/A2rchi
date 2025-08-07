@@ -25,8 +25,7 @@ class TokenLimiter:
             try:
                 doc_tokens = self.llm.get_num_tokens(doc.page_content)
                 if doc_tokens is None or doc_tokens < 0:
-                    doc_tokens = max(len(doc.page_content) // 4, 1)
-                    logger.warning(f"Doc {i}: get_num_tokens returned {doc_tokens}, using fallback estimation")
+                    raise ValueError()
                 tokens.append(doc_tokens)
             except Exception as e:
                 fallback_tokens = max(len(doc.page_content) // 4, 1)
