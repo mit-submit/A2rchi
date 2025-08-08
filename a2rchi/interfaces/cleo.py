@@ -29,7 +29,7 @@ class CleoAIWrapper:
     """
 
     def __init__(self):
-        self.chain = Chain()
+        self.chain = Chain(cleo=True)
 
         # initialize data manager
         self.data_manager = DataManager()
@@ -161,7 +161,10 @@ class Cleo:
         self.smtp = sender.Sender()
         self.user = None
         self.project = None
-        self.ai_wrapper = CleoAIWrapper()
+        self.ai_wrapper = None
+        if self.name != "Cleo_Helpdesk_Mail":
+            logger.info("Loading AI wrapper for Cleo service")
+            self.ai_wrapper = CleoAIWrapper()
 
         # read environment variables from secrets
         self.cleo_project = read_secret("CLEO_PROJECT")

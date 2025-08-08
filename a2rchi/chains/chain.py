@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 # at some point maybe won't make sense to keep one generic class...
 class Chain() :
 
-    def __init__(self, image_processing=False, grading=False):
+    def __init__(self, image_processing=False, cleo=False, grading=False):
         """
         Gets all the relavent files from the data directory and converts them
         into a format that the chain can use. Then, it creates the chain using 
@@ -27,6 +27,7 @@ class Chain() :
         """
         self.kill = False
         self.image_processing = image_processing
+        self.cleo = cleo
         self.grading = grading
 
         self.update_config()
@@ -52,6 +53,7 @@ class Chain() :
 
         model_class_map = self.chain_config["MODEL_CLASS_MAP"]
         model_name = self.chain_config.get("MODEL_NAME", None)
+        cleo_model_name = self.chain_config.get("CLEO_MODEL_NAME", None)
         condense_model_name = self.chain_config.get("CONDENSE_MODEL_NAME", model_name)
 
         # for grading service
@@ -85,6 +87,16 @@ class Chain() :
                 self.grading_summary_prompt = PROMPTS["GRADING_SUMMARY"]
                 self.grading_summary_llm = model_class_map[grading_summary_model_name]["class"](**model_class_map[grading_summary_model_name]["kwargs"])
                 self._print_params("grading summary", grading_summary_model_name, model_class_map)
+
+        elif self.cleo:
+            self.qa_prompt = PROMPTS["QA"]
+            self.condense_question_prompt = PROMPTS["CONDENSE_QUESTION"]
+            self.llm = model_class_map[cleo_model_name]["class"](**model_class_map[cleo_model_name]["kwargs"])
+            condense_model_name = cleo_model_name
+            self.condense_llm = None
+
+            self._print_params("qa", model_name, model_class_map)
+            self._print_params("condense", condense_model_name, model_class_map)
 
         else:
             self.qa_prompt = PROMPTS["QA"]

@@ -63,6 +63,7 @@ chains:
   chain:
     MODEL_NAME: {{ chains.chain.MODEL_NAME | default('null', true) }}
     CONDENSE_MODEL_NAME: {{ chains.chain.CONDENSE_MODEL_NAME | default('null', true) }}
+    CLEO_MODEL_NAME: {{ chains.chain.CLEO_MODEL_NAME | default('null', true) }}
     IMAGE_PROCESSING_MODEL_NAME: {{ chains.chain.IMAGE_PROCESSING_MODEL_NAME | default('null', true) }}
     GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
     GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
