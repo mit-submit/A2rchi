@@ -368,7 +368,7 @@ services:
     image: {{ mattermost_image }}:{{ mattermost_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mattermost
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mattermost{{ '-gpu' if gpu_ids else '' }}      
       args:
         TAG: {{ mattermost_tag }}
     depends_on:
@@ -386,10 +386,24 @@ services:
       {% if huggingface -%}
       HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
       {% endif %}
+      {% if gpu_ids -%}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
       MATTERMOST_WEBHOOK_FILE: /run/secrets/mattermost_webhook
       MATTERMOST_CHANNEL_ID_READ_FILE: /run/secrets/mattermost_channel_id_read
       MATTERMOST_CHANNEL_ID_WRITE_FILE: /run/secrets/mattermost_channel_id_write
       MATTERMOST_PAK_FILE: /run/secrets/mattermost_pak
+    {% if gpu_ids and not use_podman -%}
+    # TODO: docker GPU configuration needs testing
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    {% endif %}
     secrets:
       {% if openai -%}
       - openai_api_key
@@ -410,10 +424,30 @@ services:
       - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
       - ./summary.prompt:/root/A2rchi/summary.prompt
+      {% if gpu_ids -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
     logging:
       options:
         max-size: 10m
     restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
+    {% if gpu_ids and use_podman -%}
+    # podman GPU configuration
+    security_opt:
+      - label:disable
+    devices:
+    # N.B. even smallest models will load across multiple GPUs if available.
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
+    {%- endif %}
+    {%- endif %}    
   {% endif %}
 
   {% if include_cleo_and_mailer -%}
