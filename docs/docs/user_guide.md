@@ -261,6 +261,33 @@ TODO: add description of interface here
 
 ### Configuration
 
+
+## Mattermost Interface
+
+Set up A2rchi to read posts from your mattermost forum and post draft responses to a specified mattermost channel.
+
+### Secrets
+
+You need to specify a webhook, a key and the id of two channels to read and write. Should be specified like this.
+
+- `mattermost_webhook.txt`
+- `mattermost_pak.txt`
+- `mattermost_channel_id_read.txt`
+- `mattermost_channel_id_write.txt`
+
+location_of_secrets: #REQUIRED
+  - ~/.secrets/mattermost
+
+### Running the Mattermost service
+
+To run the Mattermost service, simply add the mattermost flag. For example:
+
+```nohighlight
+a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost True
+```
+
+
+
 ## Grafana Interface 
 
 To run the grafana service, you first need to specify a password for the grafana to access the postgres database that stores the information. Simply set the environment variable as follows:
