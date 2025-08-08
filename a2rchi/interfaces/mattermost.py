@@ -4,6 +4,7 @@ from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.scraper import Scraper
+from a2rchi.utils.logging import get_logger
 
 from flask import Flask
 from threading import Thread
@@ -12,6 +13,8 @@ import json
 import os
 import requests
 import time
+
+logger = get_logger(__name__)
 
 class MattermostAIWrapper:
     def __init__(self):
@@ -35,7 +38,7 @@ class MattermostAIWrapper:
 
         # call chain
         answer = self.chain(formatted_history)["answer"]
-        print('ANSWER = ',answer)
+        logger.debug('ANSWER = ',answer)
 
         return answer, post_str
 
@@ -48,7 +51,7 @@ class Mattermost:
     """
     def __init__(self):
 
-        print('Mattermost::INIT')
+        logger.info('Mattermost::INIT')
 
         self.mattermost_config = Config_Loader().config["utils"].get("mattermost", None)
         
@@ -63,10 +66,10 @@ class Mattermost:
             'Content-Type': 'application/json'
         }
 
-        print('mattermost_webhook =', self.mattermost_webhook)
-        print('mattermost_channel_id_read =', self.mattermost_channel_id_read)        
-        print('mattermost_channel_id_write =', self.mattermost_channel_id_write)
-        print('PAK =', self.PAK)
+        logger.debug('mattermost_webhook =', self.mattermost_webhook)
+        logger.debug('mattermost_channel_id_read =', self.mattermost_channel_id_read)        
+        logger.debug('mattermost_channel_id_write =', self.mattermost_channel_id_write)
+        logger.debug('PAK =', self.PAK)
 
         # initialize MattermostAIWrapper
         self.ai_wrapper = MattermostAIWrapper()
@@ -76,6 +79,7 @@ class Mattermost:
 
     def post_response(self, response):
 
+#        TODO: support writing in a dedicated mattermost_channel_id_write
 #        url = f"{self.mattermost_url}/api/v4/posts"
 #        print('GOING TO WRITE HERE: ',url)
 
@@ -87,8 +91,6 @@ class Mattermost:
         #r = requests.post(url, data=json.dumps(payload), headers=self.mattermost_headers)
         r = requests.post(self.mattermost_webhook, data=json.dumps({"text": response,"channel" : "town-square"}), headers=self.mattermost_headers)
 
-        print(r.text)
-        print("STATUS CODE",r.status_code)
         return
 
     def write_min_next_post(self, answered_key):
@@ -97,19 +99,17 @@ class Mattermost:
             os.makedirs(os.path.dirname(self.min_next_post_file), exist_ok=True)
             with open(self.min_next_post_file, "w") as f:
                 json.dump({"answered_id": answered_key}, f)
-            print(f"Updated answered_id {answered_key}")
+            logger.info(f"Updated answered_id {answered_key}")
         except Exception as e:
-            print(f"ERROR - Failed to write answered_key to file: {e}")
+            logger.debug(f"ERROR - Failed to write answered_key to file: {e}")
 
     def get_active_posts(self):
 
-        print('HELLO inside get_active_posts')
         content = f"api/v4/channels/{self.mattermost_channel_id_read}/posts"
         r = requests.get(self.mattermost_url + content, headers=self.mattermost_headers)
         active_posts={}
         for id in r.json()["order"]:
             active_posts[id]=r.json()["posts"][id]["message"]
-        print('ACTIVE POST',active_posts)
         return active_posts
 
     def get_last_post(self):
@@ -129,10 +129,10 @@ class Mattermost:
 
         if sorted_posts:
             latest = sorted_posts[0]
-            print(f"User ID: {latest['user_id']}")
-            print(f"Message: {latest['message']}")
+            logger.info(f"User ID: {latest['user_id']}")
+            logger.info(f"Message: {latest['message']}")
         else:
-            print("Mattermost: No messages found.")
+            logger.debug("Mattermost: No messages found.")
 
         return sorted_posts[0]
 
@@ -140,14 +140,14 @@ class Mattermost:
 
         # Check if file exists
         if not os.path.exists(self.min_next_post_file):
-            print("File does not exist, creating new one.")
+            logger.info("File does not exist, creating new one.")
             data = {"answered_id": []}  # Initialize with empty list
             return False
         else:
             # Load existing data
             with open(self.min_next_post_file, "r") as f:
                 data = json.load(f)
-                print("Loaded data:", data)
+                logger.info("Loaded data:", data)
 
         answered_ids = data.get("answered_id", [])
 
@@ -157,14 +157,14 @@ class Mattermost:
 
         # Only append if not already in the list (optional)
         if tmpID in answered_ids:
-            print(f"{tmpID} already exists")
+            logger.info(f"{tmpID} already exists")
             return True
         else:
             answered_ids.append(tmpID)
             data["answered_id"] = answered_ids  # Overwrite with new ID
             with open(self.min_next_post_file, "w") as f:
                 json.dump(data, f, indent=2)
-            print(f"Added {tmpID} for next iterations")
+            logger.info(f"Added {tmpID} for next iterations")
             return False
 
     # for now just processes "main" posts, i.e. not replies/follow-ups
@@ -173,16 +173,14 @@ class Mattermost:
         try:
             # get last post
             topic = self.get_last_post()
-            #active_posts = self.get_active_posts()
-            #print(active_posts.keys())
         except Exception as e:
-            print("ERROR - Failed to parse feed due to the following exception:")
-            print(str(e))
+            logger.error("ERROR - Failed to parse feed due to the following exception:")
+            logger.error(str(e))
             return
 
         if self.checkAnswerExist(topic['id']) :
              # no need to answer someone already answered
-             print('no need to answer someone already answered')
+             logger.info('no need to answer someone already answered')
         else:
             # otherwise, process it
             try:
@@ -192,5 +190,5 @@ class Mattermost:
                 post_str = self.write_min_next_post(topic['id'])
 
             except Exception as e:
-                print(f"ERROR - Failed to process post {topic['id']} due to the following exception:")
-                print(str(e))
+                logger.error(f"ERROR - Failed to process post {topic['id']} due to the following exception:")
+                logger.error(str(e))
