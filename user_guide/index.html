@@ -31,7 +31,10 @@
     <div class="wy-side-scroll">
       <div class="wy-side-nav-search">
           <a href=".." class="icon icon-home"> A2rchi Docs
-        </a><div role="search">
+        </a>
+        <div class="version">
+          1.0.0
+        </div><div role="search">
   <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
       <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
   </form>
@@ -96,9 +99,17 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#grafana-interface">Grafana Interface</a>
+    <li class="toctree-l2"><a class="reference internal" href="#mattermost-interface">Mattermost Interface</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#secrets_2">Secrets</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#running-the-mattermost-service">Running the Mattermost service</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#grafana-interface">Grafana Interface</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets_3">Secrets</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#configuration_2">Configuration</a>
     </li>
@@ -108,7 +119,7 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#requirements">Requirements</a>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#secrets_3">Secrets</a>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets_4">Secrets</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#configuration_3">Configuration</a>
     </li>
@@ -195,6 +206,9 @@ If you have Docker, run</p>
 <li>
 <p><strong><code>--jira</code></strong>: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.</p>
 </li>
+<li>
+<p><strong><code>--debug</code></strong>: Flag to set logging level to DEBUG. Default is INFO.</p>
+</li>
 </ol>
 <h3 id="optional-configuration-fields-see-required-in-getting-started-page">Optional configuration fields (see required in Getting Started page)</h3>
 <h4 id="rag-related-options">RAG-related options</h4>
@@ -259,6 +273,9 @@ ttps://physics.mit.edu/faculty/christoph-paus
 </li>
 <li>
 <p><strong><code>interfaces:chat_app:num_responses_until_feedback</code></strong>: Number of responses before the user is encouraged to provide feedback.</p>
+</li>
+<li>
+<p><strong><code>interfaces:chat_app:flask_debug_mode</code></strong>: Boolean for whether to run the flask app in debug mode or not. Default is True.</p>
 </li>
 </ol>
 <h4 id="jira">JIRA</h4>
@@ -378,6 +395,22 @@ utils:
 <p>TODO: add description of interface here</p>
 <h3 id="secrets_1">Secrets</h3>
 <h3 id="configuration_1">Configuration</h3>
+<h2 id="mattermost-interface">Mattermost Interface</h2>
+<p>Set up A2rchi to read posts from your mattermost forum and post draft responses to a specified mattermost channel.</p>
+<h3 id="secrets_2">Secrets</h3>
+<p>You need to specify a webhook, a key and the id of two channels to read and write. Should be specified like this.</p>
+<ul>
+<li><code>mattermost_webhook.txt</code></li>
+<li><code>mattermost_pak.txt</code></li>
+<li><code>mattermost_channel_id_read.txt</code></li>
+<li><code>mattermost_channel_id_write.txt</code></li>
+</ul>
+<p>location_of_secrets: #REQUIRED
+  - ~/.secrets/mattermost</p>
+<h3 id="running-the-mattermost-service">Running the Mattermost service</h3>
+<p>To run the Mattermost service, simply add the mattermost flag. For example:</p>
+<pre><code class="language-nohighlight">a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost True
+</code></pre>
 <h2 id="grafana-interface">Grafana Interface</h2>
 <p>To run the grafana service, you first need to specify a password for the grafana to access the postgres database that stores the information. Simply set the environment variable as follows:</p>
 <pre><code class="language-nohighlight">export GRAFANA_PG_PASSWORD=&lt;your_password&gt;
@@ -396,7 +429,7 @@ d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 
 <p>where the grafana interface is accessible at <code>your-hostname:3000</code>. To change the external port from <code>3000</code>, you can do this in the config at <code>interfaces:grafana:EXTERNAL_PORT</code>. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu &gt; Dashboards &gt; A2rchi &gt; A2rchi Usage. Note, <code>your-hostname</code> here is the just name of the machine. Grafana uses its default configuration which is <code>localhost</code> but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.</p>
 <p>Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options &gt; Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes.</p>
 <p>Pro tip 2: If you want to download all of the information from any panel as a CSV, go to the same three dots and click "Inspect", and you should see the option.</p>
-<h3 id="secrets_2">Secrets</h3>
+<h3 id="secrets_3">Secrets</h3>
 <h3 id="configuration_2">Configuration</h3>
 <h2 id="grader-interface">Grader Interface</h2>
 <p>Interface to launch a website which for a provided solution and rubric (and a couple of other things detailed below), will grade scanned images of a handwritten solution for the specified problem(s).</p>
@@ -420,7 +453,7 @@ username@mit.edu,222
 <ul>
 <li><code>admin_password.txt</code>. This file will be passed as a secret and be the admin code to login in to the page where you can reset attempts for students.</li>
 </ul>
-<h3 id="secrets_3">Secrets</h3>
+<h3 id="secrets_4">Secrets</h3>
 <p>The only grading specific secret is the admin password, which like shown above, should be put in the following file</p>
 <pre><code>admin_password.txt
 </code></pre>
