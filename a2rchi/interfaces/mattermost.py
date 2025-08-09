@@ -67,7 +67,7 @@ class Mattermost:
         }
 
         logger.debug('mattermost_webhook =', self.mattermost_webhook)
-        logger.debug('mattermost_channel_id_read =', self.mattermost_channel_id_read)        
+        logger.debug('mattermost_channel_id_read =', self.mattermost_channel_id_read)
         logger.debug('mattermost_channel_id_write =', self.mattermost_channel_id_write)
         logger.debug('PAK =', self.PAK)
 
@@ -112,6 +112,29 @@ class Mattermost:
             active_posts[id]=r.json()["posts"][id]["message"]
         return active_posts
 
+    def filter_posts(self, posts, excluded_user_id):
+        system_types = {
+            "system_join_team",
+            "system_join_channel",
+            "system_add_to_channel",
+            "system_leave_team",
+            "system_leave_channel",
+            "system_remove_from_channel",
+        }
+
+        filtered = []
+
+        for post in posts.values():
+            if post.get("user_id") == excluded_user_id:
+                continue  # Skip this user
+
+            if post.get("type") in system_types:
+                continue  # Skip system messages
+
+            filtered.append(post)
+
+        return filtered
+
     def get_last_post(self):
 
         content = f"api/v4/channels/{self.mattermost_channel_id_read}/posts"
@@ -120,12 +143,9 @@ class Mattermost:
         data = r.json()
         posts = data.get('posts', {})
         excluded_a2rchi_id = "ajb6wyizpinqir7m16owntod7o"
-        filtered_posts = {
-            post_id: post
-            for post_id, post in posts.items()
-            if post.get("user_id") != excluded_a2rchi_id
-        }
-        sorted_posts = sorted(filtered_posts.values(), key=lambda x: x['create_at'], reverse=True)
+
+        filtered_posts = self.filter_posts(posts, excluded_user_id=excluded_a2rchi_id)
+        sorted_posts = sorted(filtered_posts, key=lambda x: x['create_at'], reverse=True)
 
         if sorted_posts:
             latest = sorted_posts[0]
