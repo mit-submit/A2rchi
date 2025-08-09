@@ -3,6 +3,7 @@ from __future__ import annotations
 from langchain_core.callbacks.file import FileCallbackHandler
 
 from a2rchi.chains.utils.token_limiter import TokenLimiter
+from a2rchi.chains.utils import history_utils
 from a2rchi.utils.config_loader import Config_Loader
 from a2rchi.utils.logging import get_logger
 
@@ -25,26 +26,6 @@ logger = get_logger(__name__)
 config = Config_Loader().config["chains"]["base"]
 data_path = Config_Loader().config["global"]["DATA_PATH"]
 
-
-def _get_chat_history(chat_history: List[Tuple[str, str]]) -> str:
-    buffer = ""
-    for dialogue in chat_history:
-        if isinstance(dialogue, tuple) and dialogue[0] in config["ROLES"]:
-            identity = dialogue[0]
-            message = dialogue[1]
-            buffer += identity + ": " + message + "\n"
-        else:
-            raise ValueError(
-                "Error loading the chat history. Possible causes: " + 
-                f"Unsupported chat history format: {type(dialogue)}."
-                f"Unsupported role: {dialogue[0]}."
-
-                f" Full chat history: {chat_history} "
-            )
-
-    return buffer
-
-
 class BaseQAChain:
     """
     Chain for chatting with an index, designed originally for SubMIT, now used for general QA
@@ -64,36 +45,48 @@ class BaseQAChain:
             logger.info(f"Using LLM max tokens: {self.max_tokens_limit}")
         logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
         self.prompt_logger = PromptLogger(logfile)
+        self.token_limiter = TokenLimiter(llm=self.llm, max_tokens=self.max_tokens_limit)
 
     def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         question = inputs["question"]
         chat_history = inputs.get("chat_history", [])
 
+        # if the size of the question is too large, return a warning
+        if not self.token_limiter.check_question(question):
+            return {
+                "answer": self.token_limiter.QUESTION_SIZE_WARNING,
+                "question": question,
+                "chat_history": chat_history,
+                "source_documents": []
+            }
+
         if chat_history:
-            formatted_history = _get_chat_history(chat_history)
+            _, reduced_history = self.token_limiter.reduce_tokens_below_limit(history=chat_history)
+            formatted_reduced_history = history_utils.stringify_history(reduced_history)
             condensed_question = self.condense_question_chain.invoke(
-                {"question": question, "chat_history": formatted_history},
+                {"question": question, "chat_history": formatted_reduced_history},
                 config={"callbacks": [self.prompt_logger]}
             )
             final_question = condensed_question
         else:
             final_question = question
-            formatted_history = []
 
-        # retrieve documents, then reduce number of tokens if necessary
-        token_limiter = TokenLimiter(llm=self.llm, max_tokens=self.max_tokens_limit)
+        # retrieve documents
         docs = self.retriever.invoke(final_question) # n.b., using condensed question for retrieval
-        reduced_docs = token_limiter.reduce_tokens_below_limit(docs)
+
+        # reduce number of tokens, if necessary
+        reduced_docs, reduced_history = self.token_limiter.reduce_tokens_below_limit(docs=docs, history=chat_history)
+        formatted_reduced_history = history_utils.stringify_history(reduced_history)
         
         answer = self.combine_docs_chain.invoke(
-            {"question": final_question, "context": reduced_docs},
+            {"question": final_question, "history": formatted_reduced_history, "context": reduced_docs},
             config={"callbacks": [self.prompt_logger]}
         )
 
         return {
             "answer": answer,
             "question": question,
-            "chat_history": formatted_history,
+            "chat_history": reduced_history,
             "source_documents": reduced_docs
         }
 
