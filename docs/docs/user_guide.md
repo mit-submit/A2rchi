@@ -102,6 +102,8 @@ Additional configuration options for the chatbot, deployed automatically with A2
 
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
 
+6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
+
 #### JIRA
 
 Find below the configuration fields for JIRA feature.
@@ -258,6 +260,33 @@ TODO: add description of interface here
 ### Secrets
 
 ### Configuration
+
+
+## Mattermost Interface
+
+Set up A2rchi to read posts from your mattermost forum and post draft responses to a specified mattermost channel.
+
+### Secrets
+
+You need to specify a webhook, a key and the id of two channels to read and write. Should be specified like this.
+
+- `mattermost_webhook.txt`
+- `mattermost_pak.txt`
+- `mattermost_channel_id_read.txt`
+- `mattermost_channel_id_write.txt`
+
+location_of_secrets: #REQUIRED
+  - ~/.secrets/mattermost
+
+### Running the Mattermost service
+
+To run the Mattermost service, simply add the mattermost flag. For example:
+
+```nohighlight
+a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost True
+```
+
+
 
 ## Grafana Interface 
 

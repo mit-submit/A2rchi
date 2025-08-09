@@ -7,12 +7,8 @@ COPY requirements.txt requirements.txt
 COPY LICENSE LICENSE
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
-#EXPOSE 7861
 
-# ensure this directory is present for prod-801 deployment
-# RUN if [ "$BUILD_ENV" = "prod-801" ] ; then mkdir /root/data/801-content ; fi
-
-# Install Firefox and Geckodriver for Selenium 
+# Install Firefox and Geckodriver for Selenium
 RUN apt-get update && apt-get install -y \
     firefox-esr \
     wget \
@@ -33,4 +29,4 @@ COPY pyproject.toml pyproject.toml
 COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
 
-CMD ["python", "-u", "a2rchi/bin/service_chat.py"]
+CMD ["python", "-u", "a2rchi/bin/service_mattermost.py"]

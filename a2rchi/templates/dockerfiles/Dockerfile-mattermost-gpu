@@ -72,4 +72,4 @@ RUN pip install --upgrade pip && pip install .
 
 ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
 
-CMD ["python", "-u", "a2rchi/bin/service_chat.py"]
+CMD ["python", "-u", "a2rchi/bin/service_mattermost.py"]
