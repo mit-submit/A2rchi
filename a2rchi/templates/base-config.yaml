@@ -208,8 +208,9 @@ utils:
   piazza:
     network_id: {{ utils.piazza.network_id }}
     update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
-  cleo: 
-    cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
+  redmine:
+    redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
+    answer_tag: {{ utils.redmine.answer_tag | default('-- A2rchi -- Resolving email was sent', true)}}
   mailbox: 
     IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
     mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}

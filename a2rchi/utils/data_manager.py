@@ -259,9 +259,11 @@ class DataManager():
                     time_hash = str(int(time_hash) + 1)
                 ids.append(str(filehash) + str(chunk_hash) + str(time_hash))
 
-            logger.info(f"Ids: {ids}")
+            logger.debug(f"Ids: {ids}")
+
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            logger.info(f"Successfully added file {filename}")
+
+            logger.debug(f"Successfully added file {filename}")
 
         return collection
 

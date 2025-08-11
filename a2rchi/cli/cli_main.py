@@ -235,6 +235,7 @@ def cli():
 @click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
 @click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
+@click.option('--cleo-tickets', '-ct', 'include_cleo_tickets', type=bool, default=False, help="Boolean to store cleo tickets in vector database for RAG. Automatically included if using --cleo-and-mailer.")
 @click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
 @click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
 @click.option('--grader', '-grader', 'include_grader_service', is_flag=True, help="Flag to add service for grading service (image to text, then grading, on web interface)")
@@ -250,6 +251,7 @@ def create(
     include_grafana, 
     include_uploader_service, 
     include_cleo_and_mailer,
+    include_cleo_tickets,
     include_jira,
     include_piazza_service,
     include_grader_service,
@@ -464,12 +466,19 @@ def create(
         _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
 
+    if include_cleo_tickets:
+        compose_template_vars["cleotickets"] = include_cleo_tickets
+        _prepare_secret(a2rchi_name_dir, "cleo_url", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_user", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_pw", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_project", locations_of_secrets)
 
     compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
     if include_cleo_and_mailer:
         _print_msg("Preparing Cleo and Emailer Service")
 
         # Add uploader service to compose
+        compose_template_vars["cleotickets"] = include_cleo_and_mailer
         compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
         compose_template_vars["cleo_image"] = f"cleo-{name}"
         compose_template_vars["cleo_tag"] = tag
