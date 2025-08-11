@@ -5,7 +5,7 @@ from a2rchi.utils.logging import get_logger
 
 import os
 from redminelib import Redmine
-from typing import Dict, Iterator
+from typing import Any, Dict, Iterator
 
 logger = get_logger(__name__)
 
@@ -26,7 +26,7 @@ class RedmineClient():
 
             self.anonymizer = Anonymizer()
 
-    def _verify(self, verbose=True):
+    def _verify(self, verbose: bool = True) -> bool:
         """
         Check if necessary secrets are provided to access Redmine
         """
@@ -40,7 +40,7 @@ class RedmineClient():
         
         return True
 
-    def _connect(self):
+    def _connect(self) -> None:
         """
         Open the redmine web site called cleo
         """
@@ -48,7 +48,7 @@ class RedmineClient():
         self.redmine = Redmine(self.redmine_url, username=self.redmine_user, password=self.redmine_pw)
         return
 
-    def _load(self):
+    def _load(self) -> None:
         """
         Load the project that is responsible to deal with email tickets.
         """
@@ -130,7 +130,7 @@ class RedmineClient():
         
         logger.info(f"Successfully processed {processed_count} redmine tickets")
 
-    def get_closed_issues(self):
+    def get_closed_issues(self) -> Any:
 
         closed_issues = self.redmine.issue.filter(
             project_id=self.project.id,
@@ -138,7 +138,7 @@ class RedmineClient():
         )
         return closed_issues
     
-    def _extract_answer_from_journals(self, journals) -> str:
+    def _extract_answer_from_journals(self, journals: Any) -> str:
         """
         Takes Redmine journal, returns formatted and anonymized answer (most recent one for now) if exists, otherwise empty string (checked later)
         """
