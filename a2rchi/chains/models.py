@@ -242,15 +242,14 @@ class VLLM(BaseCustomLLM):
 
     def __init__(self, **kwargs):
         super().__init__()
-        print("[VLLM DEBUG] kwargs received:", kwargs)
         for key, value in kwargs.items():
             setattr(self, key, value)
 
         try:
             import xformers
-            print(f"[DEBUG] xformers version: {xformers.__version__}")
+            logger.debug(f"xformers version: {xformers.__version__}")
         except ImportError:
-            print("[DEBUG] xformers is NOT installed.") 
+            logger.debug("xformers is NOT installed.") 
 
         from vllm import LLM as vllmLLM
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -284,18 +283,11 @@ class VLLM(BaseCustomLLM):
             )
             self.set_cached_model(model_cache_key, (None, self.vllm_engine))
 
-        print(f"[VLLM] input nGPU={self.tensor_parallel_size}")
+        logger.debug(f"Input nGPU={self.tensor_parallel_size}")
 
     @property
     def _llm_type(self) -> str:
         return "custom"
-
-    @staticmethod
-    def strip_all_html(text: str) -> str:
-        from html import unescape
-        import re
-        text = unescape(text)
-        return re.sub(r'<[^>]+>', '', text)
 
     def _call(
         self,
@@ -306,15 +298,8 @@ class VLLM(BaseCustomLLM):
         
         from vllm import SamplingParams
 
-        print("[VLLM DEBUG] Full original prompt:\n", prompt)
-        prompt = self.strip_all_html(prompt)
-        prompt = truncate_prompt(prompt, self.tokenizer, self.max_model_len)
-        print("[VLLM DEBUG] formatted prompt:\n", prompt)
-        formatter = PromptFormatter(self.tokenizer)
+        formatter = PromptFormatter(self.tokenizer, strip_html=True)
         formatted_prompt, end_tag = formatter.format_prompt(prompt)
-
-        print("[DEBUG] Sent prompt to model:\n", formatted_prompt)
-
 
         sampling_params = SamplingParams(
             temperature=self.temperature,

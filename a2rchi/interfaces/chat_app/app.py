@@ -1,5 +1,5 @@
 from a2rchi.chains.chain import Chain
-from a2rchi.utils.config_loader import Config_Loader, CONFIG_PATH
+from a2rchi.utils.config_loader import ConfigLoader, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
@@ -71,7 +71,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         }
     
     def __init__(self):
-        self.config = Config_Loader().config
+        self.config = ConfigLoader().config
         super().__init__()
 
     def block_text(self,text):
@@ -106,7 +106,7 @@ class ChatWrapper:
     """
     def __init__(self):
         # load configs
-        self.config = Config_Loader().config
+        self.config = ConfigLoader().config
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -428,7 +428,7 @@ class FlaskAppWrapper(object):
         logger.info("Entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
-        self.config = Config_Loader().config
+        self.config = ConfigLoader().config
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -521,7 +521,7 @@ class FlaskAppWrapper(object):
             f.write(summary_prompt)
 
         # re-read config using ConfigLoader and update dependent variables
-        self.config = Config_Loader().config
+        self.config = ConfigLoader().config
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]

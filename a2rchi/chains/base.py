@@ -4,7 +4,7 @@ from langchain_core.callbacks.file import FileCallbackHandler
 
 from a2rchi.chains.utils.token_limiter import TokenLimiter
 from a2rchi.chains.utils import history_utils
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import ConfigLoader
 from a2rchi.utils.logging import get_logger
 
 from langchain_core.language_models.base import BaseLanguageModel
@@ -23,29 +23,23 @@ from datetime import datetime
 logger = get_logger(__name__)
 
 # DEFINITIONS
-config = Config_Loader().config["chains"]["base"]
-data_path = Config_Loader().config["global"]["DATA_PATH"]
+config = ConfigLoader().config["chains"]["base"]
+data_path = ConfigLoader().config["global"]["DATA_PATH"]
 
 class BaseQAChain:
     """
     Chain for chatting with an index, designed originally for SubMIT, now used for general QA
     """
 
-    def __init__(self, retriever: BaseRetriever, combine_docs_chain, condense_question_chain, llm: BaseLanguageModel):
+    def __init__(self, retriever: BaseRetriever, combine_docs_chain, condense_question_chain, llm: BaseLanguageModel, prompt: BasePromptTemplate):
         self.retriever = retriever
         self.combine_docs_chain = combine_docs_chain
         self.condense_question_chain = condense_question_chain
         self.llm = llm
-        llm_max_tokens = getattr(llm, 'max_tokens', 7000)
-        if llm_max_tokens is None or llm_max_tokens <= 0:
-            self.max_tokens_limit = 7000
-            logger.warning(f"LLM has no valid max_tokens, using default: {self.max_tokens_limit}")
-        else:
-            self.max_tokens_limit = llm_max_tokens
-            logger.info(f"Using LLM max tokens: {self.max_tokens_limit}")
+        self.prompt = prompt
         logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
         self.prompt_logger = PromptLogger(logfile)
-        self.token_limiter = TokenLimiter(llm=self.llm, max_tokens=self.max_tokens_limit)
+        self.token_limiter = TokenLimiter(llm=self.llm, prompt=self.prompt)
 
     def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         question = inputs["question"]
@@ -109,7 +103,6 @@ class BaseQAChain:
         logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
         logger.info(f"Setting up BaseQAChain with log file for filled templates at: {logfile}, accessible outside the container at volume a2rchi-<name of your deployment>")
 
-
         doc_chain = create_stuff_documents_chain(
             llm=llm,
             prompt=qa_prompt,
@@ -127,6 +120,7 @@ class BaseQAChain:
             combine_docs_chain=doc_chain,
             condense_question_chain=condense_question_chain,
             llm=llm,
+            prompt=qa_prompt
         )
 
     

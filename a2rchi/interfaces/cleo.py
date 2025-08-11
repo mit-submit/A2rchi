@@ -1,4 +1,4 @@
-from a2rchi.utils.config_loader import Config_Loader, CONFIG_PATH
+from a2rchi.utils.config_loader import ConfigLoader, CONFIG_PATH
 from a2rchi.chains.chain import Chain
 from a2rchi.utils import sender
 from a2rchi.utils.data_manager import DataManager
@@ -36,7 +36,7 @@ class CleoAIWrapper:
         self.data_manager.update_vectorstore()
 
         # configs
-        self.config = Config_Loader().config
+        self.config = ConfigLoader().config
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]

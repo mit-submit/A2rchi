@@ -1,11 +1,11 @@
-from a2rchi.utils.config_loader import load_config_file
+from a2rchi.utils.config_loader import ConfigLoader
 import logging
 import yaml
 
 # ignore debug logs from these modules, too verbose :)
 ignore_debug_modules = ["urllib3.connectionpool", "filelock"]
 
-config = load_config_file()
+config = ConfigLoader(map=False).config
 verbosity = config["verbosity"]
 
 logging_verboseLevel = [

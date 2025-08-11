@@ -1,9 +1,9 @@
 # flake8: noqa
 from langchain_core.prompts import PromptTemplate
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import ConfigLoader
 from a2rchi.chains.utils.prompt_validator import ValidatedPromptTemplate
 
-config = Config_Loader().config["chains"]["prompts"]
+config = ConfigLoader().config["chains"]["prompts"]
 
 prompt_config = {
     "QA": {

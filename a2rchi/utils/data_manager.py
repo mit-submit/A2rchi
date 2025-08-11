@@ -25,9 +25,9 @@ logger = get_logger(__name__)
 class DataManager():
 
     def __init__(self):
-        from a2rchi.utils.config_loader import Config_Loader
-        self.config = Config_Loader().config["utils"]
-        self.global_config = Config_Loader().config["global"]
+        from a2rchi.utils.config_loader import ConfigLoader
+        self.config = ConfigLoader().config["utils"]
+        self.global_config = ConfigLoader().config["global"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # create data path if it doesn't exist

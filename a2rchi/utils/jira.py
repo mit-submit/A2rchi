@@ -2,7 +2,7 @@ import jira
 import os
 from typing import Iterator, Optional
 
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import ConfigLoader
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.anonymizer import Anonymizer
 from a2rchi.utils.logging import get_logger
@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 class JiraClient():
     def __init__(self) -> None:
         try:
-            self.jira_config = Config_Loader().config["utils"]["jira"]
+            self.jira_config = ConfigLoader().config["utils"]["jira"]
             self.jira_url = self.jira_config["JIRA_URL"]
             self.jira_projects = self.jira_config["JIRA_PROJECTS"]
 

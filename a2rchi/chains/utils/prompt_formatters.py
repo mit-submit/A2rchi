@@ -5,15 +5,27 @@ from a2rchi.chains.utils import history_utils
 logger = get_logger(__name__)
 
 class PromptFormatter:
-    def __init__(self, tokenizer, image=False):
+    def __init__(self, tokenizer, image = False, strip_html:bool = False):
         self.tokenizer = tokenizer
         self.special_tokens = tokenizer.special_tokens_map
         self.has_chat_template = hasattr(tokenizer, "chat_template") and tokenizer.chat_template is not None
         self.image = image # can include a image processing prompt formatting later if needed or wanted...
+        self.strip_html = strip_html
+
+    @staticmethod
+    def strip_all_html(text: str) -> str:
+        from html import unescape
+        import re
+        text = unescape(text)
+        return re.sub(r'<[^>]+>', '', text)
 
     # choosing a function according to the prompt, then some string manipulation to input correct special tokens (depends on llm) in correct places
     # returns a tuple of (formatted_prompt, end_tag), where end_tag signifies where the generated text begins (the end of the prompt)
     def format_prompt(self, prompt: str) -> Tuple[str, str]:
+
+        if self.strip_html:
+            prompt = self.strip_all_html(prompt)
+
         if "Context:" in prompt and "Question:" in prompt:
             return self._submit_qa_prompt_formatting(prompt)
 

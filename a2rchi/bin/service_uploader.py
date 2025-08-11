@@ -1,6 +1,6 @@
 #!/bin/python
 from a2rchi.interfaces.uploader_app.app import FlaskAppWrapper
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import ConfigLoader
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import setup_logging
 
@@ -16,8 +16,8 @@ os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 
-data_manager_config = Config_Loader().config["utils"]["data_manager"]
-uploader_config = Config_Loader().config["interfaces"]["uploader_app"]
+data_manager_config = ConfigLoader().config["utils"]["data_manager"]
+uploader_config = ConfigLoader().config["interfaces"]["uploader_app"]
 
 # Decision whether or not to run the vectorstore as a dynamic service or a static one
 #
