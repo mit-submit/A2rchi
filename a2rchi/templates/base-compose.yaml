@@ -1,5 +1,5 @@
 services:
-  {% if not include_grader_service -%}
+  {% if not use_grader_service -%}
   chat:
     image: {{ chat_image }}:{{ chat_tag }}
     build:
@@ -145,7 +145,7 @@ services:
       timeout: 5s
       retries: 5
 
-  {% if include_grafana -%}
+  {% if use_grafana -%}
   grafana:
     image: {{ grafana_image }}:{{ grafana_tag }}
     build:
@@ -172,7 +172,7 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_uploader_service -%}
+  {% if use_uploader_service -%}
   uploader:
     image: {{ uploader_image }}:{{ uploader_tag }}
     build:
@@ -221,7 +221,7 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_grader_service -%}
+  {% if use_grader_service -%}
   grader:
     image: {{ grader_image }}:{{ grader_tag }}
     build:
@@ -308,7 +308,7 @@ services:
     {%- endif %}
   {%- endif %}
 
-  {% if include_piazza_service -%}
+  {% if use_piazza_service -%}
   piazza:
     image: {{ piazza_image }}:{{ piazza_tag }}
     build:
@@ -363,7 +363,7 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_mattermost_service -%}
+  {% if use_mattermost_service -%}
   mattermost:
     image: {{ mattermost_image }}:{{ mattermost_tag }}
     build:
@@ -450,7 +450,7 @@ services:
     {%- endif %}    
   {% endif %}
 
-  {% if include_cleo_and_mailer -%}
+  {% if use_cleo_and_mailer -%}
   cleo:
     image: {{ cleo_image }}:{{ cleo_tag }}
     build:
@@ -626,11 +626,11 @@ volumes:
     external: true
   {{ postgres_volume_name }}:
     external: true
-  {% if include_grafana -%}
+  {% if use_grafana -%}
   {{ grafana_volume_name }}:
     external: true
   {%- endif %}
-  {% if include_grader_service -%}
+  {% if use_grader_service -%}
   {{ grader_volume_name }}:
     external: true
   {%- endif %}

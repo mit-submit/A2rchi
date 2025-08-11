@@ -170,7 +170,7 @@ When you restart the service, all the documents will be uploaded to the vector s
 
 In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: 
 ```nohighlight
---document-uploader True
+--document-uploader 
 ```
 The exact port may vary based on configuration (default is `5001`). A simple `docker ps -a` command run on the server will inform which port it's being run on.
 
@@ -250,7 +250,7 @@ utils:
 To run the Piazza service, simply add the piazza flag. For example:
 
 ```nohighlight
-a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza True
+a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza 
 ```
 
 ## Cleo/Mailbox Interface
@@ -283,7 +283,7 @@ location_of_secrets: #REQUIRED
 To run the Mattermost service, simply add the mattermost flag. For example:
 
 ```nohighlight
-a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost True
+a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost 
 ```
 
 
@@ -299,7 +299,7 @@ Note, if you are deploying a version of A2rchi you have already used (i.e., you 
 
 Once this is set, add the following argument to your a2rchi create command, e.g.,
 ```nohighlight
-a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana True
+a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana 
 ```
 and you should see something like this
 ```
