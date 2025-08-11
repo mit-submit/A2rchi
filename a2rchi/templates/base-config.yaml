@@ -145,6 +145,7 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.base_model | default("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.seed | default("null", true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.max_new_tokens | default(4096, true) }}
           top_p: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_p | default(0.95, true) }}
           temperature: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.temperature | default(0.6, true) }}

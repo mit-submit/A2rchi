@@ -197,6 +197,7 @@ class VLLM(BaseCustomLLM):
     repetition_penalty: float = 1.5
     seed: int = None
     max_new_tokens: int = 2048      # maximum numbers of tokens to generate
+    enable_salesforce_content_safety: bool = False
 
     gpu_memory_utilization: float = 0.7
     tensor_parallel_size: int = 1

@@ -141,7 +141,7 @@ class TokenLimiter:
         while total_tokens() > self.effective_max_tokens and len(history) > self.min_history_messages:
             removed_msg = history.pop(0)
             removed_tokens = history_tokens.pop(0)
-            logger.info(f"Removed old message ({len(removed_tokens)} tokens) from history")
+            logger.info(f"Removed old message ({removed_tokens} tokens) from history")
 
         # --- Step 2: Reduce documents ---
         num_docs = len(docs)
