@@ -87,7 +87,7 @@ class TokenLimiter:
                 raise Exception(f"Value of count is too low ({count}).")
             return count
         except Exception as e:
-            self.logger.error(e)
+            logger.warning(e)
             return 1e10
 
     def safe_token_count(self, text: str) -> int:
