@@ -67,7 +67,7 @@ chains:
     GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
     GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
     GRADING_FINAL_GRADE_MODEL_NAME: {{ chains.chain.GRADING_FINAL_GRADE_MODEL_NAME | default('null', true) }}
-    MAX_MODEL_TOKENS: {{ chains.utils.token_limiter.MAX_MODEL_TOKENS | default(10000, true) }}
+    MAX_MODEL_TOKENS: {{ chains.chain.MAX_MODEL_TOKENS | default(10000, true) }}
     MODEL_CLASS_MAP:
       AnthropicLLM:
         class: AnthropicLLM

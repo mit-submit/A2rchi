@@ -8,7 +8,6 @@ from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
 config = load_config(map=False)
-MAX_MODEL_TOKENS = 10000
 
 class TokenLimiter:
     def __init__(
