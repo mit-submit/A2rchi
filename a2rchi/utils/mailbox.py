@@ -1,5 +1,5 @@
 #!/bin/python
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
 
@@ -27,7 +27,7 @@ class Mailbox:
         self.mailbox = None
         self.user = user
         self.password = password
-        self.config = ConfigLoader().config["utils"]["mailbox"]
+        self.config = load_config()["utils"]["mailbox"]
 
         # make sure to open the mailbox
         if self._verify():

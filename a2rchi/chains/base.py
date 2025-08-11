@@ -4,7 +4,7 @@ from langchain_core.callbacks.file import FileCallbackHandler
 
 from a2rchi.chains.utils.token_limiter import TokenLimiter
 from a2rchi.chains.utils import history_utils
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 
 from langchain_core.language_models.base import BaseLanguageModel
@@ -23,8 +23,8 @@ from datetime import datetime
 logger = get_logger(__name__)
 
 # DEFINITIONS
-config = ConfigLoader().config["chains"]["base"]
-data_path = ConfigLoader().config["global"]["DATA_PATH"]
+config = load_config()["chains"]["base"]
+data_path = load_config()["global"]["DATA_PATH"]
 
 class BaseQAChain:
     """

@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 
-config = ConfigLoader().config["chains"]["base"]
+config = load_config()["chains"]["base"]
 
 def stringify_history(chat_history: List[Tuple[str, str]]) -> str:
     """

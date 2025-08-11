@@ -1,5 +1,5 @@
 from a2rchi.chains.chain import Chain
-from a2rchi.utils.config_loader import ConfigLoader, CONFIG_PATH
+from a2rchi.utils.config_loader import load_config, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
@@ -45,7 +45,7 @@ csv.field_size_limit(sys.maxsize)
 
 class ImageToTextWrapper:
     def __init__(self):
-        self.config = ConfigLoader().config
+        self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -92,7 +92,7 @@ class ImageToTextWrapper:
 
 class GradingWrapper:
     def __init__(self):
-        self.config = ConfigLoader().config
+        self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -148,7 +148,7 @@ class FlaskAppWrapper(object):
     def __init__(self, app: Flask, **configs):
         self.app = app
         self.configs(**configs)
-        self.config = ConfigLoader().config
+        self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]

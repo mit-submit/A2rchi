@@ -21,13 +21,12 @@ import time
 
 logger = get_logger(__name__)
 
-
 class DataManager():
 
     def __init__(self):
-        from a2rchi.utils.config_loader import ConfigLoader
-        self.config = ConfigLoader().config["utils"]
-        self.global_config = ConfigLoader().config["global"]
+        from a2rchi.utils.config_loader import load_config
+        self.config = load_config(map=True)["utils"]
+        self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # create data path if it doesn't exist

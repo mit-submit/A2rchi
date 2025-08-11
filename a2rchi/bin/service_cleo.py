@@ -1,6 +1,6 @@
 #!/bin/python
 from a2rchi.interfaces import cleo
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import setup_logging
 
@@ -20,7 +20,7 @@ os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 time.sleep(30)
 
 print("Starting Cleo Service")
-config = ConfigLoader().config["utils"]
+config = load_config()["utils"]
 cleo = cleo.Cleo('Cleo_Helpdesk')
 
 while True:

@@ -3,11 +3,11 @@ from langchain_core.documents import Document
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
 
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
-config = ConfigLoader(map=False).config
+config = load_config(map=False)
 MAX_MODEL_TOKENS = 10000
 
 class TokenLimiter:

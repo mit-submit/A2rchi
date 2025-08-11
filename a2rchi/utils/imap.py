@@ -1,12 +1,12 @@
 import os
 import getpass, imaplib, email
 
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-config = ConfigLoader().config["utils"]["mailbox"]
+config = load_config()["utils"]["mailbox"]
 
 def get_charsets(msg):
     charsets = set({})

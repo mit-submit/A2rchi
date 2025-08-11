@@ -1,5 +1,5 @@
 #!/bin/python
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import setup_logging, get_logger
 from a2rchi.interfaces.uploader_app.app import add_username_password
@@ -11,7 +11,7 @@ setup_logging()
 logger = get_logger(__name__)
 
 # load config and create accounts path if it doesn't exist
-global_config = ConfigLoader().config["global"]
+global_config = load_config()["global"]
 os.makedirs(global_config["ACCOUNTS_PATH"], exist_ok=True)
 
 # read salt

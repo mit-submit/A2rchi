@@ -1,4 +1,4 @@
-from a2rchi.utils.config_loader import ConfigLoader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.scraper import Scraper
 from a2rchi.utils.logging import get_logger
@@ -194,8 +194,8 @@ class FlaskAppWrapper(object):
 
     def __init__(self, app, **configs):
         # load global config
-        self.global_config = ConfigLoader().config["global"]
-        self.config = ConfigLoader().config["interfaces"]["uploader_app"]
+        self.global_config = load_config()["global"]
+        self.config = load_config()["interfaces"]["uploader_app"]
         self.data_path = self.global_config["DATA_PATH"]
         self.salt = read_secret("UPLOADER_SALT")
 
