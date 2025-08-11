@@ -127,9 +127,3 @@ class GitScraper():
         print(f"- MD files containing complete raw page content")
         print(f"- Text files for basic reading")
         print(f"- JSON index of all crawled pages")
-
-t0_doc_url = 'https://gitlab.cern.ch/cms-tier0-ops/documentation.git'
-dm_doc_url = 'https://gitlab.cern.ch/cmsdmops/Documentation.git'
-git = GitScraper(git_url=dm_doc_url)
-crawled_data = git.crawl()
-git.save_crawled_data(output_dir='crawled_data_dm')
