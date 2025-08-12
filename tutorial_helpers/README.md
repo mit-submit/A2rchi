@@ -1,12 +1,12 @@
 # Tutorial Helpers
 
-This directory contains helper scripts and documentation for setting up A2rchi on HPC systems with container support.
+This directory contains helper scripts and documentation for setting up A2rchi for the LPC session.
 
 ## Quick Start Guide
 
 ### Prerequisites
 
-Make sure you are on the "heavy node", `cmslpc-el9-heavy01.fnal.gov`,  which has a large enough local filesystem (/dev/sda2) to build the containers.
+Make sure you are on the "heavy node", `ssh <your username>@cmslpc-el9-heavy01.fnal.gov`,  which has a large enough local filesystem (/dev/sda2) to build the containers. See more [here](https://uscms.org/uscms_at_work/physics/computing/getstarted/uaf.shtml#nodes)
 
 ### 1. Clone and Setup Python Environment
 
