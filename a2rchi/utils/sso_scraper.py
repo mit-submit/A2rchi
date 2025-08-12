@@ -3,6 +3,7 @@ import time
 import re
 import json
 import urllib.parse
+from w3lib.url import url_query_cleaner
 from abc import ABC, abstractmethod
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -149,12 +150,23 @@ class SSOScraper(ABC):
                         normalized_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
                         if parsed_url.query:
                             normalized_url += f"?{parsed_url.query}"
+
+                        # BIG patch start
+                        normalized_url = normalized_url.split("?")[0]
+                        if 'bin/rdiff' in normalized_url or 'bin/edit' in normalized_url or 'bin/oops' in normalized_url  or 'bin/attach' in normalized_url or 'bin/genpdf' in normalized_url or '/WebIndex' in normalized_url:
+                            continue
+                        # BIG patch end
                         links.append(normalized_url)
+                        
             except Exception as e:
                 logger.error(f"Error extracting link: {e}")
                 
         return list(set(links))  # Remove duplicates
+
     
+#----------------------------CONSTRUCTION ZONE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
     def crawl(self, start_url):
         """Crawl pages starting from the given URL, storing title and content of each page.
         
@@ -165,6 +177,8 @@ class SSOScraper(ABC):
             list: List of dictionaries containing page data (url, title, content)
         """
         max_depth = self.max_depth
+        depth = 0
+        
         if not self.driver:
             self.setup_driver()
             
@@ -172,6 +186,7 @@ class SSOScraper(ABC):
         self.visited_urls = set()
         self.page_data = []
         to_visit = [start_url]
+        level_links = []
         
         # First authenticate through the start URL
         self.authenticate_and_navigate(start_url)
@@ -182,15 +197,14 @@ class SSOScraper(ABC):
         
         pages_visited = 0
         
-        while to_visit and pages_visited < max_depth:
+        while to_visit and depth < max_depth:
             current_url = to_visit.pop(0)
             
             # Skip if we've already visited this URL
             if current_url in self.visited_urls:
                 continue
                 
-            logger.info(f"Crawling page {pages_visited + 1}/{max_depth}: {current_url}")
-            
+            logger.info(f"<MP> Crawling page {depth + 1}/{max_depth}: {current_url}")
             try:
                 # Navigate to the page
                 self.navigate_to(current_url, wait_time=2)
@@ -198,7 +212,7 @@ class SSOScraper(ABC):
                 # Mark as visited
                 self.visited_urls.add(current_url)
                 pages_visited += 1
-                
+
                 # Extract and store page data
                 page_data = self.extract_page_data(current_url)
                 self.page_data.append(page_data)
@@ -206,12 +220,23 @@ class SSOScraper(ABC):
                 
                 # Get links to follow
                 new_links = self.get_links_with_same_hostname(current_url)
-                logger.info(f"Found {len(new_links)} links on the page")
-                
+                logger.info(f"Found {len(new_links)} links on the page (nv: {pages_visited})")
+
                 # Add new links to visit
                 for link in new_links:
-                    if link not in self.visited_urls and link not in to_visit:
+                    if link not in self.visited_urls and link not in to_visit and link not in level_links:
+                        logger.info(f"<MP> Found link HERE: {link} (nv: {pages_visited})")
+                        level_links.append(link)
+
+                # scan next level if to_visit is empty
+                if len(to_visit) == 0:
+                    for link in new_links:
                         to_visit.append(link)
+                    depth += 1
+                    level_links = []
+                        
+                        
+#----------------------CONSTRUCTION ZONE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
                         
             except Exception as e:
                 logger.info(f"Error crawling {current_url}: {e}")

@@ -122,7 +122,6 @@ class DataManager():
         # get current status of persistent vstore 
         files_in_vstore = [metadata["filename"] for metadata in collection.get(include=["metadatas"])["metadatas"]]
 
-
         # scan data folder and obtain list of files in data. Assumes max depth = 1
         dirs = [
             os.path.join(self.data_path, dir)
@@ -183,6 +182,21 @@ class DataManager():
 
         return collection
 
+    
+    def _find_url(self, filename):
+        """
+        Per convention when we dump a web page into a txt file we start the file on the first line with
+        URL: http....
+        to describe the original source for that page. If no url can be found the filename is used.
+        """
+        url = filename
+        with open(f"{self.data_path}/websites/{filename}","r") as f:
+            first_line = f.readline()
+        if first_line.split(' ')[0] == 'URL:' and first_line.split(' ')[1].startswith('http'):
+            url = first_line.split(' ')[1]
+        logger.info(f"checked for URL in: {self.data_path}/websites/{filename} -> URL: {url}")
+        return url
+
 
     def _add_to_vectorstore(self, collection, files_to_add, sources={}):
         """
@@ -191,7 +205,7 @@ class DataManager():
            collection:   a ChromaDB collection
            files_to_add: a dictionary with keys being the filenames and values being the file path
            sources:      a dictionary, usually loaded from a yaml file, which has keys being the 
-                         file hash (everything in the file name except the file extension) and  has
+                         file hash (everything in the file name except the file extension) and has
                          values of the url from which the source originated from. Not all files must
                          be in the source dictionary.
 
@@ -223,14 +237,14 @@ class DataManager():
 
             # explicitly get file metadata
             filehash = filename.split(".")[0]
-            url = sources[filehash] if filehash in sources.keys() else ""
-
+            url = sources[filehash] if filehash in sources.keys() else self._find_url(filename)
+            
             # embed each chunk
             embeddings = self.embedding_model.embed_documents(chunks)
 
-            # add filename as metadata for each chunk
+            # add filename (better even corresponding url) as metadata for each chunk
             for metadata in metadatas:
-                metadata["filename"] = filename
+                metadata["filename"] = url
             
             # create unique id for each chunk
             # the first 12 bits of the id being the filename, 6 more based on the chunk itself, and the last 6 hashing the time
@@ -249,7 +263,7 @@ class DataManager():
 
             logger.info(f"Ids: {ids}")
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            logger.info(f"Successfully added file {filename}")
+            logger.info(f"Successfully added file {url}")
 
         return collection
 
