@@ -433,6 +433,7 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.chat_app_config = self.config["interfaces"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
@@ -460,8 +461,14 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
-        self.add_endpoint('/api/list_docs', 'list_docs', self.list_docs, methods=["GET"])
-        self.add_endpoint('/api/search_docs', 'search_docs', self.search_docs, methods=["POST"])
+        
+        # conditionally add ChromaDB endpoints based on config
+        if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+            logger.info("Adding ChromaDB API endpoints (list_docs, search_docs)")
+            self.add_endpoint('/api/list_docs', 'list_docs', self.list_docs, methods=["GET"])
+            self.add_endpoint('/api/search_docs', 'search_docs', self.search_docs, methods=["POST"])
+        else:
+            logger.info("ChromaDB API endpoints disabled by config")
 
     def configs(self, **configs):
         for config, value in configs:
@@ -528,6 +535,7 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.chat_app_config = self.config["interfaces"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
@@ -713,6 +721,10 @@ class FlaskAppWrapper(object):
         - content_length: Max content preview length (default: -1 for full content)
         Returns a JSON with paginated list of documents and their metadata.
         """
+        # Check if ChromaDB endpoints are enabled
+        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+            
         try:
             # Get pagination parameters from query string
             page = int(request.args.get('page', 1))
@@ -797,6 +809,10 @@ class FlaskAppWrapper(object):
         - include_full_content (optional): Whether to include full content (default: false)
         Returns the most similar documents with their similarity scores.
         """
+        # Check if ChromaDB endpoints are enabled
+        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+            
         try:
             # Get the query from request
             data = request.json
