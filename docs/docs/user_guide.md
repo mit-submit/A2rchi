@@ -8,7 +8,19 @@ The user's guide is broken up into detailing the additional command line options
 
 There are a few additional options you can pass to the `create` command that are not specific to a given interface.
 
-1. **`--podman`**: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker.
+1. **`--podman`**: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker. 
+
+    Note, if using Podman, to ensure your containers stay running for extended periods, you need to enable lingering. To do this, the following command should work:
+
+          loginctl enable-linger
+
+    To check/confirm the lingering status, simply do
+
+          loginctl user-status | grep -m1 Linger
+
+    Click [here](https://access.redhat.com/solutions/7054698) to read more.
+
+
 
 2. **`--gpu`**: This will deploy A2rchi onto the GPUs on your machine, which you will need to do should you decide to run open-source models. NOTE: this has only been tested with Podman, so will likely not work with Docker, for now.
 
