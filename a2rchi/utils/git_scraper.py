@@ -27,8 +27,12 @@ class GitScraper():
             try:
                 self.git_username = read_secret("GIT_USERNAME")
                 self.git_token = read_secret("GIT_TOKEN")
+
+                if self.git_username=='' or self.git_token=='':
+                    raise FileNotFoundError("The Git username or password cannot be blank.")
                 if 'gitlab' in self.git_url:
                     self.git_url = self.git_url.replace('gitlab',f'{self.git_username}:{self.git_token}@gitlab')
+                    print(self.git_url)
                 elif 'github' in self.git_url:
                     self.git_url = self.git_url.replace('github',f'{self.git_username}:{self.git_token}@github')
                 else:
