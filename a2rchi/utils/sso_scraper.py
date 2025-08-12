@@ -3,7 +3,6 @@ import time
 import re
 import json
 import urllib.parse
-from w3lib.url import url_query_cleaner
 from abc import ABC, abstractmethod
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -151,21 +150,19 @@ class SSOScraper(ABC):
                         if parsed_url.query:
                             normalized_url += f"?{parsed_url.query}"
 
-                        # BIG patch start
+                        # BIG patch start -- this works for CMS twiki but should be generalized
                         normalized_url = normalized_url.split("?")[0]
                         if 'bin/rdiff' in normalized_url or 'bin/edit' in normalized_url or 'bin/oops' in normalized_url  or 'bin/attach' in normalized_url or 'bin/genpdf' in normalized_url or '/WebIndex' in normalized_url:
                             continue
                         # BIG patch end
+                        
                         links.append(normalized_url)
                         
             except Exception as e:
                 logger.error(f"Error extracting link: {e}")
                 
         return list(set(links))  # Remove duplicates
-
     
-#----------------------------CONSTRUCTION ZONE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
 
     def crawl(self, start_url):
         """Crawl pages starting from the given URL, storing title and content of each page.
@@ -204,7 +201,7 @@ class SSOScraper(ABC):
             if current_url in self.visited_urls:
                 continue
                 
-            logger.info(f"<MP> Crawling page {depth + 1}/{max_depth}: {current_url}")
+            logger.info(f"Crawling page {depth + 1}/{max_depth}: {current_url}")
             try:
                 # Navigate to the page
                 self.navigate_to(current_url, wait_time=2)
@@ -225,7 +222,7 @@ class SSOScraper(ABC):
                 # Add new links to visit
                 for link in new_links:
                     if link not in self.visited_urls and link not in to_visit and link not in level_links:
-                        logger.info(f"<MP> Found link HERE: {link} (nv: {pages_visited})")
+                        logger.info(f"Found new link: {link} (nv: {pages_visited})")
                         level_links.append(link)
 
                 # scan next level if to_visit is empty
@@ -235,8 +232,6 @@ class SSOScraper(ABC):
                     depth += 1
                     level_links = []
                         
-                        
-#----------------------CONSTRUCTION ZONE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
                         
             except Exception as e:
                 logger.info(f"Error crawling {current_url}: {e}")
