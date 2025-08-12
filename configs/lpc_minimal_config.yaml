@@ -1,0 +1,23 @@
+# bare minimum configuration needed for a2rchi
+name: bare_minimum_configuration #REQUIRED
+
+global:
+  TRAINED_ON: "Nothing!" #REQUIRED
+
+locations_of_secrets:
+  - ~/.secrets/
+
+chains:
+  chain:
+    MODEL_NAME: OpenAIGPT35
+    CONDENSE_MODEL_NAME: OpenAIGPT35
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt #REQUIRED
+    MAIN_PROMPT: configs/prompts/submit.prompt #REQUIRED
+interfaces:
+  chat_app:
+    EXTERNAL_PORT: 7861 # 7861 is the default, on the same machine each deployment will have to have their own so choose   ↪accordingly
+utils:
+  data_manager:
+    chromadb_external_port: 8000 # 8000 is the default, on the same machine each deployment will have to have their own so choose accordingly
+
