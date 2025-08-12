@@ -8,7 +8,19 @@ The user's guide is broken up into detailing the additional command line options
 
 There are a few additional options you can pass to the `create` command that are not specific to a given interface.
 
-1. **`--podman`**: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker.
+1. **`--podman`**: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker. 
+
+    Note, if using Podman, to ensure your containers stay running for extended periods, you need to enable lingering. To do this, the following command should work:
+
+          loginctl enable-linger
+
+    To check/confirm the lingering status, simply do
+
+          loginctl user-status | grep -m1 Linger
+
+    Click [here](https://access.redhat.com/solutions/7054698) to read more.
+
+
 
 2. **`--gpu`**: This will deploy A2rchi onto the GPUs on your machine, which you will need to do should you decide to run open-source models. NOTE: this has only been tested with Podman, so will likely not work with Docker, for now.
 
@@ -45,6 +57,10 @@ There are a few additional options you can pass to the `create` command that are
 3. **`--gpu-ids`**: Instead of `--gpu`, you can select one or more specific GPU ids, e.g., in case some are in use. Options are `all` (same as `--gpu`), or integers, e.g., `0` or `0,1` (multiple ids should be separated by commas)
 
 4. **`--tag`**: The tag for the images that are built locally. Can be useful when trying different configurations.
+
+5. **`--jira`**: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.
+
+6. **`--debug`**: Flag to set logging level to DEBUG. Default is INFO.
 
 
 ### Optional configuration fields (see required in Getting Started page)
@@ -84,7 +100,7 @@ There are a few additional options you can pass to the `create` command that are
 11. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference`**: Same as #7.
 
 
-## Chat Service
+#### Chat Service
 
 Additional configuration options for the chatbot, deployed automatically with A2rchi:
 
@@ -97,6 +113,32 @@ Additional configuration options for the chatbot, deployed automatically with A2
 4. **`interfaces:chat_app:HOSTNAME`**: The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using `localhost` will only work if accessing the application from the same machine. Default is `localhost`.
 
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
+
+6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
+
+#### JIRA
+
+Find below the configuration fields for JIRA feature.
+
+1. **`utils:jira:JIRA_URL`**: The URL of the JIRA instance from which A2rchi will fetch data. Its type is string. This option is required if `--jira` flag is used.
+2. **`utils:jira:JIRA_PROJECTS`**: List of JIRA project names that A2rchi will fetch data from. Its type is a list of strings. This option is required if `--jira` flag is used.
+3. **`utils:jira:ANONYMIZE_DATA`**: Boolean flag indicating whether the fetched data from JIRA should be anonymized or not. This option is optional if `--jira` flag is used. Its default value is True.
+
+##### JIRA secret
+
+A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be put in a file called `jira_pat.txt`. This file should be put in the secrets folder.
+
+#### Anonymizer
+
+Find below the configuration fields for anonymization feature. All of them are optional.
+
+1. **`utils:anonymizer:nlp_model`**: The NLP model that the `spacy` library will use to perform Name Entity Recognition (NER). Its type is string. 
+2. **`utils:anonymizer:excluded_words`**: The list of words that the anonymizer should remove. Its type is list of strings. 
+3. **`utils:anonymizer:greeting_patterns`**: The regex pattern to use match and remove greeting patterns. Its type is string.
+4. **`utils:anonymizer:signoff_patterns`**: The regex pattern to use match and remove signoff patterns. Its type is string.
+5. **`utils:anonymizer:email_pattern`**: The regex pattern to use match and remove email addresses. Its type is string.
+6. **`utils:anonymizer:username_pattern`**: The regex pattern to use match and remove JIRA usernames. Its type is string.
+
 
 ## Adding Documents and the Uploader Interface
 
@@ -140,7 +182,7 @@ When you restart the service, all the documents will be uploaded to the vector s
 
 In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: 
 ```nohighlight
---document-uploader True
+--document-uploader 
 ```
 The exact port may vary based on configuration (default is `5001`). A simple `docker ps -a` command run on the server will inform which port it's being run on.
 
@@ -220,7 +262,7 @@ utils:
 To run the Piazza service, simply add the piazza flag. For example:
 
 ```nohighlight
-a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza True
+a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza 
 ```
 
 ## Cleo/Mailbox Interface
@@ -230,6 +272,33 @@ TODO: add description of interface here
 ### Secrets
 
 ### Configuration
+
+
+## Mattermost Interface
+
+Set up A2rchi to read posts from your mattermost forum and post draft responses to a specified mattermost channel.
+
+### Secrets
+
+You need to specify a webhook, a key and the id of two channels to read and write. Should be specified like this.
+
+- `mattermost_webhook.txt`
+- `mattermost_pak.txt`
+- `mattermost_channel_id_read.txt`
+- `mattermost_channel_id_write.txt`
+
+location_of_secrets: #REQUIRED
+  - ~/.secrets/mattermost
+
+### Running the Mattermost service
+
+To run the Mattermost service, simply add the mattermost flag. For example:
+
+```nohighlight
+a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost 
+```
+
+
 
 ## Grafana Interface 
 
@@ -242,7 +311,7 @@ Note, if you are deploying a version of A2rchi you have already used (i.e., you 
 
 Once this is set, add the following argument to your a2rchi create command, e.g.,
 ```nohighlight
-a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana True
+a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana 
 ```
 and you should see something like this
 ```

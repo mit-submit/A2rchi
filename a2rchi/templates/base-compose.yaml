@@ -1,5 +1,5 @@
 services:
-  {% if not include_grader_service -%}
+  {% if not use_grader_service -%}
   chat:
     image: {{ chat_image }}:{{ chat_tag }}
     build:
@@ -145,7 +145,7 @@ services:
       timeout: 5s
       retries: 5
 
-  {% if include_grafana -%}
+  {% if use_grafana -%}
   grafana:
     image: {{ grafana_image }}:{{ grafana_tag }}
     build:
@@ -172,7 +172,7 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_uploader_service -%}
+  {% if use_uploader_service -%}
   uploader:
     image: {{ uploader_image }}:{{ uploader_tag }}
     build:
@@ -221,7 +221,7 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_grader_service -%}
+  {% if use_grader_service -%}
   grader:
     image: {{ grader_image }}:{{ grader_tag }}
     build:
@@ -308,7 +308,7 @@ services:
     {%- endif %}
   {%- endif %}
 
-  {% if include_piazza_service -%}
+  {% if use_piazza_service -%}
   piazza:
     image: {{ piazza_image }}:{{ piazza_tag }}
     build:
@@ -363,7 +363,94 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if include_cleo_and_mailer -%}
+  {% if use_mattermost_service -%}
+  mattermost:
+    image: {{ mattermost_image }}:{{ mattermost_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-mattermost{{ '-gpu' if gpu_ids else '' }}      
+      args:
+        TAG: {{ mattermost_tag }}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      {% if openai -%}
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+      {% if anthropic -%}
+      ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
+      HUGGING_FACE_HUB_TOKEN_FILE: /run/secrets/hf_token
+      {% endif %}
+      {% if gpu_ids -%}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
+      MATTERMOST_WEBHOOK_FILE: /run/secrets/mattermost_webhook
+      MATTERMOST_CHANNEL_ID_READ_FILE: /run/secrets/mattermost_channel_id_read
+      MATTERMOST_CHANNEL_ID_WRITE_FILE: /run/secrets/mattermost_channel_id_write
+      MATTERMOST_PAK_FILE: /run/secrets/mattermost_pak
+    {% if gpu_ids and not use_podman -%}
+    # TODO: docker GPU configuration needs testing
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    {% endif %}
+    secrets:
+      {% if openai -%}
+      - openai_api_key
+      {% endif %}
+      {% if anthropic -%}
+      - anthropic_api_key
+      {% endif %}
+      {% if huggingface -%}
+      - hf_token
+      {% endif %}
+      - mattermost_webhook
+      - mattermost_channel_id_read
+      - mattermost_channel_id_write
+      - mattermost_pak
+    volumes:
+      - {{ chat_volume_name }}:/root/data/
+      - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+      - ./summary.prompt:/root/A2rchi/summary.prompt
+      {% if gpu_ids -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
+    {% if gpu_ids and use_podman -%}
+    # podman GPU configuration
+    security_opt:
+      - label:disable
+    devices:
+    # N.B. even smallest models will load across multiple GPUs if available.
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
+    {%- endif %}
+    {%- endif %}    
+  {% endif %}
+
+  {% if use_cleo_and_mailer -%}
   cleo:
     image: {{ cleo_image }}:{{ cleo_tag }}
     build:
@@ -539,11 +626,11 @@ volumes:
     external: true
   {{ postgres_volume_name }}:
     external: true
-  {% if include_grafana -%}
+  {% if use_grafana -%}
   {{ grafana_volume_name }}:
     external: true
   {%- endif %}
-  {% if include_grader_service -%}
+  {% if use_grader_service -%}
   {{ grader_volume_name }}:
     external: true
   {%- endif %}
@@ -600,9 +687,20 @@ secrets:
   slack_webhook:
     file: secrets/slack_webhook.txt
 
+
   # Grader secrets
   admin_password:
     file: secrets/admin_password.txt
+
+  # Mattermost secrets
+  mattermost_webhook:
+    file: secrets/mattermost_webhook.txt
+  mattermost_channel_id_read:
+    file: secrets/mattermost_channel_id_read.txt
+  mattermost_channel_id_write:
+    file: secrets/mattermost_channel_id_write.txt
+  mattermost_pak:
+    file: secrets/mattermost_pak.txt
 
   # JIRA secrets
   jira_pat:

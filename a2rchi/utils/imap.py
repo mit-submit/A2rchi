@@ -1,8 +1,12 @@
 import os
 import getpass, imaplib, email
 
-from a2rchi.utils.config_loader import Config_Loader
-config = Config_Loader().config["utils"]["mailbox"]
+from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+config = load_config()["utils"]["mailbox"]
 
 def get_charsets(msg):
     charsets = set({})
@@ -12,12 +16,11 @@ def get_charsets(msg):
     return charsets
 
 def handle_error(errmsg, emailmsg, cs):
-    print()
-    print(errmsg)
-    print("This error occurred while decoding with ",cs," charset.")
-    print("These charsets were found in this email.",get_charsets(emailmsg))
-    print("This is the subject:",emailmsg['subject'])
-    print("This is the sender:",emailmsg['From'])
+    logger.error(errmsg)
+    logger.error(f"This error occurred while decoding with {cs} charset.")
+    logger.error(f"These charsets were found in this email: {get_charsets(emailmsg)}")
+    logger.error(f"This is the subject: {emailmsg['subject']}")
+    logger.error(f"This is the sender: {emailmsg['From']}")
 
 def get_email_body(msg):
     # finding the body in an email message
@@ -74,11 +77,9 @@ for num in data[0].split():
         if isinstance(response_part, tuple):
             msg = email.message_from_string(response_part[1].decode())
             for header in [ 'subject', 'to', 'cc', 'bcc', 'from' ]:
-                print('%-8s: %s'%(header.upper(),msg[header]))
+                logger.info('%-8s: %s'%(header.upper(),msg[header]))
             body, body_html = get_email_body(msg)
-            print("BODY:")
-            print(body)
-            print(body_html)
+            logger.info(f"BODY:\n{body}\n{body_html}")
 
 M.close()
 M.logout()

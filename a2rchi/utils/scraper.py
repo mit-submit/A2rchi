@@ -5,6 +5,10 @@ import requests
 import ssl
 import yaml
 
+from a2rchi.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 #clears the ssl certificates to allow web scraping
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -13,13 +17,14 @@ class Scraper():
     
     def __init__(self, piazza_email=None, piazza_password=None):
         # fetch configs
-        from a2rchi.utils.config_loader import Config_Loader
-        self.config = Config_Loader().config["utils"]["scraper"]
-        self.global_config = Config_Loader().config["global"]
-        self.piazza_config = Config_Loader().config["utils"].get("piazza", None)
+        from a2rchi.utils.config_loader import load_config
+        self.config_dict = load_config()
+        self.config = self.config_dict["utils"]["scraper"]
+        self.global_config = self.config_dict["global"]
+        self.piazza_config = self.config_dict["utils"].get("piazza", None)
         self.data_path = self.global_config["DATA_PATH"]
         # get SSO configuration
-        self.sso_config = Config_Loader().config["utils"].get("sso", None)
+        self.sso_config = self.config_dict["utils"].get("sso", None)
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
@@ -28,11 +33,10 @@ class Scraper():
         self.websites_dir = os.path.join(self.data_path, "websites")
         os.makedirs(self.websites_dir, exist_ok=True)
 
-        self.input_lists = Config_Loader().config["chains"].get("input_lists", [])
+        self.input_lists = self.config_dict["chains"].get("input_lists", [])
         if self.input_lists is None:
             self.input_lists = []
-        print(Config_Loader().config["chains"])
-        print(f"input lists: {self.input_lists}")
+        logger.info(f"Input lists: {self.input_lists}")
 
         # # log in to piazza
         # if self.piazza_config is not None:
@@ -59,7 +63,7 @@ class Scraper():
         )
 
         if verbose:
-            print("Piazza scraping was completed successfully")
+            logger.info("Piazza scraping was completed successfully")
 
         return unresolved_posts
 
@@ -85,7 +89,7 @@ class Scraper():
         )
 
         if verbose:
-            print("Web scraping was completed successfully")
+            logger.info("Web scraping was completed successfully")
 
 
     def collect_urls_from_lists(self):
@@ -102,7 +106,7 @@ class Scraper():
     
     @staticmethod
     def scrape_urls(urls, upload_dir, sources_path, verify_urls, enable_warnings, sso_config=None):
-        print(f" SOURCE: {sources_path}")
+        logger.debug(f"SOURCE: {sources_path}")
         try:
             # load existing sources or initialize as empty dictionary
             with open(sources_path, 'r') as file:
@@ -134,25 +138,25 @@ class Scraper():
                                 sso_scraper.save_crawled_data(upload_dir)
                                 
                                 for i, page in enumerate(crawled_data):
-                                    print(f"SSO Crawled {i+1}. {page['title']} - {page['url']}")
+                                    logger.info(f"SSO Crawled {i+1}. {page['title']} - {page['url']}")
                                     identifier = hashlib.md5()
                                     identifier.update(page['url'].encode('utf-8'))
                                     file_name = str(int(identifier.hexdigest(), 16))[0:12]
                                     sources[file_name] = page['url']
                         else:
-                            print(f"SSO class {sso_class_name} not found in SSO_CLASS_MAP")
+                            logger.error(f"SSO class {sso_class_name} not found in SSO_CLASS_MAP")
                             raise Exception(f"SSO class {sso_class_name} not configured")
                     else:
-                        print("SSO is disabled or not configured")
+                        logger.error("SSO is disabled or not configured")
                         raise Exception("SSO is disabled or not configured") 
                 except Exception as e:
-                    print(f"SSO scraping failed for {url}: {str(e)}")
-                    print("Falling back to regular HTTP request...")
+                    logger.error(f"SSO scraping failed for {url}: {str(e)}")
+                    logger.error("Falling back to regular HTTP request...")
                     try:
                         # request web page without SSO
                         resp = requests.get(url, verify=verify_urls)
                     except Exception as e2:
-                        print(f"Regular request also failed for {url}: {str(e2)}")
+                        logger.error(f"Regular request also failed for {url}: {str(e2)}")
             else:
 
                 # request web page
@@ -164,11 +168,11 @@ class Scraper():
                 file_name = str(int(identifier.hexdigest(), 16))[0:12]
 
                 if (url.split('.')[-1] == 'pdf'):
-                    print(f" Store: {upload_dir}/{file_name}.pdf : {url}")
+                    logger.info(f"Store: {upload_dir}/{file_name}.pdf : {url}")
                     with open(f"{upload_dir}/{file_name}.pdf", 'wb') as file:
                         file.write(resp.content)
                 else:
-                    print(f" Store: {upload_dir}/{file_name}.html : {url}")
+                    logger.info(f"Store: {upload_dir}/{file_name}.html : {url}")
                     with open(f"{upload_dir}/{file_name}.html", 'w') as file:
                         file.write(resp.text)
 
@@ -181,7 +185,7 @@ class Scraper():
 
     @staticmethod
     def scrape_piazza(upload_dir, sources_path):
-        print(f" SOURCE: {sources_path}")
+        logger.debug(f"SOURCE: {sources_path}")
         try:
             # load existing sources or initialize as empty dictionary
             with open(sources_path, 'r') as file:
@@ -216,11 +220,11 @@ class Scraper():
             file_name = str(int(identifier.hexdigest(), 16))[0:12]
 
             if (url.split('.')[-1] == 'pdf'):
-                print(f" Store: {upload_dir}/{file_name}.pdf : {url}")
+                logger.info(f"Store: {upload_dir}/{file_name}.pdf : {url}")
                 with open(f"{upload_dir}/{file_name}.pdf", 'wb') as file:
                     file.write(resp.content)
             else:
-                print(f" Store: {upload_dir}/{file_name}.html : {url}")
+                logger.info(f"Store: {upload_dir}/{file_name}.html : {url}")
                 with open(f"{upload_dir}/{file_name}.html", 'w') as file:
                     file.write(resp.text)
 

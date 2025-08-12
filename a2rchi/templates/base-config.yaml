@@ -20,12 +20,14 @@ interfaces:
     static_folder: "{{ interfaces.chat_app.static_folder | default('/root/A2rchi/a2rchi/interfaces/chat_app/static', true) }}"
     num_responses_until_feedback: {{ interfaces.chat_app.num_responses_until_feedback | default(3, true) }}
     include_copy_button: {{ interfaces.chat_app.include_copy_button | default(false, true) }}
+    flask_debug_mode: {{ interfaces.chat_app.flask_debug_mode | default(true, false) }}
   uploader_app:
     PORT: {{ interfaces.uploader_app.PORT | default(5001, true) }}
     EXTERNAL_PORT: {{ interfaces.uploader_app.EXTERNAL_PORT | default(5003, true) }}
     HOST: {{ interfaces.uploader_app.HOST | default("0.0.0.0", true) }} # either "0.0.0.0" (for public) or "127.0.0.1" (for internal)
     template_folder: {{ interfaces.uploader_app.template_folder | default("/root/A2rchi/a2rchi/interfaces/uploader_app/templates", true) }}
     verify_urls: {{interfaces.uploader_app.verify_urls | default(true, false) }}
+    flask_debug_mode: {{ interfaces.chat_app.flask_debug_mode | default(true, false) }}
   grader_app:
     PORT: {{ interfaces.grader_app.PORT | default(7861, true) }}
     EXTERNAL_PORT: {{ interfaces.grader_app.EXTERNAL_PORT | default(7861, true) }}
@@ -35,6 +37,7 @@ interfaces:
     num_problems: {{ interfaces.grader_app.num_problems | default(1, true) }}
     local_rubric_dir: {{ interfaces.grader_app.rubric_dir }}
     local_users_csv_dir: {{ interfaces.grader_app.local_users_csv }}
+    flask_debug_mode: {{ interfaces.chat_app.flask_debug_mode | default(true, false) }}
   grafana:
     EXTERNAL_PORT: {{ interfaces.grafana.EXTERNAL_PORT | default(3000, true) }}
 
@@ -64,6 +67,7 @@ chains:
     GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
     GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
     GRADING_FINAL_GRADE_MODEL_NAME: {{ chains.chain.GRADING_FINAL_GRADE_MODEL_NAME | default('null', true) }}
+    MAX_MODEL_TOKENS: {{ chains.chain.MAX_MODEL_TOKENS | default(10000, true) }}
     MODEL_CLASS_MAP:
       AnthropicLLM:
         class: AnthropicLLM
@@ -141,11 +145,17 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.base_model | default("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.seed | default("null", true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.max_new_tokens | default(4096, true) }}
-          top_p: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_p | default(0.9, true) }}
+          top_p: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_p | default(0.95, true) }}
           temperature: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.temperature | default(0.6, true) }}
           top_k: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_k | default(50, true) }}
           repetition_penalty: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.repetition_penalty | default(1.0, true) }}
+          tensor_parallel_size: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.tensor_parallel_size | default(1, true) }}
+          gpu_memory_utilization: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.gpu_memory_utilization | default(0.7, true) }}
+          trust_remote_code: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.trust_remote_code | default(true, true) }}
+          tokenizer_mode: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.tokenizer_mode | default("auto", true) }}
+          max_model_len: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.max_model_len | default(none, true) }}
     chain_update_time: {{ chains.chain.chain_update_time | default(10, true) }}
 
 utils:
@@ -197,6 +207,8 @@ utils:
   piazza:
     network_id: {{ utils.piazza.network_id }}
     update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
+  mattermost:
+    update_time: {{ utils.mattermost.update_time | default(60, true) }} # seconds
   cleo: 
     cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
   mailbox: 
@@ -226,4 +238,5 @@ utils:
     email_pattern: '{{ utils.anonymizer.email_pattern | default("[\\w\\.-]+@[\\w\\.-]+\\.\\w+") }}'
     # This is a JIRA specific username pattern
     username_pattern: '{{ utils.anonymizer.username_pattern | default("\\[~[^\\]]+\\]") }}'
-  
+
+verbosity: {{ verbosity | default(3, true) }}

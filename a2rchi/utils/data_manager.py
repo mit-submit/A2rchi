@@ -1,5 +1,6 @@
 from a2rchi.utils.scraper import Scraper
 from a2rchi.utils.ticket_manager import TicketManager
+from a2rchi.utils.logging import get_logger
 
 from chromadb.config import Settings
 from langchain_community.document_loaders.text import TextLoader
@@ -18,25 +19,26 @@ import os
 import yaml
 import time
 
+logger = get_logger(__name__)
 
 class DataManager():
 
     def __init__(self):
-        from a2rchi.utils.config_loader import Config_Loader
-        self.config = Config_Loader().config["utils"]
-        self.global_config = Config_Loader().config["global"]
+        from a2rchi.utils.config_loader import load_config
+        self.config = load_config(map=True)["utils"]
+        self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
 
         # scrape data onto the filesystem
-        print("Scraping documents onto filesystem")
+        logger.info("Scraping documents onto filesystem")
         scraper = Scraper()
         scraper.hard_scrape(verbose=True)
 
         # Fetch ticket data via APIs and copy onto the filesystem
-        print("Fetching ticket data onto filesystem")
+        logger.info("Fetching ticket data onto filesystem")
         ticket_manager = TicketManager()
         ticket_manager.run()
 
@@ -44,7 +46,7 @@ class DataManager():
         # the actual name of the collection is the name given by config with the embeddings specified
         embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
-        print("Using collection: ", self.collection_name)
+        logger.info(f"Using collection: {self.collection_name}")
 
         # delete the existing collection if specified
         self.delete_existing_collection_if_reset()
@@ -105,7 +107,8 @@ class DataManager():
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         collection = client.get_or_create_collection(self.collection_name)
-        print(f" n in collection: {collection.count()}")
+
+        logger.info(f"N in collection: {collection.count()}")
         return collection
 
 
@@ -141,28 +144,28 @@ class DataManager():
 
         # control if files in vectorstore == files in data
         if set(files_in_data.keys()) == set(files_in_vstore):
-            print("Vectorstore is up to date")
+            logger.info("Vectorstore is up to date")
         else:
-            print("Vectorstore needs to be updated")
+            logger.info("Vectorstore needs to be updated")
 
             # Creates a list of the file names to remove from vectorstore
             # Note: the full path of the files is not needed here.
             files_to_remove = list(set(files_in_vstore) - set(files_in_data.keys()))
 
             # removes files from the vectorstore
-            print(f"Files to remove: {files_to_remove}")
+            logger.info(f"Files to remove: {files_to_remove}")
             collection = self._remove_from_vectorstore(collection, files_to_remove)
 
             # Create dictionary of the files to add, where the keys are the filenames and the values are the path of the file in data
             files_to_add = {filename: files_in_data[filename] for filename in list(set(files_in_data.keys()) - set(files_in_vstore))}
 
             # adds the files to the vectorstore
-            print(f"Files to add: {files_to_add}")
+            logger.info(f"Files to add: {files_to_add}")
             collection = self._add_to_vectorstore(collection, files_to_add, sources)
             
-            print("Vectorstore update has been completed")
+            logger.info("Vectorstore update has been completed")
 
-        print(f" N Collection: {collection.count()}")
+        logger.info(f"N Collection: {collection.count()}")
 
         # delete collection to release collection and client object as well for garbage collection
         del collection
@@ -201,7 +204,7 @@ class DataManager():
             try:
                 loader = self.loader(file)
             except Exception as e:
-                print(f" ERROR - loading: {file} skip and move on. \n Exception: ", e)
+                logger.error(f"Failed to load file: {file}. Skipping. Exception: {e}")
 
             # treat case where file extension is not recognized or is broken
             if loader is None:
@@ -240,13 +243,13 @@ class DataManager():
                 time_identifier.update(str(time.time()).encode('utf-8'))
                 time_hash = str(int(identifier.hexdigest(),16))[0:6]
                 while str(filehash) + str(chunk_hash) + str(time_hash) in ids:
-                    print("INFO: Found conflict with hash: " + str(filehash) + str(chunk_hash) + str(time_hash) + ". Trying again")
+                    logger.info("Found conflict with hash: " + str(filehash) + str(chunk_hash) + str(time_hash) + ". Trying again")
                     time_hash = str(int(time_hash) + 1)
                 ids.append(str(filehash) + str(chunk_hash) + str(time_hash))
 
-            print("Ids: ",ids)
+            logger.info(f"Ids: {ids}")
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            print("succesfully added file ", filename)
+            logger.info(f"Successfully added file {filename}")
 
         return collection
 
@@ -269,5 +272,5 @@ class DataManager():
         elif file_extension == ".pdf":
             return PyPDFLoader(file_path)
         else: 
-            print(f" Error: format not supported -- {file_path}")
+            logger.error(f"Format not supported -- {file_path}")
             return None 

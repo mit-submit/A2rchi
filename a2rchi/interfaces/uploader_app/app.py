@@ -1,6 +1,7 @@
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.scraper import Scraper
+from a2rchi.utils.logging import get_logger
 
 from flask import render_template, request, redirect, url_for, flash, session
 
@@ -9,6 +10,7 @@ import os
 import urllib
 import yaml
 
+logger = get_logger(__name__)
 
 def simple_hash(input_string):
     """
@@ -54,7 +56,7 @@ def add_filename_to_filehashes(filename, data_path, filehashes_yaml_file="manual
 
     # check if the file already exists
     if hash_string in filenames_dict.keys():
-        print(f"File '{filename}' already exists.")
+        logger.info(f"File '{filename}' already exists.")
         return False
 
     # add the new filename and hashed file string to the accounts dictionary
@@ -146,7 +148,7 @@ def add_username_password(username, password, salt, accounts_path, file_name='ac
 
     # check if the username already exists
     if username in accounts:
-        print(f"Username '{username}' already exists.")
+        logger.info(f"Username '{username}' already exists.")
         return
 
     # add the new username and hashed password to the accounts dictionary
@@ -176,7 +178,7 @@ def check_credentials(username, password, salt, accounts_path, file_name='accoun
         # load existing accounts or initialize as empty dictionary
         with open(os.path.join(accounts_path, file_name), 'r') as file:
             accounts = yaml.safe_load(file) or {}
-            print(f"accounts are: {accounts}")
+            logger.info(f"Accounts are: {accounts}")
 
     except FileNotFoundError:
         accounts = {}
@@ -192,8 +194,8 @@ class FlaskAppWrapper(object):
 
     def __init__(self, app, **configs):
         # load global config
-        self.global_config = Config_Loader().config["global"]
-        self.config = Config_Loader().config["interfaces"]["uploader_app"]
+        self.global_config = load_config()["global"]
+        self.config = load_config()["interfaces"]["uploader_app"]
         self.data_path = self.global_config["DATA_PATH"]
         self.salt = read_secret("UPLOADER_SALT")
 
@@ -357,7 +359,7 @@ class FlaskAppWrapper(object):
         """
         file_path = os.path.join(self.app.config['UPLOAD_FOLDER'], file_hash(filename))
 
-        print(file_path)
+        logger.info(f"Deleting the following file: {file_path}")
         if os.path.exists(file_path):
             os.remove(file_path)
             remove_filename_from_filehashes(filename, self.data_path)
@@ -376,7 +378,7 @@ class FlaskAppWrapper(object):
 
         url = request.form.get('url')
         if url:
-            print(f"url is: {url}")
+            logger.info(f"Uploading the following URL: {url}")
             try:
                 # same as the scraper, though it doesn't need to be
                 Scraper.scrape_urls(
@@ -389,7 +391,7 @@ class FlaskAppWrapper(object):
                 added_to_urls = True
 
             except Exception as e:
-                print(f" EXCEPTION: {e}")
+                logger.error(f"Failed to upload URL: {str(e)}")
                 added_to_urls = False
 
             if added_to_urls:
@@ -406,7 +408,7 @@ class FlaskAppWrapper(object):
     def delete_url(self, encoded_url):
         url = urllib.parse.unquote(encoded_url)
         file_path = os.path.join(self.app.config['WEBSITE_FOLDER'], simple_hash(url)[0:12] + ".html")
-        print(file_path)
+        logger.info(f"Removing the following URL: {file_path}")
 
         if os.path.exists(file_path):
             os.remove(file_path)

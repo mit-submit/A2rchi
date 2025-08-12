@@ -1,5 +1,8 @@
 from langchain_core.prompts import PromptTemplate
 from typing import List, Optional
+from a2rchi.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ValidatedPromptTemplate(PromptTemplate):
@@ -23,4 +26,4 @@ class ValidatedPromptTemplate(PromptTemplate):
             for template_var in template_vars:
                 if template_var not in prompt_template:
                     raise ValueError(f"Input variable '{template_var}' not found in the main prompt template.")
-        print(f"Prompt '{name}' is valid with input variables: {input_variables}")
+        logger.info(f"Prompt '{name}' is valid with input variables: {input_variables}")

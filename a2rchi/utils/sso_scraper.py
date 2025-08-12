@@ -10,6 +10,9 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 class SSOScraper(ABC):
     """Generic base class for SSO-authenticated web scrapers."""
@@ -34,7 +37,7 @@ class SSOScraper(ABC):
         self.page_data = []
         
         if self.username:
-            print(f"Using username: {self.username}")
+            logger.info(f"Using username: {self.username}")
     
     @abstractmethod
     def get_username_from_env(self):
@@ -73,7 +76,7 @@ class SSOScraper(ABC):
         # Initialize the driver with options
         self.driver = webdriver.Firefox(options=firefox_options)
         self.driver.set_page_load_timeout(30)
-        print(f"Starting Firefox browser in {'headless' if self.headless else 'visible'} mode...")
+        logger.info(f"Starting Firefox browser in {'headless' if self.headless else 'visible'} mode...")
         return self.driver
     
     def navigate_to(self, url, wait_time=1):
@@ -83,8 +86,8 @@ class SSOScraper(ABC):
             
         self.driver.get(url)
         time.sleep(wait_time)  # Enable wait time for page loading
-        print(f"Navigated to {url}")
-        print(f"Page title: {self.driver.title}")
+        logger.info(f"Navigated to {url}")
+        logger.info(f"Page title: {self.driver.title}")
         return self.driver.title
     
     def get_page_content(self):
@@ -148,7 +151,7 @@ class SSOScraper(ABC):
                             normalized_url += f"?{parsed_url.query}"
                         links.append(normalized_url)
             except Exception as e:
-                print(f"Error extracting link: {e}")
+                logger.error(f"Error extracting link: {e}")
                 
         return list(set(links))  # Remove duplicates
     
@@ -174,8 +177,8 @@ class SSOScraper(ABC):
         self.authenticate_and_navigate(start_url)
         
         base_hostname = urllib.parse.urlparse(start_url).netloc
-        print(f"Base hostname for crawling: {base_hostname}")
-        print(f"Site type: {self.site_type}")
+        logger.info(f"Base hostname for crawling: {base_hostname}")
+        logger.info(f"Site type: {self.site_type}")
         
         pages_visited = 0
         
@@ -186,7 +189,7 @@ class SSOScraper(ABC):
             if current_url in self.visited_urls:
                 continue
                 
-            print(f"Crawling page {pages_visited + 1}/{max_depth}: {current_url}")
+            logger.info(f"Crawling page {pages_visited + 1}/{max_depth}: {current_url}")
             
             try:
                 # Navigate to the page
@@ -199,11 +202,11 @@ class SSOScraper(ABC):
                 # Extract and store page data
                 page_data = self.extract_page_data(current_url)
                 self.page_data.append(page_data)
-                print(f"Extracted data from {current_url} ({len(page_data['content'])} chars)")
+                logger.info(f"Extracted data from {current_url} ({len(page_data['content'])} chars)")
                 
                 # Get links to follow
                 new_links = self.get_links_with_same_hostname(current_url)
-                print(f"Found {len(new_links)} links on the page")
+                logger.info(f"Found {len(new_links)} links on the page")
                 
                 # Add new links to visit
                 for link in new_links:
@@ -211,10 +214,10 @@ class SSOScraper(ABC):
                         to_visit.append(link)
                         
             except Exception as e:
-                print(f"Error crawling {current_url}: {e}")
+                logger.info(f"Error crawling {current_url}: {e}")
                 self.visited_urls.add(current_url)  # Mark as visited to avoid retrying
         
-        print(f"Crawling complete. Visited {pages_visited} pages.")
+        logger.info(f"Crawling complete. Visited {pages_visited} pages.")
         return self.page_data
     
     def save_crawled_data(self, output_dir="crawled_data"):
@@ -224,12 +227,12 @@ class SSOScraper(ABC):
             output_dir (str): Directory to save the crawled data
         """
         if not self.page_data:
-            print("No data to save")
+            logger.info("No data to save")
             return
             
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
-        print(f"Saving crawled data to {output_dir}...")
+        logger.info(f"Saving crawled data to {output_dir}...")
         
         # Save a summary file with all URLs and titles
         summary_path = os.path.join(output_dir, "summary.txt")
@@ -286,15 +289,15 @@ class SSOScraper(ABC):
             }
             json.dump(index, f, indent=2, ensure_ascii=False)
                 
-        print(f"Saved {len(self.page_data)} pages to {output_dir}")
-        print(f"- HTML files containing complete raw page content")
-        print(f"- Text files for basic reading")
-        print(f"- JSON index of all crawled pages")
+        logger.info(f"Saved {len(self.page_data)} pages to {output_dir}")
+        logger.info(f"- HTML files containing complete raw page content")
+        logger.info(f"- Text files for basic reading")
+        logger.info(f"- JSON index of all crawled pages")
     
     def close(self):
         """Close the browser and clean up resources."""
         if self.driver:
-            print("Closing browser...")
+            logger.info("Closing browser...")
             self.driver.quit()
             self.driver = None
     
@@ -315,7 +318,7 @@ class SSOScraper(ABC):
             else:
                 return None
         except Exception as e:
-            print(f"Error during authentication: {e}")
+            logger.warning(f"Error during authentication: {e}")
             return None
         
     def __enter__(self):
@@ -359,8 +362,8 @@ class CERNSSOScraper(SSOScraper):
             sign_in = self.driver.find_element(By.ID, "kc-login")
             sign_in.click()
                 
-            print("Login credentials submitted")
+            logger.info("Login credentials submitted")
             return True
         except Exception as e:
-            print(f"Error during login: {e}")
+            logger.error(f"Error during login: {e}")
             return False

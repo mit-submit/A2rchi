@@ -1,9 +1,10 @@
 from a2rchi.chains.chain import Chain
 from a2rchi.interfaces.uploader_app.app import FlaskAppWrapper
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.scraper import Scraper
+from a2rchi.utils.logging import get_logger
 
 from flask import Flask
 from piazza_api import Piazza as PiazzaAPI
@@ -14,6 +15,7 @@ import os
 import requests
 import time
 
+logger = get_logger(__name__)
 
 class PiazzaAIWrapper:
     def __init__(self):
@@ -46,7 +48,9 @@ class Piazza:
     """
     def __init__(self):
 
-        self.piazza_config = Config_Loader().config["utils"].get("piazza", None)
+        logger.info("Initializing Piazza service")
+
+        self.piazza_config = load_config()["utils"].get("piazza", None)
 
         # login to piazza
         self.piazza = PiazzaAPI()
@@ -72,9 +76,9 @@ class Piazza:
             os.makedirs(os.path.dirname(self.min_next_post_file), exist_ok=True)
             with open(self.min_next_post_file, "w") as f:
                 json.dump({"min_next_post_nr": min_next_post_nr}, f)
-            print(f"Updated min_next_post_nr to {min_next_post_nr}")
+            logger.info(f"Updated min_next_post_nr to {min_next_post_nr}")
         except Exception as e:
-            print(f"ERROR - Failed to write min_next_post_nr to file: {e}")
+            logger.error(f"Failed to write min_next_post_nr to file: {e}")
             
 
     def read_min_next_post(self):
@@ -88,13 +92,14 @@ class Piazza:
                     post_nrs = sorted(list(map(lambda post: post['nr'], feed['feed'])))
                     latest_post_nr = post_nrs[-1] if post_nrs else 0
                     dynamic_min_next_post_nr = latest_post_nr + 1
-                    print(f"No min next post file found, using latest post nr {latest_post_nr} + 1 = {dynamic_min_next_post_nr} as default.")
+                    logger.info(f"No min next post file found, using latest post nr {latest_post_nr} + 1 = {dynamic_min_next_post_nr} as default.")
                 else:
                     # in case no posts exist
                     dynamic_min_next_post_nr = 1
-                    print("No posts found in feed, setting dynamic_min_next_post_nr to 1.")
+                    logger.info("No posts found in feed, setting dynamic_min_next_post_nr to 1.")
             except Exception as e:
-                raise Exception(f"ERROR - Failed to get latest post nr from feed: {str(e)}") from e
+                logger.error(f"Failed to parse feed: {e}")
+                raise Exception(f"Failed to get latest post nr from feed") from e
 
             self.write_min_next_post(dynamic_min_next_post_nr)
             return dynamic_min_next_post_nr
@@ -111,18 +116,17 @@ class Piazza:
             feed = self.piazza_net.get_feed(limit=999999, offset=0)
             post_nrs = sorted(list(map(lambda post: post['nr'], feed['feed'])))
             if not post_nrs:
-                print("No posts found in feed, skipping this cycle.")
+                logger.info("No posts found in feed, skipping this cycle.")
                 return
             largest_post_nr = post_nrs[-1]
         except Exception as e:
-            print("ERROR - Failed to parse feed due to the following exception:")
-            print(str(e))
+            logger.error(f"Failed to parse feed due to the following exception: {e}")
             return
             
         new_post_nrs = [post_nr for post_nr in post_nrs if post_nr >= self.min_next_post_nr]
-        print(f"Found {len(new_post_nrs)} new posts since last run (min_next_post_nr: {self.min_next_post_nr}, largest_post_nr: {largest_post_nr})")
+        logger.info(f"Found {len(new_post_nrs)} new posts since last run (min_next_post_nr: {self.min_next_post_nr}, largest_post_nr: {largest_post_nr})")
         if not new_post_nrs:
-            print("No new posts to process.")
+            logger.info("No new posts to process.")
             return
 
         # process 
@@ -130,17 +134,16 @@ class Piazza:
             try:
                 post = self.piazza_net.get_post(post_nr)
 
-                print(f"PROCESSING NEW POST: {post_nr}")
+                logger.info(f"PROCESSING NEW POST: {post_nr}")
                 response, post_str = self.ai_wrapper(post)
                 response = f"====================\nReplying to Post @{post['nr']}\n==========\n\n{post_str}\n==========\n\nA2RCHI RESPONSE: {response}\n====================\n"
 
                 # send response to Slack
                 r = requests.post(self.slack_url, data=json.dumps({"text": response}), headers=self.slack_headers)
-                print(r)
+                logger.info(r)
                 time.sleep(1)  # to avoid hitting rate limits
             except Exception as e:
-                print(f"ERROR - Failed to process post {post_nr} due to the following exception:")
-                print(str(e))
+                logger.error(f"Failed to process post {post_nr} due to the following exception: {e}")
 
         if post_nrs:
             # set min. next post to be one greater than max we just saw

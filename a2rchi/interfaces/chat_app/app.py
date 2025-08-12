@@ -1,7 +1,8 @@
 from a2rchi.chains.chain import Chain
-from a2rchi.utils.config_loader import Config_Loader, CONFIG_PATH
+from a2rchi.utils.config_loader import load_config, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger
 from a2rchi.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG
 
 from chromadb.config import Settings
@@ -41,6 +42,8 @@ import yaml
 import json
 import time
 
+logger = get_logger(__name__)
+
 # DEFINITIONS
 QUERY_LIMIT = 10000 # max queries per conversation
 MAIN_PROMPT_FILE = "/root/A2rchi/main.prompt"
@@ -70,7 +73,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         }
     
     def __init__(self):
-        self.config = Config_Loader().config
+        self.config = load_config()
         super().__init__()
 
     def block_text(self,text):
@@ -105,7 +108,7 @@ class ChatWrapper:
     """
     def __init__(self):
         # load configs
-        self.config = Config_Loader().config
+        self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -157,7 +160,7 @@ class ChatWrapper:
         try:
             return markdown(text)
         except: 
-             print("Rendering error: markdown formatting failed")
+             logger.info("Rendering error: markdown formatting failed")
              return text
 
 
@@ -231,7 +234,7 @@ class ChatWrapper:
     def insert_conversation(self, conversation_id, user_message, a2rchi_message, link, a2rchi_context, is_refresh=False) -> List[int]:
         """
         """
-        print(" INFO - entered insert_conversation.")
+        logger.debug("Entered insert_conversation.")
 
         service = "Chatbot"
         # parse user message / a2rchi message
@@ -269,7 +272,7 @@ class ChatWrapper:
         """
         Store timing info to understand response profile.
         """
-        print(" INFO - entered insert_timing.")
+        logger.debug("Entered insert_timing.")
 
         # construct insert_tup
         insert_tup = (
@@ -311,7 +314,7 @@ class ChatWrapper:
         timestamps['lock_acquisition_ts'] = datetime.now()
         try:
             # update vector store through data manager; will only do something if new files have been added
-            print("INFO - acquired lock file update vectorstore")
+            logger.info("Acquired lock file update vectorstore")
 
             self.data_manager.update_vectorstore()
             timestamps['vectorstore_update_ts'] = datetime.now()
@@ -320,11 +323,11 @@ class ChatWrapper:
             # NOTE: we log the error message but do not return here, as a failure
             # to update the data manager does not necessarily mean A2rchi cannot
             # process and respond to the message
-            print(f"ERROR updating vectorstore - {str(e)}")
+            logger.error(f"Failed to update vectorstore - {str(e)}")
 
         finally:
             self.lock.release()
-            print("INFO - released lock file update vectorstore")
+            logger.info("Released lock file update vectorstore")
 
         try:
             # convert the message to native A2rchi form (because javascript does not have tuples)
@@ -360,7 +363,7 @@ class ChatWrapper:
 
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
-            print(f"number of queries is: {self.number_of_queries}")
+            logger.info(f"Number of queries is: {self.number_of_queries}")
 
             # get similarity score to see how close the input is to the source
             # - low score means very close (it's a distance between embedding vectors approximated
@@ -385,12 +388,12 @@ class ChatWrapper:
             # if the score is low enough, include the source as a link, otherwise give just the answer
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
-            print("INFO - similarity score reference: ", similarity_score_reference)
-            print("INFO - similarity score: ", score)
+            logger.debug(f"Similarity score reference:  {similarity_score_reference}")
+            logger.debug(f"Similarity score:  {score}")
             link = ""
             if source is not None and score < similarity_score_reference and source in sources.keys():
                 link = sources[source]
-                print("INFO - source: ", link)
+                logger.info(f"Primary source:  {link}")
                 parsed_source = urlparse(link)
                 output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
             else:
@@ -407,7 +410,7 @@ class ChatWrapper:
 
         except Exception as e:
             # NOTE: we log the error message and return here
-            print(f"ERROR - {str(e)}")
+            logger.error(f"Failed to produce response: {e}", exc_info=True)
             return None, None, None, timestamps, 500
 
         finally:
@@ -424,10 +427,10 @@ class ChatWrapper:
 class FlaskAppWrapper(object):
 
     def __init__(self, app, **configs):
-        print(" INFO - entering FlaskAppWrapper")
+        logger.info("Entering FlaskAppWrapper")
         self.app = app
         self.configs(**configs)
-        self.config = Config_Loader().config
+        self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -521,8 +524,8 @@ class FlaskAppWrapper(object):
         with open(SUMMARY_PROMPT_FILE, 'w') as f:
             f.write(summary_prompt)
 
-        # re-read config using ConfigLoader and update dependent variables
-        self.config = Config_Loader().config
+        # re-read config using load_config and update dependent variables
+        self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -571,7 +574,7 @@ class FlaskAppWrapper(object):
         client_timeout = request.json.get('client_timeout') / 1000
 
         # query the chat and return the results.
-        print(" INFO - Calling the ChatWrapper()")
+        logger.debug("Calling the ChatWrapper()")
         response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout)
 
         # handle errors
@@ -594,10 +597,10 @@ class FlaskAppWrapper(object):
         # otherwise return A2rchi's response to client
         try:
             response_size = len(response) if isinstance(response, str) else 0
-            print(f"Generated Response Length: {response_size} characters")
+            logger.info(f"Generated Response Length: {response_size} characters")
             json.dumps({'response': response})  # Validate JSON formatting
         except Exception as e:
-            print(f"JSON Encoding Error: {e}")
+            logger.error(f"JSON Encoding Error: {e}")
             response = "Error processing response"
 
         response_data = {
@@ -609,7 +612,7 @@ class FlaskAppWrapper(object):
         }
 
         end_time = time.time()
-        print(f"API Response Time: {end_time - start_time:.2f} seconds")
+        logger.info(f"API Response Time: {end_time - start_time:.2f} seconds")
 
         return jsonify(response_data)
 
@@ -621,7 +624,7 @@ class FlaskAppWrapper(object):
 
     def like(self):
         self.chat.lock.acquire()
-        print("INFO - acquired lock file")
+        logger.info("Acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -644,14 +647,14 @@ class FlaskAppWrapper(object):
             return jsonify(response), 200
 
         except Exception as e:
-            print(f"ERROR: {str(e)}")
+            logger.error(f"Request failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
         # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
         # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
-            print("INFO - released lock file")
+            logger.info("Released lock file")
 
             if self.chat.cursor is not None:
                 self.chat.cursor.close()
@@ -660,7 +663,7 @@ class FlaskAppWrapper(object):
 
     def dislike(self):
         self.chat.lock.acquire()
-        print("INFO - acquired lock file")
+        logger.info("Acquired lock file")
         try:
             # Get the JSON data from the request body
             data = request.json
@@ -687,14 +690,14 @@ class FlaskAppWrapper(object):
             return jsonify(response), 200
 
         except Exception as e:
-            print(f"ERROR: {str(e)}")
+            logger.error(f"Request failed: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
         # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
         # this will still execute, before the function returns in the try or except block.
         finally:
             self.chat.lock.release()
-            print("INFO - released lock file")
+            logger.info("Released lock file")
 
             if self.chat.cursor is not None:
                 self.chat.cursor.close()

@@ -1,12 +1,15 @@
 #!/bin/python
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger
 
 import email
 import imaplib
 import os
 import re
 from bs4 import BeautifulSoup
+
+logger = get_logger(__name__)
 
 ### DEFINITIONS
 # this constant defines an offset into the message description
@@ -24,7 +27,7 @@ class Mailbox:
         self.mailbox = None
         self.user = user
         self.password = password
-        self.config = Config_Loader().config["utils"]["mailbox"]
+        self.config = load_config()["utils"]["mailbox"]
 
         # make sure to open the mailbox
         if self._verify():
@@ -58,7 +61,7 @@ class Mailbox:
                     if issue_id > 0:
                         self._cleanup_message(num, attachments)
                     else:
-                        print(f" ERROR - issue_id is not well defined: {issue_id}")
+                        logger.error(f"issue_id is not well defined: {issue_id}")
 
         return
 
@@ -69,7 +72,7 @@ class Mailbox:
         """
         self.mailbox.select()
         _, data = self.mailbox.search(None, 'ALL')
-        print(f" mailbox.process_messages: {len(data[0].split())}")
+        logger.info(f"mailbox.process_messages: {len(data[0].split())}")
 
         for num in data[0].split():
             self.process_message(num, cleo)
@@ -111,7 +114,7 @@ class Mailbox:
             
         if index > 0:
             issue_id = int(description[index + ISSUE_ID_OFFSET:].split()[0])
-        print(f" ISSUE_ID: {issue_id}")
+        logger.info(f"ISSUE_ID: {issue_id}")
 
         return issue_id
 
@@ -127,7 +130,7 @@ class Mailbox:
             file_name = part.get_filename()
 
             if bool(file_name):
-                print(f" INFO - found attachement: {file_name}")
+                logger.info(f"Found attachement: {file_name}")
                 file_path = os.path.join('/tmp/', file_name)
                 if not os.path.isfile(file_path):
                     with open(file_path, 'wb') as f:
@@ -135,7 +138,7 @@ class Mailbox:
 
                     attachments.append({'path': file_path, 'filename': file_name})
                 else:
-                    print(" ERROR - could not download attachment (file exists).")
+                    logger.error("Could not download attachment (file exists).")
                     return []
 
         return attachments
@@ -184,7 +187,7 @@ class Mailbox:
     def _get_fields(self, msg):
         sender, cc, subject = msg['from'], msg['cc'], msg['subject']
         for header in ['subject', 'to', 'cc', 'bcc', 'from']:
-            print(f"{header.upper():8s}: {msg[header]}")
+            logger.info(f"{header.upper():8s}: {msg[header]}")
 
         body, body_html = self._get_email_body(msg)
         if body:
@@ -193,9 +196,7 @@ class Mailbox:
             new_body = self._extract_email_body(body_html)
             description = new_body
         description = self._clear_text(description)
-        print("BODY:")
-        print(description)
-
+        logger.info(f"BODY: {description}")
         return sender, cc, subject, description
 
     def _clear_text(self,string):
@@ -224,7 +225,7 @@ class Mailbox:
         """
         Open the mailbox
         """
-        print(f" Open mailbox (U:{self.user} P:*********)")
+        logger.info(f"Open mailbox (U:{self.user} P:*********)")
         mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=self.config["IMAP4_PORT"], timeout=None)
         mailbox.login(self.user, self.password)
 
@@ -232,12 +233,11 @@ class Mailbox:
 
 
     def _handle_error(self, errmsg, emailmsg, cs):
-        print()
-        print(errmsg)
-        print(f"This error occurred while decoding with {cs} charset.")
-        print(f"These charsets were found in this email: {self._get_charsets(emailmsg)}")
-        print(f"This is the subject: {emailmsg['subject']}")
-        print(f"This is the sender: {emailmsg['From']}")
+        logger.error(errmsg)
+        logger.error(f"This error occurred while decoding with {cs} charset.")
+        logger.error(f"These charsets were found in this email: {self._get_charsets(emailmsg)}")
+        logger.error(f"This is the subject: {emailmsg['subject']}")
+        logger.error(f"This is the sender: {emailmsg['From']}")
 
         return
 
@@ -247,7 +247,7 @@ class Mailbox:
         Make sure the environment is setup
         """
         if self.user == None or self.password == None:
-            print(" Did not find all cleo configs: IMAP_USER, IMAP_PW (source ~/.imap).")
+            logger.error("Did not find all cleo configs: IMAP_USER, IMAP_PW (source ~/.imap).")
             return False
 
         return True
@@ -261,9 +261,9 @@ class Mailbox:
             soup = BeautifulSoup(payload, 'html.parser')
 
             body_text = soup.get_text(separator='\n').strip()
-            print("DEBUG: Extracted body text:", body_text)
-            print(type(body_text))
+            logger.debug("Extracted body text:", body_text)
+            logger.debug(type(body_text))
             return body_text
         except Exception as e:
-            print(f"DEBUG: Error parsing HTML: {e}")
+            logger.error(f"Failed to parse HTML: {e}")
             return ""
