@@ -5,22 +5,44 @@ import re
 import json
 import time
 
+from a2rchi.utils.env import read_secret
+
 class GitScraper():
     """Generic base class for Git-based scrapers."""
 
-    def __init__(self, git_url):
+    def __init__(self, git_url, authentication=True) -> None:
         self.git_url = git_url
-
-        # Create cloned_repos folder; this will store the clone repositories
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        base_dir = os.path.join(script_dir, "cloned_repos")
-        os.makedirs(base_dir, exist_ok=True)
-        repo_name = self.git_url.split('/')[-2]+'-'+self.git_url.split('/')[-1].replace('.git', '')
-        self.repo_path = os.path.join(base_dir, repo_name)
+        
+        try:
+            # Create cloned_repos folder; this will store the clone repositories
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.join(script_dir, "cloned_repos")
+            os.makedirs(base_dir, exist_ok=True)
+            repo_name = self.git_url.split('/')[-2]+'-'+self.git_url.split('/')[-1].replace('.git', '')
+            self.repo_path = os.path.join(base_dir, repo_name)
+        except Exception as e:
+            raise Exception(f"Error creating cloned_repos for {self.git_url} - {str(e)}")
+        
+        if authentication:
+            try:
+                self.git_username = read_secret("GIT_USERNAME")
+                self.git_token = read_secret("GIT_TOKEN")
+                if 'gitlab' in self.git_url:
+                    self.git_url = self.git_url.replace('gitlab',f'{self.git_username}:{self.git_token}@gitlab')
+                elif 'github' in self.git_url:
+                    self.git_url = self.git_url.replace('github',f'{self.git_username}:{self.git_token}@github')
+                else:
+                    raise ValueError(f'The repository must be GitLab or GitHub based.')
+            except FileNotFoundError:
+                raise FileNotFoundError("Git username or password. not found Please set it up in your environment.")
+            
 
     def clone_repo(self):
-        # Clone https git url into folder
-        Repo.clone_from(self.git_url,self.repo_path)
+        try:
+            # Clone https git url into folder
+            Repo.clone_from(self.git_url,self.repo_path)
+        except Exception as e:
+            raise Exception(f'Repo could not be cloned as per error {str(e)}')
     
     def crawl(self):
 
