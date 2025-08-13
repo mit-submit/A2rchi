@@ -20,6 +20,9 @@ python -m venv myenv
 source myenv/bin/activate.csh  # for tcsh users
 # OR: source myenv/bin/activate  # for bash users
 
+# Install the couple of required packaged to build the a2rchi command
+pip install .
+
 # Reset command cache (tcsh only)
 rehash
 
@@ -32,7 +35,7 @@ which a2rchi
 Run the container setup script to configure local storage:
 
 ```bash
-./tutorial_helpers/setup_heavynode.tcsh
+source tutorial_helpers/setup_heavynode.tcsh
 ```
 
 This script will:
@@ -150,4 +153,82 @@ a2rchi delete --name <deployment-name>
 
 ## More links
 
-On the main repo page, you will find links to the User Guide and Getting Started pages, or below some more examples with preexisting config files to explore more of what A2rchi is about...
+On the main repo page, you will find links to the User Guide and Getting Started pages, or below some more examples to explore more of what A2rchi is about...
+
+## Adding Grafana and Document Uploader Services (Optional)
+
+If you want to include Grafana monitoring and document uploader services, follow these additional steps:
+
+### Clean Up Previous Instance (if needed)
+```bash
+# Stop existing instance
+a2rchi delete --name <deployment-name>
+
+# Remove postgres volume to reinitialize database
+podman volume rm a2rchi-pg-<deployment-name>
+```
+
+### Configure Additional Service Secrets
+```bash
+# Set Grafana postgres password (grafana needs a password for its postgres account)
+setenv GRAFANA_PG_PASSWORD wassup
+
+# Create uploader service secrets
+echo "flaskpw" > ~/.secrets/flask_uploader_app_secret_key.txt
+echo "mysalt" > ~/.secrets/uploader_salt.txt
+```
+
+### Update Configuration File
+Before relaunching, add the following to your `configs/minimal_config.yaml` and change ports as necessary:
+
+```yaml
+interfaces:
+  grafana:
+    EXTERNAL_PORT: 3000  # default, change as needed
+  uploader_app:
+    EXTERNAL_PORT: 5003  # default, change as needed
+```
+
+### Launch A2rchi with Additional Services
+```bash
+a2rchi create --name <deployment-name> -f configs/minimal_config.yaml --podman --grafana --document-uploader
+```
+
+### Set Up Uploader User Account
+When deployment is complete, create a user account for the document uploader:
+
+```bash
+# Enter the uploader container
+podman exec -it a2rchi-<deployment-name>_uploader_1 /bin/bash
+
+# Create user account (inside container)
+python a2rchi/bin/service_create_account.py
+
+# Type 'STOP' when done creating accounts, then 'exit' to leave container
+```
+
+### Set Up Additional SSH Port Forwarding
+In **separate terminal windows** on your local machine, create additional SSH tunnels:
+
+```bash
+# For Grafana dashboard
+ssh -L 3000:localhost:3000 your-username@cmslpc-el9-heavy01.fnal.gov
+
+# For document uploader
+ssh -L 5003:localhost:5003 your-username@cmslpc-el9-heavy01.fnal.gov
+```
+
+### Access Additional Services
+**Grafana Dashboard:**
+```
+http://localhost:3000
+```
+
+**Document Uploader:**
+```
+http://localhost:5003
+```
+
+Replace port numbers with whatever you configured in the yaml file.
+
+#TODO: add one about websites in .list file that you give to input_lists in config and also grabbing JIRA tickets
