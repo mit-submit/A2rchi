@@ -18,11 +18,8 @@ import requests
 from typing import Optional, List
 
 from a2rchi.chains.utils.prompt_formatters import PromptFormatter
-from a2rchi.chains.utils.truncate_utils import truncate_prompt
+from a2rchi.chains.utils.safety_checker import check_safety
 from a2rchi.utils.logging import get_logger
-
-import html
-import re
 
 logger = get_logger(__name__)
 
@@ -112,7 +109,7 @@ class LlamaLLM(BaseCustomLLM):
 
     tokenizer: Callable = None
     llama_model: Callable = None
-    safety_checker: List = None
+    safety_checkers: List = None
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -140,9 +137,9 @@ class LlamaLLM(BaseCustomLLM):
         self.llama_model.eval()
 
         # create safety checker
-        self.safety_checker = []
+        self.safety_checkers = []
         if self.enable_salesforce_content_safety:
-            self.safety_checker.append(SalesforceSafetyChecker())
+            self.safety_checkers.append(SalesforceSafetyChecker())
 
     @property
     def _llm_type(self) -> str:
@@ -155,22 +152,10 @@ class LlamaLLM(BaseCustomLLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         
-        # check if input is safe:
-        safety_results = [check(prompt) for check in self.safety_checker]
-        are_safe = all([r[1] for r in safety_results])
-        if not are_safe:
-            logger.info("User prompt deemed unsafe.")
-            for method, is_safe, report in safety_results:
-                if not is_safe:
-                    logger.info(method)
-                    logger.info(report)
-            logger.info("Skipping the Llama2 inference as the prompt is not safe.")
-            return """It looks as if your question may be unsafe. 
-                    
-                    This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
-                    
-                    Please try to reformat your question."""
-
+        safe, safe_msg = check_safety(prompt, self.safety_checkers, 'prompt')
+        if not safe:
+            return safe_msg
+        
         # prepare input
         batch = self.tokenizer(["[INST]" + prompt + "[/INST]"], padding='max_length', truncation=True,max_length=self.max_padding_length,return_tensors="pt")
         batch = {k: v.to("cuda") for k, v in batch.items()}
@@ -192,22 +177,9 @@ class LlamaLLM(BaseCustomLLM):
             
         output_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        # safety check of the model output
-        safety_results = [check(output_text) for check in self.safety_checker]
-        are_safe = all([r[1] for r in safety_results])
-        if not are_safe:
-            logger.info("Model output deemed unsafe.")
-            for method, is_safe, report in safety_results:
-                if not is_safe:
-                    logger.info(method)
-                    logger.info(report)
-            return """The response to your question may be unsafe.
-
-                    This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
-            
-                    There are two ways to solve this:
-                        - generate the response
-                        - reformat your question so that it does not prompt an unsafe response."""
+        safe, safe_msg = check_safety(output_text, self.safety_checkers, 'output')
+        if not safe:
+            return safe_msg
 
         return output_text[output_text.rfind("[/INST]") + len("[/INST]"):]
 
@@ -225,6 +197,7 @@ class VLLM(BaseCustomLLM):
     repetition_penalty: float = 1.5
     seed: int = None
     max_new_tokens: int = 2048      # maximum numbers of tokens to generate
+    enable_salesforce_content_safety: bool = False
 
     gpu_memory_utilization: float = 0.7
     tensor_parallel_size: int = 1
@@ -237,20 +210,20 @@ class VLLM(BaseCustomLLM):
     #tokenizer: Optional[Any] = None
 
     tokenizer: Callable = None
+    formatter: Callable = None
     hf_model: Callable = None
-    safety_checker: List = None
+    safety_checkers: List = None
 
     def __init__(self, **kwargs):
         super().__init__()
-        print("[VLLM DEBUG] kwargs received:", kwargs)
         for key, value in kwargs.items():
             setattr(self, key, value)
 
         try:
             import xformers
-            print(f"[DEBUG] xformers version: {xformers.__version__}")
+            logger.debug(f"xformers version: {xformers.__version__}")
         except ImportError:
-            print("[DEBUG] xformers is NOT installed.") 
+            logger.debug("xformers is NOT installed.") 
 
         from vllm import LLM as vllmLLM
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -265,9 +238,15 @@ class VLLM(BaseCustomLLM):
 
         # create tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model, local_files_only=False)
+        self.formatter = PromptFormatter(self.tokenizer, strip_html=True)
 
         model_cache_key = (self.base_model, "", "")
         cached = self.get_cached_model(model_cache_key)
+
+        # create safety checker
+        self.safety_checkers = []
+        if self.enable_salesforce_content_safety:
+            self.safety_checkers.append(SalesforceSafetyChecker())
 
         if cached:
             _, self.vllm_engine = cached
@@ -284,18 +263,11 @@ class VLLM(BaseCustomLLM):
             )
             self.set_cached_model(model_cache_key, (None, self.vllm_engine))
 
-        print(f"[VLLM] input nGPU={self.tensor_parallel_size}")
+        logger.debug(f"Input nGPU={self.tensor_parallel_size}")
 
     @property
     def _llm_type(self) -> str:
         return "custom"
-
-    @staticmethod
-    def strip_all_html(text: str) -> str:
-        from html import unescape
-        import re
-        text = unescape(text)
-        return re.sub(r'<[^>]+>', '', text)
 
     def _call(
         self,
@@ -306,15 +278,11 @@ class VLLM(BaseCustomLLM):
         
         from vllm import SamplingParams
 
-        print("[VLLM DEBUG] Full original prompt:\n", prompt)
-        prompt = self.strip_all_html(prompt)
-        prompt = truncate_prompt(prompt, self.tokenizer, self.max_model_len)
-        print("[VLLM DEBUG] formatted prompt:\n", prompt)
-        formatter = PromptFormatter(self.tokenizer)
-        formatted_prompt, end_tag = formatter.format_prompt(prompt)
+        safe, safe_msg = check_safety(prompt, self.safety_checkers, 'output')
+        if not safe:
+            return safe_msg
 
-        print("[DEBUG] Sent prompt to model:\n", formatted_prompt)
-
+        formatted_prompt, end_tag = self.formatter.format_prompt(prompt)
 
         sampling_params = SamplingParams(
             temperature=self.temperature,
@@ -329,6 +297,9 @@ class VLLM(BaseCustomLLM):
         outputs = self.vllm_engine.generate([formatted_prompt], sampling_params)
         # outputs is a list of RequestOutput, each has .outputs (list of generations)
         if outputs and outputs[0].outputs:
+            safe, safe_msg = check_safety(outputs[0].outputs[0].text, self.safety_checkers, 'output')
+            if not safe:
+                return safe_msg
             return outputs[0].outputs[0].text
         else:
             return ""
@@ -361,8 +332,9 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
     max_padding_length: int = None  # the max padding length used with tokenizer padding prompts
 
     tokenizer: Callable = None
+    formatter: Callable = None
     hf_model: Callable = None
-    safety_checker: List = None
+    safety_checkers: List = None
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -425,11 +397,12 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
             self.set_cached_model(model_cache_key, (self.tokenizer, self.hf_model))
             logger.info("Model loaded and cached.")
 
-        self.safety_checker = []
+        self.safety_checkers = []
         if self.enable_salesforce_content_safety:
             logger.info("Salesforce safety checker enabled.")
-            self.safety_checker.append(SalesforceSafetyChecker())
+            self.safety_checkers.append(SalesforceSafetyChecker())
 
+        self.formatter = PromptFormatter(self.tokenizer)
 
     @property
     def _llm_type(self) -> str:
@@ -442,28 +415,11 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         stop: Optional[List[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
-
-
-        print("[HUGGING DEBUG] Full original prompt:\n", prompt)
-
-        # check if input is safe:
-        safety_results = [check(prompt) for check in self.safety_checker]
-        are_safe = all([r[1] for r in safety_results])
-        if not are_safe:
-            logger.info("User prompt deemed unsafe.")
-            for method, is_safe, report in safety_results:
-                if not is_safe:
-                    logger.info(method)
-                    logger.info(report)
-            logger.info(f"Skipping the {self.hf_model} inference as the prompt is not safe.")
-            return """It looks as if your question may be unsafe. 
-                    
-                    This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
-                    
-                    Please try to reformat your question."""
-
-        formatter = PromptFormatter(self.tokenizer)
-        formatted_prompt, end_tag = formatter.format_prompt(prompt)
+        
+        safe, safe_msg = check_safety(prompt, self.safety_checkers, 'prompt')
+        if not safe:
+            return safe_msg
+        formatted_prompt, end_tag = self.formatter.format_prompt(prompt)
 
         batch = self.tokenizer(formatted_prompt, return_tensors="pt", add_special_tokens=False)
         batch = {k: v.to("cuda") for k, v in batch.items()}
@@ -486,22 +442,9 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         logger.info("Inference completed, decoding output")
         output_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        # safety check of the model output
-        safety_results = [check(output_text) for check in self.safety_checker]
-        are_safe = all([r[1] for r in safety_results])
-        if not are_safe:
-            logger.info("Model output deemed unsafe.")
-            for method, is_safe, report in safety_results:
-                if not is_safe:
-                    logger.info(method)
-                    logger.info(report)
-            return """The response to your question may be unsafe.
-
-                    This may be due to issues relating to toxicity, hate, identity, violence, physical tones, sexual tones, profanity, or biased questions.
-            
-                    There are two ways to solve this:
-                        - generate the response
-                        - reformat your question so that it does not prompt an unsafe response."""
+        safe, safe_msg = check_safety(output_text, self.safety_checkers, 'output')
+        if not safe:
+            return safe_msg
        
         return output_text[output_text.rfind(end_tag) + len(end_tag):]
 

@@ -67,6 +67,7 @@ chains:
     GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
     GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
     GRADING_FINAL_GRADE_MODEL_NAME: {{ chains.chain.GRADING_FINAL_GRADE_MODEL_NAME | default('null', true) }}
+    MAX_MODEL_TOKENS: {{ chains.chain.MAX_MODEL_TOKENS | default(10000, true) }}
     MODEL_CLASS_MAP:
       AnthropicLLM:
         class: AnthropicLLM
@@ -144,6 +145,7 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.base_model | default("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.seed | default("null", true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.max_new_tokens | default(4096, true) }}
           top_p: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_p | default(0.95, true) }}
           temperature: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.temperature | default(0.6, true) }}
@@ -205,6 +207,8 @@ utils:
   piazza:
     network_id: {{ utils.piazza.network_id }}
     update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
+  mattermost:
+    update_time: {{ utils.mattermost.update_time | default(60, true) }} # seconds
   cleo: 
     cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
   mailbox: 

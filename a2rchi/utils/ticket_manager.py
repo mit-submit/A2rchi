@@ -1,13 +1,13 @@
 import os
 
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.jira import JiraClient
 
 
 class TicketManager():
     
     def __init__(self):
-        self.data_path = Config_Loader().config["global"]["DATA_PATH"]
+        self.data_path = load_config()["global"]["DATA_PATH"]
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)

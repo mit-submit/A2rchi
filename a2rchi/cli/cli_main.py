@@ -232,12 +232,13 @@ def cli():
 @click.command()
 @click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
-@click.option('--grafana', '-g', 'include_grafana', type=bool, default=False, help="Boolean to add Grafana dashboard in deployment.")
-@click.option('--document-uploader', '-du', 'include_uploader_service', type=bool, default=False, help="Boolean to add service for admins to upload data")
-@click.option('--cleo-and-mailer', '-cm', 'include_cleo_and_mailer', type=bool, default=False, help="Boolean to add service for a2rchi interface with cleo and a mailer")
-@click.option('--jira', '-j', 'include_jira', type=bool, default=False, help="Boolean to add service for a2rchi interface with Jira")
-@click.option('--piazza', '-piazza', 'include_piazza_service', type=bool, default=False, help="Boolean to add piazza service to read piazza posts and suggest answers to a slack channel.")
-@click.option('--grader', '-grader', 'include_grader_service', is_flag=True, help="Flag to add service for grading service (image to text, then grading, on web interface)")
+@click.option('--grafana', '-g', 'use_grafana', is_flag=True, help="Flag to add Grafana dashboard in deployment.")
+@click.option('--document-uploader', '-du', 'use_uploader_service', is_flag=True, help="Flag to add service for admins to upload data")
+@click.option('--cleo-and-mailer', '-cm', 'use_cleo_and_mailer', is_flag=True, help="Flag to add service for a2rchi interface with cleo and a mailer")
+@click.option('--jira', '-j', 'use_jira', is_flag=True, help="Flag to add service for a2rchi interface with Jira")
+@click.option('--piazza', '-piazza', 'use_piazza_service', is_flag=True, help="Flag to add piazza service to read piazza posts and suggest answers to a slack channel.")
+@click.option('--grader', '-grader', 'use_grader_service', is_flag=True, help="Flag to add service for grading service (image to text, then grading, on web interface)")
+@click.option('--mattermost', '-mattermost', 'use_mattermost_service', is_flag=True, help="Flag to add mattermost service to read mattermost posts and suggest answers to a mattermost channel.")
 @click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
 @click.option('--gpu', 'all_gpus', flag_value="all", help='Flag option for GPUs. Same as "--gpu-ids all"')
 @click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
@@ -247,12 +248,13 @@ def cli():
 def create(
     name, 
     a2rchi_config_filepath,
-    include_grafana, 
-    include_uploader_service, 
-    include_cleo_and_mailer,
-    include_jira,
-    include_piazza_service,
-    include_grader_service,
+    use_grafana, 
+    use_uploader_service, 
+    use_cleo_and_mailer,
+    use_jira,
+    use_piazza_service,
+    use_grader_service,
+    use_mattermost_service,
     use_podman,
     all_gpus,
     gpu_ids,
@@ -320,10 +322,10 @@ def create(
         'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME',
     ]
 
-    if include_piazza_service:
+    if use_piazza_service:
         required_fields.append('utils.piazza.network_id')
 
-    if include_grader_service:
+    if use_grader_service:
         required_fields = [
             'name',
             'global.TRAINED_ON',
@@ -332,7 +334,6 @@ def create(
             'chains.chain.IMAGE_PROCESSING_MODEL_NAME', 'chains.chain.GRADING_FINAL_GRADE_MODEL_NAME',
         ]
     
-
 
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
@@ -349,8 +350,8 @@ def create(
     locations_of_secrets = a2rchi_config["locations_of_secrets"]
 
     # prepare grader service if requested
-    compose_template_vars["include_grader_service"] = include_grader_service
-    if include_grader_service:
+    compose_template_vars["use_grader_service"] = use_grader_service
+    if use_grader_service:
         _print_msg("Preparing Grader Service")
         compose_template_vars["grader_image"] = f"grader-{name}"
         compose_template_vars["grader_tag"] = tag
@@ -380,8 +381,8 @@ def create(
 
 
     # if deployment includes grafana, create docker volume and template deployment files
-    compose_template_vars["include_grafana"] = include_grafana
-    if include_grafana:
+    compose_template_vars["use_grafana"] = use_grafana
+    if use_grafana:
         _create_volume(f"a2rchi-grafana-{name}", podman=use_podman)
 
         # fetch grafana password or raise error if not set
@@ -433,12 +434,12 @@ def create(
         grafana_port_host = a2rchi_config.get('interfaces', {}).get('grafana', {}).get('EXTERNAL_PORT', 3000)
         compose_template_vars['grafana_port_host'] = grafana_port_host
 
-    compose_template_vars["include_uploader_service"] = include_uploader_service
-    if include_uploader_service:
+    compose_template_vars["use_uploader_service"] = use_uploader_service
+    if use_uploader_service:
          _print_msg("Preparing Uploader Service")
 
          # Add uploader service to compose
-         compose_template_vars["include_uploader_service"] = include_uploader_service
+         compose_template_vars["use_uploader_service"] = use_uploader_service
          compose_template_vars["uploader_image"] = f"uploader-{name}"
          compose_template_vars["uploader_tag"] = tag
 
@@ -452,8 +453,8 @@ def create(
          _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
          _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
 
-    compose_template_vars["include_piazza_service"] = include_piazza_service
-    if include_piazza_service:
+    compose_template_vars["use_piazza_service"] = use_piazza_service
+    if use_piazza_service:
         _print_msg("Preparing Piazza Service")
 
         compose_template_vars["piazza_image"] = f"piazza-{name}"
@@ -464,13 +465,25 @@ def create(
         _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
 
+    compose_template_vars["use_mattermost_service"] = use_mattermost_service
+    if use_mattermost_service:
+        _print_msg("Preparing Mattermost Service")
 
-    compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
-    if include_cleo_and_mailer:
+        compose_template_vars["mattermost_image"] = f"mattermost-{name}"
+        compose_template_vars["mattermost_tag"] = tag
+
+        # mattermost secrets
+        _prepare_secret(a2rchi_name_dir, "mattermost_webhook", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_read", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_write", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "mattermost_pak", locations_of_secrets)
+
+    compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
+    if use_cleo_and_mailer:
         _print_msg("Preparing Cleo and Emailer Service")
 
         # Add uploader service to compose
-        compose_template_vars["include_cleo_and_mailer"] = include_cleo_and_mailer
+        compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
         compose_template_vars["cleo_image"] = f"cleo-{name}"
         compose_template_vars["cleo_tag"] = tag
         compose_template_vars["mailbox_image"] = f"mailbox-{name}"
@@ -489,7 +502,7 @@ def create(
         _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
 
     
-    if include_jira:
+    if use_jira:
         _prepare_secret(a2rchi_name_dir, "jira_pat", locations_of_secrets)
         compose_template_vars["jira"] = True
     
@@ -498,13 +511,13 @@ def create(
     # prepare init.sql for postgres initialization
     init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
     init_sql = init_sql_template.render({
-        "include_grafana": include_grafana,
-        "grafana_pg_password": grafana_pg_password if include_grafana else "",
+        "use_grafana": use_grafana,
+        "grafana_pg_password": grafana_pg_password if use_grafana else "",
     })
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
-    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not include_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
+    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not use_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
     chain_config = a2rchi_config["chains"]["chain"]
 
     # prepare needed api token secrets
@@ -529,7 +542,7 @@ def create(
 
 
     # copy prompts (make this cleaner prob)
-    if include_grader_service:
+    if use_grader_service:
         shutil.copyfile(a2rchi_config["chains"]["prompts"]["IMAGE_PROCESSING_PROMPT"], os.path.join(a2rchi_name_dir, "image_processing.prompt"))
         shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_FINAL_GRADE_PROMPT"], os.path.join(a2rchi_name_dir, "grading_final_grade.prompt"))
         compose_template_vars["summary"] = True
@@ -603,7 +616,7 @@ def create(
         compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     _print_msg("Starting compose")
     stdout, stderr = _run_bash_command(compose_up, verbose=True, cwd=a2rchi_name_dir)
-
+    _print_msg("DONE compose")
 
 @click.command()
 @click.option('--name', type=str, help="Name of the a2rchi deployment.")
