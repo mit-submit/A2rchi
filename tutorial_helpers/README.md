@@ -7,12 +7,18 @@ This directory contains helper scripts and documentation for setting up A2rchi f
 ### Prerequisites
 
 Make sure you are on the "heavy node", `ssh <your username>@cmslpc-el9-heavy01.fnal.gov`,  which has a large enough local filesystem (/dev/sda2) to build the containers. See more [here](https://uscms.org/uscms_at_work/physics/computing/getstarted/uaf.shtml#nodes)
+For the tutorial session on august 15, we have available 4 additional special nodes:
+`cmslpc346.fnal.gov`
+`cmslpc347.fnal.gov`
+`cmslpc348.fnal.gov`
+`cmslpc350.fnal.gov`
+
 
 ### 1. Clone and Setup Python Environment
 
 ```bash
 # Clone the tutorial branch
-git clone -b tutorial https://github.com/your-repo/A2rchi.git
+git clone -b tutorial https://github.com/mit-submit/A2rchi.git
 cd A2rchi
 
 # Create and activate Python virtual environment
@@ -252,7 +258,7 @@ podman volume rm a2rchi-pg-<deployment-name>
 ```bash
 # Obtain a token:
 1. go to https://its.cern.ch/jira/
-2. open settings and then Personal Access Tokens and click Create token
+2. Edit Profile (icon on the top right cornre) and then opeen Personal Access Tokens and click Create token
 
 # Add you jira token in secrets
 echo <YOUR TOKEN> > ~/.secrets/jira_pat.txt
