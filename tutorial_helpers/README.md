@@ -81,7 +81,7 @@ These values listed above are the defaults, however since multiple of you will b
 Deploy your A2rchi instance:
 
 ```bash
-a2rchi create --name <deployment-name> --a2rchi-config configs/minimal_config.yaml --podman
+a2rchi create --name <deployment-name> --a2rchi-config configs/lpc_minimal_config.yaml --podman
 ```
 
 Replace `<deployment-name>` with whatever you want to call your deployment (e.g., `my-chatbot`, `test-instance`, etc.).
@@ -132,6 +132,7 @@ Again, replace `7861` accordingly. You should now have access to your A2rchi cha
 - Verify your OpenAI API key is correct and has credits
 - Check that the secrets files were created properly
 
+
 ### Checking A2rchi and Container Status
 
 ```bash
@@ -154,6 +155,8 @@ a2rchi delete --name <deployment-name>
 ## More links
 
 On the main repo page, you will find links to the User Guide and Getting Started pages, or below some more examples to explore more of what A2rchi is about...
+- 🛠️ **[User's Guide](https://mit-submit.github.io/A2rchi/user_guide/)**
+
 
 ## Adding Grafana and Document Uploader Services (Optional)
 
@@ -179,7 +182,7 @@ echo "mysalt" > ~/.secrets/uploader_salt.txt
 ```
 
 ### Update Configuration File
-Before relaunching, add the following to your `configs/minimal_config.yaml` and change ports as necessary:
+Before relaunching, add the following to your `configs/lpc_minimal_config.yaml` and change ports as necessary:
 
 ```yaml
 interfaces:
@@ -191,7 +194,7 @@ interfaces:
 
 ### Launch A2rchi with Additional Services
 ```bash
-a2rchi create --name <deployment-name> -f configs/minimal_config.yaml --podman --grafana --document-uploader
+a2rchi create --name <deployment-name> -f configs/lpc_minimal_config.yaml --podman --grafana --document-uploader
 ```
 
 ### Set Up Uploader User Account
@@ -231,4 +234,43 @@ http://localhost:5003
 
 Replace port numbers with whatever you configured in the yaml file.
 
-#TODO: add one about websites in .list file that you give to input_lists in config and also grabbing JIRA tickets
+
+## Adding Jira Service (Optional)
+
+If you want to grab JIRA tickets, follow these additional steps:
+
+### Clean Up Previous Instance (if needed)
+```bash
+# Stop existing instance
+a2rchi delete --name <deployment-name>
+
+# Remove postgres volume to reinitialize database
+podman volume rm a2rchi-pg-<deployment-name>
+```
+
+### Configure Additional Service Secrets
+```bash
+# Obtain a token:
+1. go to https://its.cern.ch/jira/
+2. open settings and then Personal Access Tokens and click Create token
+
+# Add you jira token in secrets
+echo <YOUR TOKEN> > ~/.secrets/jira_pat.txt
+```
+
+### Update Configuration File
+Before relaunching, add the following to your `configs/lpc_minimal_config.yaml`:
+
+```yaml
+utils:
+  jira:
+    JIRA_URL: https://its.cern.ch/jira/
+    JIRA_PROJECTS: ["CMSPROD"]
+```
+
+### Launch A2rchi with Additional Services
+```bash
+a2rchi create --name <deployment-name> -f configs/lpc_minimal_config.yaml --podman --jira
+```
+
+#homework 💻 : add one about websites in .list file that you give to input_lists in config and also grabbing JIRA tickets
