@@ -1,3 +1,4 @@
+import hashlib
 import os
 import time
 import re
@@ -17,7 +18,7 @@ logger = get_logger(__name__)
 class SSOScraper(ABC):
     """Generic base class for SSO-authenticated web scrapers."""
     
-    def __init__(self, username=None, password=None, headless=True, site_type="generic", max_depth=50):
+    def __init__(self, username=None, password=None, headless=True, site_type="generic", max_depth=2):
         """Initialize the SSO scraper with credentials and browser settings.
         
         Args:
@@ -25,7 +26,7 @@ class SSOScraper(ABC):
             password (str, optional): SSO password. If None, will try to get from env vars.
             headless (bool): Whether to run the browser in headless mode.
             site_type (str): Type of site to scrape ('generic' or 'mkdocs')
-            max_depth (int): Maximum number of pages to crawl per page.
+            max_depth (int): Maximum number of levels to crawl per page.
         """
         self.username = username or self.get_username_from_env()
         self.password = password or self.get_password_from_env()
@@ -34,7 +35,6 @@ class SSOScraper(ABC):
         self.site_type = site_type
         self.driver = None
         self.visited_urls = set()
-        self.page_data = []
         
         if self.username:
             logger.info(f"Using username: {self.username}")
@@ -90,42 +90,6 @@ class SSOScraper(ABC):
         logger.info(f"Page title: {self.driver.title}")
         return self.driver.title
     
-    def get_page_content(self):
-        """Get the current page source."""
-        if not self.driver:
-            raise RuntimeError("WebDriver not initialized. Call setup_driver() first.")
-        return self.driver.page_source
-    
-    def extract_page_data(self, url):
-        """Extract the title and raw HTML content from the current page."""
-        title = self.driver.title
-        
-        # Get both text content for summary and full HTML
-        text_content = self.driver.find_element(By.TAG_NAME, "body").text
-        html_content = self.driver.page_source
-        
-        return {
-            "url": url,
-            "title": title,
-            "content": text_content,
-            "html": html_content
-        }
-    
-    def extract_mkdocs_page_data(self, url):
-        """Extract title and raw HTML from MkDocs page."""
-        # Just get the title and full HTML without parsing
-        title = self.driver.title
-        html_content = self.driver.page_source
-        text_content = self.driver.find_element(By.TAG_NAME, "body").text
-        
-        return {
-            "url": url,
-            "title": title,
-            "content": text_content,
-            "html": html_content,
-            "type": "mkdocs"
-        }
-    
     def get_links_with_same_hostname(self, base_url):
         """Extract all links from the current page that have the same hostname as base_url."""
         base_hostname = urllib.parse.urlparse(base_url).netloc
@@ -147,15 +111,11 @@ class SSOScraper(ABC):
                     if parsed_url.netloc == base_hostname and parsed_url.scheme in ('http', 'https'):
                         # Normalize the URL to prevent duplicates
                         normalized_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
-                        if parsed_url.query:
-                            normalized_url += f"?{parsed_url.query}"
-
-                        # BIG patch start -- this works for CMS twiki but should be generalized
-                        normalized_url = normalized_url.split("?")[0]
-                        if 'bin/rdiff' in normalized_url or 'bin/edit' in normalized_url or 'bin/oops' in normalized_url  or 'bin/attach' in normalized_url or 'bin/genpdf' in normalized_url or '/WebIndex' in normalized_url:
-                            continue
-                        # BIG patch end
-                        
+                        #if parsed_url.query:
+                        #    normalized_url += f"?{parsed_url.query}"
+                        # we do not accept URLs with parameters
+                        if not self._clear_url(normalized_url):
+                            continue                        
                         links.append(normalized_url)
                         
             except Exception as e:
@@ -163,45 +123,55 @@ class SSOScraper(ABC):
                 
         return list(set(links))  # Remove duplicates
     
-
-    def crawl(self, start_url):
+    def _clear_url(self, url):
+        """WARNING - A very adhoc way to remove URLs from CMS TWiki not containing useful information"""
+        cleared = True
+        #url = url.split("?")[0]
+        if '/Main/' in url or 'bin/rdiff' in url or 'bin/edit' in url or 'bin/oops' in url  or 'bin/attach' in url or 'bin/genpdf' in url or '/WebIndex' in url or '/WebHome' in url or '/WebChanges' in url or '.png' in url:
+            cleared = False
+        
+        return cleared
+    
+    def crawl(self, start_url, upload_dir):
         """Crawl pages starting from the given URL, storing title and content of each page.
         
         Args:
             start_url (str): The URL to start crawling from
+            upload_dir (str): The directory where the URL content is to be stored
             
         Returns:
-            list: List of dictionaries containing page data (url, title, content)
+            dictionary of source urls addressed via their internal file identifiers
         """
-        max_depth = self.max_depth
-        depth = 0
-        
         if not self.driver:
             self.setup_driver()
-            
-        # Reset crawling state
+
+        base_hostname = urllib.parse.urlparse(start_url).netloc
+        logger.info(f"Base hostname for crawling: {base_hostname}")
+        logger.info(f"Site type: {self.site_type}")
+
+        # History record   
+        pages_visited = 0
         self.visited_urls = set()
-        self.page_data = []
+        sources = {}
+        
+        # Reset crawling state
+        #self.page_data = []
+        depth = 0
         to_visit = [start_url]
         level_links = []
         
         # First authenticate through the start URL
-        self.authenticate_and_navigate(start_url)
-        
-        base_hostname = urllib.parse.urlparse(start_url).netloc
-        logger.info(f"Base hostname for crawling: {base_hostname}")
-        logger.info(f"Site type: {self.site_type}")
-        
-        pages_visited = 0
-        
-        while to_visit and depth < max_depth:
+        self.authenticate_and_navigate(start_url)        
+
+        # Start to crawl through
+        while to_visit and depth < self.max_depth:
             current_url = to_visit.pop(0)
             
             # Skip if we've already visited this URL
             if current_url in self.visited_urls:
                 continue
                 
-            logger.info(f"Crawling page {depth + 1}/{max_depth}: {current_url}")
+            logger.info(f"Crawling (depth: {depth + 1} of {self.max_depth}): {current_url}")
             try:
                 # Navigate to the page
                 self.navigate_to(current_url, wait_time=2)
@@ -210,10 +180,15 @@ class SSOScraper(ABC):
                 self.visited_urls.add(current_url)
                 pages_visited += 1
 
-                # Extract and store page data
-                page_data = self.extract_page_data(current_url)
-                self.page_data.append(page_data)
-                logger.info(f"Extracted data from {current_url} ({len(page_data['content'])} chars)")
+                # Read the page and store the text only to file (Careful: images in html are large)
+                identifier = hashlib.md5()
+                identifier.update(current_url.encode('utf-8'))
+                file_name = str(int(identifier.hexdigest(),16))[0:12]
+                logger.info(f"Store: {upload_dir}/{file_name}.html : {current_url}")
+                with open(f"{upload_dir}/{file_name}.html", 'w') as file:
+                    file.write(self.driver.find_element(By.TAG_NAME,'body').text)
+                sources[file_name] = current_url
+                logger.debug(f"TEXT({current_url})\n{self.driver.find_element(By.TAG_NAME,'body').text}\n")
                 
                 # Get links to follow
                 new_links = self.get_links_with_same_hostname(current_url)
@@ -225,94 +200,19 @@ class SSOScraper(ABC):
                         logger.info(f"Found new link: {link} (nv: {pages_visited})")
                         level_links.append(link)
 
-                # scan next level if to_visit is empty
+                # Scan next level if to_visit is empty
                 if len(to_visit) == 0:
                     for link in new_links:
                         to_visit.append(link)
                     depth += 1
                     level_links = []
                         
-                        
             except Exception as e:
                 logger.info(f"Error crawling {current_url}: {e}")
-                self.visited_urls.add(current_url)  # Mark as visited to avoid retrying
-        
+                self.visited_urls.add(current_url)  # Mark as visited to avoid retrying           
+            
         logger.info(f"Crawling complete. Visited {pages_visited} pages.")
-        return self.page_data
-    
-    def save_crawled_data(self, output_dir="crawled_data"):
-        """Save the crawled data to files.
-        
-        Args:
-            output_dir (str): Directory to save the crawled data
-        """
-        if not self.page_data:
-            logger.info("No data to save")
-            return
-            
-        # Create output directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"Saving crawled data to {output_dir}...")
-        
-        # Save a summary file with all URLs and titles
-        summary_path = os.path.join(output_dir, "summary.txt")
-        with open(summary_path, "w", encoding="utf-8") as f:
-            for i, page in enumerate(self.page_data):
-                f.write(f"{i+1}. {page['title']}\n")
-                f.write(f"   URL: {page['url']}\n")
-                f.write(f"   Content length: {len(page.get('html', ''))} chars\n")
-                f.write("\n")
-        
-        # Save each page's content to separate files - raw HTML and text
-        for i, page in enumerate(self.page_data):
-            # Create a safe filename from the URL
-            safe_name = re.sub(r'[^\w\-_.]', '_', page['url'])
-            safe_name = safe_name[-100:] if len(safe_name) > 100 else safe_name
-            
-            # Save the complete raw HTML
-            html_file_path = os.path.join(output_dir, f"{i+1}_{safe_name}.txt")
-            with open(html_file_path, "w", encoding="utf-8") as f:
-                f.write(f"URL: {page['url']}\n")
-                f.write(f"Title: {page['title']}\n")
-                f.write("="*80 + "\n\n")
-                f.write(page.get('content', page.get('html', '')))
-            
-            # # Also save a text file for basic reading/searching
-            # text_file_path = os.path.join(output_dir, f"{i+1}_{safe_name}.txt")
-            # with open(text_file_path, "w", encoding="utf-8") as f:
-            #     f.write(f"URL: {page['url']}\n")
-            #     f.write(f"Title: {page['title']}\n")
-            #     f.write("="*80 + "\n\n")
-            #     f.write(page['content'])
-        
-        # Save a JSON index of all crawled pages
-        json_path = os.path.join(output_dir, "crawled_index.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            # Create a simplified index without the large HTML content
-            pages_data = []
-            for i, page in enumerate(self.page_data):
-                safe_name = re.sub(r'[^\w\-_.]', '_', page['url'])
-                safe_name = safe_name[-100:] if len(safe_name) > 100 else safe_name
-                filename = f"{i+1}_{safe_name}"
-                pages_data.append({
-                    "url": page["url"],
-                    "title": page["title"],
-                    "filename": filename
-                })
-            
-            index = {
-                "site_type": self.site_type,
-                "base_url": next(iter(self.page_data), {}).get('url', ''),
-                "pages": pages_data,
-                "crawled_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "total_pages": len(self.page_data)
-            }
-            json.dump(index, f, indent=2, ensure_ascii=False)
-                
-        logger.info(f"Saved {len(self.page_data)} pages to {output_dir}")
-        logger.info(f"- HTML files containing complete raw page content")
-        logger.info(f"- Text files for basic reading")
-        logger.info(f"- JSON index of all crawled pages")
+        return sources
     
     def close(self):
         """Close the browser and clean up resources."""

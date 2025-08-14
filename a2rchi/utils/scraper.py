@@ -134,16 +134,9 @@ class Scraper():
                             sso_kwargs = sso_class_map[sso_class_name].get("kwargs", {})
                         
                             with sso_class(**sso_kwargs) as sso_scraper:
-                                
-                                crawled_data = sso_scraper.crawl(url)
-                                sso_scraper.save_crawled_data(upload_dir)
-                                
-                                for i, page in enumerate(crawled_data):
-                                    logger.info(f"SSO Crawled {i+1}. {page['title']} - {page['url']}")
-                                    identifier = hashlib.md5()
-                                    identifier.update(page['url'].encode('utf-8'))
-                                    file_name = str(int(identifier.hexdigest(), 16))[0:12]
-                                    sources[file_name] = page['url']
+                                added_sources = sso_scraper.crawl(url, upload_dir)
+                                for source_key in added_sources:
+                                    sources[source_key] = added_sources[source_key]
                         else:
                             logger.error(f"SSO class {sso_class_name} not found in SSO_CLASS_MAP")
                             raise Exception(f"SSO class {sso_class_name} not configured")

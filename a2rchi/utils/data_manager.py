@@ -213,6 +213,8 @@ class DataManager():
         """
         for filename, file in files_to_add.items():
 
+            logger.info(f"<MP> Processing file: {filename}")
+
             # create the chunks
             loader = None
             try:
@@ -237,7 +239,9 @@ class DataManager():
 
             # explicitly get file metadata
             filehash = filename.split(".")[0]
-            url = sources[filehash] if filehash in sources.keys() else self._find_url(filename)
+            #url = sources[filehash] if filehash in sources.keys() else self._find_url(filename)
+            url = sources[filehash] if filehash in sources.keys() else ""
+            logger.info(f"<MP> Corresponding: {filename} {filehash} -> {url}")
             
             # embed each chunk
             embeddings = self.embedding_model.embed_documents(chunks)
