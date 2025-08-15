@@ -6,7 +6,7 @@ This directory contains helper scripts and documentation for setting up A2rchi f
 
 ### Prerequisites
 
-Make sure you are on the "heavy node", `ssh <your username>@cmslpc-el9-heavy01.fnal.gov`,  which has a large enough local filesystem (/dev/sda2) to build the containers. See more [here](https://uscms.org/uscms_at_work/physics/computing/getstarted/uaf.shtml#nodes)
+Make sure you are on a "heavy node", `ssh <your username>@cmslpc-el9-heavy01.fnal.gov` (`cmslpc-el8-heavy01.fnal.gov` and `cmslpc-el8-heavy02.fnal.gov` also work),  which has a large enough local filesystem (/dev/sda2) to build the containers. See more [here](https://uscms.org/uscms_at_work/physics/computing/getstarted/uaf.shtml#nodes)
 
 ### 1. Clone and Setup Python Environment
 
@@ -16,7 +16,7 @@ git clone -b tutorial https://github.com/your-repo/A2rchi.git
 cd A2rchi
 
 # Create and activate Python virtual environment
-python -m venv myenv
+python -m venv myenv # on el8 nodes you might have to explictily type /usr/bin/python3.11
 source myenv/bin/activate.csh  # for tcsh users
 # OR: source myenv/bin/activate  # for bash users
 
