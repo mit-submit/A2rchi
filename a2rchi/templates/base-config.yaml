@@ -20,6 +20,7 @@ interfaces:
     static_folder: "{{ interfaces.chat_app.static_folder | default('/root/A2rchi/a2rchi/interfaces/chat_app/static', true) }}"
     num_responses_until_feedback: {{ interfaces.chat_app.num_responses_until_feedback | default(3, true) }}
     include_copy_button: {{ interfaces.chat_app.include_copy_button | default(false, true) }}
+    enable_debug_chroma_endpoints: {{ interfaces.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ interfaces.chat_app.flask_debug_mode | default(true, false) }}
   uploader_app:
     PORT: {{ interfaces.uploader_app.PORT | default(5001, true) }}
