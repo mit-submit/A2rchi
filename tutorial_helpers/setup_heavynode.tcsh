@@ -10,10 +10,10 @@ echo ""
 
 echo "Step 1: Creating local scratch storage directories..."
 echo "Command: mkdir -p /scratch/containers/dalfonso/containers"
-mkdir -p /scratch/containers/dalfonso/containers
+mkdir -p /scratch/containers/$USER/containers
 
 echo "Command: mkdir -p /scratch/containers/dalfonso/build-tmp"
-mkdir -p /scratch/containers/dalfonso/build-tmp
+mkdir -p /scratch/containers/$USER/build-tmp
 
 echo "✓ Directories created successfully"
 echo ""
@@ -28,7 +28,7 @@ mkdir -p ~/.config/containers
 cat > ~/.config/containers/storage.conf << EOF
 [storage]
 driver = "overlay"
-graphroot = "/scratch/containers/dalfonso/containers"
+graphroot = "/scratch/containers/$USER/containers"
 EOF
 
 echo "✓ Storage configuration written"
@@ -36,10 +36,10 @@ echo ""
 
 echo "Step 3: Setting environment variables for build process..."
 echo "Command: setenv TMPDIR /scratch/containers/dalfonso/build-tmp"
-setenv TMPDIR /scratch/containers/dalfonso/build-tmp
+setenv TMPDIR /scratch/containers/$USER/build-tmp
 
 echo "Command: setenv BUILDAH_TMPDIR /scratch/containers/dalfonso/build-tmp"
-setenv BUILDAH_TMPDIR /scratch/containers/dalfonso/build-tmp
+setenv BUILDAH_TMPDIR /scratch/containers/$USER/build-tmp
 
 echo "✓ Environment variables set"
 echo ""
