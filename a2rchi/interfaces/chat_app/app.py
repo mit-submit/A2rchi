@@ -306,6 +306,8 @@ class ChatWrapper:
         Execute the chat functionality.
         """
         # store timestamps for code profiling information
+        start_time = time.time()
+
         timestamps = {}
 
         self.lock.acquire()
@@ -383,19 +385,19 @@ class ChatWrapper:
                 if '/' in source_hash and '.' in source_hash:
                     source = source_hash.split('/')[-1].split('.')[0]
 
-            # if the score is low enough, include the source as a link, otherwise give just the answer
+            # if score is low enough, include source as link, otherwise just give answer
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
             logger.debug(f"Similarity score reference:  {similarity_score_reference}")
             logger.debug(f"Similarity score:  {score}")
             link = ""
+            output = "<p>" + self.format_code_in_text(result["answer"])
             if source is not None and score < similarity_score_reference and source in sources.keys():
                 link = sources[source]
                 logger.info(f"Primary source:  {link}")
                 parsed_source = urlparse(link)
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
-            else:
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
+                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + f"</a>(score:{score:.2f})</small></small>, "
+            output += f"<small><small>time: {time.time()-start_time:.2f}s</small></small>" + "\n<br>"
 
             # write user message and A2rchi response to database
             timestamps['a2rchi_message_ts'] = datetime.now()

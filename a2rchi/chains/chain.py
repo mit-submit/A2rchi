@@ -193,12 +193,14 @@ class Chain() :
             client = chromadb.HttpClient(
                 host=self.utils_config["data_manager"]["chromadb_host"],
                 port=self.utils_config["data_manager"]["chromadb_port"],
-                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),
+                # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         else:
             client = chromadb.PersistentClient(
                 path=self.global_config["LOCAL_VSTORE_PATH"],
-                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
+                settings=Settings(allow_reset=True, anonymized_telemetry=False),
+                # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         
         # construct vectorstore
@@ -209,12 +211,16 @@ class Chain() :
         )
 
         # perform similarity search
+        logger.debug(f"Input to similarity search: {input}")
         similarity_result = vectorstore.similarity_search_with_score(input)
+        logger.debug(f"Similarity result: {similarity_result}")
         score = (
             vectorstore.similarity_search_with_score(input)[0][1]
             if len(similarity_result) > 0
             else 1e10
         )
+        for d, s in similarity_result:
+            logger.debug(f"Doc: {d.metadata['filename']} Score: {s}")
 
         # clean up vectorstore and client
         del vectorstore
