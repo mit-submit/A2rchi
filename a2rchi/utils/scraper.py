@@ -18,7 +18,7 @@ class Scraper():
     def __init__(self, piazza_email=None, piazza_password=None):
         # fetch configs
         from a2rchi.utils.config_loader import load_config
-        self.config_dict = load_config()
+        self.config_dict = load_config(map=True)
         self.config = self.config_dict["utils"]["scraper"]
         self.global_config = self.config_dict["global"]
         self.piazza_config = self.config_dict["utils"].get("piazza", None)
@@ -128,12 +128,13 @@ class Scraper():
                     if sso_config and sso_config.get("ENABLED", False):
                         sso_class_name = sso_config.get("SSO_CLASS", "CERNSSOScraper")
                         sso_class_map = sso_config.get("SSO_CLASS_MAP", {})
-                        
+
                         if sso_class_name in sso_class_map:
                             sso_class = sso_class_map[sso_class_name]["class"]
                             sso_kwargs = sso_class_map[sso_class_name].get("kwargs", {})
-                            
+                        
                             with sso_class(**sso_kwargs) as sso_scraper:
+                                
                                 crawled_data = sso_scraper.crawl(url)
                                 sso_scraper.save_crawled_data(upload_dir)
                                 

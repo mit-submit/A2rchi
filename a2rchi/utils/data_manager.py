@@ -121,8 +121,7 @@ class DataManager():
 
         # get current status of persistent vstore 
         files_in_vstore = [metadata["filename"] for metadata in collection.get(include=["metadatas"])["metadatas"]]
-
-
+        
         # scan data folder and obtain list of files in data. Assumes max depth = 1
         dirs = [
             os.path.join(self.data_path, dir)
@@ -191,7 +190,7 @@ class DataManager():
            collection:   a ChromaDB collection
            files_to_add: a dictionary with keys being the filenames and values being the file path
            sources:      a dictionary, usually loaded from a yaml file, which has keys being the 
-                         file hash (everything in the file name except the file extension) and  has
+                         file hash (everything in the file name except the file extension) and has
                          values of the url from which the source originated from. Not all files must
                          be in the source dictionary.
 
@@ -224,11 +223,11 @@ class DataManager():
             # explicitly get file metadata
             filehash = filename.split(".")[0]
             url = sources[filehash] if filehash in sources.keys() else ""
-
+            
             # embed each chunk
             embeddings = self.embedding_model.embed_documents(chunks)
 
-            # add filename as metadata for each chunk
+            # add filename (better even corresponding url) as metadata for each chunk
             for metadata in metadatas:
                 metadata["filename"] = filename
             
@@ -249,7 +248,7 @@ class DataManager():
 
             logger.info(f"Ids: {ids}")
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            logger.info(f"Successfully added file {filename}")
+            logger.info(f"Successfully added file {url}")
 
         return collection
 
