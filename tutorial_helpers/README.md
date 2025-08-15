@@ -90,7 +90,7 @@ Deploy your A2rchi instance:
 a2rchi create --name <deployment-name> --a2rchi-config configs/lpc_minimal_config.yaml --podman
 ```
 
-Replace `<deployment-name>` with whatever you want to call your deployment (e.g., `my-chatbot`, `test-instance`, etc.).
+Replace `<deployment-name>` with whatever you want to call your deployment (e.g., `my-chatbot`, `test-instance`, etc.), *just make sure it is all lowercase otherwise Podman will complain*!.
 
 **Note**: This might take a bit the first time since we need to pull images, then build some locally, but caching will make it much faster once you start iterating.
 
