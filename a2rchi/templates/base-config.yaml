@@ -166,6 +166,8 @@ utils:
     database: {{ utils.postgres.database | default('a2rchi-db', true) }}
     host: {{ postgres_hostname }}
   data_manager:
+    stemming:
+      ENABLED: {{ utils.data_manager.stemming.ENABLED | default(false, true) }}
     CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(1000, true) }}
     CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
     use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
@@ -200,7 +202,7 @@ utils:
         class: CERNSSOScraper
         kwargs:
           headless: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.headless | default(true, true) }}
-          max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(50, true) }}
+          max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}

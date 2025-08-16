@@ -81,3 +81,4 @@ charset_normalizer==3.4.2
 anyio==4.8.0
 catalogue==2.0.9
 aiohttp==3.9.5
+nltk==3.9.1
