@@ -14,6 +14,7 @@ from langchain_text_splitters.character import CharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
 
 import chromadb
+import nltk
 import hashlib
 import os
 import yaml
@@ -28,7 +29,8 @@ class DataManager():
         self.config = load_config(map=True)["utils"]
         self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
-
+        self.stemmer = None
+        
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
 
@@ -62,6 +64,10 @@ class DataManager():
             chunk_overlap=self.config["data_manager"]["CHUNK_OVERLAP"],
         )
 
+        # makes sure nltk gets installed and initializes stemmer
+        if self.config["data_manager"]["stemming"].get("ENABLED", False):
+            nltk.download('punkt_tab')
+            self.stemmer = nltk.stem.PorterStemmer()
 
     def delete_existing_collection_if_reset(self):
         """
@@ -183,21 +189,6 @@ class DataManager():
         return collection
 
     
-    def _find_url(self, filename):
-        """
-        Per convention when we dump a web page into a txt file we start the file on the first line with
-        URL: http....
-        to describe the original source for that page. If no url can be found the filename is used.
-        """
-        url = filename
-        with open(f"{self.data_path}/websites/{filename}","r") as f:
-            first_line = f.readline()
-        if first_line.split(' ')[0] == 'URL:' and first_line.split(' ')[1].startswith('http'):
-            url = first_line.split(' ')[1]
-        logger.info(f"checked for URL in: {self.data_path}/websites/{filename} -> URL: {url}")
-        return url
-
-
     def _add_to_vectorstore(self, collection, files_to_add, sources={}):
         """
         Method which takes as input:
@@ -233,22 +224,30 @@ class DataManager():
             # load documents from current file and add to docs and metadata
             docs = loader.load()
             for doc in docs:
+                
                 new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
-                chunks += new_chunks
-                metadatas += [doc.metadata for chunk in new_chunks]
+                
+                for new_chunk in new_chunks:
+                    logger.info(f"original chunk {new_chunk}")
+                    if self.config["data_manager"]["stemming"].get("ENABLED", False):
+                        words = nltk.tokenize.word_tokenize(new_chunk)
+                        stemmed_words = [self.stemmer.stem(word) for word in words]
+                        new_chunk = " ".join(stemmed_words)
+                        logger.info(f"stemmed chunk {new_chunk}")
+                    chunks.append(new_chunk)
+                    metadatas.append(doc.metadata)
 
             # explicitly get file metadata
             filehash = filename.split(".")[0]
-            #url = sources[filehash] if filehash in sources.keys() else self._find_url(filename)
             url = sources[filehash] if filehash in sources.keys() else ""
             logger.info(f"<MP> Corresponding: {filename} {filehash} -> {url}")
-            
-            # embed each chunk
-            embeddings = self.embedding_model.embed_documents(chunks)
 
+            # embeds each chunk
+            embeddings = self.embedding_model.embed_documents(chunks)
+            
             # add filename (better even corresponding url) as metadata for each chunk
             for metadata in metadatas:
-                metadata["filename"] = url
+                metadata["filename"] = filename
             
             # create unique id for each chunk
             # the first 12 bits of the id being the filename, 6 more based on the chunk itself, and the last 6 hashing the time
@@ -291,4 +290,4 @@ class DataManager():
             return PyPDFLoader(file_path)
         else: 
             logger.error(f"Format not supported -- {file_path}")
-            return None 
+            return None

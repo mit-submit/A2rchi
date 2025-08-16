@@ -165,6 +165,8 @@ utils:
     database: {{ utils.postgres.database | default('a2rchi-db', true) }}
     host: {{ postgres_hostname }}
   data_manager:
+    stemming:
+      ENABLED: {{ utils.data_manager.stemming.ENABLED | default(false, true) }}
     CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(1000, true) }}
     CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
     use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
