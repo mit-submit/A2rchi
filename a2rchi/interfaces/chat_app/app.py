@@ -36,6 +36,7 @@ import numpy as np
 
 import chromadb
 import os
+import re
 import psycopg2
 import psycopg2.extras
 import yaml
