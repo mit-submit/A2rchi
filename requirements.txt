@@ -11,6 +11,7 @@ flask-login==0.6.3
 flask-session==0.8.0
 flask-cors==5.0.0
 flatbuffers==23.5.26
+gitpython==3.1.45
 hnswlib==0.7.0
 httptools==0.6.1
 httpx==0.27.2
