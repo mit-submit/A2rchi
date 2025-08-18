@@ -94,7 +94,10 @@ const refreshChat = async () => {
 }
 
 const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
-    const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/get_chat_response";
+    const HOSTNAME = "XX-HOSTNAME-XX";
+    const HTTP_PORT = "XX-HTTP_PORT-XX";
+    const PROTOCOL = HTTP_PORT === "443" ? "https" : "http";
+    const API_URL = `${PROTOCOL}://${HOSTNAME}:${HTTP_PORT}/api/get_chat_response`;
     const pElement = document.createElement("div");
 
      // Define the properties and data for the API request

@@ -17,13 +17,14 @@ class Scraper():
     
     def __init__(self, piazza_email=None, piazza_password=None):
         # fetch configs
-        from a2rchi.utils.config_loader import Config_Loader
-        self.config = Config_Loader().config["utils"]["scraper"]
-        self.global_config = Config_Loader().config["global"]
-        self.piazza_config = Config_Loader().config["utils"].get("piazza", None)
+        from a2rchi.utils.config_loader import load_config
+        self.config_dict = load_config()
+        self.config = self.config_dict["utils"]["scraper"]
+        self.global_config = self.config_dict["global"]
+        self.piazza_config = self.config_dict["utils"].get("piazza", None)
         self.data_path = self.global_config["DATA_PATH"]
         # get SSO configuration
-        self.sso_config = Config_Loader().config["utils"].get("sso", None)
+        self.sso_config = self.config_dict["utils"].get("sso", None)
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
@@ -32,7 +33,7 @@ class Scraper():
         self.websites_dir = os.path.join(self.data_path, "websites")
         os.makedirs(self.websites_dir, exist_ok=True)
 
-        self.input_lists = Config_Loader().config["chains"].get("input_lists", [])
+        self.input_lists = self.config_dict["chains"].get("input_lists", [])
         if self.input_lists is None:
             self.input_lists = []
         logger.info(f"Input lists: {self.input_lists}")

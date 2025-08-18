@@ -8,7 +8,19 @@ The user's guide is broken up into detailing the additional command line options
 
 There are a few additional options you can pass to the `create` command that are not specific to a given interface.
 
-1. **`--podman`**: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker.
+1. **`--podman`**: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker. 
+
+    Note, if using Podman, to ensure your containers stay running for extended periods, you need to enable lingering. To do this, the following command should work:
+
+          loginctl enable-linger
+
+    To check/confirm the lingering status, simply do
+
+          loginctl user-status | grep -m1 Linger
+
+    Click [here](https://access.redhat.com/solutions/7054698) to read more.
+
+
 
 2. **`--gpu`**: This will deploy A2rchi onto the GPUs on your machine, which you will need to do should you decide to run open-source models. NOTE: this has only been tested with Podman, so will likely not work with Docker, for now.
 
@@ -174,7 +186,7 @@ When you restart the service, all the documents will be uploaded to the vector s
 
 In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: 
 ```nohighlight
---document-uploader True
+--document-uploader 
 ```
 The exact port may vary based on configuration (default is `5001`). A simple `docker ps -a` command run on the server will inform which port it's being run on.
 
@@ -254,7 +266,7 @@ utils:
 To run the Piazza service, simply add the piazza flag. For example:
 
 ```nohighlight
-a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza True
+a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza 
 ```
 
 ## Cleo/Mailbox Interface
@@ -264,6 +276,33 @@ TODO: add description of interface here
 ### Secrets
 
 ### Configuration
+
+
+## Mattermost Interface
+
+Set up A2rchi to read posts from your mattermost forum and post draft responses to a specified mattermost channel.
+
+### Secrets
+
+You need to specify a webhook, a key and the id of two channels to read and write. Should be specified like this.
+
+- `mattermost_webhook.txt`
+- `mattermost_pak.txt`
+- `mattermost_channel_id_read.txt`
+- `mattermost_channel_id_write.txt`
+
+location_of_secrets: #REQUIRED
+  - ~/.secrets/mattermost
+
+### Running the Mattermost service
+
+To run the Mattermost service, simply add the mattermost flag. For example:
+
+```nohighlight
+a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost 
+```
+
+
 
 ## Grafana Interface 
 
@@ -276,7 +315,7 @@ Note, if you are deploying a version of A2rchi you have already used (i.e., you 
 
 Once this is set, add the following argument to your a2rchi create command, e.g.,
 ```nohighlight
-a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana True
+a2rchi create --name gtesting2 --a2rchi-config configs/example_config.yaml --grafana 
 ```
 and you should see something like this
 ```

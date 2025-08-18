@@ -1,6 +1,6 @@
 from a2rchi.chains.base import BaseQAChain, BaseGradingChain, BaseImageProcessingChain
 from a2rchi.chains.prompts import read_prompt
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 from a2rchi.chains.prompts import PROMPTS
 from a2rchi.chains.retrievers import SubMITRetriever, GradingRetriever
@@ -36,7 +36,7 @@ class Chain() :
     # clean up this function a bit too much stuff, it's ugly
     def update_config(self):
         logger.info("Updating config")
-        self.config = Config_Loader().config
+        self.config = load_config(map=True)
         self.chain_config = self.config["chains"]["chain"]
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]

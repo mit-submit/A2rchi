@@ -20,6 +20,7 @@ interfaces:
     static_folder: "{{ interfaces.chat_app.static_folder | default('/root/A2rchi/a2rchi/interfaces/chat_app/static', true) }}"
     num_responses_until_feedback: {{ interfaces.chat_app.num_responses_until_feedback | default(3, true) }}
     include_copy_button: {{ interfaces.chat_app.include_copy_button | default(false, true) }}
+    enable_debug_chroma_endpoints: {{ interfaces.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ interfaces.chat_app.flask_debug_mode | default(true, false) }}
   uploader_app:
     PORT: {{ interfaces.uploader_app.PORT | default(5001, true) }}
@@ -68,6 +69,7 @@ chains:
     GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
     GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
     GRADING_FINAL_GRADE_MODEL_NAME: {{ chains.chain.GRADING_FINAL_GRADE_MODEL_NAME | default('null', true) }}
+    MAX_MODEL_TOKENS: {{ chains.chain.MAX_MODEL_TOKENS | default(10000, true) }}
     MODEL_CLASS_MAP:
       AnthropicLLM:
         class: AnthropicLLM
@@ -145,6 +147,7 @@ chains:
         kwargs:
           base_model: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.base_model | default("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", true) }}
           seed: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.seed | default("null", true) }}
+          enable_salesforce_content_safety: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
           max_new_tokens: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.max_new_tokens | default(4096, true) }}
           top_p: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.top_p | default(0.95, true) }}
           temperature: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.temperature | default(0.6, true) }}
@@ -208,9 +211,13 @@ utils:
   piazza:
     network_id: {{ utils.piazza.network_id }}
     update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
+  mattermost:
+    update_time: {{ utils.mattermost.update_time | default(60, true) }} # seconds
   redmine:
     redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
     answer_tag: {{ utils.redmine.answer_tag | default('-- A2rchi -- Resolving email was sent', true)}}
+  cleo: 
+    cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
   mailbox: 
     IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
     mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}
