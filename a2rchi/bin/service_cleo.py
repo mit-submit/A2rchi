@@ -27,4 +27,4 @@ while True:
     cleo.load()
     cleo.process_new_issues()
     cleo.process_resolved_issues()
-    time.sleep(int(config["redmine"]["cleo_update_time"]))
+    time.sleep(int(config["redmine"]["redmine_update_time"]))

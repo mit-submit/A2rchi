@@ -30,12 +30,15 @@ class SubMITRetriever(BaseRetriever):
         Internal method to retrieve relevant documents based on the query.
         """
         logger.info(f"Retrieving top-{self.search_kwargs.get('k')} docs")
-        if self.instructions and supports_instructions(self.vectorstore._embedding_function.model_name):
+        embedding_model = self.vectorstore._embedding_function.model_name
+        
+        if self.instructions and supports_instructions(embedding_model):
             logger.info(f"Adding instructions to query")
-            instructed_query = make_instruction_query(self.instructions, query)
-            return self.vectorstore.similarity_search(instructed_query, **self.search_kwargs)
-        else:
-            return self.vectorstore.similarity_search(query, **self.search_kwargs)
+            query = make_instruction_query(self.instructions, query)
+        elif self.instructions:
+            logger.warning(f"Instructions provided but model '{embedding_model} not in supported models: {INSTRUCTION_AWARE_MODELS}")
+            
+        return self.vectorstore.similarity_search(query, **self.search_kwargs)
 
 
 class GradingRetriever(BaseRetriever):

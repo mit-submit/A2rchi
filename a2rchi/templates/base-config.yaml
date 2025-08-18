@@ -216,8 +216,7 @@ utils:
   redmine:
     redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
     answer_tag: {{ utils.redmine.answer_tag | default('-- A2rchi -- Resolving email was sent', true)}}
-  cleo: 
-    cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
+    redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
   mailbox: 
     IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
     mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}
