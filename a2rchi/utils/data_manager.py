@@ -14,6 +14,7 @@ from langchain_text_splitters.character import CharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
 
 import chromadb
+import nltk
 import hashlib
 import os
 import yaml
@@ -30,7 +31,8 @@ class DataManager():
         self.config = load_config(map=True)["utils"]
         self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
-
+        self.stemmer = None
+        
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
 
@@ -69,6 +71,10 @@ class DataManager():
             chunk_overlap=self.config["data_manager"]["CHUNK_OVERLAP"],
         )
 
+        # makes sure nltk gets installed and initializes stemmer
+        if self.config["data_manager"]["stemming"].get("ENABLED", False):
+            nltk.download('punkt_tab')
+            self.stemmer = nltk.stem.PorterStemmer()
 
     def delete_existing_collection_if_reset(self):
         """
@@ -134,7 +140,6 @@ class DataManager():
         # get current status of persistent vstore 
         files_in_vstore = [metadata["filename"] for metadata in collection.get(include=["metadatas"])["metadatas"]]
 
-
         # scan data folder and obtain list of files in data. Assumes max depth = 1
         dirs = [
             os.path.join(self.data_path, dir)
@@ -195,7 +200,7 @@ class DataManager():
 
         return collection
 
-
+    
     def _add_to_vectorstore(self, collection, files_to_add, sources={}):
         """
         Method which takes as input:
@@ -203,13 +208,15 @@ class DataManager():
            collection:   a ChromaDB collection
            files_to_add: a dictionary with keys being the filenames and values being the file path
            sources:      a dictionary, usually loaded from a yaml file, which has keys being the 
-                         file hash (everything in the file name except the file extension) and  has
+                         file hash (everything in the file name except the file extension) and has
                          values of the url from which the source originated from. Not all files must
                          be in the source dictionary.
 
         and adds these files to the vectorstore.
         """
         for filename, file in files_to_add.items():
+
+            logger.info(f"<MP> Processing file: {filename}")
 
             # create the chunks
             loader = None
@@ -229,18 +236,26 @@ class DataManager():
             # load documents from current file and add to docs and metadata
             docs = loader.load()
             for doc in docs:
+                
                 new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
-                chunks += new_chunks
-                metadatas += [doc.metadata for chunk in new_chunks]
+                
+                for new_chunk in new_chunks:
+                    if self.config["data_manager"]["stemming"].get("ENABLED", False):
+                        words = nltk.tokenize.word_tokenize(new_chunk)
+                        stemmed_words = [self.stemmer.stem(word) for word in words]
+                        new_chunk = " ".join(stemmed_words)
+                    chunks.append(new_chunk)
+                    metadatas.append(doc.metadata)
 
             # explicitly get file metadata
             filehash = filename.split(".")[0]
             url = sources[filehash] if filehash in sources.keys() else ""
+            logger.info(f"<MP> Corresponding: {filename} {filehash} -> {url}")
 
-            # embed each chunk
+            # embeds each chunk
             embeddings = self.embedding_model.embed_documents(chunks)
-
-            # add filename as metadata for each chunk
+            
+            # add filename (better even corresponding url) as metadata for each chunk
             for metadata in metadatas:
                 metadata["filename"] = filename
             
@@ -262,8 +277,9 @@ class DataManager():
             logger.debug(f"Ids: {ids}")
 
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-
+            
             logger.debug(f"Successfully added file {filename}")
+
 
         return collection
 
@@ -287,4 +303,4 @@ class DataManager():
             return PyPDFLoader(file_path)
         else: 
             logger.error(f"Format not supported -- {file_path}")
-            return None 
+            return None

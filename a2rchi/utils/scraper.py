@@ -18,7 +18,7 @@ class Scraper():
     def __init__(self, piazza_email=None, piazza_password=None):
         # fetch configs
         from a2rchi.utils.config_loader import load_config
-        self.config_dict = load_config()
+        self.config_dict = load_config(map=True)
         self.config = self.config_dict["utils"]["scraper"]
         self.global_config = self.config_dict["global"]
         self.piazza_config = self.config_dict["utils"].get("piazza", None)
@@ -128,21 +128,15 @@ class Scraper():
                     if sso_config and sso_config.get("ENABLED", False):
                         sso_class_name = sso_config.get("SSO_CLASS", "CERNSSOScraper")
                         sso_class_map = sso_config.get("SSO_CLASS_MAP", {})
-                        
+
                         if sso_class_name in sso_class_map:
                             sso_class = sso_class_map[sso_class_name]["class"]
                             sso_kwargs = sso_class_map[sso_class_name].get("kwargs", {})
-                            
+                        
                             with sso_class(**sso_kwargs) as sso_scraper:
-                                crawled_data = sso_scraper.crawl(url)
-                                sso_scraper.save_crawled_data(upload_dir)
-                                
-                                for i, page in enumerate(crawled_data):
-                                    logger.info(f"SSO Crawled {i+1}. {page['title']} - {page['url']}")
-                                    identifier = hashlib.md5()
-                                    identifier.update(page['url'].encode('utf-8'))
-                                    file_name = str(int(identifier.hexdigest(), 16))[0:12]
-                                    sources[file_name] = page['url']
+                                added_sources = sso_scraper.crawl(url, upload_dir)
+                                for source_key in added_sources:
+                                    sources[source_key] = added_sources[source_key]
                         else:
                             logger.error(f"SSO class {sso_class_name} not found in SSO_CLASS_MAP")
                             raise Exception(f"SSO class {sso_class_name} not configured")
