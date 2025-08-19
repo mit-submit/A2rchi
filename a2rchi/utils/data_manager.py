@@ -228,12 +228,10 @@ class DataManager():
                 new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
                 
                 for new_chunk in new_chunks:
-                    logger.info(f"original chunk {new_chunk}")
                     if self.config["data_manager"]["stemming"].get("ENABLED", False):
                         words = nltk.tokenize.word_tokenize(new_chunk)
                         stemmed_words = [self.stemmer.stem(word) for word in words]
                         new_chunk = " ".join(stemmed_words)
-                        logger.info(f"stemmed chunk {new_chunk}")
                     chunks.append(new_chunk)
                     metadatas.append(doc.metadata)
 
