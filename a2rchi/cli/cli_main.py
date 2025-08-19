@@ -234,6 +234,7 @@ def cli():
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--grafana', '-g', 'use_grafana', is_flag=True, help="Flag to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'use_uploader_service', is_flag=True, help="Flag to add service for admins to upload data")
+@click.option('--redmine-tickets', '-rt', 'use_redmine_tickets', type=bool, default=False, help="Boolean to store redmine tickets in vector database for RAG. Automatically included if using --cleo-and-mailer.")
 @click.option('--cleo-and-mailer', '-cm', 'use_cleo_and_mailer', is_flag=True, help="Flag to add service for a2rchi interface with cleo and a mailer")
 @click.option('--jira', '-j', 'use_jira', is_flag=True, help="Flag to add service for a2rchi interface with Jira")
 @click.option('--piazza', '-piazza', 'use_piazza_service', is_flag=True, help="Flag to add piazza service to read piazza posts and suggest answers to a slack channel.")
@@ -251,6 +252,7 @@ def create(
     use_grafana, 
     use_uploader_service, 
     use_cleo_and_mailer,
+    use_redmine_tickets,
     use_jira,
     use_piazza_service,
     use_grader_service,
@@ -434,6 +436,7 @@ def create(
         grafana_port_host = a2rchi_config.get('interfaces', {}).get('grafana', {}).get('EXTERNAL_PORT', 3000)
         compose_template_vars['grafana_port_host'] = grafana_port_host
 
+
     compose_template_vars["use_uploader_service"] = use_uploader_service
     if use_uploader_service:
          _print_msg("Preparing Uploader Service")
@@ -453,6 +456,7 @@ def create(
          _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
          _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
 
+
     compose_template_vars["use_piazza_service"] = use_piazza_service
     if use_piazza_service:
         _print_msg("Preparing Piazza Service")
@@ -464,6 +468,7 @@ def create(
         _prepare_secret(a2rchi_name_dir, "piazza_email", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
+
 
     compose_template_vars["use_mattermost_service"] = use_mattermost_service
     if use_mattermost_service:
@@ -478,11 +483,22 @@ def create(
         _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_write", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "mattermost_pak", locations_of_secrets)
 
+
+    compose_template_vars["redminetickets"] = use_redmine_tickets
+    if use_redmine_tickets and not use_cleo_and_mailer:
+        _prepare_secret(a2rchi_name_dir, "cleo_url", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_user", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_pw", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "cleo_project", locations_of_secrets)
+
+
     compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
     if use_cleo_and_mailer:
         _print_msg("Preparing Cleo and Emailer Service")
 
         # Add uploader service to compose
+        compose_template_vars["redminetickets"] = use_cleo_and_mailer
+        compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
         compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
         compose_template_vars["cleo_image"] = f"cleo-{name}"
         compose_template_vars["cleo_tag"] = tag
