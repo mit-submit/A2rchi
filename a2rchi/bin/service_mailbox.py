@@ -24,7 +24,7 @@ time.sleep(60)
 
 print("Starting Mailbox Service")
 config = load_config()["utils"]
-cleo = cleo.Cleo('Cleo_Helpdesk')
+cleo = cleo.Cleo('Cleo_Helpdesk_Mail')
 
 while True:
     mail = mailbox.Mailbox(user = user, password = password)

@@ -13,11 +13,12 @@ import multiprocessing as mp
 # set basicConfig for logging
 setup_logging()
 
-# set openai
 def main():
+    # load secrets
     os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
     os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
     os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
+    
     config = load_config()["interfaces"]["chat_app"]
     global_config = load_config()["global"]
     print(f"Starting Chat Service with (host, port): ({config['HOST']}, {config['PORT']})")
