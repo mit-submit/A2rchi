@@ -240,6 +240,25 @@ http://localhost:5003
 
 Replace port numbers with whatever you configured in the yaml file.
 
+Once navigating to the Grafana page, you will be prompted for a username and password: both are `admin`. You will then be prompted to change the password at first login -- this is optional, but if you change it make sure you don't forget! Then navigate to the monitoring page: menu > Dashboards > A2rchi > A2rchi Usage, here you should find the monitoring page. Read more at the [user guide](https://mit-submit.github.io/A2rchi/user_guide/#grafana-interface), in particular for a couple of hints to make the lower table more readable.
+
+For the uploader, once you arrive to web page, log in with the username and password you created before. Here you can upload documents which will be accessible to a2rchi at the next question asked in the chatbot. On this interface, for any documents that you upload, you can just as easily remove them by clicking `Delete` next to the corresponding file.
+
+For any documents that you didn't upload via the uploader but still might want to remove, you can manually enter the container and delete files as follows:
+
+```bash
+# Directly remove a file from the chat container
+podman exec -it chat-<deployment-name> rm /root/data/<directory>/<file>
+```
+
+Any document in the ChromaDB vector database will exist at this depth. Note, `/root/data` is mounted as a volume called `a2rchi-<deployment>`, so everything in here persists between deployments. Remember, if you want to look inside the container and investigate the structure a bit, you can do so with:
+
+```bash
+# Enter the container and open a shell
+podman exec -it chat-<deployment-name> /bin/bash
+```
+
+and navigate around the container as you please.
 
 ## Adding Jira Service (Optional)
 
