@@ -41,9 +41,7 @@ def generate_script(config,global_config):
     with open(script_template, "r") as f:
         template = f.read()
 
-    filled_template = template.replace('XX-HTTP_PORT-XX', str(config["EXTERNAL_PORT"]))
-    filled_template = filled_template.replace('XX-HOSTNAME-XX', str(config["HOSTNAME"]))
-    filled_template = filled_template.replace('XX-NUM-RESPONSES-XX', str(config["num_responses_until_feedback"]))
+    filled_template = template.replace('XX-NUM-RESPONSES-XX', str(config["num_responses_until_feedback"]))
     filled_template = filled_template.replace('XX-TRAINED_ON-XX', str(global_config["TRAINED_ON"]))
 
     script_file = os.path.join(config["static_folder"], "script.js")
