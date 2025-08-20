@@ -230,7 +230,7 @@ def cli():
 
 
 @click.command()
-@click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
+@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--grafana', '-g', 'use_grafana', is_flag=True, help="Flag to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'use_uploader_service', is_flag=True, help="Flag to add service for admins to upload data")
@@ -619,7 +619,7 @@ def create(
     _print_msg("DONE compose")
 
 @click.command()
-@click.option('--name', type=str, help="Name of the a2rchi deployment.")
+@click.option('--name', '-n', type=str, help="Name of the a2rchi deployment.")
 @click.option('--rmi', is_flag=True, help="Remove images after deleting the deployment.")
 def delete(name, rmi):
     """

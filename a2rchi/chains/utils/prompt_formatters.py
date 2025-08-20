@@ -1,112 +1,141 @@
-from typing import Tuple
+from typing import Tuple, Callable
+import re
+
 from a2rchi.utils.logging import get_logger
 from a2rchi.chains.utils import history_utils
+from a2rchi.chains.utils.prompt_validator import SUPPORTED_INPUT_VARIABLES
 
 logger = get_logger(__name__)
 
 class PromptFormatter:
-    def __init__(self, tokenizer, image = False, strip_html:bool = False):
+    """
+    Class to format a prompt template.
+    The formatting includes:
+        - adding supported 'context items': user question, chat history, documents, etc.
+        - adding/removing special characters (to interplay with particular models) or formatting (e.g. html)
+        - tokenizing the prompt
+    This happens via the main function of the class, format_prompt().
+    Each chain/model should have its own instance of this class.
+    """
+
+    def __init__(self,
+            tokenizer,
+            strip_html:bool = False
+        ):
         self.tokenizer = tokenizer
         self.special_tokens = tokenizer.special_tokens_map
-        self.has_chat_template = hasattr(tokenizer, "chat_template") and tokenizer.chat_template is not None
-        self.image = image # can include a image processing prompt formatting later if needed or wanted...
+        self.apply_format = self._get_formatter()
         self.strip_html = strip_html
+        self.tag_roles = {
+            "question": "user",
+            "documents": "assistant",
+            "condensed_question": "user"
+        }
 
-    @staticmethod
-    def strip_all_html(text: str) -> str:
+    def format_prompt(self, prompt: str) -> Tuple[str, str]:
+        """
+        Main function of the class.
+        Inputs:
+        prompt (str): prompt template
+        Outputs:
+        (formatted_prompt, end_tag) (Tuple[str, str]): tuple of formatted prompt and tag as strings
+        """
+
+        # optional prompt manipulations
+        if self.strip_html:
+            prompt = self._strip_html(prompt)
+
+        # apply defined template
+        prompt = self.apply_format(prompt)
+
+        # post templating operations
+        prompt = self._strip_tags(prompt)
+
+        return prompt
+    
+    def _strip_tags(self, text: str) -> str:
+        # Remove all <tags> and </tags> from the prompt
+        logger.debug("Stripping tags from prompt.")
+        pattern = re.compile(rf"</?({'|'.join(map(re.escape, SUPPORTED_INPUT_VARIABLES))})>", re.IGNORECASE)
+        return pattern.sub("", text)
+
+    def _strip_html(self, text: str) -> str:
+        # remove html form a string
         from html import unescape
-        import re
+        logger.debug("Stripping html from prompt.")
         text = unescape(text)
         return re.sub(r'<[^>]+>', '', text)
-
-    # choosing a function according to the prompt, then some string manipulation to input correct special tokens (depends on llm) in correct places
-    # returns a tuple of (formatted_prompt, end_tag), where end_tag signifies where the generated text begins (the end of the prompt)
-    def format_prompt(self, prompt: str) -> Tuple[str, str]:
-
-        if self.strip_html:
-            prompt = self.strip_all_html(prompt)
-
-        if "Context:" in prompt and "Question:" in prompt:
-            return self._submit_qa_prompt_formatting(prompt)
-
-        elif "Chat History:" in prompt and "Follow Up Input:" in prompt:
-            return self._submit_condense_prompt_formatting(prompt)
-
-        else:
-            return self._grading_prompt_formatting_basic(prompt)
-
-    def _submit_qa_prompt_formatting(self, prompt: str) -> Tuple[str, str]:
-
-        context_start = prompt.find("Context:")
-        history_start = prompt.find("Chat History:")
-        question_start = prompt.rfind("Question:")
-
-        if "[INST]" in self.special_tokens.get("additional_special_tokens", []):
-            logger.info("Using instructor template")
-            return f"[INST] {prompt} [/INST]", "[/INST]"
-
-        elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []) and context_start != -1 and question_start != -1:
-            logger.info("Using chat template for QA prompt")
-            question_end = prompt.rfind("Helpful Answer:") if 'Helpful Answer:' in prompt else len(prompt)
-            
-            # compose message
-            message = []
-
-            # context
-            message.append({"role": "system", "content": prompt[:context_start]}) 
-            # documents
-            message.append({"role": "assistant", "content": prompt[context_start + len("Context:"):history_start]}) 
-            # condensed question
-            message.append({"role": "user", "content": prompt[question_start + len("Question:"):question_end]})
-            # history
-            for message in history_utils.tuplize_history(prompt[history_start + len("Chat History:"):question_start]):
-                message.append({"role": message[0], "content": message[1]})
-
-            print("Message", message)
-
-            return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"
-
-        else:
-            logger.info("Using default formatting")
-            return prompt, prompt[len(prompt)-15:]
-
     
-    def _submit_condense_prompt_formatting(self, prompt: str) -> Tuple[str, str]:
+    def _find_tags_pattern(self):
+        # Regex to capture <tag> ... </tag> blocks
+        pattern = re.compile(
+            rf"<({'|'.join(SUPPORTED_INPUT_VARIABLES)})>(.*?)</\1>",
+            re.DOTALL | re.IGNORECASE
+        )
+        return pattern
+    
+    def _tuplize_tagged_prompt(self, text: str) -> Tuple[dict]:
+        """
+        Given a prompt divided by a given set of supported tags, split it up into a tuple.
+        """
+        
+        pattern = self._find_tags_pattern(text)
+        result = []
+        pos = 0  # current scanning position
 
-        chat_history_start = prompt.find("Chat History:")
-        follow_up_input_start = prompt.rfind("Follow Up Input:")
+        for match in pattern.finditer(text):
+            start, end = match.span()
 
-        if "[INST]" in self.special_tokens.get("additional_special_tokens", []):
-            logger.info("Using instructor template")
-            return f"[INST] {prompt} [/INST]", "[/INST]"
+            # If there's system text before this tag
+            if start > pos:
+                system_text = text[pos:start].strip()
+                if system_text:
+                    result.append({"role": "system", "content": system_text})
 
-        elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []) and chat_history_start != -1 and follow_up_input_start != -1:
-            logger.info("Using chat template for condense prompt")
-            message = [
-                {"role": "system", "content": prompt[:chat_history_start].strip()},
-                {"role": "user", "content": prompt[chat_history_start + len("Chat History:"):follow_up_input_start].strip()},
-                {"role": "user", "content": prompt[follow_up_input_start + len("Follow Up Input:"):].strip()},
-            ]
-            return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"
+            tag_type = match.group(1).lower()
+            tag_content = match.group(2).strip()
+            if tag_type == 'history':
+                # history is treated differently: we add each user/AI message as its own tuple
+                for message in history_utils.tuplize_history(tag_content):
+                    result.append({"role": message[0], "content": message[1]})
+            else:
+                result.append({"role": self.tag_roles.get(tag_type, "system"), "content": tag_content})
 
+            pos = end  # advance position
+
+        # Any leftover text after last tag is also system
+        if pos < len(text):
+            system_text = text[pos:].strip()
+            if system_text:
+                result.append({"role": "system", "content": system_text})
+
+        return result
+    
+    def _get_formatter(self) -> Callable:
+        # return the function that will be used to format the prompt
+
+        if self._check_instructor_template():
+            return self._apply_instructor_template
+        elif self._check_chat_template():
+            return self._apply_chat_template
         else:
-            logger.info("Using default formatting")
-            return prompt, prompt[len(prompt)-15:]
+            return self._apply_base_template
 
-
-    def _grading_prompt_formatting_basic(self, prompt: str) -> Tuple[str, str]:
-
-        if "[INST]" in self.special_tokens.get("additional_special_tokens", []):
-            logger.info("Using instructor template")
-            return f"[INST] {prompt} [/INST]", "[/INST]"
-
-        elif "<|im_start|>" in self.special_tokens.get("additional_special_tokens", []):
-            logger.info("Using chat template")
-            message = [
-                {"role": "user", "content": prompt}
-            ]
-            return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"
-
-        else:
-            logger.info("Using default formatting")
-            return prompt, prompt[len(prompt)-15:]
+    def _check_instructor_template(self) -> bool:
+        return "[INST]" in self.special_tokens.get("additional_special_tokens", [])
+    
+    def _check_chat_template(self) -> bool:
+        return "<|im_start|>" in self.special_tokens.get("additional_special_tokens", [])
+    
+    def _apply_base_template(self, prompt: str) -> str:
+        logger.debug("Using base template.")
+        return prompt, prompt[len(prompt)-15:]
+    
+    def _apply_instructor_template(self, prompt: str) -> str:
+        logger.debug("Using instructor template.")
+        return f"[INST] {prompt} [/INST]", "[/INST]"
+    
+    def _apply_chat_template(self, prompt: str) -> Tuple:
+        logger.debug("Using chat template.")
+        message = self._split_tagged_prompt(prompt)
+        return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"

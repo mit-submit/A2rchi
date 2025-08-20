@@ -12,7 +12,7 @@ Unless otherwise indicated, assume the users are not well versed in computing.
 Please do not assume that SubMIT machines have anything installed on top of native Linux except if the context mentions it.
 If you don't know, say "I don't know", if you need to ask a follow up question, please do.
 
-Context: {context}
+Context: {retriever_output}
 Question: {question}
 Chat History: {history}
 Helpful Answer:

@@ -18,4 +18,4 @@ COPY pyproject.toml pyproject.toml
 COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
 
-CMD ["python", "-u", "a2rchi/bin/service_cleo.py"]
+CMD ["python", "-u", "a2rchi/bin/service_redmine.py"]

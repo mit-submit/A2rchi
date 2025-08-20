@@ -61,6 +61,8 @@ chains:
     GRADING_ANALYSIS_PROMPT: "{{ '/root/A2rchi/grading_analysis.prompt' if chains.chain.GRADING_ANALYSIS_MODEL_NAME else null }}"
     GRADING_FINAL_GRADE_PROMPT: "{{ '/root/A2rchi/grading_final_grade.prompt' if chains.chain.GRADING_FINAL_GRADE_MODEL_NAME else null }}"
   chain:
+    WORKFLOW: {{ chains.chain.WORKFLOW | default('QAWorkflow', true) }}
+    WORKFLOW_KWARGS: {{chains.chain.WORKFLOW_KWARGS | default({}, true)}}
     MODEL_NAME: {{ chains.chain.MODEL_NAME | default('null', true) }}
     CONDENSE_MODEL_NAME: {{ chains.chain.CONDENSE_MODEL_NAME | default('null', true) }}
     IMAGE_PROCESSING_MODEL_NAME: {{ chains.chain.IMAGE_PROCESSING_MODEL_NAME | default('null', true) }}
@@ -209,8 +211,8 @@ utils:
     update_time: {{ utils.piazza.update_time | default(60, true) }} # seconds
   mattermost:
     update_time: {{ utils.mattermost.update_time | default(60, true) }} # seconds
-  cleo: 
-    cleo_update_time: {{ utils.cleo.cleo_update_time | default(10, true) }}
+  redmine: 
+    redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
   mailbox: 
     IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
     mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}

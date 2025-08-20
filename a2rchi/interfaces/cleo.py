@@ -22,10 +22,10 @@ logger = get_logger(__name__)
 A2RCHI_PATTERN = '-- A2rchi --'
 
 
-class CleoAIWrapper:
+class RedmineAIWrapper:
     """
-    Wrapper which holds functionality for the cleobot. Way of interaction
-    between cleo and A2rchi core.
+    Wrapper which holds functionality for the redminebot. Way of interaction
+    between redmine and A2rchi core.
     """
 
     def __init__(self):
@@ -82,11 +82,11 @@ class CleoAIWrapper:
     def insert_conversation(self, issue_id, user_message, a2rchi_message, link, a2rchi_context, ts):
         logger.info("Storing interaction to postgres")
 
-        service = "Cleo"
+        service = "Redmine"
 
         insert_tups = (
             [
-                # (service, issue_id, sender, content, context, ts) -- same ts for both just to have, not as interested in timing info for cleo service...
+                # (service, issue_id, sender, content, context, ts) -- same ts for both just to have, not as interested in timing info for redmine service...
                 (service, issue_id, "User", user_message, '', '', ts, self.config_id),
                 (service, issue_id, "A2rchi", a2rchi_message, link, a2rchi_context, ts, self.config_id),
             ]
@@ -112,7 +112,7 @@ class CleoAIWrapper:
                 role = "Expert"
             else:
                 role = "A2rchi"
-            message = CleoAIWrapper.get_substring_between(entry[1],"\n\nRe:","\r\nOn ")
+            message = RedmineAIWrapper.get_substring_between(entry[1],"\n\nRe:","\r\nOn ")
             reformatted_history.append((role,message))
         reformatted_history[0] = ("Expert", reformatted_history[0][1])
         reformatted_history[-1] = ("User", reformatted_history[-1][1])
@@ -149,8 +149,8 @@ class CleoAIWrapper:
             return text
 
 
-class Cleo:
-    'A class to describe the cleo redmine system.'
+class Redmine:
+    'A class to describe the redmine system.'
 
     def __init__(self, name):
         """
@@ -161,13 +161,13 @@ class Cleo:
         self.smtp = sender.Sender()
         self.user = None
         self.project = None
-        self.ai_wrapper = CleoAIWrapper()
+        self.ai_wrapper = RedmineAIWrapper()
 
         # read environment variables from secrets
-        self.cleo_project = read_secret("CLEO_PROJECT")
-        self.cleo_url = read_secret("CLEO_URL")
-        self.cleo_user = read_secret("CLEO_USER")
-        self.cleo_pw = read_secret("CLEO_PW")
+        self.redmine_project = read_secret("REDMINE_PROJECT")
+        self.redmine_url = read_secret("REDMINE_URL")
+        self.redmine_user = read_secret("REDMINE_USER")
+        self.redmine_pw = read_secret("REDMINE_PW")
 
         # make sure to open redmine access
         if self._verify():
@@ -225,12 +225,12 @@ class Cleo:
         """
         Load the project that is responsible to deal with email tickets.
         """
-        self.project = self.redmine.project.get(self.cleo_project)
+        self.project = self.redmine.project.get(self.redmine_project)
         return
 
     def new_issue(self,sender,cc,subject,description,attachments):
         """
-        Create a brand new issue in the cleo system
+        Create a brand new issue in the redmine system
         """
         if not subject.strip():
             subject = 'EMPTY subject'
@@ -279,7 +279,7 @@ class Cleo:
                 self.add_note_to_issue(issue.id,answer)
                 logger.info("A2rchi's response:\n",answer)
                 self.feedback_issue(issue.id)
-        logger.info("cleo.process_new_issues: %d"%(len(issue_ids)))
+        logger.info("redmine.process_new_issues: %d"%(len(issue_ids)))
         return issue_ids
 
     def process_resolved_issues(self):
@@ -303,7 +303,7 @@ class Cleo:
                 addon = issue.description.replace("\n","\n > ")
                 self.smtp.send_message(to,cc,subject,f"{note}\n\nInitial request:\n > {addon}")
                 self.close_issue(issue.id,note)
-        logger.info("cleo.process_resolved_issues: %d"%(len(issue_ids)))
+        logger.info("redmine.process_resolved_issues: %d"%(len(issue_ids)))
         return issue_ids
         
     def remove_format(self,string,tag):
@@ -328,7 +328,7 @@ class Cleo:
 
     def show_issue(self,issue_id):
         """
-        Show issue with given id as presently in the cleo system
+        Show issue with given id as presently in the redmine system
         """
         issue = self.project.issues.get(issue_id)
         logger.info(f"ID: {issue.id}")
@@ -358,17 +358,17 @@ class Cleo:
 
     def _connect(self):
         """
-        Open the redmine web site called cleo
+        Open the redmine web site called redmine
         """
-        logger.info(f"Open redmine (URL:{self.cleo_url} U:{self.cleo_user} P:*********)")
-        rd = Redmine(self.cleo_url, username=self.cleo_user, password=self.cleo_pw)
+        logger.info(f"Open redmine (URL:{self.redmine_url} U:{self.redmine_user} P:*********)")
+        rd = Redmine(self.redmine_url, username=self.redmine_user, password=self.redmine_pw)
         return rd
         
     def _verify(self):
         """
         Make sure the environment is setup
         """
-        if self.cleo_url == None or self.cleo_user == None or self.cleo_pw == None:
-            logger.info("Did not find all cleo configs: CLEO_URL, CLEO_USER, CLEO_PW (source ~/.cleo).")
+        if self.redmine_url == None or self.redmine_user == None or self.redmine_pw == None:
+            logger.info("Did not find all redmine configs: REDMINE_URL, REDMINE_USER, REDMINE_PW (source ~/.redmine).")
             return False
         return True

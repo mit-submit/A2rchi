@@ -378,7 +378,7 @@ class ChatWrapper:
 
             # get the closest source to the document
             source = None
-            if len(result['source_documents']) > 0:
+            if len(result.get('source_documents', [])) > 0:
                 source_hash = result['source_documents'][0].metadata['source']
                 if '/' in source_hash and '.' in source_hash:
                     source = source_hash.split('/')[-1].split('.')[0]
@@ -401,7 +401,7 @@ class ChatWrapper:
             timestamps['a2rchi_message_ts'] = datetime.now()
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
-            context = self.prepare_context_for_storage(result['source_documents'], sources)
+            context = self.prepare_context_for_storage(result.get('source_documents', []), sources)
 
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, link, context, is_refresh)
             timestamps['insert_convo_ts'] = datetime.now()

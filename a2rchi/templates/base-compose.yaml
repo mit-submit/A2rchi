@@ -450,22 +450,22 @@ services:
     {%- endif %}    
   {% endif %}
 
-  {% if use_cleo_and_mailer -%}
-  cleo:
-    image: {{ cleo_image }}:{{ cleo_tag }}
+  {% if use_redmine_and_mailer -%}
+  redmine:
+    image: {{ redmine_image }}:{{ redmine_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-cleo{{ '-gpu' if gpu_ids else '' }}
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-redmine{{ '-gpu' if gpu_ids else '' }}
     depends_on:
       chromadb:
         condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
-      CLEO_URL_FILE: /run/secrets/cleo_url
-      CLEO_USER_FILE: /run/secrets/cleo_user
-      CLEO_PW_FILE: /run/secrets/cleo_pw
-      CLEO_PROJECT_FILE: /run/secrets/cleo_project
+      REDMINE_URL_FILE: /run/secrets/redmine_url
+      REDMINE_USER_FILE: /run/secrets/redmine_user
+      REDMINE_PW_FILE: /run/secrets/redmine_pw
+      REDMINE_PROJECT_FILE: /run/secrets/redmine_project
       SENDER_SERVER_FILE: /run/secrets/sender_server
       SENDER_PORT_FILE: /run/secrets/sender_port
       SENDER_REPLYTO_FILE: /run/secrets/sender_replyto
@@ -486,10 +486,10 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {%- endif %}
     secrets:
-      - cleo_url
-      - cleo_user
-      - cleo_pw
-      - cleo_project
+      - redmine_url
+      - redmine_user
+      - redmine_pw
+      - redmine_project
       - sender_server
       - sender_port
       - sender_replyto
@@ -548,10 +548,10 @@ services:
     environment:
       IMAP_USER_FILE: /run/secrets/imap_user
       IMAP_PW_FILE: /run/secrets/imap_pw
-      CLEO_URL_FILE: /run/secrets/cleo_url
-      CLEO_USER_FILE: /run/secrets/cleo_user
-      CLEO_PW_FILE: /run/secrets/cleo_pw
-      CLEO_PROJECT_FILE: /run/secrets/cleo_project
+      REDMINE_URL_FILE: /run/secrets/redmine_url
+      REDMINE_USER_FILE: /run/secrets/redmine_user
+      REDMINE_PW_FILE: /run/secrets/redmine_pw
+      REDMINE_PROJECT_FILE: /run/secrets/redmine_project
       SENDER_SERVER_FILE: /run/secrets/sender_server
       SENDER_PORT_FILE: /run/secrets/sender_port
       SENDER_REPLYTO_FILE: /run/secrets/sender_replyto
@@ -573,10 +573,10 @@ services:
     secrets:
       - imap_user
       - imap_pw
-      - cleo_url
-      - cleo_user
-      - cleo_pw
-      - cleo_project
+      - redmine_url
+      - redmine_user
+      - redmine_pw
+      - redmine_project
       - sender_server
       - sender_port
       - sender_replyto
@@ -661,14 +661,14 @@ secrets:
     file: secrets/imap_user.txt
   imap_pw:
     file: secrets/imap_pw.txt
-  cleo_url:
-    file: secrets/cleo_url.txt
-  cleo_user:
-    file: secrets/cleo_user.txt
-  cleo_pw:
-    file: secrets/cleo_pw.txt
-  cleo_project:
-    file: secrets/cleo_project.txt
+  redmine_url:
+    file: secrets/redmine_url.txt
+  redmine_user:
+    file: secrets/redmine_user.txt
+  redmine_pw:
+    file: secrets/redmine_pw.txt
+  redmine_project:
+    file: secrets/redmine_project.txt
   sender_server:
     file: secrets/sender_server.txt
   sender_port:

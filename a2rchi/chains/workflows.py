@@ -1,24 +1,24 @@
 """Chain for chatting with a vector database."""
 from __future__ import annotations
 from langchain_core.callbacks.file import FileCallbackHandler
-
-from a2rchi.chains.utils.token_limiter import TokenLimiter
-from a2rchi.chains.utils import history_utils
-from a2rchi.utils.config_loader import load_config
-from a2rchi.utils.logging import get_logger
-
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 from langchain.chains.llm import LLMChain # deprecated, should update
 from langchain.callbacks.manager import CallbackManagerForChainRun
-from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.prompts.base import BasePromptTemplate
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any, Dict, List, Optional
 import os 
-from datetime import datetime
+
+from a2rchi.chains.utils.token_limiter import TokenLimiter
+from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.logging import get_logger
+from a2rchi.chains.utils.callback_handlers import PromptLogger
+from a2rchi.chains.prompts import PROMPTS
+from a2rchi.chains.models import print_model_params
+from a2rchi.chains.retrievers import SubMITRetriever, GradingRetriever
+from a2rchi.chains.utils import history_utils
 
 logger = get_logger(__name__)
 
@@ -26,104 +26,180 @@ logger = get_logger(__name__)
 config = load_config()["chains"]["base"]
 data_path = load_config()["global"]["DATA_PATH"]
 
-class BaseQAChain:
+class ChainWrapper:
     """
-    Chain for chatting with an index, designed originally for SubMIT, now used for general QA
+    Generic wrapper around Langchain's chains
+    to harmonize with our prompts and inputs.
     """
 
-    def __init__(self, retriever: BaseRetriever, combine_docs_chain, condense_question_chain, llm: BaseLanguageModel, prompt: BasePromptTemplate):
-        self.retriever = retriever
-        self.combine_docs_chain = combine_docs_chain
-        self.condense_question_chain = condense_question_chain
+    def __init__(
+            self,
+            chain: Any,
+            llm: BaseLanguageModel,
+            prompt: BasePromptTemplate,
+            required_input_variables: List[str] = ['question'],
+            unprunable_input_variables: Optional[List[str]] = [],
+        ):
+        self.chain = chain
         self.llm = llm
-        self.prompt = prompt
-        logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
-        self.prompt_logger = PromptLogger(logfile)
+        self.required_input_variables = required_input_variables
+        self.unprunable_input_variables = unprunable_input_variables
+        self.prompt = self._check_prompt(prompt)
+
+        self.prompt_logger = PromptLogger(os.path.join(data_path, config["logging"]["input_output_filename"]))
         self.token_limiter = TokenLimiter(llm=self.llm, prompt=self.prompt)
 
-    def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        question = inputs["question"]
-        chat_history = inputs.get("chat_history", [])
+    def _check_prompt(self, prompt: BasePromptTemplate) -> BasePromptTemplate:
+        """
+        Check that the prompt is valid for this chain:
+            1. require that it contains all the required input variables
+        """
+        for var in self.required_input_variables:
+            if var not in prompt.input_variables:
+                raise ValueError(f"Chain requires input variable {var} in the prompt, but could not find it.")
+        return prompt
+    
+    def _prepare_payload(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Prepare the input_variables to be passed to the chain.
+        """
 
-        # if the size of the question is too large, return a warning
-        if not self.token_limiter.check_question(question):
-            return {
-                "answer": self.token_limiter.QUESTION_SIZE_WARNING,
-                "question": question,
-                "chat_history": chat_history,
-                "source_documents": []
-            }
-
-        if chat_history:
-            _, reduced_history = self.token_limiter.reduce_tokens_below_limit(history=chat_history)
-            formatted_reduced_history = history_utils.stringify_history(reduced_history)
-            condensed_question = self.condense_question_chain.invoke(
-                {"question": question, "chat_history": formatted_reduced_history},
-                config={"callbacks": [self.prompt_logger]}
-            )
-            final_question = condensed_question
-        else:
-            final_question = question
-
-        # retrieve documents
-        docs = self.retriever.invoke(final_question) # n.b., using condensed question for retrieval
+        # grab all the input variables from the parameters given to the function
+        input_variables = {k:v for k,v in inputs.items() if k in self.prompt.input_variables}
 
         # reduce number of tokens, if necessary
-        reduced_docs, reduced_history = self.token_limiter.reduce_tokens_below_limit(docs=docs, history=chat_history)
-        formatted_reduced_history = history_utils.stringify_history(reduced_history)
+        input_variables = self.token_limiter.prune_inputs_to_token_limit(**input_variables)
+
+        return input_variables
+
+    def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Call the chain to produce the LLM answer with some given inputs determined by the prompt.
+        """
+
+        # check if any of the unprunables are too large
+        for var in self.unprunable_input_variables:
+            if not self.token_limiter.check_input_size(inputs.get(var, "")):
+                return {"answer": self.token_limiter.INPUT_SIZE_WARNING.format(var=var)}
+
+        # get the payload
+        input_variables = self._prepare_payload(inputs)
         
-        answer = self.combine_docs_chain.invoke(
-            {"question": final_question, "history": formatted_reduced_history, "context": reduced_docs},
+        # produce LLM response
+        answer = self.chain.invoke(
+            input_variables,
             config={"callbacks": [self.prompt_logger]}
         )
 
+        return {"answer": answer, **input_variables}
+
+
+class QAWorkflow:
+    """
+    Simple question and answer workflow with document retrieval.
+    """
+
+    def __init__(
+        self,
+        *args,
+        **kwargs
+    ):
+        self.config = load_config(map=True)
+
+        self.chain_config = self.config["chains"]["chain"]
+        self.utils_config = self.config["utils"]
+
+        # grab prompts
+        self.qa_prompt = PROMPTS["MAIN_PROMPT"]
+        self.condense_prompt = PROMPTS["CONDENSING_PROMPT"]
+
+        # grab models
+        model_class_map = self.chain_config["MODEL_CLASS_MAP"]
+        model_name = self.chain_config.get("MODEL_NAME", None)
+        condense_model_name = self.chain_config.get("CONDENSE_MODEL_NAME", model_name)
+        self.llm = model_class_map[model_name]["class"](**model_class_map[model_name]["kwargs"])
+        if condense_model_name == model_name:
+            self.condense_llm = self.llm
+        else:
+            self.condense_llm = model_class_map[condense_model_name]["class"](**model_class_map[condense_model_name]["kwargs"])
+        print_model_params("qa", model_name, model_class_map)
+        print_model_params("condense", condense_model_name, model_class_map)
+
+        # initialize chains
+        self.condense_chain = ChainWrapper(
+            chain=self.condense_prompt | self.llm | StrOutputParser(),
+            llm=self.condense_llm,
+            prompt=self.condense_prompt,
+            required_input_variables=['history']
+        )
+        self.answer_chain = ChainWrapper(
+            chain = create_stuff_documents_chain(
+                llm=self.llm,
+                prompt=self.qa_prompt,
+                document_variable_name="retriever_output",
+            ),
+            llm=self.llm,
+            prompt=self.qa_prompt,
+            required_input_variables=['question'],
+            unprunable_input_variables=['question']
+        )
+
+    def _prepare_inputs(history, **kwargs) -> Dict[str, Any]:
+        """
+        Prepare inputs to be processed.
+        We feed all inputs to all the chains, and each prompt handles
+        what gets actually passed to the LLM to allow the user more
+        flexibility over the inputs.
+        All the inputs must be one of prompt_validator's SUPPORTED_INPUT_VARIABLES.
+        """
+        
+        # seperate out the history into past interaction and current question input
+        full_history = history_utils.tuplize_history(history)
+        if len(full_history) > 0 and len(full_history[-1]) > 1:
+            question = full_history[-1][1]
+        else:
+            logger.error("No question found")
+            question = ""
+        history = full_history[:-1] if full_history is not None else None
+
         return {
-            "answer": answer,
             "question": question,
-            "chat_history": reduced_history,
-            "source_documents": reduced_docs
+            "history": history,
+            "full_history": full_history
         }
 
-    @classmethod
-    def from_llm(
-        cls,
-        llm: BaseLanguageModel,
-        retriever: BaseRetriever,
-        qa_prompt: BasePromptTemplate,
-        condense_question_prompt: BasePromptTemplate,
-        condense_question_llm: Optional[BaseLanguageModel] = None,
-        combine_docs_chain_kwargs: Optional[Dict] = None,
-        **kwargs: Any,
-    ) -> "BaseQAChain":
-        
-        combine_docs_chain_kwargs = combine_docs_chain_kwargs or {}
-        document_variable_name = "context"
-
-        # store templated inputs to llm (condense and main) in this file
-        logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
-        logger.info(f"Setting up BaseQAChain with log file for filled templates at: {logfile}, accessible outside the container at volume a2rchi-<name of your deployment>")
-
-        doc_chain = create_stuff_documents_chain(
-            llm=llm,
-            prompt=qa_prompt,
-            document_variable_name=document_variable_name,
-            **combine_docs_chain_kwargs
+    def update_retriever(self, vectorstore):
+        """
+        Update the retriever with a new vectorstore.
+        """
+        self.retriever = SubMITRetriever(
+            vectorstore=vectorstore,
+            search_kwargs={"k": self.utils_config["data_manager"]["num_documents_to_retrieve"]},
         )
 
-        _llm = condense_question_llm or llm
-        condense_question_chain = condense_question_prompt | _llm | StrOutputParser()
+    def invoke(self, history, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Execute the Workflow.
+        """
 
-        logger.debug("BaseQAChain created successfully")
+        inputs = self._prepare_inputs(history)
 
-        return cls(
-            retriever=retriever,
-            combine_docs_chain=doc_chain,
-            condense_question_chain=condense_question_chain,
-            llm=llm,
-            prompt=qa_prompt
-        )
+        condense_output = self.condense_chain.invoke({
+            **inputs
+        })
+        retriever_output = self.retriever.invoke(condense_output)
+        answer_output = self.answer_chain.invoke({
+            **inputs,
+            'condense_output': condense_output['answer'],
+            'retriever_output': retriever_output
+        })
 
-    
+        return {
+            "answer": answer_output['answer'],
+            "documents": retriever_output,
+            "condense_output": condense_output['answer']
+        }
+
 class ImageLLMChain(LLMChain):
     """LLMChain but overriding _call method to ensure it points to custom LLM"""
     
@@ -342,42 +418,3 @@ class BaseGradingChain:
         return reserved_tokens
     
 
-class PromptLogger(BaseCallbackHandler):
-    """Lightweight callback handler to log prompts and responses to file"""
-    
-    def __init__(self, logfile: str):
-        self.logfile = logfile
-        os.makedirs(os.path.dirname(logfile), exist_ok=True)
-    
-    def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
-        """Log the prompt when LLM starts"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(self.logfile, 'a', encoding='utf-8') as f:
-            f.write("-" * 41)
-            f.write(f"\n[{timestamp}] Prompt sent to LLM:\n")
-            f.write("-" * 41 + "\n\n")
-            for prompt in prompts:
-                f.write(f"{prompt}\n\n\n")
-    
-    def on_llm_end(self, response, **kwargs: Any) -> None:
-        """Log the response when LLM ends"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(self.logfile, 'a', encoding='utf-8') as f:
-            f.write("-" * 35)
-            f.write(f"\n[{timestamp}] LLM Response:\n")
-            f.write("-" * 35 + "\n\n")
-            
-            # handle different response formats
-            if hasattr(response, 'generations'):
-                for generation_list in response.generations:
-                    for generation in generation_list:
-                        if hasattr(generation, 'text'):
-                            f.write(f"{generation.text}\n\n\n")
-                        elif hasattr(generation, 'message'):
-                            f.write(f"{generation.message.content}\n\n\n")
-            else:
-                f.write(f"{response}\n\n\n")
-            
-            f.write("=" * 96 + "\n\n\n")
-
-    
