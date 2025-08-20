@@ -17,13 +17,14 @@ class Scraper():
     
     def __init__(self, piazza_email=None, piazza_password=None):
         # fetch configs
-        from a2rchi.utils.config_loader import Config_Loader
-        self.config = Config_Loader().config["utils"]["scraper"]
-        self.global_config = Config_Loader().config["global"]
-        self.piazza_config = Config_Loader().config["utils"].get("piazza", None)
+        from a2rchi.utils.config_loader import load_config
+        self.config_dict = load_config(map=True)
+        self.config = self.config_dict["utils"]["scraper"]
+        self.global_config = self.config_dict["global"]
+        self.piazza_config = self.config_dict["utils"].get("piazza", None)
         self.data_path = self.global_config["DATA_PATH"]
         # get SSO configuration
-        self.sso_config = Config_Loader().config["utils"].get("sso", None)
+        self.sso_config = self.config_dict["utils"].get("sso", None)
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
@@ -32,7 +33,7 @@ class Scraper():
         self.websites_dir = os.path.join(self.data_path, "websites")
         os.makedirs(self.websites_dir, exist_ok=True)
 
-        self.input_lists = Config_Loader().config["chains"].get("input_lists", [])
+        self.input_lists = self.config_dict["chains"].get("input_lists", [])
         if self.input_lists is None:
             self.input_lists = []
         logger.info(f"Input lists: {self.input_lists}")
@@ -127,21 +128,15 @@ class Scraper():
                     if sso_config and sso_config.get("ENABLED", False):
                         sso_class_name = sso_config.get("SSO_CLASS", "CERNSSOScraper")
                         sso_class_map = sso_config.get("SSO_CLASS_MAP", {})
-                        
+
                         if sso_class_name in sso_class_map:
                             sso_class = sso_class_map[sso_class_name]["class"]
                             sso_kwargs = sso_class_map[sso_class_name].get("kwargs", {})
-                            
+                        
                             with sso_class(**sso_kwargs) as sso_scraper:
-                                crawled_data = sso_scraper.crawl(url)
-                                sso_scraper.save_crawled_data(upload_dir)
-                                
-                                for i, page in enumerate(crawled_data):
-                                    logger.info(f"SSO Crawled {i+1}. {page['title']} - {page['url']}")
-                                    identifier = hashlib.md5()
-                                    identifier.update(page['url'].encode('utf-8'))
-                                    file_name = str(int(identifier.hexdigest(), 16))[0:12]
-                                    sources[file_name] = page['url']
+                                added_sources = sso_scraper.crawl(url, upload_dir)
+                                for source_key in added_sources:
+                                    sources[source_key] = added_sources[source_key]
                         else:
                             logger.error(f"SSO class {sso_class_name} not found in SSO_CLASS_MAP")
                             raise Exception(f"SSO class {sso_class_name} not configured")

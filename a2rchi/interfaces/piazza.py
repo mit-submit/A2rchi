@@ -1,6 +1,6 @@
 from a2rchi.chains.chain import Chain
 from a2rchi.interfaces.uploader_app.app import FlaskAppWrapper
-from a2rchi.utils.config_loader import Config_Loader
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.scraper import Scraper
@@ -50,7 +50,7 @@ class Piazza:
 
         logger.info("Initializing Piazza service")
 
-        self.piazza_config = Config_Loader().config["utils"].get("piazza", None)
+        self.piazza_config = load_config()["utils"].get("piazza", None)
 
         # login to piazza
         self.piazza = PiazzaAPI()

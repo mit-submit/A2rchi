@@ -1,4 +1,4 @@
-from a2rchi.utils.config_loader import Config_Loader, CONFIG_PATH
+from a2rchi.utils.config_loader import load_config, CONFIG_PATH
 from a2rchi.chains.chain import Chain
 from a2rchi.utils import sender
 from a2rchi.utils.data_manager import DataManager
@@ -29,14 +29,14 @@ class CleoAIWrapper:
     """
 
     def __init__(self):
-        self.chain = Chain()
+        self.chain = Chain(cleo=True)
 
         # initialize data manager
         self.data_manager = DataManager()
         self.data_manager.update_vectorstore()
 
         # configs
-        self.config = Config_Loader().config
+        self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -161,7 +161,10 @@ class Cleo:
         self.smtp = sender.Sender()
         self.user = None
         self.project = None
-        self.ai_wrapper = CleoAIWrapper()
+        self.ai_wrapper = None
+        if self.name != "Cleo_Helpdesk_Mail":
+            logger.info("Loading AI wrapper for Cleo service")
+            self.ai_wrapper = CleoAIWrapper()
 
         # read environment variables from secrets
         self.cleo_project = read_secret("CLEO_PROJECT")
