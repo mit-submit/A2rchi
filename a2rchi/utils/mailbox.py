@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 ### DEFINITIONS
 # this constant defines an offset into the message description
-# which contains the Cleo issue id that a message refers to.
+# which contains the Redmine issue id that a message refers to.
 ISSUE_ID_OFFSET = 9
 
 
@@ -34,9 +34,9 @@ class Mailbox:
             self.mailbox = self._connect()
 
 
-    def process_message(self, num, cleo):
+    def process_message(self, num, redmine):
         """
-        Process a single message, including addition to cleo and removal from inbox
+        Process a single message, including addition to redmine and removal from inbox
         """
         _, msg_data = self.mailbox.fetch(num, '(RFC822)')
         for response_part in msg_data:
@@ -54,10 +54,10 @@ class Mailbox:
                 if issue_id > 0:
                     note = f"ISSUE_ID:{issue_id} continued (leave for reference)\n\n"
                     note += f"{subject}: {description}"
-                    cleo.reopen_issue(issue_id, note, attachments)
+                    redmine.reopen_issue(issue_id, note, attachments)
                     self._cleanup_message(num, attachments)
                 else:
-                    issue_id = cleo.new_issue(sender, cc, subject, description, attachments)
+                    issue_id = redmine.new_issue(sender, cc, subject, description, attachments)
                     if issue_id > 0:
                         self._cleanup_message(num, attachments)
                     else:
@@ -66,7 +66,7 @@ class Mailbox:
         return
 
 
-    def process_messages(self, cleo):
+    def process_messages(self, redmine):
         """
         Select all messages in the mailbx and process them.
         """
@@ -75,7 +75,7 @@ class Mailbox:
         logger.info(f"mailbox.process_messages: {len(data[0].split())}")
 
         for num in data[0].split():
-            self.process_message(num, cleo)
+            self.process_message(num, redmine)
 
         self.mailbox.close()
         self.mailbox.logout()
@@ -247,7 +247,7 @@ class Mailbox:
         Make sure the environment is setup
         """
         if self.user == None or self.password == None:
-            logger.error("Did not find all cleo configs: IMAP_USER, IMAP_PW (source ~/.imap).")
+            logger.error("Did not find all redmine configs: IMAP_USER, IMAP_PW (source ~/.imap).")
             return False
 
         return True

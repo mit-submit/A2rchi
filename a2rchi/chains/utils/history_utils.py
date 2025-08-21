@@ -10,6 +10,9 @@ def stringify_history(chat_history: List[Tuple[str, str]]) -> str:
     to a single string
     "User: message\nAI: response..."
     """
+    if type(chat_history) is str:
+        return chat_history
+    
     buffer = ""
     for dialogue in chat_history:
         if isinstance(dialogue, tuple) and dialogue[0] in config["ROLES"]:
@@ -32,6 +35,9 @@ def tuplize_history(chat_history: str) -> List[Tuple[str, str]]:
     Reverse the operaiton of get_chat_history.
     From a string, make a list of (identity, message).
     """
+    if type(chat_history) is tuple:
+        return chat_history
+    
     history = []
     for line in chat_history.strip().splitlines():
         if ": " not in line:

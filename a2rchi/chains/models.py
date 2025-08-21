@@ -23,6 +23,11 @@ from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+def print_model_params(name, model_name, model_class_map):
+    """ Print the parameters of the model. """
+    params_str = "\n".join([f"\t\t\t{param}: {value}" for param, value in model_class_map[model_name]["kwargs"].items()])
+    logger.info(f"Using {name} model {model_name} with parameters:\n{params_str}")
+
 class BaseCustomLLM(LLM):
     """
     Abstract class used to load a custom LLM
