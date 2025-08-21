@@ -4,152 +4,165 @@ import yaml
 import re
 import json
 import time
+import hashlib
 
+from a2rchi.utils.scraper import Scraper
+from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger
 
-class GitScraper():
-    """Generic base class for Git-based scrapers."""
+logger = get_logger(__name__)
 
-    def __init__(self, git_url, authentication=True) -> None:
-        self.git_url = git_url
-        
+class GitScraper(Scraper):
+    """Generic base class for a Git-based scraper."""
+
+    def __init__(self) -> None:
+        super(self)
+
+        # create sub-directory for git repositories if it doesn't exist
+        self.git_dir = os.path.join(self.data_path, "git")
+        os.makedirs(self.git_dir, exist_ok=True)
+
         try:
-            # Create cloned_repos folder; this will store the clone repositories
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            base_dir = os.path.join(script_dir, "cloned_repos")
-            os.makedirs(base_dir, exist_ok=True)
-            repo_name = self.git_url.split('/')[-2]+'-'+self.git_url.split('/')[-1].replace('.git', '')
-            self.repo_path = os.path.join(base_dir, repo_name)
-        except Exception as e:
-            raise Exception(f"Error creating cloned_repos for {self.git_url} - {str(e)}")
+            self.git_username = read_secret("GIT_USERNAME")
+            self.git_token = read_secret("GIT_TOKEN")
+        except FileNotFoundError:
+            raise FileNotFoundError("Git Personal Access Token (PAT) not found. Please set it up in your environment.")
         
-        if authentication:
-            try:
-                self.git_username = read_secret("GIT_USERNAME")
-                self.git_token = read_secret("GIT_TOKEN")
+        
 
-                if self.git_username=='' or self.git_token=='':
-                    raise FileNotFoundError("The Git username or password cannot be blank.")
-                if 'gitlab' in self.git_url:
-                    self.git_url = self.git_url.replace('gitlab',f'{self.git_username}:{self.git_token}@gitlab')
-                    print(self.git_url)
-                elif 'github' in self.git_url:
-                    self.git_url = self.git_url.replace('github',f'{self.git_username}:{self.git_token}@github')
-                else:
-                    raise ValueError(f'The repository must be GitLab or GitHub based.')
-            except FileNotFoundError:
-                raise FileNotFoundError("Git username or password. not found Please set it up in your environment.")
-            
+    def _parse_url(self, url) -> dict:
 
-    def clone_repo(self):
+        branch_name = None
+
+        regex_repo_name = r'(?:github|gitlab)\.[\w.]+\/[^\/]+\/(\w+)(?:\.git|\/|$)'
+        if match := re.search(regex_repo_name,url,re.IGNORECASE):
+            repo_name = match.group(1)
+        else:
+            raise ValueError(f"The git url {url} does not match the expected format.")
+        
+
+        if 'gitlab' in url:
+            clone_from_url = url.replace('gitlab',f'{self.git_username}:{self.git_token}@gitlab')
+        elif 'github' in url:
+            clone_from_url = url.replace('github',f'{self.git_username}:{self.git_token}@github')
+
+        if '/tree/' in clone_from_url:
+            # A specific branch was cloned
+            branch_name = clone_from_url.split('/tree/')[1]
+            clone_from_url = clone_from_url.split('/tree/')[0]
+
+        return {'original_url':url,'clone_url':clone_from_url,'repo_name':repo_name,'branch':branch_name}
+    
+    def _clone_repo(self,url_dict):
+
+        original_url = url_dict['original_url']
+        clone_url = url_dict['clone_url']
+        branch = url_dict['branch']
+        repo_name = url_dict['repo_name']
+
+        logger.info(f"Cloning repository {repo_name}...")
+        
+        repo_path = os.path.join(self.git_dir,repo_name)
+        
         try:
             # Clone https git url into folder
-            Repo.clone_from(self.git_url,self.repo_path)
+            if branch is None:
+                Repo.clone_from(clone_url, repo_path)
+            else:
+                Repo.clone_from(clone_url, repo_path,branch)
         except Exception as e:
             raise Exception(f'Repo could not be cloned as per error {str(e)}')
-    
-    def crawl(self):
-
-        # Clones the repo if it has not done so already
-        if not os.path.exists(self.repo_path):
-            self.clone_repo()
-
-        # Should only work for MKDocs based Git repos
-        if not os.path.exists(self.repo_path+'/mkdocs.yml'):
-            raise ValueError("This repository does not contain mkdocs.yml")
-
-        # Reset crawling state
-        self.page_data = []
-
-        # Obtains site url from the mkdocs yaml configuration
-        with open(self.repo_path+'/mkdocs.yml', 'r') as file:
-            data = yaml.safe_load(file)
-            self.site_url = data['site_url']
-        print(f"Site url: {self.site_url}")
-
-        if not os.path.exists(self.repo_path+'/docs'):
-            raise ValueError("The repository does not contain a 'docs' folder.")
         
-        for root, _, files in os.walk(self.repo_path+'/docs'):
-            for file in files:
-                # Only crawls .md files
-                if '.md' in file:
-                    file_path = root+'/'+file
-                    print(f"Crawling MD doc associated with page: {self.site_url+file_path.split('/docs/')[-1].replace('.md','')}")
-                    page_data = self.extract_page_data(file_path)
-                    self.page_data.append(page_data)
+        # Should only work for MKDocs based Git repos
+        if not os.path.exists(repo_path+'/mkdocs.yml') :
+            logger.info(f"Skipping url {original_url}...\nThis repository does not contain mkdocs.yml")
+            # Cleaning after skipping
+            os.removedirs(repo_path)
+            #TODO: Should raise exception
+        
+        return repo_path
 
-        return self.page_data
+    def hard_scrape(self, verbose=False):
+        """
+        Fills the data folder from scratch 
+        
+        """
+        # clear website data if specified
+        if self.config["reset_data"] :
+            for file in os.listdir(self.git_dir):
+                os.remove(os.path.join(self.git_dir, file))
 
-    def extract_page_data(self, file_path):
-        title = file_path.split('/')[-1].replace('.md','')
+        git_urls = super().collect_urls_from_lists()
+        git_urls = [re.split("git-", git_url)[1] for git_url in git_urls if git_url.startswith('git-')]
+        
+        sources_path=os.path.join(self.data_path, 'sources.yml')
+
+        # Scrape urls
+        self.scrape_urls(urls=git_urls,upload_dir=self.git_dir,sources_path=sources_path)
+
+
+        if verbose:
+            logger.info("Git scraping was completed successfully")
+
+
+    def scrape_urls(self,urls,upload_dir,sources_path):
+        logger.debug(f"SOURCE: {sources_path}")
+        try:
+            # load existing sources or initialize as empty dictionary
+            with open(sources_path, 'r') as file:
+                sources = yaml.safe_load(file) or {}
+        except FileNotFoundError:
+            sources = {}
+
+        for url in urls:
+
+            # Dictionary with clone_url, repo_name, branch_name (if any)
+            url_dict = self._parse_url(url) 
+
+            
+            #TODO: Should catch exception to skip...
+            repo_path = self._clone_repo(url_dict=url_dict)
+            logger.info(f"Succesfully cloned repo to path: {repo_path}")
+
+            # Obtains site url from the mkdocs yaml configuration
+            with open(repo_path+'/mkdocs.yml', 'r') as file:
+                data = yaml.safe_load(file)
+                base_site_url = data['site_url']
+            logger.info(f"Site base url: {base_site_url}")
+
+            for root, _, files in os.walk(repo_path+'/docs'):
+                for file in files:
+                    # Only crawls .md files
+                    if '.md' in file:
+                        temp_file_path = root+'/'+file #File path within repo folder
+                        logger.info(f"Writing MD doc associated with page: {base_site_url+temp_file_path.split('/docs/')[-1].replace('.md','')}")
+                        file_name, current_url, content = self.write_page_data(temp_file_path,base_site_url,upload_dir)
+                        sources[file_name] = current_url
+                        logger.debug(f"TEXT({current_url})\n{content}\n")
+
+            os.removedirs(repo_path)
+
+        # store list of files with urls to file 
+        with open(sources_path, 'w') as file:
+            yaml.dump(sources, file)
+
+    def write_page_data(self, file_path, base_url, upload_dir):
+        current_url = base_url+file_path.split('/docs/')[-1].replace('.md','')
+
+        # Read the page and store the text only to file
+        identifier = hashlib.md5()
+        identifier.update(current_url.encode('utf-8'))
+        file_name = str(int(identifier.hexdigest(),16))[0:12]
+        logger.info(f"Store: {upload_dir}/{file_name}.html : {current_url}")
+
+
+        #title = file_path.split('/')[-1].replace('.md','')
+
         with open(file_path, 'r', encoding='utf-8') as file:
             text_content = file.read()
-        url = self.site_url+file_path.split('/docs/')[-1].replace('.md','')#DE DOCS EN ADELANTE
 
-        return {
-            "url": url,
-            "title": title,
-            "content": text_content
-        }
-                
+        with open(f"{upload_dir}/{file_name}.md", 'w') as file:
+            file.write(text_content)
 
-    def save_crawled_data(self, output_dir="crawled_data"):
-        if not self.page_data:
-            print("No data to save")
-            return
-            
-        # Create output directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"Saving crawled data to {output_dir}...")
-
-        # Save a summary file with all URLs and titles
-        summary_path = os.path.join(output_dir, "summary.txt")
-        with open(summary_path, "w", encoding="utf-8") as f:
-            for i, page in enumerate(self.page_data):
-                f.write(f"{i+1}. {page['title']}\n")
-                f.write(f"   URL: {page['url']}\n")
-                f.write(f"   Content length: {len(page.get('content', ''))} chars\n")
-                f.write("\n")
-
-        # Save each page's content to separate files - raw MD content and text
-        for i, page in enumerate(self.page_data):
-            # Create a safe filename from the URL
-            safe_name = re.sub(r'[^\w\-_.]', '_', page['url'])
-            safe_name = safe_name[-100:] if len(safe_name) > 100 else safe_name
-            
-            # Save the complete raw MD content
-            md_file_path = os.path.join(output_dir, f"{i+1}_{safe_name}.txt")
-            with open(md_file_path, "w", encoding="utf-8") as f:
-                f.write(f"URL: {page['url']}\n")
-                f.write(f"Title: {page['title']}\n")
-                f.write("="*80 + "\n\n")
-                f.write(page.get('content', page.get('content', '')))
-
-        # Save a JSON index of all crawled pages
-        json_path = os.path.join(output_dir, "crawled_index.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            # Create a simplified index without the large MD content
-            pages_data = []
-            for i, page in enumerate(self.page_data):
-                safe_name = re.sub(r'[^\w\-_.]', '_', page['url'])
-                safe_name = safe_name[-100:] if len(safe_name) > 100 else safe_name
-                filename = f"{i+1}_{safe_name}"
-                pages_data.append({
-                    "url": page["url"],
-                    "title": page["title"],
-                    "filename": filename
-                })
-            
-            index = {
-                "base_url": next(iter(self.page_data), {}).get('url', ''),
-                "pages": pages_data,
-                "crawled_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "total_pages": len(self.page_data)
-            }
-            json.dump(index, f, indent=2, ensure_ascii=False)
-                
-        print(f"Saved {len(self.page_data)} pages to {output_dir}")
-        print(f"- MD files containing complete raw page content")
-        print(f"- Text files for basic reading")
-        print(f"- JSON index of all crawled pages")
+        return file_name, current_url, text_content
