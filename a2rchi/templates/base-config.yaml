@@ -158,6 +158,11 @@ chains:
           trust_remote_code: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.trust_remote_code | default(true, true) }}
           tokenizer_mode: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.tokenizer_mode | default("auto", true) }}
           max_model_len: {{ chains.chain.MODEL_CLASS_MAP.VLLM.kwargs.max_model_len | default(none, true) }}
+      OllamaInterface:
+        class: OllamaInterface
+        kwargs: 
+          model: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.model | default("gemma3", true) }}
+          base_url: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.base_url | default("https://ollama.fnal.gov:443", true) }}
     chain_update_time: {{ chains.chain.chain_update_time | default(10, true) }}
 
 utils:

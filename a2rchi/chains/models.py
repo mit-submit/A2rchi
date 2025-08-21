@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_core.caches import BaseCache 
 from langchain_core.callbacks import Callbacks 
+from langchain_ollama.chat_models import ChatOllama
 
 from qwen_vl_utils import process_vision_info
 
@@ -723,3 +724,39 @@ class ClaudeLLM(BaseCustomLLM):
             return completion
         else:
             raise Exception(f"API request to Claude failed with status {response.status_code}, {response.text}")
+
+class OllamaInterface(ChatOllama):
+    """
+    An LLM class that uses a model connected to an Ollama server interface.
+    """
+
+    def __init__(self, **kwargs):
+
+        # Get the model and url information from the config 
+        model = kwargs.pop("model", "")
+        base_url = kwargs.pop("base_url", "")
+
+        if base_url == "":
+            logger.error("No base-url selected for Ollama model")
+        if model == "": 
+            logger.error(f"No Ollama model selected please choose from {self.list_ollama_models()}")
+
+        super().__init__(model=model, base_url=base_url, **kwargs)
+
+    def list_ollama_models(self) -> list:
+        """
+        Connects to the Ollama server and lists all available models.
+
+        Returns:
+            A list of dictionaries, where each dictionary represents a model
+            and contains its details (e.g., name, size).
+        """
+        try:
+            response = requests.get(f"{self.base_url}/api/tags")
+            response.raise_for_status()  # Raise an exception for bad status codes
+            data = response.json()
+            return data.get("models", [])
+        except requests.exceptions.RequestException as e:
+            print(f"Error connecting to Ollama server: {e}")
+            return []
+

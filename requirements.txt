@@ -16,6 +16,7 @@ httptools==0.6.1
 httpx==0.27.2
 humanfriendly==10.0
 langchain==0.3.0
+langchain_ollama==0.2.0
 loguru==0.7.2
 lz4==4.3.2
 mistune==3.0.2

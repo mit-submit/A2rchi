@@ -7,6 +7,8 @@ from typing import Dict, Any, List, Tuple
 from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 
+import nltk
+
 logger = get_logger(__name__)
 
 config = load_config()
@@ -22,13 +24,20 @@ class SubMITRetriever(BaseRetriever):
     search_kwargs: Dict[str, Any] = None
     instructions: str = None
     utils_config: Dict[str, any] = None
+    stemmer: None | nltk.stem.PorterStemmer = None
     
-    def __init__(self, vectorstore: VectorStore, search_kwargs: dict = None, instructions: str = None):
+    def __init__(self, vectorstore: VectorStore, search_kwargs: dict = None, instructions: str = None, stemming = False):
         super().__init__()
         self.vectorstore = vectorstore
         self.search_kwargs = search_kwargs or {'k': 3}
         self.instructions = instructions
         self.utils_config = load_config()["utils"]
+        self.stemmer = None
+
+        if stemming:
+            nltk.download('punkt_tab')
+            self.stemmer = nltk.stem.PorterStemmer()
+            logger.warning("made a stemmer")
 
     def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None) -> List[Document]:
         """
@@ -43,6 +52,10 @@ class SubMITRetriever(BaseRetriever):
             query = make_instruction_query(self.instructions, query)
         elif self.instructions:
             logger.warning(f"Instructions provided but model '{embedding_model}' not in supported models: {INSTRUCTION_AWARE_MODELS}")
+
+        if self.stemmer is not None:
+            query_words = nltk.tokenize.word_tokenize(query)
+            query = " ".join([self.stemmer.stem(word) for word in query_words])
             
         return self.vectorstore.similarity_search(query, **self.search_kwargs)
 

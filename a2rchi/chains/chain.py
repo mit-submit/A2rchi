@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 # at some point maybe won't make sense to keep one generic class...
 class Chain() :
 
-    def __init__(self, image_processing=False, cleo=False, grading=False):
+    def __init__(self, image_processing=False, cleo=False, grading=False, stemming=False):
         """
         Gets all the relavent files from the data directory and converts them
         into a format that the chain can use. Then, it creates the chain using 
@@ -29,6 +29,7 @@ class Chain() :
         self.image_processing = image_processing
         self.cleo = cleo
         self.grading = grading
+        self.stemming = stemming
 
         self.update_config()
 
@@ -168,7 +169,8 @@ class Chain() :
             retriever = SubMITRetriever(
                 vectorstore=vectorstore,
                 search_kwargs={"k": self.num_docs_to_retrieve},
-                instructions=self.embedding_instructions
+                instructions=self.embedding_instructions,
+                stemming = self.stemming
             )
 
             chain = BaseQAChain.from_llm(
