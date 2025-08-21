@@ -14,12 +14,15 @@ from langchain_text_splitters.character import CharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
 
 import chromadb
+import nltk
 import hashlib
 import os
 import yaml
 import time
 
 logger = get_logger(__name__)
+
+SUPPORTED_DISTANCE_METRICS = ['l2', 'cosine', 'ip']
 
 class DataManager():
 
@@ -28,7 +31,8 @@ class DataManager():
         self.config = load_config(map=True)["utils"]
         self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
-
+        self.stemmer = None
+        
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
 
@@ -48,6 +52,11 @@ class DataManager():
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
         logger.info(f"Using collection: {self.collection_name}")
 
+        # distance metric to use for similarity search for RAG later on
+        self.distance_metric = self.config["data_manager"]["distance_metric"]
+        if self.distance_metric not in SUPPORTED_DISTANCE_METRICS:
+            raise ValueError(f"The selected distance metrics, '{self.distance_metric}', is not supported. Must be one of {SUPPORTED_DISTANCE_METRICS}")
+
         # delete the existing collection if specified
         self.delete_existing_collection_if_reset()
 
@@ -62,6 +71,10 @@ class DataManager():
             chunk_overlap=self.config["data_manager"]["CHUNK_OVERLAP"],
         )
 
+        # makes sure nltk gets installed and initializes stemmer
+        if self.config["data_manager"]["stemming"].get("ENABLED", False):
+            nltk.download('punkt_tab')
+            self.stemmer = nltk.stem.PorterStemmer()
 
     def delete_existing_collection_if_reset(self):
         """
@@ -106,7 +119,12 @@ class DataManager():
                 path=self.global_config["LOCAL_VSTORE_PATH"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
-        collection = client.get_or_create_collection(self.collection_name)
+        collection = client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={
+                "hnsw:space": self.distance_metric
+            }
+        )
 
         logger.info(f"N in collection: {collection.count()}")
         return collection
@@ -121,7 +139,7 @@ class DataManager():
 
         # get current status of persistent vstore 
         files_in_vstore = [metadata["filename"] for metadata in collection.get(include=["metadatas"])["metadatas"]]
-        
+
         # scan data folder and obtain list of files in data. Assumes max depth = 1
         dirs = [
             os.path.join(self.data_path, dir)
@@ -182,7 +200,7 @@ class DataManager():
 
         return collection
 
-
+    
     def _add_to_vectorstore(self, collection, files_to_add, sources={}):
         """
         Method which takes as input:
@@ -197,6 +215,8 @@ class DataManager():
         and adds these files to the vectorstore.
         """
         for filename, file in files_to_add.items():
+
+            logger.info(f"<MP> Processing file: {filename}")
 
             # create the chunks
             loader = None
@@ -216,17 +236,26 @@ class DataManager():
             # load documents from current file and add to docs and metadata
             docs = loader.load()
             for doc in docs:
+                
                 new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
-                chunks += new_chunks
-                metadatas += [doc.metadata for chunk in new_chunks]
+                
+                for new_chunk in new_chunks:
+                    if self.config["data_manager"]["stemming"].get("ENABLED", False):
+                        words = nltk.tokenize.word_tokenize(new_chunk)
+                        stemmed_words = [self.stemmer.stem(word) for word in words]
+                        new_chunk = " ".join(stemmed_words)
+                    chunks.append(new_chunk)
+                    metadatas.append(doc.metadata)
 
             # explicitly get file metadata
             filehash = filename.split(".")[0]
             url = sources[filehash] if filehash in sources.keys() else ""
-            
-            # embed each chunk
-            embeddings = self.embedding_model.embed_documents(chunks)
 
+            logger.info(f"<MP> Corresponding: {filename} {filehash} -> {url}")
+
+            # embeds each chunk
+            embeddings = self.embedding_model.embed_documents(chunks)
+            
             # add filename (better even corresponding url) as metadata for each chunk
             for metadata in metadatas:
                 metadata["filename"] = filename
@@ -246,9 +275,12 @@ class DataManager():
                     time_hash = str(int(time_hash) + 1)
                 ids.append(str(filehash) + str(chunk_hash) + str(time_hash))
 
-            logger.info(f"Ids: {ids}")
+            logger.debug(f"Ids: {ids}")
+
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            logger.info(f"Successfully added file {url}")
+
+            logger.info(f"Successfully added file {filename}")
+            if url: logger.info(f"with URL: {url}"}
 
         return collection
 
@@ -272,4 +304,4 @@ class DataManager():
             return PyPDFLoader(file_path)
         else: 
             logger.error(f"Format not supported -- {file_path}")
-            return None 
+            return None

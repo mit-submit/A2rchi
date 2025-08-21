@@ -213,7 +213,7 @@ class ChatWrapper:
 
         return history
 
-    def prepare_context_for_storage(self, source_documents, sources):
+    def prepare_context_for_storage(self, source_documents, sources, scores):
 
         num_retrieved_docs = len(source_documents)
         context = ""
@@ -228,7 +228,7 @@ class ChatWrapper:
                     link_k = sources[document_source_hash]
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
-                context += f"Source {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\n\n{content}\n\n\n\n"
+                context += f"SOURCE {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {scores[k]}\n\n{content}\n\n\n\n"
 
         return context
 
@@ -371,7 +371,7 @@ class ChatWrapper:
             # get similarity score to see how close the input is to the source
             # - low score means very close (it's a distance between embedding vectors approximated
             #   by an approximate k-nearest neighbors algorithm called HNSW)
-            score = self.chain.similarity_search(content)
+            top_score, scores = self.chain.similarity_search(content)
             timestamps['similarity_search_ts'] = datetime.now()
 
             # load the present list of sources
@@ -392,10 +392,11 @@ class ChatWrapper:
             embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
             similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
             logger.debug(f"Similarity score reference:  {similarity_score_reference}")
-            logger.debug(f"Similarity score:  {score}")
+            logger.debug(f"Similarity score:  {top_score}")
             link = ""
             output = "<p>" + self.format_code_in_text(result["answer"])
             if source is not None and score < similarity_score_reference and source in sources.keys():
+
                 link = sources[source]
                 logger.info(f"Primary source:  {link}")
                 parsed_source = urlparse(link)
@@ -406,7 +407,7 @@ class ChatWrapper:
             timestamps['a2rchi_message_ts'] = datetime.now()
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
-            context = self.prepare_context_for_storage(result['source_documents'], sources)
+            context = self.prepare_context_for_storage(result['source_documents'], sources, scores)
 
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, link, context, is_refresh)
             timestamps['insert_convo_ts'] = datetime.now()

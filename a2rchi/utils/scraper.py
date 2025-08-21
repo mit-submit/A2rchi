@@ -144,6 +144,7 @@ class Scraper():
                                     identifier.update(page['url'].encode('utf-8'))
                                     file_name = str(int(identifier.hexdigest(), 16))[0:12]
                                     sources[file_name] = page['url']
+
                         else:
                             logger.error(f"SSO class {sso_class_name} not found in SSO_CLASS_MAP")
                             raise Exception(f"SSO class {sso_class_name} not configured")

@@ -29,6 +29,12 @@ services:
       {% if jira -%}
       JIRA_PAT_FILE: /run/secrets/jira_pat
       {% endif %}
+      {% if redminetickets -%}
+      CLEO_URL_FILE: /run/secrets/cleo_url
+      CLEO_USER_FILE: /run/secrets/cleo_user
+      CLEO_PW_FILE: /run/secrets/cleo_pw
+      CLEO_PROJECT_FILE: /run/secrets/cleo_project
+      {% endif %}
       {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
@@ -60,6 +66,12 @@ services:
       - pg_password
       {% if jira -%}
       - jira_pat
+      {% endif %}
+      {% if redminetickets -%}
+      - cleo_url
+      - cleo_user
+      - cleo_pw
+      - cleo_project
       {% endif %}
     volumes:
       - {{ chat_volume_name }}:/root/data/
