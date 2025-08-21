@@ -17,7 +17,7 @@ class GitScraper(Scraper):
     """Generic base class for a Git-based scraper."""
 
     def __init__(self) -> None:
-        super(self)
+        super().__init__()
 
         # create sub-directory for git repositories if it doesn't exist
         self.git_dir = os.path.join(self.data_path, "git")

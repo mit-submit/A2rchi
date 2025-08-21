@@ -151,6 +151,8 @@ class Scraper():
                         resp = requests.get(url, verify=verify_urls)
                     except Exception as e2:
                         logger.error(f"Regular request also failed for {url}: {str(e2)}")
+            elif url.startswith('git-'):
+                continue
             else:
 
                 # request web page
