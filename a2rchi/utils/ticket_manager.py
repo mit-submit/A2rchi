@@ -2,6 +2,7 @@ import os
 
 from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.jira import JiraClient
+from a2rchi.utils.redmine_tickets import RedmineClient
 
 
 class TicketManager():
@@ -17,9 +18,11 @@ class TicketManager():
         os.makedirs(self.tickets_dir, exist_ok=True)
 
         self.jira_client = JiraClient()
+        self.redmine_client = RedmineClient()
 
     def run(self):
         """
         Main function to run the TicketManager.
         """
         self.jira_client.run(tickets_dir=self.tickets_dir)
+        self.redmine_client.run(tickets_dir=self.tickets_dir)

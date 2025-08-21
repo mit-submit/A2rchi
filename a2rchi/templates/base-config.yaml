@@ -20,6 +20,7 @@ interfaces:
     static_folder: "{{ interfaces.chat_app.static_folder | default('/root/A2rchi/a2rchi/interfaces/chat_app/static', true) }}"
     num_responses_until_feedback: {{ interfaces.chat_app.num_responses_until_feedback | default(3, true) }}
     include_copy_button: {{ interfaces.chat_app.include_copy_button | default(false, true) }}
+    enable_debug_chroma_endpoints: {{ interfaces.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ interfaces.chat_app.flask_debug_mode | default(true, false) }}
   uploader_app:
     PORT: {{ interfaces.uploader_app.PORT | default(5001, true) }}
@@ -65,6 +66,7 @@ chains:
     WORKFLOW_KWARGS: {{chains.chain.WORKFLOW_KWARGS | default({}, true)}}
     MODEL_NAME: {{ chains.chain.MODEL_NAME | default('null', true) }}
     CONDENSE_MODEL_NAME: {{ chains.chain.CONDENSE_MODEL_NAME | default('null', true) }}
+    CLEO_MODEL_NAME: {{ chains.chain.CLEO_MODEL_NAME | default('null', true) }}
     IMAGE_PROCESSING_MODEL_NAME: {{ chains.chain.IMAGE_PROCESSING_MODEL_NAME | default('null', true) }}
     GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
     GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
@@ -167,6 +169,8 @@ utils:
     database: {{ utils.postgres.database | default('a2rchi-db', true) }}
     host: {{ postgres_hostname }}
   data_manager:
+    stemming:
+      ENABLED: {{ utils.data_manager.stemming.ENABLED | default(false, true) }}
     CHUNK_SIZE: {{ utils.data_manager.CHUNK_SIZE | default(1000, true) }}
     CHUNK_OVERLAP: {{ utils.data_manager.CHUNK_OVERLAP | default(0, true) }}
     use_HTTP_chromadb_client: {{ utils.data_manager.use_HTTP_chromadb_client | default(true, true) }}
@@ -176,6 +180,7 @@ utils:
     collection_name: {{ collection_name }}
     reset_collection: {{ utils.data_manager.reset_collection | default(true, true) }}
     num_documents_to_retrieve: {{ utils.data_manager.num_documents_to_retrieve | default(5, true) }}
+    distance_metric: {{ utils.data_manager.distance_metric | default('cosine', true) }}
   embeddings:
     EMBEDDING_NAME: {{ utils.embeddings.EMBEDDING_NAME | default('OpenAIEmbeddings', true) }}
     EMBEDDING_CLASS_MAP:
@@ -193,6 +198,7 @@ utils:
           encode_kwargs: 
             normalize_embeddings: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
         similarity_score_reference: {{ utils.embeddings.EMBEDDING_CLASS_MAP.HuggingFaceEmbeddings.similarity_score_reference | default(10, true) }}
+    query_embedding_instructions: {{ utils.embeddings.query_embedding_instructions | default("null", true) }}
   sso:
     ENABLED: {{ utils.sso.ENABLED | default(false, true) }}
     SSO_CLASS: {{ utils.sso.SSO_CLASS | default('CERNSSOScraper', true) }}
@@ -201,7 +207,7 @@ utils:
         class: CERNSSOScraper
         kwargs:
           headless: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.headless | default(true, true) }}
-          max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(50, true) }}
+          max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
@@ -213,6 +219,7 @@ utils:
     update_time: {{ utils.mattermost.update_time | default(60, true) }} # seconds
   redmine: 
     redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
+    answer_tag: {{ utils.redmine.answer_tag | default('-- A2rchi -- Resolving email was sent', true)}}
   mailbox: 
     IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
     mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}

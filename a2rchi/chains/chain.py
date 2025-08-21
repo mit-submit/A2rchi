@@ -108,18 +108,19 @@ class Chain() :
         )
 
         # perform similarity search
-        similarity_result = vectorstore.similarity_search_with_score(input)
-        score = (
+        similarity_result = vectorstore.similarity_search_with_score(input, k=self.num_docs_to_retrieve)
+        top_score = (
             vectorstore.similarity_search_with_score(input)[0][1]
             if len(similarity_result) > 0
             else 1e10
         )
+        scores = [similarity_result[i][1] for i in range(len(similarity_result))]
 
         # clean up vectorstore and client
         del vectorstore
         del client
 
-        return score
+        return top_score, scores
 
     def __call__(self, *args, **kwargs):
         """

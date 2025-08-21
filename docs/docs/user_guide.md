@@ -85,19 +85,23 @@ There are a few additional options you can pass to the `create` command that are
 
 4. **`utils:data_manager:num_documents_to_retrieve`**: How many chunks to query in order of decreasing similarity (so 1 would return the most similar only, 2 the next most similar, etc.).
 
-5. **`utils:embeddings:EMBEDDING_NAME`**: `OpenAIEmbeddings` (default) or `HuggingFaceEmbeddings`. To choose the specific model, see next lines.
+5. **`utils:data_manager:distance_metric`**: Distance metric to use for similarity search in ChromaDB. Options are `cosine`, `l2`, and `ip`. Read more (here)[https://docs.trychroma.com/docs/collections/configure]. Default for A2rchi is cosine.
 
-6. **`utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:kwargs:model_name`**: The OpenAI embedding model you want to use. Default is `text-embedding-3-small`.
+6. **`utils:embeddings:EMBEDDING_NAME`**: `OpenAIEmbeddings` (default) or `HuggingFaceEmbeddings`. To choose the specific model, see next lines.
 
-7. **`utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:similarity_score_reference`**: The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more [here](https://docs.trychroma.com/docs/collections/configure)), so smaller values represent higher similarity. The link will be included if the score is *below* the chosen value. Default is `10` (scores are usually order 1, so default is to always include link).
+7. **`utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:kwargs:model_name`**: The OpenAI embedding model you want to use. Default is `text-embedding-3-small`.
 
-8. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_name`**: The HuggingFace embedding model you want to use. Default is `sentence-transformers/all-MiniLM-L6-v2`. TODO: fix logic to require token if private model is requested.
+8. **`utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:similarity_score_reference`**: The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more [here](https://docs.trychroma.com/docs/collections/configure)), so smaller values represent higher similarity. The link will be included if the score is *below* the chosen value. Default is `10` (scores are usually order 1, so default is to always include link).
 
-9. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_kwargs:device`**: Argument passed to embedding model initialization, to load onto `cpu` (default) or `cuda` (GPU), which you can select if you are deploying a2rchi onto GPU.
+9. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_name`**: The HuggingFace embedding model you want to use. Default is `sentence-transformers/all-MiniLM-L6-v2`. TODO: fix logic to require token if private model is requested.
 
-10. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:encode_kwargs:normalize_embeddings`**: Whether to normalize the embedded vectors or not. Default is `true`. Note, the default distance metric that chromadb uses is l2, which mesasures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.
+10. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_kwargs:device`**: Argument passed to embedding model initialization, to load onto `cpu` (default) or `cuda` (GPU), which you can select if you are deploying a2rchi onto GPU.
 
-11. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference`**: Same as #7.
+11. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:encode_kwargs:normalize_embeddings`**: Whether to normalize the embedded vectors or not. Default is `true`. Note, the default distance metric that chromadb uses is l2, which mesasures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.
+
+12. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference`**: Same as #7.
+
+13. **`utils:embeddings:query_embedding_instructions`**: Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see `INSTRUCTION_AWARE_MODELS` in `a2rchi/chains/retrievers.py` to add models that support this. For example, the `Qwen/Qwen3-Embedding-XB` embedding models support this and are listed, see more [here](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B). Default is `None`. You should write the string directly into the config. An example instruction might look like: `"Given a query, retrieve relevant information to answer the query"`. You might tune it to be more specific to your use case which might improve performance.
 
 
 #### Chat Service
