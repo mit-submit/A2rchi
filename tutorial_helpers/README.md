@@ -1,133 +1,150 @@
-# Tutorial Helpers
+# A2rchi Deployment Guide for CMS Tutorial (8/25)
 
-This directory contains helper scripts and documentation for setting up A2rchi for the LPC session.
+This guide walks you through deploying A2rchi on CERN systems (like lxplus) using Podman containers. Follow these steps in order to get your A2rchi instance running.
 
-## Quick Start Guide
+## Prerequisites
 
-### Prerequisites
+### 1. Check User Namespace Mapping
 
-Make sure you are on a "heavy node", `ssh <your username>@cmslpc-el9-heavy01.fnal.gov` (`cmslpc-el8-heavy01.fnal.gov` and `cmslpc-el8-heavy02.fnal.gov` also work),  which has a large enough local filesystem to build the containers. See more [here](https://uscms.org/uscms_at_work/physics/computing/getstarted/uaf.shtml#nodes)
-For the tutorial session on august 15, we have available 4 additional special nodes:
-`cmslpc346.fnal.gov`
-`cmslpc347.fnal.gov`
-`cmslpc348.fnal.gov`
-`cmslpc350.fnal.gov`
-
-
-### 1. Clone and Setup Python Environment
+First, verify you have proper user namespace configuration:
 
 ```bash
-# Clone the tutorial branch
-git clone -b tutorial https://github.com/mit-submit/A2rchi.git
+grep <your-username> /etc/subuid
+```
+
+If this command returns no output, you need to request user namespace access:
+
+1. **Join the required egroup**: Go to [this link](https://cern.service-now.com/service-portal?id=kb_article&n=KB0006874) to add yourself to the subordinate-users group. See here for more information on using Podman on lxplus in general: [Podman or Apptainer OCI containers on lxplus](https://cern.service-now.com/service-portal?id=kb_article&n=KB0006874).
+2. **Wait for activation**: This may take some time to take effect; up to 24 hours is quoted (for me it took 5 minutes but you never know!)
+3. **Verify**: Log out and back in, then test the grep command again
+
+### 2. Check available disk
+
+> **Important**: Check the login node you are on has enough disk space to build the containers from scratch: `df -hT /tmp`. There should be at least 55-60G.
+
+For the interested party: NFS mounts behave strangely with rootless contaienrs and won't work, so needs to be local disk. Most login nodes I've seen comfortably satisfy this, but make sure to check. Most of this space is needed for the first build, then after various cleanups what remains is closer to 15-20G... We are working on making available images with all software already included so such space won't be required, but for now it is :)
+
+## Setup
+
+### 2. Clone and Setup Environment
+
+```bash
+# Clone the repository
+git clone -b cms-tutorial git@github.com:mit-submit/A2rchi.git
 cd A2rchi
 
-# Create and activate Python virtual environment
-python -m venv myenv # on el8 nodes you might have to explictily type /usr/bin/python3.11
-source myenv/bin/activate.csh  # for tcsh users
-# OR: source myenv/bin/activate  # for bash users
+# Create and activate virtual environment
+/usr/bin/python3.11 -m venv fun
+source fun/bin/activate
 
-# Install the couple of required packaged to build the a2rchi command
-pip install .
-
-# Reset command cache (tcsh only)
-rehash
-
-# Verify a2rchi is available
-which a2rchi
+# Install the a2rchi pacakge
+./fun/bin/python -m pip install .
 ```
 
-### 2. Run Heavy Node Setup Script
+### 3. Template Database Initialization
 
-Run the container setup script to configure local storage:
+Before deployment, you need to generate the database initialization file:
 
 ```bash
-source tutorial_helpers/setup_heavynode.tcsh
+# Run the templating script
+python template_init_sql.py
 ```
 
-This script will:
-- Create local scratch storage directories
-- Configure podman to use local filesystem
-- Set environment variables for container builds
-- Reset podman configuration
+This will create the file `init.sql`, which we will use to initialize the postgres database that is used to store information from chat interactions, timing info, and more.
 
-### 3. Configure API Keys and Secrets
+### 4. Build Custom PostgreSQL Image
 
-Create the secrets directory and add your API keys:
+Due to user namespace issues with Podman on lxplus, you need to build a custom PostgreSQL image:
 
 ```bash
-# Create secrets directory
-mkdir -p ~/.secrets
-
-# Add the OpenAI API key (to be provided)
-echo "your-openai-api-key-here" > ~/.secrets/openai_api_key.txt
-
-# Set a PostgreSQL password (choose any password you want)
-echo "your-chosen-password" > ~/.secrets/pg_password.txt
+podman build -f a2rchi/templates/dockerfiles/Dockerfile-postgres -t postgres-custom .
 ```
 
-**Note:** The PostgreSQL password can be anything you choose - you won't need to remember it for normal usage.
+Typically, steps 3 and 4 are done automatically in the `create` command we will execute below, but again this was necessary to run on lxplus.
 
-### 4. Edit Configuration for SSH Tunneling
+> **Note**: The period (`.`) at the end is important - it sets the build context to the current directory, where `init.sql` lives.
 
-Open `configs/lpc_minimal_config.yaml` and look at:
+### 5. Deploy A2rchi
+
+Now we will create our A2rchi instance. To do so, we need a configuration file which we will hear more about a bit later. For now, we will use a minimal configuration that you can find at `configs/cms_minimal_configuration.yaml`. It should look like:
 
 ```yaml
+# bare minimum configuration needed for a2rchi
+name: bare_minimum_configuration #REQUIRED
+
+global:
+  TRAINED_ON: "Nothing!" #REQUIRED
+
+locations_of_secrets:
+  - ~/.secrets/
+
+chains:
+  chain:
+    MODEL_NAME: OpenAIGPT35
+    CONDENSE_MODEL_NAME: OpenAIGPT35
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt #REQUIRED
+    MAIN_PROMPT: configs/prompts/submit.prompt #REQUIRED
 interfaces:
   chat_app:
-    EXTERNAL_PORT: 7861
+    EXTERNAL_PORT: 7861 # 7861 is the default, you shouldn't have to change this lest someone else is on the same machine already using that port, in which case you will get an error when containers try to run
 utils:
-  chromadb:
-    chromadb_external_port: 8000
+  data_manager:
+    chromadb_external_port: 8000 # 8000 is the default, same comment for chat port applies here
 ```
 
-These values listed above are the defaults, however since multiple of you will be running on the same machine, you will need to coordinate and ensure you choose your own port, otherwise the first person will get it and following attempts to use the same will complain.
-
-### 5. Launch A2rchi
-
-Deploy your A2rchi instance:
+There is no need to change it for now, so we can take this directly and deploy our instance with the following command:
 
 ```bash
-a2rchi create --name <deployment-name> --a2rchi-config configs/lpc_minimal_config.yaml --podman
+./fun/bin/a2rchi create --name firsttry -f ~/random_configs/cms_minimal_config.yaml --podman
 ```
 
-Replace `<deployment-name>` with whatever you want to call your deployment (e.g., `my-chatbot`, `test-instance`, etc.), *just make sure it is all lowercase otherwise Podman will complain*!.
+You can replace `firsttry` with your desired instance name.
 
-**Note**: This might take a bit the first time since we need to pull images, then build some locally, but caching will make it much faster once you start iterating.
+> **Note**: No capital letters in `--name`, or Podman will complain :)
 
-### 6. Set Up SSH Port Forwarding
+## Accessing Your Instance
 
-In a **new terminal window** on your local machine (laptop/desktop), create an SSH tunnel:
+### 6. Port Forwarding
+
+Since we can't directly open ports on CERN login nodes, use SSH port forwarding to access your instance:
 
 ```bash
-ssh -L 7861:localhost:7861 your-username@cmslpc-el9-heavy01.fnal.gov
+ssh -L 7861:localhost:7861 <your-username>@lxplus<node-number>.cern.ch
 ```
 
-Replace:
-- `7861` with the port you configured in step 4
-- `your-username` with your actual username
-
-### 7. Access Your Chatbot
-
-Open your web browser and navigate to:
-
-```
-http://localhost:7861
-```
-
-Again, replace `7861` accordingly. You should now have access to your A2rchi chatbot!
+Then open your browser and navigate to: `http://localhost:7861`. Of course, if you changed the external port for the chat, change from `7861` accordingly. You should now see your chatbot!
 
 ## Troubleshooting
 
+### Useful Commands
+
+```bash
+# Check running containers
+podman ps
+
+# View container logs
+podman logs <container-name> # add -f option to follow live
+
+# Should you want to interact directly with the container
+podman exec -it <container name> /bin/bash # to open a shell, but you can directly type a command if you want like ls /path/to/dir or something in place of /bin/bash
+
+# Stop the A2rchi instance
+a2rchi delete --name <deployment name>
+```
+
 ### Common Issues
+
+**Permission Denied Errors**
+- Ensure you have user namespace mapping (step 1)
+- Try logging out and back in after joining the egroup
 
 **Command not found errors:**
 - Make sure your virtual environment is activated
-- Run `rehash` if using tcsh shell
+- Make sure you are writing out paths to `python` or `a2rchi` commands since between AFS and virtual environments, something doesn't behave nicely
 
 **Container build failures:**
-- Ensure you're on a heavy node with local scratch storage
-- Verify the setup script completed successfully
-- Check that you have sufficient disk space
+- Ensure the login node has enough disk space -- there should be at least 55-60G in `/tmp`. NFS mounts behave strangely with rootless contaienrs and won't work, so needs to be local disk. Most login nodes I've seen are comfortably above this but you never know. Note, most of this space is needed for the first build, then there is enough cleanup that what remains is closer to 15-20G...
 
 **Can't access the web interface:**
 - Verify your SSH tunnel is active
@@ -137,146 +154,3 @@ Again, replace `7861` accordingly. You should now have access to your A2rchi cha
 **API errors:**
 - Verify your OpenAI API key is correct and has credits
 - Check that the secrets files were created properly
-
-
-### Checking A2rchi and Container Status
-
-```bash
-# See running containers
-podman ps
-
-# Check container logs
-podman logs <container-name>
-
-# Stop a2rchi system
-a2rchi delete --name <deployment-name>
-```
-
-## Files in This Directory
-
-- `setup_heavynode.tcsh` - Automated setup script for container storage configuration
-- `README.md` - This documentation file
-
-
-## More links
-
-On the main repo page, you will find links to the User Guide and Getting Started pages, or below some more examples to explore more of what A2rchi is about...
-- 🛠️ **[User's Guide](https://mit-submit.github.io/A2rchi/user_guide/)**
-
-
-## Adding Grafana and Document Uploader Services (Optional)
-
-If you want to include Grafana monitoring and document uploader services, follow these additional steps:
-
-### Clean Up Previous Instance (if needed)
-```bash
-# Stop existing instance
-a2rchi delete --name <deployment-name>
-
-# Remove postgres volume to reinitialize database
-podman volume rm a2rchi-pg-<deployment-name>
-```
-
-### Configure Additional Service Secrets
-```bash
-# Set Grafana postgres password (grafana needs a password for its postgres account)
-setenv GRAFANA_PG_PASSWORD wassup
-
-# Create uploader service secrets
-echo "flaskpw" > ~/.secrets/flask_uploader_app_secret_key.txt
-echo "mysalt" > ~/.secrets/uploader_salt.txt
-```
-
-### Update Configuration File
-Before relaunching, add the following to your `configs/lpc_minimal_config.yaml` and change ports as necessary:
-
-```yaml
-interfaces:
-  grafana:
-    EXTERNAL_PORT: 3000  # default, change as needed
-  uploader_app:
-    EXTERNAL_PORT: 5003  # default, change as needed
-```
-
-### Launch A2rchi with Additional Services
-```bash
-a2rchi create --name <deployment-name> -f configs/lpc_minimal_config.yaml --podman --grafana --document-uploader
-```
-
-### Set Up Uploader User Account
-When deployment is complete, create a user account for the document uploader:
-
-```bash
-# Enter the uploader container
-podman exec -it a2rchi-<deployment-name>_uploader_1 /bin/bash
-
-# Create user account (inside container)
-python a2rchi/bin/service_create_account.py
-
-# Type 'STOP' when done creating accounts, then 'exit' to leave container
-```
-
-### Set Up Additional SSH Port Forwarding
-In **separate terminal windows** on your local machine, create additional SSH tunnels:
-
-```bash
-# For Grafana dashboard
-ssh -L 3000:localhost:3000 your-username@cmslpc-el9-heavy01.fnal.gov
-
-# For document uploader
-ssh -L 5003:localhost:5003 your-username@cmslpc-el9-heavy01.fnal.gov
-```
-
-### Access Additional Services
-**Grafana Dashboard:**
-```
-http://localhost:3000
-```
-
-**Document Uploader:**
-```
-http://localhost:5003
-```
-
-Replace port numbers with whatever you configured in the yaml file.
-
-
-## Adding Jira Service (Optional)
-
-If you want to grab JIRA tickets, follow these additional steps:
-
-### Clean Up Previous Instance (if needed)
-```bash
-# Stop existing instance
-a2rchi delete --name <deployment-name>
-
-# Remove postgres volume to reinitialize database
-podman volume rm a2rchi-pg-<deployment-name>
-```
-
-### Configure Additional Service Secrets
-```bash
-# Obtain a token:
-1. go to https://its.cern.ch/jira/
-2. Edit Profile (icon on the top right cornre) and then opeen Personal Access Tokens and click Create token
-
-# Add you jira token in secrets
-echo <YOUR TOKEN> > ~/.secrets/jira_pat.txt
-```
-
-### Update Configuration File
-Before relaunching, add the following to your `configs/lpc_minimal_config.yaml`:
-
-```yaml
-utils:
-  jira:
-    JIRA_URL: https://its.cern.ch/jira/
-    JIRA_PROJECTS: ["CMSPROD"]
-```
-
-### Launch A2rchi with Additional Services
-```bash
-a2rchi create --name <deployment-name> -f configs/lpc_minimal_config.yaml --podman --jira
-```
-
-#homework 💻 : add one about websites in .list file that you give to input_lists in config and also grabbing JIRA tickets
