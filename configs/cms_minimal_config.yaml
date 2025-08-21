@@ -1,0 +1,22 @@
+# bare minimum configuration needed for a2rchi
+name: bare_minimum_configuration #REQUIRED
+
+global:
+  TRAINED_ON: "Nothing!" #REQUIRED
+
+locations_of_secrets:
+  - ~/.secrets/
+
+chains:
+  chain:
+    MODEL_NAME: OpenAIGPT35
+    CONDENSE_MODEL_NAME: OpenAIGPT35
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/condense.prompt #REQUIRED
+    MAIN_PROMPT: configs/prompts/submit.prompt #REQUIRED
+interfaces:
+  chat_app:
+    EXTERNAL_PORT: 7861 # 7861 is the default, you shouldn't have to change this lest someone else is on the same machine already using that port, in which case you will get an error when containers try to run
+utils:
+  data_manager:
+    chromadb_external_port: 8000 # 8000 is the default, same comment for chat port applies here

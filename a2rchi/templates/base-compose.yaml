@@ -121,7 +121,7 @@ services:
       start_interval: 5s
 
   postgres:
-    image: docker.io/postgres:16
+    image: localhost/postgres-custom:latest
     container_name: {{ postgres_container_name }}
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
@@ -130,7 +130,7 @@ services:
     secrets:
       - pg_password
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      #- ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - {{ postgres_volume_name }}:/var/lib/postgresql/data
     logging:
       options:

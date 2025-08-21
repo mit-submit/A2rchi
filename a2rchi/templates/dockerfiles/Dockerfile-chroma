@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM ghcr.io/chroma-core/chroma:0.4.12
+RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99sandboxing
 RUN apt-get update -y && apt-get install -y curl
 
 CMD ["uvicorn", "chromadb.app:app", "--reload", "--workers", "1", "--host", "0.0.0.0", "--port", "8000", "--log-config", "chromadb/log_config.yml"]
