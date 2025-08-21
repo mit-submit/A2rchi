@@ -2,6 +2,12 @@
 
 This guide walks you through deploying A2rchi on CERN systems (like lxplus) using Podman containers. Follow these steps in order to get your A2rchi instance running.
 
+# Contents
+ - [Prerequisites](#prerequisites)
+ - [Setup](#setup)             
+ - [Accessing Your Instance](#accessing-your-instance)
+ - [Troubleshooting](#troubleshooting)
+
 ## Prerequisites
 
 ### 1. Check User Namespace Mapping
@@ -18,7 +24,17 @@ If this command returns no output, you need to request user namespace access:
 2. **Wait for activation**: This may take some time to take effect; up to 24 hours is quoted (for me it took 5 minutes but you never know!)
 3. **Verify**: Log out and back in, then test the grep command again
 
-### 2. Check available disk
+### 2. Login to docker.io
+
+To avoid rate limits for pulling images from docker.io as an anonymous user, login to your docker account from the terminal as follows:
+
+```bash
+podman login docker.io
+```
+
+This will prompt you for your username and password and automatically set up the configuration file that authenticates you when pulling any images.
+
+### 3. Check available disk
 
 > **Important**: Check the login node you are on has enough disk space to build the containers from scratch: `df -hT /tmp`. There should be at least 55-60G.
 
@@ -35,24 +51,41 @@ cd A2rchi
 
 # Create and activate virtual environment
 /usr/bin/python3.11 -m venv fun
-source fun/bin/activate
+source fun/bin/activate # append .csh or .tcsh accordingly if you are running different shell...
 
 # Install the a2rchi pacakge
 ./fun/bin/python -m pip install .
 ```
 
-### 3. Template Database Initialization
+### 3. Configure API Keys and Secrets
+
+Create the secrets directory and add your API keys:
+
+```bash
+# Create secrets directory
+mkdir -p ~/.secrets
+
+# Add the OpenAI API key (to be provided)
+echo "your-openai-api-key-here" > ~/.secrets/openai_api_key.txt
+
+# Set a PostgreSQL password (choose any password you want)
+echo "your-chosen-password" > ~/.secrets/pg_password.txt
+```
+
+**Note:** The PostgreSQL password can be anything you choose - you won't need to remember it for normal usage.
+
+### 4. Template Database Initialization
 
 Before deployment, you need to generate the database initialization file:
 
 ```bash
 # Run the templating script
-python template_init_sql.py
+python initsql-templater.py
 ```
 
 This will create the file `init.sql`, which we will use to initialize the postgres database that is used to store information from chat interactions, timing info, and more.
 
-### 4. Build Custom PostgreSQL Image
+### 5. Build Custom PostgreSQL Image
 
 Due to user namespace issues with Podman on lxplus, you need to build a custom PostgreSQL image:
 
@@ -64,9 +97,9 @@ Typically, steps 3 and 4 are done automatically in the `create` command we will 
 
 > **Note**: The period (`.`) at the end is important - it sets the build context to the current directory, where `init.sql` lives.
 
-### 5. Deploy A2rchi
+### 6. Deploy A2rchi
 
-Now we will create our A2rchi instance. To do so, we need a configuration file which we will hear more about a bit later. For now, we will use a minimal configuration that you can find at `configs/cms_minimal_configuration.yaml`. It should look like:
+Now we will create our A2rchi instance. To do so, we need a configuration file which we will hear more about a bit later. For now, we will use a minimal configuration that you can find at `configs/cms_minimal_config.yaml`. It should look like:
 
 ```yaml
 # bare minimum configuration needed for a2rchi
@@ -96,16 +129,16 @@ utils:
 There is no need to change it for now, so we can take this directly and deploy our instance with the following command:
 
 ```bash
-./fun/bin/a2rchi create --name firsttry -f ~/random_configs/cms_minimal_config.yaml --podman
+./fun/bin/a2rchi create --name firsttry -f ~/configs/cms_minimal_config.yaml --podman
 ```
 
-You can replace `firsttry` with your desired instance name.
+You can replace `firsttry` with your desired instance name, but no capital letters in `--name`, or Podman will complain :)
 
-> **Note**: No capital letters in `--name`, or Podman will complain :)
+> **Note**: The container building will happen in `/tmp` but all necessary files and templated configurations will be written by default to `~/.a2rchi/a2rchi-<deployment name>/`. They are just a few files so it is lightweight, but if your AFS space is full, you can have this be written to somewhere else by setting the environment variable `A2RCHI_DIR` with the corresponding path.
 
 ## Accessing Your Instance
 
-### 6. Port Forwarding
+### 7. Port Forwarding
 
 Since we can't directly open ports on CERN login nodes, use SSH port forwarding to access your instance:
 
