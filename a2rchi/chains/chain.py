@@ -167,13 +167,14 @@ class Chain() :
         # submit/general qa
         else:
             # Use hybrid search for QA if configured
-            use_hybrid = self.utils_config.get("data_manager", {}).get("use_hybrid_search", True)
+            use_hybrid = self.utils_config.get("data_manager", {}).get("use_hybrid_search", False)
             bm25_weight = self.utils_config.get("data_manager", {}).get("bm25_weight", 0.6)
             semantic_weight = self.utils_config.get("data_manager", {}).get("semantic_weight", 0.4)
             
             if use_hybrid:
-                bm25_k1 = self.utils_config.get("data_manager", {}).get("bm25_k1", 0.5)
-                bm25_b = self.utils_config.get("data_manager", {}).get("bm25_b", 0.75)
+                bm25_config = self.utils_config.get("data_manager", {}).get("bm25", {})
+                bm25_k1 = bm25_config.get("k1", 0.5)
+                bm25_b = bm25_config.get("b", 0.75)
                 
                 retriever = HybridRetriever(
                     vectorstore=vectorstore,

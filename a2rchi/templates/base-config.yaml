@@ -191,6 +191,12 @@ utils:
     reset_collection: {{ utils.data_manager.reset_collection | default(true, true) }}
     num_documents_to_retrieve: {{ utils.data_manager.num_documents_to_retrieve | default(5, true) }}
     distance_metric: {{ utils.data_manager.distance_metric | default('cosine', true) }}
+    use_hybrid_search: {{ utils.data_manager.use_hybrid_search | default(false, true) }}
+    bm25_weight: {{ utils.data_manager.bm25_weight | default(0.6, true) }}
+    semantic_weight: {{ utils.data_manager.semantic_weight | default(0.4, true) }}
+    bm25:
+      k1: {{ utils.data_manager.bm25.k1 | default(0.5, true) }}
+      b: {{ utils.data_manager.bm25.b | default(0.75, true) }}
   embeddings:
     EMBEDDING_NAME: {{ utils.embeddings.EMBEDDING_NAME | default('OpenAIEmbeddings', true) }}
     EMBEDDING_CLASS_MAP:
