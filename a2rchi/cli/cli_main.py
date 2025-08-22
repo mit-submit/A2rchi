@@ -556,6 +556,12 @@ def create(
         _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
 
+    if a2rchi_config.get("utils",{}).get("git", {}).get("ENABLED", False):
+        _print_msg("Preparing GIT secrets")
+        compose_template_vars["git"] = True
+        _prepare_secret(a2rchi_name_dir, "git_username", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "git_token", locations_of_secrets)
+
 
     # copy prompts (make this cleaner prob)
     if use_grader_service:

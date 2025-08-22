@@ -16,6 +16,10 @@ services:
       SSO_USERNAME_FILE: /run/secrets/sso_username
       SSO_PASSWORD_FILE: /run/secrets/sso_password
       {% endif %}
+      {% if git -%}
+      GIT_USERNAME_FILE: /run/secrets/git_username
+      GIT_TOKEN_FILE: /run/secrets/git_token
+      {% endif %}
       {% if openai -%}
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       {% endif %}
@@ -53,6 +57,10 @@ services:
       {% if sso -%}
       - sso_username
       - sso_password
+      {% endif %}
+      {% if git -%}
+      - git_username
+      - git_token
       {% endif %}
       {% if openai -%}
       - openai_api_key
@@ -723,3 +731,9 @@ secrets:
     file: secrets/sso_username.txt
   sso_password:
     file: secrets/sso_password.txt
+
+  # Git secrets
+  git_username:
+    file: secrets/git_username.txt
+  git_token:
+    file: secrets/git_token.txt
