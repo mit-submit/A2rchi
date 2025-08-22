@@ -395,12 +395,11 @@ class ChatWrapper:
             logger.debug(f"Similarity score:  {top_score}")
             link = ""
             output = "<p>" + self.format_code_in_text(result["answer"])
-            if source is not None and score < similarity_score_reference and source in sources.keys():
-
+            if source is not None and top_score < similarity_score_reference and source in sources.keys():
                 link = sources[source]
                 logger.info(f"Primary source:  {link}")
                 parsed_source = urlparse(link)
-                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + f"</a>(score:{score:.2f})</small></small>, "
+                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + f"</a>(top score:{top_score:.2f})</small></small>, "
             output += f"<small><small>time: {time.time()-start_time:.2f}s</small></small>" + "\n<br>"
 
             # write user message and A2rchi response to database
