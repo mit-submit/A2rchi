@@ -206,6 +206,8 @@ utils:
         kwargs:
           headless: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.headless | default(true, true) }}
           max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
+  git:
+    ENABLED: {{ utils.git.ENABLED | default(false, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
