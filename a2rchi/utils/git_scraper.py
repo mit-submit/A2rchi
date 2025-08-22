@@ -2,9 +2,8 @@ from git import Repo
 import os
 import yaml
 import re
-import json
-import time
 import hashlib
+import shutil
 
 from a2rchi.utils.scraper import Scraper
 from a2rchi.utils.config_loader import load_config
@@ -78,7 +77,7 @@ class GitScraper(Scraper):
         if not os.path.exists(repo_path+'/mkdocs.yml') :
             logger.info(f"Skipping url {original_url}...\nThis repository does not contain mkdocs.yml")
             # Cleaning after skipping
-            os.removedirs(repo_path)
+            shutil.rmtree(repo_path,ignore_errors=True)
             #TODO: Should raise exception
         
         return repo_path
@@ -94,7 +93,7 @@ class GitScraper(Scraper):
                 if os.path.isfile(file):
                     os.remove(os.path.join(self.git_dir, file))
                 else:
-                    os.removedirs(os.path.join(self.git_dir, file))
+                    shutil.rmtree(os.path.join(self.git_dir, file),ignore_errors=True)
 
         git_urls = super().collect_urls_from_lists()
         git_urls = [re.split("git-", git_url)[1] for git_url in git_urls if git_url.startswith('git-')]
@@ -144,7 +143,7 @@ class GitScraper(Scraper):
                         sources[file_name] = current_url
                         logger.debug(f"TEXT({current_url})\n{content}\n")
 
-            os.removedirs(repo_path)
+            shutil.rmtree(repo_path,ignore_errors=True)
 
         # store list of files with urls to file 
         with open(sources_path, 'w') as file:
