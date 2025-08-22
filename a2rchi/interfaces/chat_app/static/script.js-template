@@ -11,6 +11,7 @@ const closeButton = document.getElementById("dislike-close-button");
 const correct_checkbox= document.getElementById("correct_checkbox");
 const helpful_checkbox = document.getElementById("helpful_checkbox");
 const appropriate_checkbox = document.getElementById("appropriate_checkbox");
+const promptDropdown = document.getElementById("prompt-dropdown");
 popupForm.style.display = "none";
 
 // DEFINITIONS
@@ -43,6 +44,42 @@ async function fetchWithTimeout(resource, options = {}) {
     } finally {
         clearTimeout(id);
     }
+}
+
+async function populateDropdown() {
+
+    const API_URL = "/api/get_prompts"
+
+    try {
+        const response = await (await fetch(API_URL)).json();
+
+        if (response.error) {
+            console.error("API Error fetching propmts",response.error);
+            return;
+        }
+
+        // Clear any existing options
+        promptDropdown.innerHTML = '';
+
+        // Create and append a default/placeholder option
+        const defaultOption = document.createElement("option");
+        defaultOption.textContent = "Please select...";
+        defaultOption.value = "";
+        defaultOption.disabled = true;
+        defaultOption.selected = true;
+        promptDropdown.appendChild(defaultOption);
+
+        // Populate the dropdown with options from the API response
+        response.options.forEach(optionText => {
+            const option = document.createElement("option");
+            option.textContent = optionText;
+            option.value = optionText; // Or a more specific value if needed
+            promptDropdown.appendChild(option);
+        });
+    }catch (error) {
+        console.error("Failed to fetch dropdown options:", error);
+    }
+
 }
 
 const loadDataFromLocalstorage = () => {
@@ -394,4 +431,5 @@ chatInput.addEventListener("keydown", (e) => {
 });
 
 loadDataFromLocalstorage();
+populateDropdown(); 
 sendButton.addEventListener("click", handleOutgoingChat);

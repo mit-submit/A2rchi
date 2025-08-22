@@ -620,6 +620,17 @@ class FlaskAppWrapper(object):
         self.chat.update_config(self.config_id)
 
         return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
+    
+    def get_prompts(self):
+        """
+        Gets the names of prompts used in the chain
+
+
+        Returns:
+            A json with a response list of the prompt names
+        """
+        prompt_names = list(PROMPTS.keys())
+        return jsonify({'options':prompt_names}), 200
 
 
     def get_chat_response(self):
