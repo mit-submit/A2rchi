@@ -433,3 +433,41 @@ With a minimal configuration like that detailed above that is required for the g
 ```nohighlight
 a2rchi create --name grader --a2rchi-config configs/my_grading_config.yaml --podman --gpu --grader
 ```
+
+### Stemming
+
+By specifying the option stemming within ones configuration, stemming functionality for the documents in A2rchi will be enabled. By doing so, documents inserted into the ragging pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup. 
+
+```
+utils:
+  data_manager:
+    stemming:
+      ENABLED: true
+```
+
+### Ollama Interface 
+
+In order to use an Ollama server instance for the chatbot, it is possible to specify OllamaInterface for the model name. To then correctly use models on the Ollama server, in the keyword args, specify both the url of the server and the name of a model hosted on the server.
+use  
+
+```
+chains:
+  chain:
+    MODEL_NAME: OllamaInterface
+    MODEL_CLASS_MAP:
+      OllamaInterface:
+        kwargs:
+          base_model: "gemma3" # for instance 
+          url: "url-for-server" 
+
+```
+If needed it is also possible to specify the following arguments for your chatbot. For more information on the effects of these arguments, look at the ChatOllama documentation for the keyword arguments of the same name. 
+```
+num_ctx: 
+num_predict: 
+temperature:
+top_p: 
+top_k:
+num_gpu:
+repeat_penalty: 
+```

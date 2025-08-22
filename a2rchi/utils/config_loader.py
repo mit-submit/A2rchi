@@ -19,7 +19,7 @@ def load_config(map: bool = False):
     # change the model class parameter from a string to an actual class
     if map:
 
-        from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM, HuggingFaceOpenLLM, HuggingFaceImageLLM, VLLM
+        from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM, HuggingFaceOpenLLM, HuggingFaceImageLLM, VLLM, OllamaInterface
         from a2rchi.utils.sso_scraper import CERNSSOScraper
         
         MODEL_MAPPING = {
@@ -31,6 +31,7 @@ def load_config(map: bool = False):
             "HuggingFaceOpenLLM": HuggingFaceOpenLLM,
             "HuggingFaceImageLLM": HuggingFaceImageLLM,
             "VLLM": VLLM,
+            "OllamaInterface": OllamaInterface, 
         }
         for model in config["chains"]["chain"]["MODEL_CLASS_MAP"].keys():
             config["chains"]["chain"]["MODEL_CLASS_MAP"][model]["class"] = MODEL_MAPPING[model]

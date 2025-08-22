@@ -48,6 +48,7 @@ class Chain() :
         self.collection_name = self.utils_config["data_manager"]["collection_name"] + "_with_" + embedding_name
         self.embedding_instructions = self.utils_config["embeddings"]["query_embedding_instructions"]
         self.num_docs_to_retrieve = self.utils_config["data_manager"]["num_documents_to_retrieve"]
+        self.stemming = self.utils_config["data_manager"]["stemming"].get("ENABLED", False)
 
         logger.info(f"Using collection: {self.collection_name}")
 
@@ -168,7 +169,8 @@ class Chain() :
             retriever = SubMITRetriever(
                 vectorstore=vectorstore,
                 search_kwargs={"k": self.num_docs_to_retrieve},
-                instructions=self.embedding_instructions
+                instructions=self.embedding_instructions,
+                stemming = self.stemming
             )
 
             chain = BaseQAChain.from_llm(
