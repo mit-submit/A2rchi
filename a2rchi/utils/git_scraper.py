@@ -22,12 +22,11 @@ class GitScraper(Scraper):
         self.git_dir = os.path.join(self.data_path, "git")
         os.makedirs(self.git_dir, exist_ok=True)
 
-        try:
-            self.git_username = read_secret("GIT_USERNAME")
-            self.git_token = read_secret("GIT_TOKEN")
-        except FileNotFoundError:
-            raise FileNotFoundError("Git Personal Access Token (PAT) not found. Please set it up in your environment.")
-        
+        self.git_username = read_secret("GIT_USERNAME")
+        self.git_token = read_secret("GIT_TOKEN")
+
+        if self.git_username == '' or self.git_token=='':
+            FileNotFoundError("Git Personal Access Token (PAT) not found. Please set it up in your environment.")
         
 
     def _parse_url(self, url) -> dict:
@@ -159,10 +158,7 @@ class GitScraper(Scraper):
         identifier = hashlib.md5()
         identifier.update(current_url.encode('utf-8'))
         file_name = str(int(identifier.hexdigest(),16))[0:12]
-        logger.info(f"Store: {upload_dir}/{file_name}.html : {current_url}")
-
-
-        #title = file_path.split('/')[-1].replace('.md','')
+        logger.info(f"Store: {upload_dir}/{file_name}.txt : {current_url}")
 
         with open(file_path, 'r', encoding='utf-8') as file:
             text_content = file.read()
