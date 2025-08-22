@@ -78,7 +78,8 @@ class GitScraper(Scraper):
             logger.info(f"Skipping url {original_url}...\nThis repository does not contain mkdocs.yml")
             # Cleaning after skipping
             shutil.rmtree(repo_path,ignore_errors=True)
-            #TODO: Should raise exception
+            raise ValueError(f"Repository is not MKDocs-based")
+            
         
         return repo_path
 
@@ -123,9 +124,11 @@ class GitScraper(Scraper):
             url_dict = self._parse_url(url) 
 
             
-            #TODO: Should catch exception to skip...
-            repo_path = self._clone_repo(url_dict=url_dict)
-            logger.info(f"Succesfully cloned repo to path: {repo_path}")
+            try:
+                repo_path = self._clone_repo(url_dict=url_dict)
+                logger.info(f"Succesfully cloned repo to path: {repo_path}")
+            except ValueError as e:
+                continue
 
             # Obtains site url from the mkdocs yaml configuration
             with open(repo_path+'/mkdocs.yml', 'r') as file:
@@ -164,7 +167,7 @@ class GitScraper(Scraper):
         with open(file_path, 'r', encoding='utf-8') as file:
             text_content = file.read()
 
-        with open(f"{upload_dir}/{file_name}.md", 'w') as file:
+        with open(f"{upload_dir}/{file_name}.txt", 'w') as file:
             file.write(text_content)
 
         return file_name, current_url, text_content
