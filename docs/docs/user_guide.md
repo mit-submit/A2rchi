@@ -71,7 +71,7 @@ There are a few additional options you can pass to the `create` command that are
 
         # web pages of various people
         https://people.csail.mit.edu/kraska
-        ttps://physics.mit.edu/faculty/christoph-paus
+        https://physics.mit.edu/faculty/christoph-paus
     
     Then, include the file in the config:
     
@@ -119,6 +119,21 @@ Additional configuration options for the chatbot, deployed automatically with A2
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
 
 6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
+
+#### Git scraping
+
+In some cases, the RAG input may be documentations based on MKDocs git repositores. Instead of scraping these sites as regular HTML sites you can obtain the relevant content using the git scraper. To configure it, simply add the following field:
+
+**`utils:git:ENABLED:True`**
+In the input lists, make sure to prepend `git-` to the url of the repositories you are interested in scraping.
+
+        git-https://gitlab.cern.ch/cms-tier0-ops/documentation.git
+
+
+##### Git token
+
+You would need a git username and token for authenticating to the repositories you are interested in scraping (read only should work fine). Place your account username in `git_username.txt` and your token in `git_token.txt` in the secrets folder.
+
 
 #### JIRA
 
