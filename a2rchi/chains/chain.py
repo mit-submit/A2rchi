@@ -3,7 +3,7 @@ from a2rchi.chains.prompts import read_prompt
 from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 from a2rchi.chains.prompts import PROMPTS
-from a2rchi.chains.retrievers import SubMITRetriever, GradingRetriever
+from a2rchi.chains.retrievers import SubMITRetriever, GradingRetriever, HybridRetriever
 
 from chromadb.config import Settings
 from langchain.prompts.prompt import PromptTemplate
@@ -166,12 +166,32 @@ class Chain() :
 
         # submit/general qa
         else:
-            retriever = SubMITRetriever(
-                vectorstore=vectorstore,
-                search_kwargs={"k": self.num_docs_to_retrieve},
-                instructions=self.embedding_instructions,
-                stemming = self.stemming
-            )
+            # Use hybrid search for QA if configured
+            use_hybrid = self.utils_config.get("data_manager", {}).get("use_hybrid_search", True)
+            bm25_weight = self.utils_config.get("data_manager", {}).get("bm25_weight", 0.6)
+            semantic_weight = self.utils_config.get("data_manager", {}).get("semantic_weight", 0.4)
+            
+            if use_hybrid:
+                bm25_k1 = self.utils_config.get("data_manager", {}).get("bm25_k1", 0.5)
+                bm25_b = self.utils_config.get("data_manager", {}).get("bm25_b", 0.75)
+                
+                retriever = HybridRetriever(
+                    vectorstore=vectorstore,
+                    search_kwargs={"k": self.utils_config["data_manager"]["num_documents_to_retrieve"]},
+                    bm25_weight=bm25_weight,
+                    semantic_weight=semantic_weight,
+                    bm25_k1=bm25_k1,
+                    bm25_b=bm25_b,
+                )
+                logger.info(f"Using hybrid retriever for QA with BM25 weight: {bm25_weight}, semantic weight: {semantic_weight}, k1: {bm25_k1}, b: {bm25_b}")
+            else:
+                retriever = SubMITRetriever(
+                    vectorstore=vectorstore,
+                    search_kwargs={"k": self.num_docs_to_retrieve},
+                    instructions=self.embedding_instructions,
+                    stemming = self.stemming
+                )
+                logger.info("Using semantic-only retriever for QA")
 
             chain = BaseQAChain.from_llm(
                 self.llm,
