@@ -256,6 +256,7 @@ class DataManager():
             # explicitly get file metadata
             filehash = filename.split(".")[0]
             url = sources[filehash] if filehash in sources.keys() else ""
+
             logger.info(f"<MP> Corresponding: {filename} {filehash} -> {url}")
 
             # embeds each chunk
@@ -283,9 +284,9 @@ class DataManager():
             logger.debug(f"Ids: {ids}")
 
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            
-            logger.debug(f"Successfully added file {filename}")
 
+            logger.info(f"Successfully added file {filename}")
+            if url: logger.info(f"with URL: {url}"}
 
         return collection
 
