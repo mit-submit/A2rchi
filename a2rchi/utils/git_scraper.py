@@ -91,7 +91,10 @@ class GitScraper(Scraper):
         # clear website data if specified
         if self.config["reset_data"] :
             for file in os.listdir(self.git_dir):
-                os.remove(os.path.join(self.git_dir, file))
+                if os.path.isfile(file):
+                    os.remove(os.path.join(self.git_dir, file))
+                else:
+                    os.removedirs(os.path.join(self.git_dir, file))
 
         git_urls = super().collect_urls_from_lists()
         git_urls = [re.split("git-", git_url)[1] for git_url in git_urls if git_url.startswith('git-')]
