@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 # at some point maybe won't make sense to keep one generic class...
 class Chain() :
 
-    def __init__(self, image_processing=False, cleo=False, grading=False, stemming=False):
+    def __init__(self, image_processing=False, cleo=False, grading=False):
         """
         Gets all the relavent files from the data directory and converts them
         into a format that the chain can use. Then, it creates the chain using 
@@ -29,7 +29,6 @@ class Chain() :
         self.image_processing = image_processing
         self.cleo = cleo
         self.grading = grading
-        self.stemming = stemming
 
         self.update_config()
 
@@ -49,6 +48,7 @@ class Chain() :
         self.collection_name = self.utils_config["data_manager"]["collection_name"] + "_with_" + embedding_name
         self.embedding_instructions = self.utils_config["embeddings"]["query_embedding_instructions"]
         self.num_docs_to_retrieve = self.utils_config["data_manager"]["num_documents_to_retrieve"]
+        self.stemming = self.utils_config["data_manager"]["stemming"].get("ENABLED", False)
 
         logger.info(f"Using collection: {self.collection_name}")
 

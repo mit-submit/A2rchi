@@ -729,21 +729,24 @@ class OllamaInterface(ChatOllama):
     """
     An LLM class that uses a model connected to an Ollama server interface.
     """
+    model_name: str = ""
+    url: str = ""
 
     def __init__(self, **kwargs):
 
         # Get the model and url information from the config 
-        model = kwargs.pop("model", "")
-        base_url = kwargs.pop("base_url", "")
+        model_name = kwargs.pop("base_model", "")
+        url = kwargs.pop("url", "")
 
-        if base_url == "":
+        if url == "":
             logger.error("No base-url selected for Ollama model")
-        if model == "": 
-            logger.error(f"No Ollama model selected please choose from {self.list_ollama_models()}")
 
-        super().__init__(model=model, base_url=base_url, **kwargs)
+        if model_name == "": 
+            logger.error(f"No Ollama model selected please choose from the following: \n{self.list_ollama_models(url=url)}")
 
-    def list_ollama_models(self) -> list:
+        super().__init__(model=model_name, base_url=url, **kwargs)
+
+    def list_ollama_models(self, url: Optional[str] = None) -> list:
         """
         Connects to the Ollama server and lists all available models.
 
@@ -751,8 +754,12 @@ class OllamaInterface(ChatOllama):
             A list of dictionaries, where each dictionary represents a model
             and contains its details (e.g., name, size).
         """
+
+        if self.base_url is None: url_to_use = url
+        else: url_to_use = self.base_url
+
         try:
-            response = requests.get(f"{self.base_url}/api/tags")
+            response = requests.get(f"{url_to_use}/api/tags")
             response.raise_for_status()  # Raise an exception for bad status codes
             data = response.json()
             return data.get("models", [])

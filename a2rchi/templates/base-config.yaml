@@ -161,8 +161,15 @@ chains:
       OllamaInterface:
         class: OllamaInterface
         kwargs: 
-          model: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.model | default("gemma3", true) }}
-          base_url: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.base_url | default("https://ollama.fnal.gov:443", true) }}
+          base_model: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.base_model | default("null", true) }}
+          url: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.url | default("null", true) }}
+          num_ctx: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.num_ctx | default(2048, true) }} # context window size
+          num_predict: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.num_predict | default(4096, true) }} # max tokens to predict
+          temperature: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.temperature | default(0.6, true) }}
+          top_p: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.top_p | default(0.95, true) }}
+          top_k: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.top_k | default(50, true) }}
+          num_gpu: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.num_gpu | default(1, true) }} # may want to make this autodetectable somehow
+          repeat_penalty: {{ chains.chain.MODEL_CLASS_MAP.OllamaInterface.kwargs.repeat_penalty | default(1.0, true) }} 
     chain_update_time: {{ chains.chain.chain_update_time | default(10, true) }}
 
 utils:

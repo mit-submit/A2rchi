@@ -128,7 +128,7 @@ class ChatWrapper:
 
         # initialize lock and chain
         self.lock = Lock()
-        self.chain = Chain(stemming=self.config['utils']['data_manager']['stemming'].get("ENABLED", False))
+        self.chain = Chain()
         self.number_of_queries = 0
 
         # initialize config_id to be None
