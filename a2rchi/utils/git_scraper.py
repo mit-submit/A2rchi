@@ -26,8 +26,7 @@ class GitScraper(Scraper):
         self.git_token = read_secret("GIT_TOKEN")
 
         if self.git_username == '' or self.git_token=='':
-            FileNotFoundError("Git Personal Access Token (PAT) not found. Please set it up in your environment.")
-        
+            logger.info(f"No git repos, skipping git scraping...")        
 
     def _parse_url(self, url) -> dict:
 
