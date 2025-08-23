@@ -266,12 +266,9 @@ span.material-symbols-rounded {
 
 .typing-controls select {
   resize: none;
-  height: 55px;
   border: none;
   color: var(--placeholder-color);
-  font-size: 1rem;
   border-radius: 4px;
-  max-height: 250px;
   overflow-y: auto;
   background: var(--incoming-chat-bg);
   outline: 1px solid var(--incoming-chat-border);
@@ -281,6 +278,7 @@ span.material-symbols-rounded {
   -moz-appearance: none;
   padding: 15px 15px;
   margin-left: 7px;
+  max-width: 30%;
 }
 
 .typing-controls span {
