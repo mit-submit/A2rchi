@@ -7,6 +7,8 @@ This guide walks you through deploying A2rchi on CERN systems (like lxplus) usin
  - [Setup](#setup)             
  - [Accessing Your Instance](#accessing-your-instance)
  - [Troubleshooting](#troubleshooting)
+ - [Optional configuration](#optional-setup)
+ - [UserGuide links](#more-links)
 
 ## Prerequisites
 
@@ -129,7 +131,7 @@ utils:
 There is no need to change it for now, so we can take this directly and deploy our instance with the following command:
 
 ```bash
-./fun/bin/a2rchi create --name firsttry -f ~/configs/cms_minimal_config.yaml --podman
+./fun/bin/a2rchi create --name firsttry -f configs/cms_minimal_config.yaml --podman
 ```
 
 You can replace `firsttry` with your desired instance name, but no capital letters in `--name`, or Podman will complain :)
@@ -163,7 +165,7 @@ podman logs <container-name> # add -f option to follow live
 podman exec -it <container name> /bin/bash # to open a shell, but you can directly type a command if you want like ls /path/to/dir or something in place of /bin/bash
 
 # Stop the A2rchi instance
-a2rchi delete --name <deployment name>
+./fun/bin/a2rchi delete --name <deployment name>
 ```
 
 ### Common Issues
@@ -187,3 +189,112 @@ a2rchi delete --name <deployment name>
 **API errors:**
 - Verify your OpenAI API key is correct and has credits
 - Check that the secrets files were created properly
+
+
+## Optional Setup
+
+### Adding Grafana and Document Uploader Services
+
+If you want to include Grafana monitoring and document uploader services, follow these additional steps:
+
+### Clean Up Previous Instance (if needed)
+```bash
+# Stop existing instance
+./fun/bin/a2rchi delete --name <deployment-name>
+
+# Remove postgres volume to reinitialize database
+podman volume rm a2rchi-pg-<deployment-name>
+```
+
+### Configure Additional Service Secrets
+```bash
+# Set Grafana postgres password (grafana needs a password for its postgres account)
+setenv GRAFANA_PG_PASSWORD wassup
+
+# Create uploader service secrets
+echo "flaskpw" > ~/.secrets/flask_uploader_app_secret_key.txt
+echo "mysalt" > ~/.secrets/uploader_salt.txt
+```
+
+### Update Configuration File
+Before relaunching, add the following to your `configs/lpc_minimal_config.yaml` and change ports as necessary:
+
+```yaml
+interfaces:
+  grafana:
+    EXTERNAL_PORT: 3000  # default, change as needed
+  uploader_app:
+    EXTERNAL_PORT: 5003  # default, change as needed
+```
+
+### Launch A2rchi with Additional Services
+```bash
+./fun/bin/a2rchi create --name <deployment-name> -f configs/lpc_minimal_config.yaml --podman --grafana --document-uploader
+```
+
+### Set Up Uploader User Account
+When deployment is complete, create a user account for the document uploader:
+
+```bash
+# Enter the uploader container
+podman exec -it a2rchi-<deployment-name>_uploader_1 /bin/bash
+
+# Create user account (inside container)
+python a2rchi/bin/service_create_account.py
+
+# Type 'STOP' when done creating accounts, then 'exit' to leave container
+```
+
+### Set Up Additional SSH Port Forwarding
+In **separate terminal windows** on your local machine, create additional SSH tunnels:
+
+```bash
+# For Grafana dashboard
+ssh -L 3000:localhost:3000 <your-username>@lxplus<node-number>.cern.ch
+
+# For document uploader
+ssh -L 5003:localhost:5003 <your-username>@lxplus<node-number>.cern.ch
+```
+
+### Access Additional Services
+**Grafana Dashboard:**
+```
+http://localhost:3000
+```
+
+**Document Uploader:**
+```
+http://localhost:5003
+```
+
+Replace port numbers with whatever you configured in the yaml file.
+
+Once navigating to the Grafana page, you will be prompted for a username and password: both are `admin`. You will then be prompted to change the password at first login -- this is optional, but if you change it make sure you don't forget! Then navigate to the monitoring page: menu > Dashboards > A2rchi > A2rchi Usage, here you should find the monitoring page. Read more at the [user guide](https://mit-submit.github.io/A2rchi/user_guide/#grafana-interface), in particular for a couple of hints to make the lower table more readable.
+
+For the uploader, once you arrive to web page, log in with the username and password you created before. Here you can upload documents which will be accessible to a2rchi at the next question asked in the chatbot. On this interface, for any documents that you upload, you can just as easily remove them by clicking `Delete` next to the corresponding file.
+
+For any documents that you didn't upload via the uploader but still might want to remove, you can manually enter the container and delete files as follows:
+
+```bash
+# Directly remove a file from the chat container
+podman exec -it chat-<deployment-name> rm /root/data/<directory>/<file>
+```
+
+Any document in the ChromaDB vector database will exist at this depth. Note, `/root/data` is mounted as a volume called `a2rchi-<deployment>`, so everything in here persists between deployments. Remember, if you want to look inside the container and investigate the structure a bit, you can do so with:
+
+```bash
+# Enter the container and open a shell
+podman exec -it chat-<deployment-name> /bin/bash
+```
+
+and navigate around the container as you please.
+
+### homework 💻
+
+- add one about websites in .list file that you give to input_lists in config and also grabbing JIRA tickets
+
+
+## More links
+
+On the main repo page, you will find links to the User Guide and Getting Started pages, or below some more examples to explore more of what A2rchi is about...
+- 🛠️ **[User's Guide](https://mit-submit.github.io/A2rchi/user_guide/)**
