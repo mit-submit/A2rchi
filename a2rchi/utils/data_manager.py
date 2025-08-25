@@ -1,5 +1,6 @@
 from a2rchi.utils.scraper import Scraper
 from a2rchi.utils.ticket_manager import TicketManager
+from a2rchi.utils.git_scraper import GitScraper
 from a2rchi.utils.logging import get_logger
 
 from chromadb.config import Settings
@@ -45,6 +46,11 @@ class DataManager():
         logger.info("Fetching ticket data onto filesystem")
         ticket_manager = TicketManager()
         ticket_manager.run()
+
+        # scrape data onto the filesystem
+        logger.info("Scraping git documentation onto filesystem")
+        scraper = GitScraper()
+        scraper.hard_scrape(verbose=True)
 
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
