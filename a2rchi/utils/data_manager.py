@@ -280,8 +280,8 @@ class DataManager():
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
 
             logger.info(f"Successfully added file {filename}")
-            if url: 
-                logger.info(f"with URL: {url}")
+
+            if url: logger.info(f"with URL: {url}")
 
         return collection
 
