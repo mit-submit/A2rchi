@@ -2,6 +2,7 @@
 key.py
 *.txt
 !requirements.txt
+!requirements/*.txt
 *.ipynb
 __pycache__
 venv

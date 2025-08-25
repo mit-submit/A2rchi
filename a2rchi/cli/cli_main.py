@@ -547,6 +547,14 @@ def create(
         _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
         #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
         #compose_template_vars["huggingface"] = True
+    
+    # select which version of the requirments to run 
+    req_file_header = "requirements/gpu-requirementsHEADER.txt"
+    if not (any("HuggingFace" in chain_config[model] for model in model_fields) or any("VLLM" in chain_config[model] for model in model_fields)): 
+        req_file_header = "requirements/cpu-requirementsHEADER.txt"
+
+    _print_msg(f"INFO: using the following header for the requirements file: {req_file_header}")
+
 
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
     # SSO secrets
@@ -622,8 +630,17 @@ def create(
     # copy over the code into the a2rchi dir
     shutil.copytree("a2rchi", os.path.join(a2rchi_name_dir, "a2rchi_code"))
     shutil.copyfile("pyproject.toml", os.path.join(a2rchi_name_dir, "pyproject.toml"))
-    shutil.copyfile("requirements.txt", os.path.join(a2rchi_name_dir, "requirements.txt"))
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
+
+    # copy the requirements over depending on if you want to use the full or the slim image
+    # combines a different header with the existing requirements-base to download with or without
+    # gpu dependencies
+    stdout, _ = _run_bash_command(
+        f"cat {req_file_header} requirements/requirements-base.txt",
+        verbose=True
+    )
+    with open(os.path.join(a2rchi_name_dir, "requirements.txt"), "w") as f:
+        f.write(stdout)
 
     # create a2rchi system using docker
     if use_podman:
