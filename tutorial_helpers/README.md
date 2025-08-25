@@ -72,10 +72,6 @@ echo "your-openai-api-key-here" > ~/.secrets/openai_api_key.txt
 
 # Set a PostgreSQL password (choose any password you want)
 echo "your-chosen-password" > ~/.secrets/pg_password.txt
-
-# Create uploader service secrets
-echo "flaskpw" > ~/.secrets/flask_uploader_app_secret_key.txt
-echo "mysalt" > ~/.secrets/uploader_salt.txt
 ```
 
 **Note:** The PostgreSQL password can be anything you choose - you won't need to remember it for normal usage.
@@ -89,12 +85,12 @@ Before deployment, you need to generate the database initialization file:
 export GRAFANA_PG_PASSWORD=<insert anything>
 
 # Run the templating script
-python initsql-templater.py
+python tutorial_helpers/initsql-templater.py
 ```
 
-This will create the file `init.sql`, which we will use to initialize the postgres database that is used to store information from chat interactions, timing info, and more.
+This will create the file `init.sql`, which we will use to initialize the postgres database that is used to store information from chat interactions, timing info, and more. It also prepares a few files that the grafana service will need.
 
-### 5. Build Custom PostgreSQL Image
+### 5. Build Custom PostgreSQL and Grafana Images
 
 Due to user namespace issues with Podman on lxplus, you need to build a custom PostgreSQL image:
 
@@ -102,7 +98,13 @@ Due to user namespace issues with Podman on lxplus, you need to build a custom P
 podman build -f a2rchi/templates/dockerfiles/Dockerfile-postgres -t postgres-custom .
 ```
 
-Typically, steps 3 and 4 are done automatically in the `create` command we will execute below, but again this was necessary to run on lxplus.
+as well as the Grafana image:
+
+```bash
+podman build -f a2rchi/templates/dockerfiles/Dockerfile-grafana-custom -t grafana-custom .
+```
+
+Typically, steps 4 and 5 are done automatically in the `create` command we will execute below, but again this was necessary to run on lxplus.
 
 > **Note**: The period (`.`) at the end is important - it sets the build context to the current directory, where `init.sql` lives.
 
@@ -132,8 +134,6 @@ interfaces:
     EXTERNAL_PORT: 7861 # 7861 is the default, you shouldn't have to change this lest someone else is on the same machine already using that port, in which case you will get an error when containers try to run
   grafana:
     EXTERNAL_PORT: 3000  # default, change as needed, same comment for chat port applies here
-  uploader_app:
-    EXTERNAL_PORT: 5003  # default, change as needed, same comment for chat port applies here
 utils:
   data_manager:
     chromadb_external_port: 8000 # 8000 is the default, same comment for chat port applies here
@@ -142,12 +142,14 @@ utils:
 There is no need to change it for now, so we can take this directly and deploy our instance with the following command:
 
 ```bash
-./fun/bin/a2rchi create --name firsttry -f configs/cms_minimal_config.yaml --podman --document-uploader --grafana
+./fun/bin/a2rchi create --name firsttry -f configs/cms_minimal_config.yaml --podman --grafana
 ```
 
 You can replace `firsttry` with your desired instance name, but no capital letters in `--name`, or Podman will complain :)
 
 > **Note**: The container building will happen in `/tmp` but all necessary files and templated configurations will be written by default to `~/.a2rchi/a2rchi-<deployment name>/`. They are just a few files so it is lightweight, but if your AFS space is full, you can have this be written to somewhere else by setting the environment variable `A2RCHI_DIR` with the corresponding path.
+
+This will take a while... in particular installing the many packages. When you see the message, `WARNING: Running pip as the 'root' user ...`, it will be there a while.
 
 ## Accessing Your Instance
 
@@ -161,28 +163,12 @@ ssh -L 7861:localhost:7861 <your-username>@lxplus<node-number>.cern.ch
 
 Then open your browser and navigate to: `http://localhost:7861`. Of course, if you changed the external port for the chat, change from `7861` accordingly. You should now see your chatbot!
 
-### Set Up Uploader User Account
-You also need to create a user account for the document uploader:
-
-```bash
-# Enter the uploader container
-podman exec -it a2rchi-<deployment-name>_uploader_1 /bin/bash
-
-# Create user account (inside container)
-python a2rchi/bin/service_create_account.py
-
-# Type 'STOP' when done creating accounts, then 'exit' to leave container
-```
-
 ### Set Up Additional SSH Port Forwarding
 On your local machine, create additional SSH tunnels:
 
 ```bash
 # For Grafana dashboard
 ssh -L 3000:localhost:3000 <your-username>@lxplus<node-number>.cern.ch
-
-# For document uploader
-ssh -L 5003:localhost:5003 <your-username>@lxplus<node-number>.cern.ch
 ```
 
 Again, replace ports as necessary.
@@ -193,18 +179,11 @@ Again, replace ports as necessary.
 http://localhost:3000
 ```
 
-**Document Uploader:**
-```
-http://localhost:5003
-```
-
 Replace port numbers with whatever you configured in the yaml file.
 
 Once navigating to the Grafana page, you will be prompted for a username and password: both are `admin`. You will then be prompted to change the password at first login -- this is optional, but if you change it make sure you don't forget! Then navigate to the monitoring page: menu > Dashboards > A2rchi > A2rchi Usage, here you should find the monitoring page. Read more at the [user guide](https://mit-submit.github.io/A2rchi/user_guide/#grafana-interface), in particular for a couple of hints to make the lower table more readable.
 
-For the uploader, once you arrive to web page, log in with the username and password you created before. Here you can upload documents which will be accessible to a2rchi at the next question asked in the chatbot. On this interface, for any documents that you upload, you can just as easily remove them by clicking `Delete` next to the corresponding file.
-
-For any documents that you didn't upload via the uploader but still might want to remove, you can manually enter the container and delete files as follows:
+For any documents that you might want to remove, you can manually enter the container and delete files as follows:
 
 ```bash
 # Directly remove a file from the chat container
@@ -259,6 +238,21 @@ podman exec -it <container name> /bin/bash # to open a shell, but you can direct
 **API errors:**
 - Verify your OpenAI API key is correct and has credits
 - Check that the secrets files were created properly
+
+
+## Adding documents
+
+Add some website to `.list` file, like for example `configs/submit.list` which contains the user guide for SubMIT. Pass this file to the config:
+
+```yaml
+chains:
+  inputs_lists:
+    - configs/<your .list filename>.list
+```
+
+Then ask A2rchi questions you think it should know the answer to based on the documentation you've given it. Look at the grafana to see what is getting rerieved, if it correct or not, etc.
+
+If not, you might want to try to play with some of the parameters you saw in the slides... or a new technique might need to be implemented!
 
 
 ### Homework 💻
