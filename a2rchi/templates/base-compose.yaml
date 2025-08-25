@@ -147,22 +147,19 @@ services:
 
   {% if use_grafana -%}
   grafana:
-    image: {{ grafana_image }}:{{ grafana_tag }}
-    build:
-      context: .
-      dockerfile:  a2rchi_code/templates/dockerfiles/Dockerfile-grafana
+    image: localhost/grafana-custom:latest
     container_name: {{ grafana_container_name }}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - {{ grafana_port_host }}:3000  # host:container
-    volumes:
-      - {{ grafana_volume_name }}:/var/lib/grafana
-      - ./grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
-      - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-      - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
-      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+        #volumes:
+      #- {{ grafana_volume_name }}:/var/lib/grafana
+      #- ./grafana/a2rchi-default-dashboard.json:/var/lib/grafana/dashboards/a2rchi-default-dashboard.json
+      #- ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      #- ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      #- ./grafana/grafana.ini:/etc/grafana/grafana.ini
     logging:
       options:
         max-size: 10m

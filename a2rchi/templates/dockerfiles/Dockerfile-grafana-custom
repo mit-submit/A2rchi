@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM docker.io/grafana/grafana-enterprise:10.2.0
+
+# Create directories
+RUN mkdir -p /etc/grafana/provisioning/datasources
+RUN mkdir -p /etc/grafana/provisioning/dashboards
+RUN mkdir -p /var/lib/grafana/dashboards
+
+# Copy files with specific permissions
+COPY --chmod=644 grafana/a2rchi-default-dashboard.json /var/lib/grafana/dashboards/
+COPY --chmod=644 grafana/datasources.yaml /etc/grafana/provisioning/datasources/
+COPY --chmod=644 grafana/dashboards.yaml /etc/grafana/provisioning/dashboards/
+COPY --chmod=644 grafana/grafana.ini /etc/grafana/

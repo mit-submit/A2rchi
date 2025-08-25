@@ -299,7 +299,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT extract(seconds from msg_duration) as {{ prod_model_name }}\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = '{{ prod_config_name }}'",
+          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT extract(seconds from msg_duration) as OpenAIGPT35\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = 'minimal_config'",
           "refId": "D",
           "sql": {
             "columns": [
@@ -359,7 +359,7 @@
           "mappings": [
             {
               "options": {
-                "pattern": "like_with_context_{{ prod_config_name }}",
+                "pattern": "like_with_context_minimal_config",
                 "result": {
                   "color": "green",
                   "index": 0
@@ -369,7 +369,7 @@
             },
             {
               "options": {
-                "pattern": "like_no_context_{{ prod_config_name }}",
+                "pattern": "like_no_context_minimal_config",
                 "result": {
                   "color": "light-green",
                   "index": 1
@@ -379,7 +379,7 @@
             },
             {
               "options": {
-                "pattern": "dislike_with_context_{{ prod_config_name }}",
+                "pattern": "dislike_with_context_minimal_config",
                 "result": {
                   "color": "red",
                   "index": 2
@@ -389,7 +389,7 @@
             },
             {
               "options": {
-                "pattern": "dislike_no_context_{{ prod_config_name }}",
+                "pattern": "dislike_no_context_minimal_config",
                 "result": {
                   "color": "light-red",
                   "index": 3
