@@ -7,6 +7,8 @@ COPY LICENSE LICENSE
 
 RUN pip install --upgrade pip setuptools wheel
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y \
     nvidia-utils-550 \
     libnvidia-compute-550 \
