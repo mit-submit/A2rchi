@@ -3,6 +3,8 @@ key.py
 *.txt
 !requirements.txt
 !requirements/*.txt
+!base-pytorch-image/*
+!base-python-image/*
 *.ipynb
 __pycache__
 venv
