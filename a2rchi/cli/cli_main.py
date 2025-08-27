@@ -550,11 +550,11 @@ def create(
     
     # select which version of the requirments to run 
     req_file_header = "requirements/gpu-requirementsHEADER.txt"
-    if not (any("HuggingFace" in chain_config[model] for model in model_fields) or any("VLLM" in chain_config[model] for model in model_fields)): 
+    if not all_gpus and not gpu_ids: 
         req_file_header = "requirements/cpu-requirementsHEADER.txt"
 
     _print_msg(f"INFO: using the following header for the requirements file: {req_file_header}")
-
+ 
 
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
     # SSO secrets
