@@ -27,7 +27,6 @@ BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 BASE_COMPOSE_TEMPLATE = "base-compose.yaml"
-BENCHMARK_COMPOSE_TEMPLATE = "benchmark-compose.yaml"
 BASE_INIT_SQL_TEMPLATE = "base-init.sql"
 
 class InvalidCommandException(Exception):
@@ -771,136 +770,6 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
     _print_msg(resp.json()['response'])
 
 
-@click.command()
-@click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
-@click.option('--queries', '-q', required = True, help="path to the name of the questions that need to be tested", type=str)
-@click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
-@click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
-@click.option('--podman', '-p', 'use_podman', is_flag=True, help="Boolean to use podman instead of docker.")
-def benchmark_ragging(
-    name, 
-    queries,
-    a2rchi_config_filepath,
-    image_tag,
-    use_podman,
-):
-    """
-    Create an instance of a RAG system with the specified name. By default,
-    this will run a script which then acts as if it were a full a2rchi instance,
-    but instead will take in a file of questions and 
-    (for monitoring LLM and system performance).
-    """
-    if name is not None:
-        name = name.strip()
-    else:
-        raise click.ClickException(f"Please provide a name for the deployment using the --name flag.")
-
-    if a2rchi_config_filepath is not None:
-        a2rchi_config_filepath = a2rchi_config_filepath.strip()
-    if queries is not None:
-        queries = queries.strip()
-
-    a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
-    os.makedirs(a2rchi_name_dir, exist_ok=True)
-
-    tag = image_tag
-    compose_template_vars = {
-        "chat_image": f"chat-{name}",
-        "chat_tag": tag,
-        "chat_container_name": f"benchmark-a2rchi-{name}",
-        "chromadb_image": f"chromadb-{name}",
-        "chromadb_tag": tag,
-        "chromadb_container_name": f"chromadb-{name}",
-        "use_podman": use_podman,
-    }
-
-    _print_msg("Creating volumes")
-    _create_volume(f"a2rchi-{name}", podman=use_podman)
-
-    required_fields = [
-        'name', 
-        'global.TRAINED_ON',
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT',
-        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME',
-    ]
-
-    with open(a2rchi_config_filepath, 'r') as f:
-        a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
-        _validate_config(a2rchi_config, required_fields=required_fields)
-        if "collection_name" not in a2rchi_config:
-            a2rchi_config["collection_name"] = f"collection_{name}"
-
-    locations_of_secrets = a2rchi_config["locations_of_secrets"]
-
-    _print_msg("Preparing Postgres")
-    # prepare init.sql for postgres initialization
-    init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
-
-    init_sql = init_sql_template.render({
-        "use_grafana": False,
-        "grafana_pg_password": "",
-    })
-
-    with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
-        f.write(init_sql)
-
-    _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
-    # SSO secrets
-    if a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
-        _print_msg("Preparing SSO secrets")
-        compose_template_vars["sso"] = True
-        _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
-    if a2rchi_config.get("utils",{}).get("git", {}).get("ENABLED", False):
-        _print_msg("Preparing GIT secrets")
-        compose_template_vars["git"] = True
-        _prepare_secret(a2rchi_name_dir, "git_username", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "git_token", locations_of_secrets)
-
-    weblists_path = os.path.join(a2rchi_name_dir, "weblists")
-    os.makedirs(weblists_path, exist_ok=True)
-    web_input_lists = a2rchi_config["chains"].get("input_lists", [])
-    web_input_lists = web_input_lists or [] # protect against NoneType
-    for web_input_list in web_input_lists:
-        shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
-
-    # load and render config template
-    config_template = env.get_template(BASE_CONFIG_TEMPLATE)
-    config = config_template.render(verbosity=3, **a2rchi_config)
-    # write final templated configuration
-    with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
-        f.write(config)
-
-    with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'r') as f:
-        filled_config = yaml.load(f, Loader=yaml.FullLoader)
-
-    # ChromaDB service ports
-    chromadb_port_host = filled_config.get('utils').get('data_manager').get('chromadb_external_port')
-    compose_template_vars['chromadb_port_host'] = chromadb_port_host
-
-    # load compose template
-    _print_msg("Preparing Compose")
-    compose_template = env.get_template(BENCHMARK_COMPOSE_TEMPLATE)
-    compose = compose_template.render({**compose_template_vars})
-    with open(os.path.join(a2rchi_name_dir, "compose.yaml"), 'w') as f:
-        # yaml.dump(compose, f)
-        f.write(compose)
-
-    # copy over the code into the a2rchi dir
-    shutil.copytree("a2rchi", os.path.join(a2rchi_name_dir, "a2rchi_code"))
-    shutil.copyfile("pyproject.toml", os.path.join(a2rchi_name_dir, "pyproject.toml"))
-    shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
-
-    # create a2rchi system using docker
-    if use_podman:
-        compose_up = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
-    else:
-        compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
-
-    _print_msg("Starting compose")
-    stdout, stderr = _run_bash_command(compose_up, verbose=True, cwd=a2rchi_name_dir)
-    _print_msg("DONE compose")
-
 def main():
     """
     Entrypoint for a2rchi cli tool implemented using Click.
@@ -909,5 +778,4 @@ def main():
     cli.add_command(create)
     cli.add_command(delete)
     cli.add_command(update)
-    cli.add_command(benchmark_ragging) 
     cli()
