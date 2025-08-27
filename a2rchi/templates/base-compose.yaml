@@ -4,7 +4,7 @@ services:
     image: {{ chat_image }}:{{ chat_tag }}
     build:
       context: .
-      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if gpu_ids else '' }}
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-chat-new{{ '-gpu' if gpu_ids else '' }}
     container_name: {{ chat_container_name }}
     depends_on:
       chromadb:
