@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         wget \
+        git \
         ca-certificates \
         libgtk-3-0 \
         libdbus-glib-1-2 \
