@@ -231,7 +231,7 @@ def cli():
 
 @click.command()
 @click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
-@click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
+@click.option('--config', '-c', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--grafana', '-g', 'use_grafana', is_flag=True, help="Flag to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'use_uploader_service', is_flag=True, help="Flag to add service for admins to upload data")
 @click.option('--redmine-tickets', '-rt', 'use_redmine_tickets', type=bool, default=False, help="Boolean to store redmine tickets in vector database for RAG. Automatically included if using --cleo-and-mailer.")
@@ -246,6 +246,7 @@ def cli():
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 @click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode networking for the containers.")
 @click.option('--verbosity', '-v', 'verbosity', type=int, default=3, help="Set verbosity level for python's logging module. Default is 3. Mapping is 0: CRITICAL, 1: ERROR, 2: WARNING, 3: INFO, 4: DEBUG.")
+@click.option('--force', '-f', 'force', is_flag=True, default=False, help="runs a2rchi delete with the same name before running create")
 def create(
     name, 
     a2rchi_config_filepath,
@@ -262,7 +263,8 @@ def create(
     gpu_ids,
     image_tag,
     host_mode,
-    verbosity
+    verbosity,
+    force
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -286,6 +288,10 @@ def create(
 
     if a2rchi_config_filepath is not None:
         a2rchi_config_filepath = a2rchi_config_filepath.strip()
+
+    if force: 
+        delete.main(args=["--name", name], standalone_mode=False)
+
 
     # create temporary directory for template files
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
@@ -548,6 +554,7 @@ def create(
         #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
         #compose_template_vars["huggingface"] = True
 
+
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
     # SSO secrets
     if a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
@@ -628,8 +635,8 @@ def create(
     # copy over the code into the a2rchi dir
     shutil.copytree("a2rchi", os.path.join(a2rchi_name_dir, "a2rchi_code"))
     shutil.copyfile("pyproject.toml", os.path.join(a2rchi_name_dir, "pyproject.toml"))
-    shutil.copyfile("requirements.txt", os.path.join(a2rchi_name_dir, "requirements.txt"))
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
+
 
     # create a2rchi system using docker
     if use_podman:

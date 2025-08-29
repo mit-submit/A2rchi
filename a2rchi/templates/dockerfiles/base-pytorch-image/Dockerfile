@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
-# FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-devel
-FROM python:3.10
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel
 RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
 
