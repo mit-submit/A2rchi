@@ -246,7 +246,7 @@ def cli():
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 @click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode networking for the containers.")
 @click.option('--verbosity', '-v', 'verbosity', type=int, default=3, help="Set verbosity level for python's logging module. Default is 3. Mapping is 0: CRITICAL, 1: ERROR, 2: WARNING, 3: INFO, 4: DEBUG.")
-@click.option('--full-restart', '-f', 'full_restart', is_flag=True, default=False, help="runs a2rchi delete with the same name before running create")
+@click.option('--force', '-f', 'force', is_flag=True, default=False, help="runs a2rchi delete with the same name before running create")
 def create(
     name, 
     a2rchi_config_filepath,
@@ -264,7 +264,7 @@ def create(
     image_tag,
     host_mode,
     verbosity,
-    full_restart
+    force
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -289,7 +289,7 @@ def create(
     if a2rchi_config_filepath is not None:
         a2rchi_config_filepath = a2rchi_config_filepath.strip()
 
-    if full_restart: 
+    if force: 
         delete(name, rmi = False)
 
 
