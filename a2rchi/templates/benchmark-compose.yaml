@@ -1,0 +1,37 @@
+services:
+  benchmark:
+    image: {{ chat_image }}-benchmarker:{{ chat_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/templates/dockerfiles/Dockerfile-benchmarks
+    container_name: {{ chat_container_name }}
+    environment:
+      {% if sso -%}
+      SSO_USERNAME_FILE: /run/secrets/sso_username
+      SSO_PASSWORD_FILE: /run/secrets/sso_password
+      {% endif %}
+      # keep only essential secrets
+      {% if openai %}
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      {% endif %}
+    secrets:
+      - openai_api_key
+    volumes:
+      - {{ chat_volume_name }}:/root/data/
+      - ./config.yaml:/root/A2rchi/config.yaml
+      - ./main.prompt:/root/A2rchi/main.prompt
+      - ./condense.prompt:/root/A2rchi/condense.prompt
+    logging:
+      options:
+        max-size: 10m
+
+secrets:
+  # Core secrets
+  openai_api_key:
+    file: secrets/openai_api_key.txt
+  anthropic_api_key:
+    file: secrets/anthropic_api_key.txt
+  hf_token:
+    file: secrets/hf_token.txt
+  pg_password:
+    file: secrets/pg_password.txt

@@ -486,3 +486,11 @@ top_k:
 num_gpu:
 repeat_penalty: 
 ```
+
+### DockerHub images
+
+Depending on if you use the --gpu or --gpu-ids option when launching an instance of a2rchi, a2rchi will load from different base images on dockerhub. If you do not need to use gpus the python base image will be installed. Alternatively the pytorch base image will be installed. 
+The base docker file used to make these base images from which the chat interface inherits its changes from can be found in A2rchi/a2rchi/templates/dockerfiles/base-X-image directories. They are currently hosted on dockerhub at the following links: 
+pytorch: https://hub.docker.com/r/ipausuchicago/a2rchi-pytorch-base
+python: https://hub.docker.com/r/ipausuchicago/a2rchi-python-base
+

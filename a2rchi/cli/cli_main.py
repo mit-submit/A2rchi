@@ -246,6 +246,7 @@ def cli():
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 @click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode networking for the containers.")
 @click.option('--verbosity', '-v', 'verbosity', type=int, default=3, help="Set verbosity level for python's logging module. Default is 3. Mapping is 0: CRITICAL, 1: ERROR, 2: WARNING, 3: INFO, 4: DEBUG.")
+@click.option('--full-restart', '-f', 'full_restart', is_flag=True, default=False, help="runs a2rchi delete with the same name before running create")
 def create(
     name, 
     a2rchi_config_filepath,
@@ -262,7 +263,8 @@ def create(
     gpu_ids,
     image_tag,
     host_mode,
-    verbosity
+    verbosity,
+    full_restart
 ):
     """
     Create an instance of a RAG system with the specified name. By default,
@@ -287,6 +289,10 @@ def create(
     if a2rchi_config_filepath is not None:
         a2rchi_config_filepath = a2rchi_config_filepath.strip()
 
+    if full_restart: 
+        delete(name, rmi = False)
+
+
     # create temporary directory for template files
     a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
     os.makedirs(a2rchi_name_dir, exist_ok=True)
@@ -303,6 +309,7 @@ def create(
         "postgres_container_name": f"postgres-{name}",
         "use_podman": use_podman,
         "gpu_ids": gpu_ids or all_gpus,
+        "benchmarking": benchmark,
     }
 
     # create docker volumes; these commands will no-op if they already exist
@@ -547,11 +554,6 @@ def create(
         _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
         #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
         #compose_template_vars["huggingface"] = True
-    
-    # select which version of the requirments to run 
-    req_file_header = "requirements/gpu-requirementsHEADER.txt"
-    if not all_gpus and not gpu_ids: 
-        req_file_header = "requirements/cpu-requirementsHEADER.txt"
 
     _print_msg(f"INFO: using the following header for the requirements file: {req_file_header}")
  
@@ -638,15 +640,6 @@ def create(
     shutil.copyfile("pyproject.toml", os.path.join(a2rchi_name_dir, "pyproject.toml"))
     shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
 
-    # copy the requirements over depending on if you want to use the full or the slim image
-    # combines a different header with the existing requirements-base to download with or without
-    # gpu dependencies
-    stdout, _ = _run_bash_command(
-        f"cat {req_file_header} requirements/requirements-base.txt",
-        verbose=False
-    )
-    with open(os.path.join(a2rchi_name_dir, "requirements.txt"), "w") as f:
-        f.write(stdout)
 
     # create a2rchi system using docker
     if use_podman:
