@@ -309,7 +309,6 @@ def create(
         "postgres_container_name": f"postgres-{name}",
         "use_podman": use_podman,
         "gpu_ids": gpu_ids or all_gpus,
-        "benchmarking": benchmark,
     }
 
     # create docker volumes; these commands will no-op if they already exist
