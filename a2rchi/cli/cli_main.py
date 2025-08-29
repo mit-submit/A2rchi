@@ -290,7 +290,7 @@ def create(
         a2rchi_config_filepath = a2rchi_config_filepath.strip()
 
     if force: 
-        delete(name, rmi = False)
+        delete(name, False)
 
 
     # create temporary directory for template files
