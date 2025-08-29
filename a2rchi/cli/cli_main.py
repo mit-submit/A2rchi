@@ -291,7 +291,6 @@ def create(
 
     if force: 
         delete.main(args=["--name", name], standalone_mode=False)
-        # delete(name, "False")
 
 
     # create temporary directory for template files
