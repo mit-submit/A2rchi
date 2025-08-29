@@ -290,7 +290,8 @@ def create(
         a2rchi_config_filepath = a2rchi_config_filepath.strip()
 
     if force: 
-        delete(name, False)
+        delete.main(args=["--name", name], standalone_mode=False)
+        # delete(name, "False")
 
 
     # create temporary directory for template files
@@ -554,8 +555,6 @@ def create(
         #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
         #compose_template_vars["huggingface"] = True
 
-    _print_msg(f"INFO: using the following header for the requirements file: {req_file_header}")
- 
 
     _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
     # SSO secrets
