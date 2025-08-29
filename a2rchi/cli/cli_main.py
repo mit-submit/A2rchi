@@ -231,7 +231,7 @@ def cli():
 
 @click.command()
 @click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
-@click.option('--a2rchi-config', '-c', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
+@click.option('--config', '-c', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
 @click.option('--grafana', '-g', 'use_grafana', is_flag=True, help="Flag to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'use_uploader_service', is_flag=True, help="Flag to add service for admins to upload data")
 @click.option('--redmine-tickets', '-rt', 'use_redmine_tickets', type=bool, default=False, help="Boolean to store redmine tickets in vector database for RAG. Automatically included if using --cleo-and-mailer.")
