@@ -83,3 +83,4 @@ anyio==4.8.0
 catalogue==2.0.9
 aiohttp==3.9.5
 nltk==3.9.1
+rank_bm25==0.2.2

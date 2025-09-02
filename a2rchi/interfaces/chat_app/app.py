@@ -228,7 +228,9 @@ class ChatWrapper:
                     link_k = sources[document_source_hash]
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
-                context += f"SOURCE {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {scores[k]}\n\n{content}\n\n\n\n"
+                # Safely get the score, use "N/A" if index is out of range
+                score_display = scores[k] if k < len(scores) else "N/A"
+                context += f"SOURCE {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {score_display}\n\n{content}\n\n\n\n"
 
         return context
 

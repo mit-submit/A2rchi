@@ -103,6 +103,18 @@ There are a few additional options you can pass to the `create` command that are
 
 13. **`utils:embeddings:query_embedding_instructions`**: Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see `INSTRUCTION_AWARE_MODELS` in `a2rchi/chains/retrievers.py` to add models that support this. For example, the `Qwen/Qwen3-Embedding-XB` embedding models support this and are listed, see more [here](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B). Default is `None`. You should write the string directly into the config. An example instruction might look like: `"Given a query, retrieve relevant information to answer the query"`. You might tune it to be more specific to your use case which might improve performance.
 
+14. **`utils.data_manager.use_hybrid_search`**: Enables hybrid search, that is performing lexical search as well as semantic search. Docs retrieved from both searches are combined. The default is `False`
+
+15. **`utils.data_manager.bm25_weight`**: If hybrid search is enabled, defines the weight of the lexical (bm25) search.
+
+16. **`utils.data_manager.semantic_weight`**: If hybrid search is enabled, defines the weight of the semantic search.
+
+17. **`utils.data_manager.bm25.k1`**: Term frequency saturation. Controls how much the score increases with additional occurrences of a term in a document. Range: `[1.2,2.0]`
+
+18. **`utils.data_manager.bm25.b`**: Length normalization. Controls how much the document length influences the score. BM25 normalizes term frequency by document length compared to the average document length in the corpus. Range: `[0,1]`
+
+
+
 
 #### Chat Service
 

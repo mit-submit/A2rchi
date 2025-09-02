@@ -143,21 +143,19 @@ class TokenLimiter:
             logger.info(f"Removed old message ({removed_tokens} tokens) from history")
 
         # --- Step 2: Reduce documents ---
-        num_docs = len(docs)
-        while total_tokens() > self.effective_max_tokens and num_docs > self.min_docs:
-            num_docs -= 1
-            logger.info(f"Removed document ({doc_tokens[num_docs]} tokens)")
-
-        reduced_docs = docs[:num_docs]
+        while total_tokens() > self.effective_max_tokens and len(docs) > self.min_docs:
+            removed_doc = docs.pop()
+            removed_tokens = doc_tokens.pop()
+            logger.info(f"Removed document ({removed_tokens} tokens)")
 
         logger.info(
             f"Reduced from {orig_docs} docs + {orig_history} history items "
-            f"to {len(reduced_docs)} docs + {len(history)} history items, "
+            f"to {len(docs)} docs + {len(history)} history items, "
             f"{total_tokens()} tokens total "
             f"({self.effective_max_tokens} effective maximum allowed)"
         )
 
-        return reduced_docs, history
+        return docs, history
     
     def check_question(
         self,
