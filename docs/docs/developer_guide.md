@@ -35,7 +35,7 @@ Then while inside of the `templates/dockerfiles/base-xxx-image` directory, simpl
 podman build -t a2rchi/<image-name>:<tag> . 
 ```
 
-after having checked that the newly built image is working, to update it on dockerhub, login to dockerhub using 
+after having checked that the newly built image is working, to update it on dockerhub, login to dockerhub using (ask for a senior developer for the password/master token),
 
 ```
 podman login docker.io 
