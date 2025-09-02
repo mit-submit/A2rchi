@@ -247,7 +247,7 @@ def cli():
 @click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode networking for the containers.")
 @click.option('--verbosity', '-v', 'verbosity', type=int, default=3, help="Set verbosity level for python's logging module. Default is 3. Mapping is 0: CRITICAL, 1: ERROR, 2: WARNING, 3: INFO, 4: DEBUG.")
 @click.option('--force', '-f', 'force', is_flag=True, default=False, help="runs a2rchi delete with the same name before running create")
-@click.option('--dry', '-d', 'dry', is_flag=True, default=False, help="runs A2rchi and just spits out the config")
+@click.option('--dry', '-d', 'dry', is_flag=True, default=False, help="doesn't run A2rchi and just spits out the config")
 def create(
     name, 
     a2rchi_config_filepath,
