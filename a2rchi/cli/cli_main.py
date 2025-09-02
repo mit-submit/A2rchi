@@ -295,9 +295,10 @@ def create(
         delete.main(args=["--name", name], standalone_mode=False)
 
 
-    # create temporary directory for template files
-    a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
-    os.makedirs(a2rchi_name_dir, exist_ok=True)
+    if not dry:
+        # create temporary directory for template files
+        a2rchi_name_dir = os.path.join(A2RCHI_DIR, f"a2rchi-{name}")
+        os.makedirs(a2rchi_name_dir, exist_ok=True)
 
     # initialize dictionary of template variables for docker compose file
     tag = image_tag
@@ -363,32 +364,31 @@ def create(
     # prepare grader service if requested
     compose_template_vars["use_grader_service"] = use_grader_service
     if use_grader_service:
-        if not dry:
-            _print_msg("Preparing Grader Service")
         compose_template_vars["grader_image"] = f"grader-{name}"
         compose_template_vars["grader_tag"] = tag
 
         compose_template_vars["grader_volume_name"] = f"a2rchi-grader-{name}"
         if not dry:
-          _create_volume(compose_template_vars["grader_volume_name"], podman=use_podman)
+            _print_msg("Preparing Grader Service")
+            _create_volume(compose_template_vars["grader_volume_name"], podman=use_podman)
+            _prepare_secret(a2rchi_name_dir, "admin_password", locations_of_secrets)
 
-        _prepare_secret(a2rchi_name_dir, "admin_password", locations_of_secrets)
-
-        # prepare grader app logins file (users.csv)
-        users_csv_dir = a2rchi_config['interfaces']['grader_app']['local_users_csv_dir']
-        users_csv_path = os.path.expanduser(os.path.join(users_csv_dir, "users.csv"))
-        if not dry:
+            # prepare grader app logins file (users.csv)
+            users_csv_dir = a2rchi_config['interfaces']['grader_app']['local_users_csv_dir']
+            users_csv_path = os.path.expanduser(os.path.join(users_csv_dir, "users.csv"))
             _print_msg(f"Preparing users.csv from {users_csv_path}")
         if not os.path.isfile(users_csv_path):
             raise FileNotFoundError(f"users.csv file not found in directory {users_csv_dir}")
-        target_users_csv_path = os.path.join(a2rchi_name_dir, "users.csv")
-        shutil.copyfile(users_csv_path, target_users_csv_path)
+        if not dry:
+            target_users_csv_path = os.path.join(a2rchi_name_dir, "users.csv")
+            shutil.copyfile(users_csv_path, target_users_csv_path)
 
         # prepare rubrics for n problems (config: interfaces.grader_app.num_problems) 
         rubric_dir = a2rchi_config['interfaces']['grader_app']['local_rubric_dir']
         num_problems = a2rchi_config['interfaces']['grader_app']['num_problems']
 
-        rubrics = _prepare_grading_rubrics(a2rchi_name_dir, rubric_dir, num_problems)
+        if not dry:
+            rubrics = _prepare_grading_rubrics(a2rchi_name_dir, rubric_dir, num_problems)
 
         compose_template_vars["rubrics"] = rubrics
 
@@ -407,43 +407,46 @@ def create(
         grafana_pg_password = os.environ["GRAFANA_PG_PASSWORD"]
 
         if not dry:
-          _print_msg("Preparing Grafana")
+            _print_msg("Preparing Grafana")
         # add grafana to compose and SQL init
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
         compose_template_vars["grafana_image"] = f"grafana-{name}"
         compose_template_vars["grafana_tag"] = tag
         compose_template_vars["grafana_container_name"] = f"grafana-{name}"
 
-        # template grafana datasources file to include postgres pw for grafana
-        grafana_datasources_template = env.get_template(BASE_GRAFANA_DATASOURCES_TEMPLATE)
-        grafana_datasources = grafana_datasources_template.render({"grafana_pg_password": grafana_pg_password})
+        if not dry:
+            # template grafana datasources file to include postgres pw for grafana
+            grafana_datasources_template = env.get_template(BASE_GRAFANA_DATASOURCES_TEMPLATE)
+            grafana_datasources = grafana_datasources_template.render({"grafana_pg_password": grafana_pg_password})
 
-        # write complete datasources file to folder
-        os.makedirs(os.path.join(a2rchi_name_dir, "grafana"), exist_ok=True)
-        with open(os.path.join(a2rchi_name_dir, "grafana", "datasources.yaml"), 'w') as f:
-            #yaml.dump(grafana_datasources, f)
-            f.write(grafana_datasources)
+            # write complete datasources file to folder
+        
+            os.makedirs(os.path.join(a2rchi_name_dir, "grafana"), exist_ok=True)
+            with open(os.path.join(a2rchi_name_dir, "grafana", "datasources.yaml"), 'w') as f:
+                #yaml.dump(grafana_datasources, f)
+                f.write(grafana_datasources)
 
-        # copy dashboards.yaml, a2rchi-default-dashboards.json, grafana.ini to grafana dir
-        grafana_dashboards_template = env.get_template(BASE_GRAFANA_DASHBOARDS_TEMPLATE)
-        grafana_dashboards = grafana_dashboards_template.render()
-        with open(os.path.join(a2rchi_name_dir, "grafana", "dashboards.yaml"), 'w') as f:
-            # yaml.dump(grafana_dashboards, f)
-            f.write(grafana_dashboards)
+            # copy dashboards.yaml, a2rchi-default-dashboards.json, grafana.ini to grafana dir
+            grafana_dashboards_template = env.get_template(BASE_GRAFANA_DASHBOARDS_TEMPLATE)
+            grafana_dashboards = grafana_dashboards_template.render()
+            with open(os.path.join(a2rchi_name_dir, "grafana", "dashboards.yaml"), 'w') as f:
+                # yaml.dump(grafana_dashboards, f)
+                f.write(grafana_dashboards)
 
-        a2rchi_dashboards_template = env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
-        a2rchi_dashboards = a2rchi_dashboards_template.render(
-            prod_config_name=a2rchi_config["name"],
-            prod_model_name=a2rchi_config["chains"]["chain"]["MODEL_NAME"]
-        )
-        with open(os.path.join(a2rchi_name_dir, "grafana", "a2rchi-default-dashboard.json"), 'w') as f:
-            # json.dump(a2rchi_dashboards, f)
-            f.write(a2rchi_dashboards)
+    
+            a2rchi_dashboards_template = env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
+            a2rchi_dashboards = a2rchi_dashboards_template.render(
+                prod_config_name=a2rchi_config["name"],
+                prod_model_name=a2rchi_config["chains"]["chain"]["MODEL_NAME"]
+            )
+            with open(os.path.join(a2rchi_name_dir, "grafana", "a2rchi-default-dashboard.json"), 'w') as f:
+                # json.dump(a2rchi_dashboards, f)
+                f.write(a2rchi_dashboards)
 
-        grafana_config_template = env.get_template(BASE_GRAFANA_CONFIG_TEMPLATE)
-        grafana_config = grafana_config_template.render()
-        with open(os.path.join(a2rchi_name_dir, "grafana", "grafana.ini"), 'w') as f:
-            f.write(grafana_config)
+            grafana_config_template = env.get_template(BASE_GRAFANA_CONFIG_TEMPLATE)
+            grafana_config = grafana_config_template.render()
+            with open(os.path.join(a2rchi_name_dir, "grafana", "grafana.ini"), 'w') as f:
+                f.write(grafana_config)
 
         # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
         # Grafana service ports
@@ -454,7 +457,7 @@ def create(
     compose_template_vars["use_uploader_service"] = use_uploader_service
     if use_uploader_service:
          if not dry: 
-           _print_msg("Preparing Uploader Service")
+             _print_msg("Preparing Uploader Service")
 
          # Add uploader service to compose
          compose_template_vars["use_uploader_service"] = use_uploader_service
@@ -468,41 +471,41 @@ def create(
          compose_template_vars['uploader_port_host'] = uploader_port_host
          compose_template_vars['uploader_port_container'] = uploader_port_container
 
-         _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
-         _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
+         if not dry: 
+             _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
+             _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
 
 
     compose_template_vars["use_piazza_service"] = use_piazza_service
     if use_piazza_service:
         if not dry:
-          _print_msg("Preparing Piazza Service")
+            _print_msg("Preparing Piazza Service")
 
         compose_template_vars["piazza_image"] = f"piazza-{name}"
         compose_template_vars["piazza_tag"] = tag
 
-        # piazza secrets
-        _prepare_secret(a2rchi_name_dir, "piazza_email", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
+        if not dry:
+            # piazza secrets
+            _prepare_secret(a2rchi_name_dir, "piazza_email", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "piazza_password", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "slack_webhook", locations_of_secrets)
 
 
     compose_template_vars["use_mattermost_service"] = use_mattermost_service
     if use_mattermost_service:
-        if not dry: 
-          _print_msg("Preparing Mattermost Service")
-
         compose_template_vars["mattermost_image"] = f"mattermost-{name}"
         compose_template_vars["mattermost_tag"] = tag
-
-        # mattermost secrets
-        _prepare_secret(a2rchi_name_dir, "mattermost_webhook", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_read", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_write", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "mattermost_pak", locations_of_secrets)
+        if not dry: 
+            _print_msg("Preparing Mattermost Service")
+            # mattermost secrets
+            _prepare_secret(a2rchi_name_dir, "mattermost_webhook", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_read", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_write", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "mattermost_pak", locations_of_secrets)
 
 
     compose_template_vars["redminetickets"] = use_redmine_tickets
-    if use_redmine_tickets and not use_cleo_and_mailer:
+    if not dry and use_redmine_tickets and not use_cleo_and_mailer:
         _prepare_secret(a2rchi_name_dir, "cleo_url", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "cleo_user", locations_of_secrets)
         _prepare_secret(a2rchi_name_dir, "cleo_pw", locations_of_secrets)
@@ -523,96 +526,96 @@ def create(
         compose_template_vars["mailbox_image"] = f"mailbox-{name}"
         compose_template_vars["mailbox_tag"] = tag
 
-        _prepare_secret(a2rchi_name_dir, "imap_user", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "imap_pw", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "cleo_url", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "cleo_user", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "cleo_pw", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "cleo_project", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "sender_server", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "sender_port", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "sender_replyto", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "sender_user", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
+        if not dry:
+            _prepare_secret(a2rchi_name_dir, "imap_user", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "imap_pw", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "cleo_url", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "cleo_user", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "cleo_pw", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "cleo_project", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "sender_server", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "sender_port", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "sender_replyto", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "sender_user", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
 
     
-    if use_jira:
+    if not dry and use_jira:
         _prepare_secret(a2rchi_name_dir, "jira_pat", locations_of_secrets)
         compose_template_vars["jira"] = True
     
 
     if not dry: 
-      _print_msg("Preparing Postgres")
-    # prepare init.sql for postgres initialization
-    init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
-    init_sql = init_sql_template.render({
-        "use_grafana": use_grafana,
-        "grafana_pg_password": grafana_pg_password if use_grafana else "",
-    })
-    with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
-        f.write(init_sql)
+        _print_msg("Preparing Postgres")
+            # prepare init.sql for postgres initialization
+        init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
+        init_sql = init_sql_template.render({
+            "use_grafana": use_grafana,
+            "grafana_pg_password": grafana_pg_password if use_grafana else "",
+        })
+        with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
+            f.write(init_sql)
     
     model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not use_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
     chain_config = a2rchi_config["chains"]["chain"]
 
-    # prepare needed api token secrets
-    if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
-        _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
-        compose_template_vars["openai"] = True
-    if any("Anthropic" in chain_config[model] for model in model_fields):
-        _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
-        compose_template_vars["anthropic"] = True
-    if not dry and "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
-        _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
-        #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
-        #compose_template_vars["huggingface"] = True
+    if not dry:
+        # prepare needed api token secrets
+        if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
+            _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
+            compose_template_vars["openai"] = True
+        if any("Anthropic" in chain_config[model] for model in model_fields):
+            _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
+            compose_template_vars["anthropic"] = True
+        if  dry and "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
+            _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
+            #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+            #compose_template_vars["huggingface"] = True
 
 
-    _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
-    # SSO secrets
-    if a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
-        if not dry:
-          _print_msg("Preparing SSO secrets")
-        compose_template_vars["sso"] = True
-        _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
+        # SSO secrets
+        if  a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
+            compose_template_vars["sso"] = True
+            _print_msg("Preparing SSO secrets")
+            _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
 
-    if a2rchi_config.get("utils",{}).get("git", {}).get("ENABLED", False):
-        if not dry:
-          _print_msg("Preparing GIT secrets")
-        compose_template_vars["git"] = True
-        _prepare_secret(a2rchi_name_dir, "git_username", locations_of_secrets)
-        _prepare_secret(a2rchi_name_dir, "git_token", locations_of_secrets)
+        if a2rchi_config.get("utils",{}).get("git", {}).get("ENABLED", False):
+            compose_template_vars["git"] = True
+            _print_msg("Preparing GIT secrets")
+            _prepare_secret(a2rchi_name_dir, "git_username", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "git_token", locations_of_secrets)
 
 
-    # copy prompts (make this cleaner prob)
-    if use_grader_service:
-        shutil.copyfile(a2rchi_config["chains"]["prompts"]["IMAGE_PROCESSING_PROMPT"], os.path.join(a2rchi_name_dir, "image_processing.prompt"))
-        shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_FINAL_GRADE_PROMPT"], os.path.join(a2rchi_name_dir, "grading_final_grade.prompt"))
-        compose_template_vars["summary"] = True
-        compose_template_vars["analysis"] = True
-        try:
-            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "grading_summary.prompt"))
-        except KeyError:
-            compose_template_vars["summary"] = False
-            _print_msg("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
-        try:
-            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_ANALYSIS_PROMPT"], os.path.join(a2rchi_name_dir, "grading_analysis.prompt"))
-        except KeyError:
-            compose_template_vars["analysis"] = False
-            _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
-    else:
-        shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
-        shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
+        # copy prompts (make this cleaner prob)
+        if use_grader_service:
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["IMAGE_PROCESSING_PROMPT"], os.path.join(a2rchi_name_dir, "image_processing.prompt"))
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_FINAL_GRADE_PROMPT"], os.path.join(a2rchi_name_dir, "grading_final_grade.prompt"))
+            compose_template_vars["summary"] = True
+            compose_template_vars["analysis"] = True
+            try:
+                shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "grading_summary.prompt"))
+            except KeyError:
+                compose_template_vars["summary"] = False
+                _print_msg("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
+            try:
+                shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_ANALYSIS_PROMPT"], os.path.join(a2rchi_name_dir, "grading_analysis.prompt"))
+            except KeyError:
+                compose_template_vars["analysis"] = False
+                _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
+        else:
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
 
 
-    # copy input lists
-    weblists_path = os.path.join(a2rchi_name_dir, "weblists")
-    os.makedirs(weblists_path, exist_ok=True)
-    web_input_lists = a2rchi_config["chains"].get("input_lists", [])
-    web_input_lists = web_input_lists or [] # protect against NoneType
-    for web_input_list in web_input_lists:
-        shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
+        # copy input lists
+        weblists_path = os.path.join(a2rchi_name_dir, "weblists")
+        os.makedirs(weblists_path, exist_ok=True)
+        web_input_lists = a2rchi_config["chains"].get("input_lists", [])
+        web_input_lists = web_input_lists or [] # protect against NoneType
+        for web_input_list in web_input_lists:
+            shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
 
     # load and render config template
     config_template = env.get_template(BASE_CONFIG_TEMPLATE)
