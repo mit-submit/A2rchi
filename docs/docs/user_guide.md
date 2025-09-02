@@ -120,6 +120,69 @@ Additional configuration options for the chatbot, deployed automatically with A2
 
 6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
 
+# Add ChromaDB Document Management API Endpoints
+
+##### Debugging ChromaDB endpoints
+Debugging REST API endpoints to the A2rchi chat application for programmatic access to the ChromaDB vector database can be exposed with the following configuration change.
+To enable the ChromaDB endpoints, add the following to your config file under `interfaces.chat_app`:
+
+```yaml
+interfaces:
+  chat_app:
+    # ... other config options ...
+    enable_debug_chroma_endpoints: true  # Default: false
+```
+
+###### ChromaDB  Endpoints Info
+
+####### `/api/list_docs` (GET)
+Lists all documents indexed in ChromaDB with pagination support.
+
+**Query Parameters:**
+- `page`: Page number (1-based, default: 1)
+- `per_page`: Documents per page (default: 50, max: 500)
+- `content_length`: Content preview length (default: -1 for full content)
+
+**Response:**
+```json
+{
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total_documents": 1250,
+    "total_pages": 25,
+    "has_next": true,
+    "has_prev": false
+  },
+  "documents": [...]
+}
+```
+
+####### `/api/search_docs` (POST)
+Performs semantic search on the document collection using vector similarity.
+
+**Request Body:**
+- `query`: Search query string (required)
+- `n_results`: Number of results (default: 5, max: 100)
+- `content_length`: Max content length (default: -1, max: 5000)
+- `include_full_content`: Include complete document content (default: false)
+
+**Response:**
+```json
+{
+  "query": "machine learning",
+  "search_params": {...},
+  "documents": [
+    {
+      "content": "Document content...",
+      "content_length": 1200,
+      "metadata": {...},
+      "similarity_score": 0.85
+    }
+  ]
+}
+```
+
 #### Git scraping
 
 In some cases, the RAG input may be documentations based on MKDocs git repositores. Instead of scraping these sites as regular HTML sites you can obtain the relevant content using the git scraper. To configure it, simply add the following field:
