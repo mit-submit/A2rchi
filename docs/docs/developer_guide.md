@@ -18,7 +18,7 @@ Note, please do NOT edit files in the gh-pages branch by hand, again, make a PR 
 
 In order to rebuild the base images from which the dockerfiles inherit, go to the `base-xxx-image` directory found in `templates/dockerfiles/`.
 In these directories, there is a different set of requirements for each along with their license and respective dockerfiles.
-To regerate the requirements if they have been changed run the following commands to ensure that the right header is used for each: 
+To regenerate the requirements if they have been changed run the following commands to ensure that the right header is used for each: 
 
 for the python image:
 ```
