@@ -320,8 +320,6 @@ def create(
     required_fields = [
         'name', 
         'global.TRAINED_ON',
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT',
-        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME',
     ]
 
     if use_piazza_service:
@@ -349,6 +347,7 @@ def create(
         if "collection_name" not in a2rchi_config:
             a2rchi_config["collection_name"] = f"collection_{name}"
 
+    print(a2rchi_config)
     locations_of_secrets = a2rchi_config["locations_of_secrets"]
 
     # prepare grader service if requested
@@ -533,14 +532,14 @@ def create(
     with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
         f.write(init_sql)
     
-    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not use_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
-    chain_config = a2rchi_config["chains"]["chain"]
+    chain_config = a2rchi_config['a2rchi']['pipeline_map']['QAPipeline']
+    print(chain_config)
 
     # prepare needed api token secrets
-    if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
+    if any("OpenAI" in chain_config['models'][model] for model in chain_config['models']) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
         _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
         compose_template_vars["openai"] = True
-    if any("Anthropic" in chain_config[model] for model in model_fields):
+    if any("Anthropic" in chain_config['models'][model] for model in chain_config['models']):
         _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
         compose_template_vars["anthropic"] = True
     if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
@@ -574,14 +573,14 @@ def create(
             compose_template_vars["analysis"] = False
             _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
     else:
-        shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
-        shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
+        shutil.copyfile(chain_config["prompts"]["qa_prompt"], os.path.join(a2rchi_name_dir, "main.prompt"))
+        shutil.copyfile(chain_config["prompts"]["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
 
 
     # copy input lists
     weblists_path = os.path.join(a2rchi_name_dir, "weblists")
     os.makedirs(weblists_path, exist_ok=True)
-    web_input_lists = a2rchi_config["chains"].get("input_lists", [])
+    web_input_lists = a2rchi_config["data_manager"].get("input_lists", [])
     web_input_lists = web_input_lists or [] # protect against NoneType
     for web_input_list in web_input_lists:
         shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
@@ -603,7 +602,7 @@ def create(
     compose_template_vars['chat_port_host'] = chat_port_host
     compose_template_vars['chat_port_container'] = chat_port_container
     # ChromaDB service ports
-    chromadb_port_host = filled_config.get('utils').get('data_manager').get('chromadb_external_port')
+    chromadb_port_host = filled_config.get('data_manager').get('chromadb_external_port')
     compose_template_vars['chromadb_port_host'] = chromadb_port_host
     # Postgres service ports are never externally exposed, so they don't need to be managed!
 
@@ -687,7 +686,7 @@ def delete(name, rmi):
     _print_msg("Removing files in a2rchi directory")
     _run_bash_command(f"rm -rf {a2rchi_name_dir}")
 
-
+# TODO do we stlil want to support this?
 @click.command()
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
@@ -724,7 +723,7 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
         f.write(config)
 
     # copy prompts to keep consistent w/state of container
-    shutil.copyfile(a2rchi_config["main_prompt"], os.path.join(a2rchi_name_dir, "main.prompt"))
+    shutil.copyfile(a2rchi_config["qa_prompt"], os.path.join(a2rchi_name_dir, "qa.prompt"))
     shutil.copyfile(a2rchi_config["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
 
     _print_msg("Updating config")
