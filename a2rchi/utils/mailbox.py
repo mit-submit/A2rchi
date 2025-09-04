@@ -1,5 +1,5 @@
 #!/bin/python
-from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.config_loader import load_utils_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
 
@@ -27,7 +27,7 @@ class Mailbox:
         self.mailbox = None
         self.user = user
         self.password = password
-        self.config = load_config()["utils"]["mailbox"]
+        self.config = load_utils_config()["mailbox"]
 
         # make sure to open the mailbox
         if self._verify():
@@ -226,7 +226,7 @@ class Mailbox:
         Open the mailbox
         """
         logger.info(f"Open mailbox (U:{self.user} P:*********)")
-        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=self.config["IMAP4_PORT"], timeout=None)
+        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=self.config["imap4_port"], timeout=None)
         mailbox.login(self.user, self.password)
 
         return mailbox

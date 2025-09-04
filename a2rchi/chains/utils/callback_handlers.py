@@ -5,7 +5,6 @@ import os
 
 from a2rchi.utils.config_loader import load_config
 
-config = load_config()["chains"]["base"]
 data_path = load_config()["global"]["DATA_PATH"]
 
 class PromptLogger(BaseCallbackHandler):
@@ -13,7 +12,7 @@ class PromptLogger(BaseCallbackHandler):
     
     def __init__(
             self,
-            logfile: str = os.path.join(data_path, config["logging"]["input_output_filename"])
+            logfile: str
         ):
         self.logfile = logfile
         os.makedirs(os.path.dirname(logfile), exist_ok=True)

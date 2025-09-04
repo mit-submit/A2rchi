@@ -1,4 +1,4 @@
-from a2rchi.chains.chain import Chain
+from a2rchi.chains.a2rchi import A2rchi
 from a2rchi.utils.config_loader import load_config, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
@@ -128,7 +128,7 @@ class ChatWrapper:
 
         # initialize lock and chain
         self.lock = Lock()
-        self.chain = Chain()
+        self.chain = A2rchi()
         self.number_of_queries = 0
 
         # initialize config_id to be None
@@ -366,6 +366,7 @@ class ChatWrapper:
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
+            # TODO this is not correct..
             # get similarity score to see how close the input is to the source
             # - low score means very close (it's a distance between embedding vectors approximated
             #   by an approximate k-nearest neighbors algorithm called HNSW)
@@ -387,8 +388,8 @@ class ChatWrapper:
                     source = source_hash.split('/')[-1].split('.')[0]
 
             # if the score is low enough, include the source as a link, otherwise give just the answer
-            embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
-            similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
+            embedding_name = self.config["data_manager"]["embeddings"]["embedding_name"]
+            similarity_score_reference = self.config["data_manager"]["embeddings"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
             logger.debug(f"Similarity score reference:  {similarity_score_reference}")
             logger.debug(f"Similarity score:  {top_score}")
             link = ""
@@ -520,6 +521,7 @@ class FlaskAppWrapper(object):
             f.write(config_str)
 
         # parse prompts and write them to their respective locations
+        # TODO fix
         main_prompt = request.json.get('main_prompt')
         with open(MAIN_PROMPT_FILE, 'w') as f:
             f.write(main_prompt)
@@ -800,6 +802,8 @@ class FlaskAppWrapper(object):
             print(f"ERROR in list_docs: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
+    # TODO should this call a2rchi rather than connect to db directly?
+    # in any case, code-duplication should be elminated here
     def search_docs(self):
         """
         API endpoint to search for the nearest documents to a given query with pagination.

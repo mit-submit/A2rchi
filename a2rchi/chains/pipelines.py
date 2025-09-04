@@ -110,7 +110,8 @@ class QAPipeline(BasePipeline):
             chain=self.condense_prompt | self.llm | StrOutputParser(),
             llm=self.condense_llm,
             prompt=self.prompts['condense_prompt'],
-            required_input_variables=['history']
+            required_input_variables=['history'],
+            max_tokens=self.pipeline_config['max_tokens']
         )
         self.chat_chain = ChainWrapper(
             chain = create_stuff_documents_chain(
@@ -121,7 +122,8 @@ class QAPipeline(BasePipeline):
             llm=self.llm,
             prompt=self.prompts['qa_prompt'],
             required_input_variables=['question'],
-            unprunable_input_variables=['question']
+            unprunable_input_variables=['question'],
+            max_tokens=self.pipeline_config['max_tokens']
         )
 
     def _init_llms(self):
@@ -174,6 +176,7 @@ class QAPipeline(BasePipeline):
             search_kwargs={
                 "k": self.dm_config["data_manager"]["num_documents_to_retrieve"]
             },
+            dm_config=self.dm_config
         )
 
     def invoke(self, *args, **kwargs) -> Dict[str, Any]:

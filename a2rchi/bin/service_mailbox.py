@@ -23,10 +23,10 @@ password = read_secret('IMAP_PW')
 time.sleep(60)
 
 print("Starting Mailbox Service")
-config = load_config()["utils"]
+mailbox_config = load_config()["utils"]["mailbox"]
 redmine = redmine.Redmine('Redmine_Helpdesk')
 
 while True:
     mail = mailbox.Mailbox(user = user, password = password)
     mail.process_messages(redmine)
-    time.sleep(int(config["mailbox"]["mailbox_update_time"]))
+    time.sleep(int(mailbox_config["mailbox_update_time"]))

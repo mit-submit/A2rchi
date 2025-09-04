@@ -8,6 +8,13 @@ global:
     {%- for file_type in global.ACCEPTED_FILES | default(['.txt', '.html', '.pdf']) %}
     - "{{ file_type }}"
     {%- endfor %}
+  ROLES:
+    {%- for role in chains.base.ROLES | default(['User', 'A2rchi', 'Expert']) %}
+    - {{ role }}
+    {%- endfor %}
+    logging:
+      input_output_filename: "{{ chains.base.logging.input_output_filename | default('chain_input_output.log', true) }}"
+  verbosity: {{ verbosity | default(3, true) }}
 
 interfaces:
   chat_app:
@@ -74,16 +81,10 @@ data_manager:
   num_documents_to_retrieve: {{ data_manager.num_documents_to_retrieve | default(5, true) }}
 
 a2rchi:
-  base:
-    ROLES:
-      {%- for role in chains.base.ROLES | default(['User', 'A2rchi', 'Expert']) %}
-      - {{ role }}
-      {%- endfor %}
-    logging:
-      input_output_filename: "{{ chains.base.logging.input_output_filename | default('chain_input_output.log', true) }}"
   pipeline: {{ a2rchi.pipeline | default('QAPipeline', true) }}
   pipeline_map:
     QAPipeline:
+      max_tokens: {{ a2rchi.pipeline_map.QAPipeline.max_tokens | default(10000, true) }}
       prompts:
         condense_prompt: "{{ '/root/A2rchi/condense.prompt' if a2rchi.pipeline_map.QAPipeline.condense_model else null }}"
         chat_prompt: "{{ '/root/A2rchi/main.prompt' if a2rchi.pipeline_map.QAPipeline.chat_model else null }}"
@@ -99,7 +100,6 @@ a2rchi:
     #   GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
     #   GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
     #   GRADING_FINAL_GRADE_MODEL_NAME: {{ chains.chain.GRADING_FINAL_GRADE_MODEL_NAME | default('null', true) }}
-  max_model_tokens: {{ a2rchi.max_model_tokens | default(10000, true) }}
   model_class_map:
     AnthropicLLM:
       class: AnthropicLLM
@@ -218,15 +218,15 @@ utils:
     redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
     answer_tag: {{ utils.redmine.answer_tag | default('-- A2rchi -- Resolving email was sent', true)}}
   mailbox: 
-    IMAP4_PORT:  {{ utils.mailbox.IMAP4_PORT | default(143, true) }}
+    imap4_port:  {{ utils.mailbox.imap4_port | default(143, true) }}
     mailbox_update_time: {{ utils.mailbox.mailbox_update_time | default(10, true) }}
   jira:
-    JIRA_URL: {{ utils.jira.JIRA_URL }}
-    JIRA_PROJECTS: 
-      {%- for project in utils.jira.JIRA_PROJECTS %}
+    url: {{ utils.jira.url }}
+    projects: 
+      {%- for project in utils.jira.projects %}
       - {{ project }}
       {%- endfor %}
-    ANONYMIZE_DATA: {{ utils.jira.ANONYMIZE_DATA | default(true, true) }}
+    anonymize_data: {{ utils.jira.anonymize_data | default(true, true) }}
   anonymizer:
     nlp_model: {{ utils.anonymizer.nlp_model | default('en_core_web_sm', true) }}
     excluded_words: 
@@ -244,5 +244,3 @@ utils:
     email_pattern: '{{ utils.anonymizer.email_pattern | default("[\\w\\.-]+@[\\w\\.-]+\\.\\w+") }}'
     # This is a JIRA specific username pattern
     username_pattern: '{{ utils.anonymizer.username_pattern | default("\\[~[^\\]]+\\]") }}'
-
-verbosity: {{ verbosity | default(3, true) }}

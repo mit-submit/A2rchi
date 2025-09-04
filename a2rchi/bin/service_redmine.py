@@ -20,11 +20,11 @@ os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 time.sleep(30)
 
 print("Starting Redmine Service")
-config = load_config()["utils"]
+redmine_config = load_config()["utils"]["redmine"]
 redmine = redmine.Redmine('Redmine_Helpdesk')
 
 while True:
     redmine.load()
     redmine.process_new_issues()
     redmine.process_resolved_issues()
-    time.sleep(int(config["redmine"]["redmine_update_time"]))
+    time.sleep(int(redmine_config["redmine_update_time"]))

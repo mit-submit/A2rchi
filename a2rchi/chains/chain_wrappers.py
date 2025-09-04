@@ -5,14 +5,13 @@ from langchain_core.prompts.base import BasePromptTemplate
 
 from a2rchi.chains.utils.callback_handlers import PromptLogger
 from a2rchi.chains.utils.token_limiter import TokenLimiter
-from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.config_loader import load_global_config
 from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 # DEFINITIONS
-config = load_config()["chains"]["base"]
-data_path = load_config()["global"]["DATA_PATH"]
+global_configs = load_global_config()["global"]
 
 class ChainWrapper:
     """
@@ -27,6 +26,7 @@ class ChainWrapper:
             prompt: BasePromptTemplate,
             required_input_variables: List[str] = ['question'],
             unprunable_input_variables: Optional[List[str]] = [],
+            max_tokens: int = 1e10
         ):
         self.chain = chain
         self.llm = llm
@@ -34,8 +34,14 @@ class ChainWrapper:
         self.unprunable_input_variables = unprunable_input_variables
         self.prompt = self._check_prompt(prompt)
 
-        self.prompt_logger = PromptLogger(os.path.join(data_path, config["logging"]["input_output_filename"]))
-        self.token_limiter = TokenLimiter(llm=self.llm, prompt=self.prompt)
+        self.prompt_logger = PromptLogger(
+            os.path.join(global_configs["DATA_PATH"], config["logging"]["input_output_filename"])
+        )
+        self.token_limiter = TokenLimiter(
+            llm=self.llm,
+            prompt=self.prompt,
+            max_tokens=max_tokens
+        )
 
     def _check_prompt(self, prompt: BasePromptTemplate) -> BasePromptTemplate:
         """

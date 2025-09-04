@@ -1,12 +1,12 @@
 import os
 import getpass, imaplib, email
 
-from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.config_loader import load_utils_config
 from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-config = load_config()["utils"]["mailbox"]
+mailbox_config = load_utils_config()["mailbox"]
 
 def get_charsets(msg):
     charsets = set({})
@@ -65,7 +65,7 @@ def get_email_body(msg):
     return body, body_html  
 
 
-M = imaplib.IMAP4(host='ppc.mit.edu', port=config["IMAP4_PORT"], timeout=None)
+M = imaplib.IMAP4(host='ppc.mit.edu', port=mailbox_config["imap4_port"], timeout=None)
 #M.login(getpass.getuser(),getpass.getpass())
 M.login('cmsprod',getpass.getpass())
 M.select()

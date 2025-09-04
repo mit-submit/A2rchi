@@ -51,3 +51,36 @@ def load_config(map: bool = False):
                 config["utils"]["sso"]["SSO_CLASS_MAP"][sso_class]["class"] = SSO_MAPPING[sso_class]
 
     return config
+
+def load_global_config():
+    """
+    Load the global part of the config.yaml file.
+    This is assumed to be static.
+    """
+
+    with open(CONFIG_PATH, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    return config["global"]
+
+def load_utils_config():
+    """
+    Load the utils part of the config.yaml file.
+    This is assumed to be static.
+    """
+
+    with open(CONFIG_PATH, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    return config["utils"]
+
+def load_data_manager_config():
+    """
+    Load the data_manager part of the config.yaml file.
+    This is assumed to be static.
+    """
+
+    with open(CONFIG_PATH, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    return config["data_manager"]

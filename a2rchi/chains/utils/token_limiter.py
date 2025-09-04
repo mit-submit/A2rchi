@@ -3,12 +3,10 @@ from langchain_core.documents import Document
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
 
-from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 from a2rchi.chains.utils import history_utils
 
 logger = get_logger(__name__)
-config = load_config(map=False)
 
 class TokenLimiter:
     def __init__(
@@ -68,14 +66,9 @@ class TokenLimiter:
         2. upper bound set by TokenLimiter class
         3. upper bounf set by LLM model (if we can find it)
         """
-        config_max_tokens = self.get_max_tokens_from_config()
         llm_max_tokens = self.get_max_tokens_from_llm()
         max_tokens = self.safe_token_value(max_tokens)
-        return min(max_tokens, config_max_tokens, llm_max_tokens)
-            
-    def get_max_tokens_from_config(self) -> int:
-        config_max_tokens = config.get('chains', {}).get('chain', {}).get("MAX_MODEL_TOKENS", 1e10)
-        return self.safe_token_value(config_max_tokens)
+        return min(max_tokens, llm_max_tokens)
 
     def get_max_tokens_from_llm(self) -> int:
         llm_max_tokens = getattr(self.llm, 'max_tokens', 1e10)

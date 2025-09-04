@@ -32,4 +32,4 @@ run_dynamically = data_manager_config["use_HTTP_chromadb_client"]
 
 if run_dynamically:
     app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))
-    app.run(debug=uploader_config["flask_debug_mode"], port=uploader_config["PORT"], host=uploader_config["HOST"])
+    app.run(debug=uploader_config["flask_debug_mode"], port=uploader_config["port"], host=uploader_config["host"])
