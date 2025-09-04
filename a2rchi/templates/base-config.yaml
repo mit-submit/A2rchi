@@ -71,6 +71,7 @@ data_manager:
         encode_kwargs: 
           normalize_embeddings: {{ data_manager.embedding_class_map.HuggingFaceEmbeddings.kwargs.encode_kwargs.normalize_embeddings | default(true, true) }}
       similarity_score_reference: {{ data_manager.embedding_class_map.HuggingFaceEmbeddings.similarity_score_reference | default(10, true) }}
+      query_embedding_instructions: {{ data_manager.query_embedding_instructions | default("null", true) }}
   chunk_size: {{ data_manager.chunk_size | default(1000, true) }}
   chunk_overlap: {{ data_manager.chunk_overlap | default(0, true) }}
   use_HTTP_chromadb_client: {{ data_manager.use_HTTP_chromadb_client | default(true, true) }}
@@ -95,8 +96,8 @@ a2rchi:
     QAPipeline:
       max_tokens: {{ a2rchi.pipeline_map.QAPipeline.max_tokens | default(10000, true) }}
       prompts:
-        condense_prompt: "{{ '/root/A2rchi/condense.prompt' if a2rchi.pipeline_map.QAPipeline.condense_model else null }}"
-        chat_prompt: "{{ '/root/A2rchi/main.prompt' if a2rchi.pipeline_map.QAPipeline.chat_model else null }}"
+        condense_prompt: "{{ '/root/A2rchi/condense.prompt' if a2rchi.pipeline_map.QAPipeline.condense_prompt else null }}"
+        chat_prompt: "{{ '/root/A2rchi/main.prompt' if a2rchi.pipeline_map.QAPipeline.chat_prompt else null }}"
       models:
         condense_model: {{ a2rchi.pipeline_map.QAPipeline.models.condense_model | default('DumbLLM', true) }}
         chat_model: {{ a2rchi.pipeline_map.QAPipeline.models.chat_model | default('DumbLLM', true) }}

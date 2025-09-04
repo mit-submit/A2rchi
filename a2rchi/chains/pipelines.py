@@ -90,7 +90,7 @@ class QAPipeline(BasePipeline):
         self.config = config
         self.a2rchi_config = self.config["a2rchi"]
         self.pipeline_config = self.a2rchi_config['pipeline_map']['QAPipeline']
-        self.dm_config = self.config["utils"]["data_manager"]
+        self.dm_config = self.config["data_manager"]
 
         # initialize prompts
         self.prompts = {
@@ -130,9 +130,11 @@ class QAPipeline(BasePipeline):
         Initalize LLM models from the config.
         """
         model_class_map = self.a2rchi_config["model_class_map"]
-        chat_model = self.a2rchi_config.get("chat_model", None)
-        condense_model = self.a2rchi_config.get("condense_model", chat_model)
-        self.llm = model_class_map[chat_model]["class"](**model_class_map[chat_model]["kwargs"])
+        chat_model = self.pipeline_config['models']['chat_model']
+        condense_model = self.pipeline_config['models'].get("condense_model", chat_model)
+        self.llm = model_class_map[chat_model]["class"](
+            **model_class_map[chat_model]["kwargs"]
+        )
         if condense_model == chat_model:
             self.condense_llm = self.llm
         else:

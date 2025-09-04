@@ -16,8 +16,8 @@ class A2rchi():
     """
 
     def __init__(self):
-        self._init_vectorstore_params()
         self.update()
+        self._init_vectorstore_params()
 
     def update(self):
         """
@@ -26,7 +26,6 @@ class A2rchi():
         """
         logger.debug("Loading config")
         self.config = load_config(map=True)
-
         self.pipeline = self._create_pipeline_instance(
             self.config["a2rchi"]["pipeline"],
             config=self.config

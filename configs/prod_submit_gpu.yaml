@@ -5,28 +5,25 @@ global:
 
 locations_of_secrets:
   - /home/submit/lavezzo/a2rchi/A2rchi/secrets/
-  - ~/.secrets/api_tokens
-  - ~/.secrets/salts_and_internal_passwords
-  - ~/.secrets/submit_cleo_and_mailer_passwords
 
 data_manager:
   input_lists:  
-      - configs/submit.list
-      - configs/miscellanea.list
+    - configs/submit.list
+    - configs/miscellanea.list
+  chromadb_port: 8000
+  chromadb_external_port: 8001
+  embedding_name: HuggingFaceEmbeddings
 
 a2rchi:
   pipeline_map:
     QAPipeline:
       prompts:
         condense_prompt: configs/prompts/condense.prompt  
-        qa_prompt: configs/prompts/submit.prompt  
+        chat_prompt: configs/prompts/submit.prompt  
       models:
-        qa_model: DumbLLM
-        condense_model: DumbLLM
+        chat_model: HuggingFaceOpenLLM
+        condense_model: HuggingFaceOpenLLM
 
-utils:
-  embeddings:
-    EMBEDDING_NAME: HuggingFaceEmbeddings
 
 interfaces:
   chat_app:
