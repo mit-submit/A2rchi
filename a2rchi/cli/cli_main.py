@@ -13,6 +13,11 @@ import time
 import shlex
 import threading
 
+from a2rchi.utils.logging import setup_logging, get_logger
+
+setup_logging()
+logger = get_logger(__name__)
+
 # DEFINITIONS
 env = Environment(
     loader=PackageLoader("a2rchi"),
@@ -105,14 +110,14 @@ def _prepare_secret(a2rchi_name_dir, secret_name, locations_of_secrets):
 def _prepare_grading_rubrics(a2rchi_name_dir, rubric_dir, num_problems):
         rubrics = []
         for problem in range(1, num_problems + 1):
-            _print_msg(f"Preparing rubric for problem {problem}")
+            logger.info(f"Preparing rubric for problem {problem}")
             rubric_path = os.path.expanduser(os.path.join(rubric_dir, f"solution_with_rubric_{problem}.txt"))
             if not os.path.isfile(rubric_path):
                 raise FileNotFoundError(f"Rubric file for problem {problem} not found at {rubric_path}")
             target_rubric_path = os.path.join(a2rchi_name_dir, f"solution_with_rubric_{problem}.txt")
             shutil.copyfile(rubric_path, target_rubric_path)
             rubrics.append(f"solution_with_rubric_{problem}")
-            _print_msg(f"Rubric for problem {problem} prepared at {target_rubric_path}.")
+            logger.info(f"Rubric for problem {problem} prepared at {target_rubric_path}.")
 
         return rubrics
 
@@ -148,7 +153,7 @@ def _run_bash_command(command_str: str, verbose=False, cwd=None) -> Tuple[str, s
         for line in iter(stream.readline, ''):
             collector.append(line)
             if verbose:
-                _print_msg(f"{line}")  # keep formatting tight
+                logger.info(f"{line}")  # keep formatting tight
         stream.close()
 
     # start threads for non-blocking reads
@@ -185,11 +190,11 @@ def _create_volume(volume_name, podman=False):
     for line in stdout.split("\n"):
         # return early if the volume exists
         if volume_name in line:
-            _print_msg(f"Volume '{volume_name}' already exists. No action needed.")
+            logger.info(f"Volume '{volume_name}' already exists. No action needed.")
             return
 
     # otherwise, create the volume
-    _print_msg(f"Creating volume: {volume_name}")
+    logger.info(f"Creating volume: {volume_name}")
     _, stderr = _run_bash_command(create_volume)
     if stderr:
         raise BashCommandException(stderr)
@@ -220,10 +225,6 @@ def _parse_gpu_ids_option(ctx, param, value):
         raise click.BadParameter('--gpu-ids option must be "all" (or equivalently just the --gpu flag) or comma-separated integers (e.g., "0,1") to specify which GPUs to use (try nvidia-smi to see available GPUs and respective available memory)')
 
 
-def _print_msg(msg):
-    print(f"[a2rchi]>> {msg}")
-
-
 @click.group()
 def cli():
     pass
@@ -245,7 +246,6 @@ def cli():
 @click.option('--gpu-ids', 'gpu_ids', callback=_parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs (integers), e.g., "0,1". Current support for podman to do this.')
 @click.option('--tag', '-t', 'image_tag', type=str, default=2000, help="Tag for the collection of images you will create to build chat, chroma, and any other specified services")
 @click.option('--hostmode', '-hm', 'host_mode', type=bool, default=False, help="Boolean to use host mode networking for the containers.")
-@click.option('--verbosity', '-v', 'verbosity', type=int, default=3, help="Set verbosity level for python's logging module. Default is 3. Mapping is 0: CRITICAL, 1: ERROR, 2: WARNING, 3: INFO, 4: DEBUG.")
 @click.option('--force', '-f', 'force', is_flag=True, default=False, help="runs a2rchi delete with the same name before running create")
 @click.option('--dry', '-d', 'dry', is_flag=True, default=False, help="doesn't run A2rchi and just spits out the config")
 def create(
@@ -264,7 +264,6 @@ def create(
     gpu_ids,
     image_tag,
     host_mode,
-    verbosity,
     force,
     dry
 ):
@@ -316,7 +315,7 @@ def create(
 
     # create docker volumes; these commands will no-op if they already exist
     if not dry:
-        _print_msg("Creating volumes")
+        logger.info("Creating volumes")
         _create_volume(f"a2rchi-{name}", podman=use_podman)
         _create_volume(f"a2rchi-pg-{name}", podman=use_podman)
         if gpu_ids or all_gpus:
@@ -345,8 +344,6 @@ def create(
             'chains.prompts.IMAGE_PROCESSING_PROMPT', 'chains.prompts.GRADING_FINAL_GRADE_PROMPT',
             'chains.chain.IMAGE_PROCESSING_MODEL_NAME', 'chains.chain.GRADING_FINAL_GRADE_MODEL_NAME',
         ]
-    
-
     # load user configuration of A2rchi
     with open(a2rchi_config_filepath, 'r') as f:
         a2rchi_config = yaml.load(f, Loader=yaml.FullLoader)
@@ -369,14 +366,14 @@ def create(
 
         compose_template_vars["grader_volume_name"] = f"a2rchi-grader-{name}"
         if not dry:
-            _print_msg("Preparing Grader Service")
+            logger.info("Preparing Grader Service")
             _create_volume(compose_template_vars["grader_volume_name"], podman=use_podman)
             _prepare_secret(a2rchi_name_dir, "admin_password", locations_of_secrets)
 
             # prepare grader app logins file (users.csv)
             users_csv_dir = a2rchi_config['interfaces']['grader_app']['local_users_csv_dir']
             users_csv_path = os.path.expanduser(os.path.join(users_csv_dir, "users.csv"))
-            _print_msg(f"Preparing users.csv from {users_csv_path}")
+            logger.info(f"Preparing users.csv from {users_csv_path}")
         if not os.path.isfile(users_csv_path):
             raise FileNotFoundError(f"users.csv file not found in directory {users_csv_dir}")
         if not dry:
@@ -407,7 +404,7 @@ def create(
         grafana_pg_password = os.environ["GRAFANA_PG_PASSWORD"]
 
         if not dry:
-            _print_msg("Preparing Grafana")
+            logger.info("Preparing Grafana")
         # add grafana to compose and SQL init
         compose_template_vars["grafana_volume_name"] = f"a2rchi-grafana-{name}"
         compose_template_vars["grafana_image"] = f"grafana-{name}"
@@ -420,7 +417,7 @@ def create(
             grafana_datasources = grafana_datasources_template.render({"grafana_pg_password": grafana_pg_password})
 
             # write complete datasources file to folder
-        
+
             os.makedirs(os.path.join(a2rchi_name_dir, "grafana"), exist_ok=True)
             with open(os.path.join(a2rchi_name_dir, "grafana", "datasources.yaml"), 'w') as f:
                 #yaml.dump(grafana_datasources, f)
@@ -433,7 +430,6 @@ def create(
                 # yaml.dump(grafana_dashboards, f)
                 f.write(grafana_dashboards)
 
-    
             a2rchi_dashboards_template = env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
             a2rchi_dashboards = a2rchi_dashboards_template.render(
                 prod_config_name=a2rchi_config["name"],
@@ -456,30 +452,30 @@ def create(
 
     compose_template_vars["use_uploader_service"] = use_uploader_service
     if use_uploader_service:
-         if not dry: 
-             _print_msg("Preparing Uploader Service")
+        if not dry:
+            logger.info("Preparing Uploader Service")
 
-         # Add uploader service to compose
-         compose_template_vars["use_uploader_service"] = use_uploader_service
-         compose_template_vars["uploader_image"] = f"uploader-{name}"
-         compose_template_vars["uploader_tag"] = tag
+        # Add uploader service to compose
+        compose_template_vars["use_uploader_service"] = use_uploader_service
+        compose_template_vars["uploader_image"] = f"uploader-{name}"
+        compose_template_vars["uploader_tag"] = tag
 
-         # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
-         # Uploader service ports
-         uploader_port_host = a2rchi_config.get('interfaces', {}).get('uploader_app', {}).get('EXTERNAL_PORT', 5003)
-         uploader_port_container = a2rchi_config.get('interfaces', {}).get('uploader_app', {}).get('PORT', 5001)
-         compose_template_vars['uploader_port_host'] = uploader_port_host
-         compose_template_vars['uploader_port_container'] = uploader_port_container
+        # Extract ports from configuration and add to compose_template_vars #TODO: remove default values from cli_main.py
+        # Uploader service ports
+        uploader_port_host = a2rchi_config.get('interfaces', {}).get('uploader_app', {}).get('EXTERNAL_PORT', 5003)
+        uploader_port_container = a2rchi_config.get('interfaces', {}).get('uploader_app', {}).get('PORT', 5001)
+        compose_template_vars['uploader_port_host'] = uploader_port_host
+        compose_template_vars['uploader_port_container'] = uploader_port_container
 
-         if not dry: 
-             _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
-             _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
+        if not dry:
+            _prepare_secret(a2rchi_name_dir, "flask_uploader_app_secret_key", locations_of_secrets)
+            _prepare_secret(a2rchi_name_dir, "uploader_salt", locations_of_secrets)
 
 
     compose_template_vars["use_piazza_service"] = use_piazza_service
     if use_piazza_service:
         if not dry:
-            _print_msg("Preparing Piazza Service")
+            logger.info("Preparing Piazza Service")
 
         compose_template_vars["piazza_image"] = f"piazza-{name}"
         compose_template_vars["piazza_tag"] = tag
@@ -495,8 +491,8 @@ def create(
     if use_mattermost_service:
         compose_template_vars["mattermost_image"] = f"mattermost-{name}"
         compose_template_vars["mattermost_tag"] = tag
-        if not dry: 
-            _print_msg("Preparing Mattermost Service")
+        if not dry:
+            logger.info("Preparing Mattermost Service")
             # mattermost secrets
             _prepare_secret(a2rchi_name_dir, "mattermost_webhook", locations_of_secrets)
             _prepare_secret(a2rchi_name_dir, "mattermost_channel_id_read", locations_of_secrets)
@@ -514,8 +510,8 @@ def create(
 
     compose_template_vars["use_cleo_and_mailer"] = use_cleo_and_mailer
     if use_cleo_and_mailer:
-        if not dry: 
-          _print_msg("Preparing Cleo and Emailer Service")
+        if not dry:
+          logger.info("Preparing Cleo and Emailer Service")
 
         # Add uploader service to compose
         compose_template_vars["redminetickets"] = use_cleo_and_mailer
@@ -539,14 +535,14 @@ def create(
             _prepare_secret(a2rchi_name_dir, "sender_user", locations_of_secrets)
             _prepare_secret(a2rchi_name_dir, "sender_pw", locations_of_secrets)
 
-    
+
     if not dry and use_jira:
         _prepare_secret(a2rchi_name_dir, "jira_pat", locations_of_secrets)
         compose_template_vars["jira"] = True
-    
 
-    if not dry: 
-        _print_msg("Preparing Postgres")
+
+    if not dry:
+        logger.info("Preparing Postgres")
             # prepare init.sql for postgres initialization
         init_sql_template = env.get_template(BASE_INIT_SQL_TEMPLATE)
         init_sql = init_sql_template.render({
@@ -555,7 +551,7 @@ def create(
         })
         with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
             f.write(init_sql)
-    
+
     model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not use_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
     chain_config = a2rchi_config["chains"]["chain"]
 
@@ -568,7 +564,7 @@ def create(
             _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
             compose_template_vars["anthropic"] = True
         if  dry and "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
-            _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
+            logger.warning("You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
             #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
             #compose_template_vars["huggingface"] = True
 
@@ -577,13 +573,13 @@ def create(
         # SSO secrets
         if  a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
             compose_template_vars["sso"] = True
-            _print_msg("Preparing SSO secrets")
+            logger.info("Preparing SSO secrets")
             _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
             _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
 
         if a2rchi_config.get("utils",{}).get("git", {}).get("ENABLED", False):
             compose_template_vars["git"] = True
-            _print_msg("Preparing GIT secrets")
+            logger.info("Preparing GIT secrets")
             _prepare_secret(a2rchi_name_dir, "git_username", locations_of_secrets)
             _prepare_secret(a2rchi_name_dir, "git_token", locations_of_secrets)
 
@@ -598,12 +594,12 @@ def create(
                 shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "grading_summary.prompt"))
             except KeyError:
                 compose_template_vars["summary"] = False
-                _print_msg("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
+                logger.info("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
             try:
                 shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_ANALYSIS_PROMPT"], os.path.join(a2rchi_name_dir, "grading_analysis.prompt"))
             except KeyError:
                 compose_template_vars["analysis"] = False
-                _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
+                logger.info("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
         else:
             shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
             shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
@@ -619,14 +615,13 @@ def create(
 
     # load and render config template
     config_template = env.get_template(BASE_CONFIG_TEMPLATE)
-    config = config_template.render(verbosity=verbosity, **a2rchi_config)
+    config = config_template.render(**a2rchi_config)
 
     if dry:
       print(config)
     else:
 
       # write final templated configuration
-      
       with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
           f.write(config)
 
@@ -648,7 +643,7 @@ def create(
       compose_template_vars["grader_port_container"] = filled_config.get('interfaces').get('grader_app').get('PORT')
 
       # load compose template
-      _print_msg("Preparing Compose")
+      logger.info("Preparing Compose")
       compose_template = env.get_template(BASE_COMPOSE_TEMPLATE)
       compose = compose_template.render({**compose_template_vars})
       with open(os.path.join(a2rchi_name_dir, "compose.yaml"), 'w') as f:
@@ -666,9 +661,9 @@ def create(
           compose_up = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
       else:
           compose_up = f"docker compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
-      _print_msg("Starting compose")
+      logger.info("Starting compose")
       stdout, stderr = _run_bash_command(compose_up, verbose=True, cwd=a2rchi_name_dir)
-      _print_msg("DONE compose")
+      logger.info("DONE compose")
 
 @click.command()
 @click.option('--name', type=str, help="Name of the a2rchi deployment.")
@@ -707,20 +702,20 @@ def delete(name, rmi):
     compose_stopped = False
     if is_installed("podman"):
         if is_running("podman compose"):
-            _print_msg("Stopping podman compose deployment")
+            logger.info("Stopping podman compose deployment")
             _run_bash_command(f"podman compose -f {compose_file} down {extra_args}")
             compose_stopped = True
     if is_installed("docker"):
         if is_running("docker compose"):
-            _print_msg("Stopping docker compose deployment")
+            logger.info("Stopping docker compose deployment")
             _run_bash_command(f"docker compose -f {compose_file} down {extra_args}")
             compose_stopped = True
 
     if not compose_stopped:
-        _print_msg("No running docker or podman compose deployment found, or neither is installed.")
+        logger.info("No running docker or podman compose deployment found, or neither is installed.")
 
     # remove files in a2rchi directory
-    _print_msg("Removing files in a2rchi directory")
+    logger.info("Removing files in a2rchi directory")
     _run_bash_command(f"rm -rf {a2rchi_name_dir}")
 
 
@@ -763,7 +758,7 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
     shutil.copyfile(a2rchi_config["main_prompt"], os.path.join(a2rchi_name_dir, "main.prompt"))
     shutil.copyfile(a2rchi_config["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
 
-    _print_msg("Updating config")
+    logger.info("Updating config")
 
     # read prompts
     main_prompt, condense_prompt = _read_prompts(a2rchi_config)
@@ -780,7 +775,7 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
             "condense_prompt": condense_prompt,
         }
     )
-    _print_msg(resp.json()['response'])
+    logger.info(resp.json()['response'])
 
 
 def main():
