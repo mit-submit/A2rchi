@@ -12,69 +12,134 @@ from typing import Any, Dict, List, Optional
 import os 
 
 from a2rchi.chains.utils.token_limiter import TokenLimiter
-from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 from a2rchi.chains.prompts import PROMPTS
 from a2rchi.chains.models import print_model_params
 from a2rchi.chains.retrievers import SubMITRetriever, GradingRetriever
 from a2rchi.chains.utils import history_utils
 from a2rchi.chains.chain_wrappers import ChainWrapper
+from a2rchi.chains.utils.prompt_validator import ValidatedPromptTemplate
+from a2rchi.chains.utils.prompt_utils import read_prompt
 
 logger = get_logger(__name__)
 
-# DEFINITIONS
-config = load_config()["chains"]["base"]
-data_path = load_config()["global"]["DATA_PATH"]
-
-class QAWorkflow:
+class BasePipeline:
     """
-    Simple question and answer workflow with document retrieval.
+    Basic structure of a Pipeline.
+
+    Methods:
+    --------
+    update_retriever(vectorstore)
+        Updates the retriever with a new vectorstore object
+
+    invoke()
+        Calls on the Pipeline with an user query, and other objects
+        like chat history, images, etc. as per your Pipeline inputs.
+
+    Returns:
+    --------
+    answer : str
+        Answer to the user query.
+    documents : list
+        List of relevant sources to the user query.
+
+    Examples:
+    >>> pipeline = BasePipeline()
+    >>> answer, docs = pipeline.invoke("What do we hold of the past?")
+
     """
 
     def __init__(
         self,
+        config,
         *args,
         **kwargs
     ):
-        self.config = load_config(map=True)
+        self.config = config
 
-        self.chain_config = self.config["chains"]["chain"]
-        self.utils_config = self.config["utils"]
+    def update_retriever(self, vectorstore):
+        self.retriever = None
 
-        # grab prompts
-        self.qa_prompt = PROMPTS["MAIN_PROMPT"]
-        self.condense_prompt = PROMPTS["CONDENSING_PROMPT"]
+    def invoke(self, *args, **kwargs)  -> Dict[str, Any]:
+        return {
+            "answer": "Stat rosa pristina nomine, nomina nuda tenemus.",
+            "documents": []
+        }
 
-        # grab models
-        model_class_map = self.chain_config["MODEL_CLASS_MAP"]
-        model_name = self.chain_config.get("MODEL_NAME", None)
-        condense_model_name = self.chain_config.get("CONDENSE_MODEL_NAME", model_name)
-        self.llm = model_class_map[model_name]["class"](**model_class_map[model_name]["kwargs"])
-        if condense_model_name == model_name:
-            self.condense_llm = self.llm
-        else:
-            self.condense_llm = model_class_map[condense_model_name]["class"](**model_class_map[condense_model_name]["kwargs"])
-        print_model_params("qa", model_name, model_class_map)
-        print_model_params("condense", condense_model_name, model_class_map)
+class QAPipeline(BasePipeline):
+    """
+    Simple question and answer Pipeline with document retrieval.
+
+    Graph:
+    (question) -> (condense prompt) -> (condense LLM) -> (condensed output)
+    (condensed_output) -> (retriever) -> (documents)
+    (documents, question, ...) -> (QA LLM) -> (answer)
+
+    Returns:
+    answer: LLM answer to question
+    documents: retrieved documents
+    condensed_output: LLM answer to condense prompt
+    """
+
+    def __init__(
+        self,
+        config,
+        *args,
+        **kwargs
+    ):
+
+        self.config = config
+        self.a2rchi_config = self.config["a2rchi"]
+        self.pipeline_config = self.a2rchi_config['pipeline_map']['QAPipeline']
+        self.dm_config = self.config["utils"]["data_manager"]
+
+        # initialize prompts
+        self.prompts = {
+            name: ValidatedPromptTemplate(
+                name=name,
+                prompt_template=read_prompt(path),
+            )
+            for name, path in self.pipeline_config['prompts'].items() if path != ""
+        }
+
+        # initialize models
+        self._init_llms()
 
         # initialize chains
         self.condense_chain = ChainWrapper(
             chain=self.condense_prompt | self.llm | StrOutputParser(),
             llm=self.condense_llm,
-            prompt=self.condense_prompt,
+            prompt=self.prompts['condense_prompt'],
             required_input_variables=['history']
         )
-        self.answer_chain = ChainWrapper(
+        self.chat_chain = ChainWrapper(
             chain = create_stuff_documents_chain(
                 llm=self.llm,
-                prompt=self.qa_prompt,
+                prompt=self.prompts['qa_prompt'],
                 document_variable_name="retriever_output",
             ),
             llm=self.llm,
-            prompt=self.qa_prompt,
+            prompt=self.prompts['qa_prompt'],
             required_input_variables=['question'],
             unprunable_input_variables=['question']
         )
+
+    def _init_llms(self):
+        """
+        Initalize LLM models from the config.
+        """
+        model_class_map = self.a2rchi_config["model_class_map"]
+        chat_model = self.a2rchi_config.get("chat_model", None)
+        condense_model = self.a2rchi_config.get("condense_model", chat_model)
+        self.llm = model_class_map[chat_model]["class"](**model_class_map[chat_model]["kwargs"])
+        if condense_model == chat_model:
+            self.condense_llm = self.llm
+        else:
+            self.condense_llm = model_class_map[condense_model]["class"](
+                **model_class_map[condense_model]["kwargs"]
+            )
+        print_model_params("qa", chat_model, model_class_map)
+        print_model_params("condense", condense_model, model_class_map)
 
     def _prepare_inputs(history, **kwargs) -> Dict[str, Any]:
         """
@@ -106,21 +171,26 @@ class QAWorkflow:
         """
         self.retriever = SubMITRetriever(
             vectorstore=vectorstore,
-            search_kwargs={"k": self.utils_config["data_manager"]["num_documents_to_retrieve"]},
+            search_kwargs={
+                "k": self.dm_config["data_manager"]["num_documents_to_retrieve"]
+            },
         )
 
-    def invoke(self, history, *args, **kwargs) -> Dict[str, Any]:
+    def invoke(self, *args, **kwargs) -> Dict[str, Any]:
         """
-        Execute the Workflow.
+        Execute the Pipeline.
         """
 
-        inputs = self._prepare_inputs(history)
+        vs = kwargs.get("vectorstore")
+        if vs: self.update_retriever(vs) 
+
+        inputs = self._prepare_inputs(kwargs.get("history"))
 
         condense_output = self.condense_chain.invoke({
             **inputs
         })
         retriever_output = self.retriever.invoke(condense_output)
-        answer_output = self.answer_chain.invoke({
+        answer_output = self.chat_chain.invoke({
             **inputs,
             'condense_output': condense_output['answer'],
             'retriever_output': retriever_output
@@ -132,6 +202,7 @@ class QAWorkflow:
             "condense_output": condense_output['answer']
         }
 
+# TODO put this in ChainWrappers
 class ImageLLMChain(LLMChain):
     """LLMChain but overriding _call method to ensure it points to custom LLM"""
     
@@ -155,6 +226,7 @@ class ImageLLMChain(LLMChain):
         
         return {"text": response}
 
+# TODO make this a Pipeline
 class BaseImageProcessingChain:
     """
     Chain for processing images.
@@ -201,16 +273,8 @@ class BaseImageProcessingChain:
         )
 
         return text_from_image
-    
-#prompt_text = self.image_processing_chain.llm_chain.prompt.format()
-#
-#        text_from_image = self.image_processing_chain._call(
-#            prompt=prompt_text,
-#            images=images,
-#        )
 
-
-
+# TODO make this a Pipeline
 class BaseGradingChain:
     """
     Construct chain for grading a response.
