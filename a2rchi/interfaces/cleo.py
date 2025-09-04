@@ -29,7 +29,7 @@ class RedmineAIWrapper:
     """
 
     def __init__(self):
-        self.chain = Chain()
+        self.chain = Chain(cleo=True)
 
         # initialize data manager
         self.data_manager = DataManager()
@@ -162,6 +162,10 @@ class Redmine:
         self.user = None
         self.project = None
         self.ai_wrapper = RedmineAIWrapper()
+        self.ai_wrapper = None
+        if self.name != "Redmine_Helpdesk_Mail":
+            logger.info("Loading AI wrapper for Redmine service")
+            self.ai_wrapper = RedmineAIWrapper()
 
         # read environment variables from secrets
         self.redmine_project = read_secret("REDMINE_PROJECT")

@@ -94,7 +94,7 @@ const refreshChat = async () => {
 }
 
 const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
-    const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/get_chat_response";
+    const API_URL = "/api/get_chat_response";
     const pElement = document.createElement("div");
 
      // Define the properties and data for the API request
@@ -180,7 +180,7 @@ const likeResponse = (likeBtn) => {
     const other_image = likeBtn.nextElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_down.png";
 
-    const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/like";
+    const API_URL = "/api/like";
 
      // Send an API request with the chat content and discussion ID
      try {
@@ -210,7 +210,7 @@ const dislikeResponse = (dislikeBtn) => {
     const other_image = dislikeBtn.previousElementSibling.querySelector("img");
     other_image.src = "/static/images/thumbs_up.png";
 
-    const API_URL = "http://XX-HOSTNAME-XX:XX-HTTP_PORT-XX/api/dislike";
+    const API_URL = "/api/dislike";
 
     // Show pop-up form
     popupForm.style.display = "block";
