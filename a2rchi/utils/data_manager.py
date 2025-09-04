@@ -1,5 +1,6 @@
 from a2rchi.utils.scraper import Scraper
 from a2rchi.utils.ticket_manager import TicketManager
+from a2rchi.utils.git_scraper import GitScraper
 from a2rchi.utils.logging import get_logger
 from a2rchi.utils.config_loader import load_config
 
@@ -46,6 +47,11 @@ class DataManager():
         logger.info("Fetching ticket data onto filesystem")
         ticket_manager = TicketManager()
         ticket_manager.run()
+
+        # scrape data onto the filesystem
+        logger.info("Scraping git documentation onto filesystem")
+        scraper = GitScraper()
+        scraper.hard_scrape(verbose=True)
 
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
@@ -251,6 +257,7 @@ class DataManager():
             # explicitly get file metadata
             filehash = filename.split(".")[0]
             url = sources[filehash] if filehash in sources.keys() else ""
+
             logger.info(f"<MP> Corresponding: {filename} {filehash} -> {url}")
 
             # embeds each chunk
@@ -278,9 +285,10 @@ class DataManager():
             logger.debug(f"Ids: {ids}")
 
             collection.add(embeddings=embeddings, ids=ids, documents=chunks, metadatas=metadatas)
-            
-            logger.debug(f"Successfully added file {filename}")
 
+            logger.info(f"Successfully added file {filename}")
+
+            if url: logger.info(f"with URL: {url}")
 
         return collection
 

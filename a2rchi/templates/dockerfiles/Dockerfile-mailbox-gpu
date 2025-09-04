@@ -1,12 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM docker.io/pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
+FROM docker.io/a2rchi/a2rchi-pytorch-base:latest 
 RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
 
-COPY requirements.txt requirements.txt
 COPY LICENSE LICENSE
 
-RUN pip install --upgrade pip && pip install -r requirements.txt
 
 RUN apt-get update && apt-get install -y \
     nvidia-utils-550 \

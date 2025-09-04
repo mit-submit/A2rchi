@@ -1,10 +1,9 @@
 # syntax=docker/dockerfile:1
-FROM docker.io/a2rchi/a2rchi-python-base:latest 
+FROM docker.io/ipausuchicago/a2rchi-python-base:latest 
 RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
 
 COPY LICENSE LICENSE
-
 #EXPOSE 7861
 
 # ensure this directory is present for prod-801 deployment
@@ -15,7 +14,6 @@ RUN apt-get update && apt-get install -y \
     firefox-esr \
     wget \
     gnupg \
-    git \
     ca-certificates \
     --no-install-recommends \
     && apt-get clean \
@@ -34,4 +32,4 @@ RUN pip install --upgrade pip && pip install .
 
 RUN chmod g+rx /root; chmod -R g+w /root/A2rchi/a2rchi/interfaces
 
-CMD ["python", "-u", "a2rchi/bin/service_chat.py"]
+CMD ["python", "-u", "a2rchi/benchmarking/bin/service_chat.py"]

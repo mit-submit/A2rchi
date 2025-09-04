@@ -71,7 +71,7 @@ There are a few additional options you can pass to the `create` command that are
 
         # web pages of various people
         https://people.csail.mit.edu/kraska
-        ttps://physics.mit.edu/faculty/christoph-paus
+        https://physics.mit.edu/faculty/christoph-paus
     
     Then, include the file in the config:
     
@@ -103,6 +103,18 @@ There are a few additional options you can pass to the `create` command that are
 
 13. **`utils:embeddings:query_embedding_instructions`**: Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see `INSTRUCTION_AWARE_MODELS` in `a2rchi/chains/retrievers.py` to add models that support this. For example, the `Qwen/Qwen3-Embedding-XB` embedding models support this and are listed, see more [here](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B). Default is `None`. You should write the string directly into the config. An example instruction might look like: `"Given a query, retrieve relevant information to answer the query"`. You might tune it to be more specific to your use case which might improve performance.
 
+14. **`utils.data_manager.use_hybrid_search`**: Enables hybrid search, that is performing lexical search as well as semantic search. Docs retrieved from both searches are combined. The default is `False`
+
+15. **`utils.data_manager.bm25_weight`**: If hybrid search is enabled, defines the weight of the lexical (bm25) search.
+
+16. **`utils.data_manager.semantic_weight`**: If hybrid search is enabled, defines the weight of the semantic search.
+
+17. **`utils.data_manager.bm25.k1`**: Term frequency saturation. Controls how much the score increases with additional occurrences of a term in a document. Range: `[1.2,2.0]`
+
+18. **`utils.data_manager.bm25.b`**: Length normalization. Controls how much the document length influences the score. BM25 normalizes term frequency by document length compared to the average document length in the corpus. Range: `[0,1]`
+
+
+
 
 #### Chat Service
 
@@ -119,6 +131,21 @@ Additional configuration options for the chatbot, deployed automatically with A2
 5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
 
 6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
+
+#### Git scraping
+
+In some cases, the RAG input may be documentations based on MKDocs git repositores. Instead of scraping these sites as regular HTML sites you can obtain the relevant content using the git scraper. To configure it, simply add the following field:
+
+**`utils:git:ENABLED:True`**
+In the input lists, make sure to prepend `git-` to the url of the repositories you are interested in scraping.
+
+        git-https://gitlab.cern.ch/cms-tier0-ops/documentation.git
+
+
+##### Git token
+
+You would need a git username and token for authenticating to the repositories you are interested in scraping (read only should work fine). Place your account username in `git_username.txt` and your token in `git_token.txt` in the secrets folder.
+
 
 #### JIRA
 
@@ -433,3 +460,49 @@ With a minimal configuration like that detailed above that is required for the g
 ```nohighlight
 a2rchi create --name grader --a2rchi-config configs/my_grading_config.yaml --podman --gpu --grader
 ```
+
+### Stemming
+
+By specifying the option stemming within ones configuration, stemming functionality for the documents in A2rchi will be enabled. By doing so, documents inserted into the ragging pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup. 
+
+```
+utils:
+  data_manager:
+    stemming:
+      ENABLED: true
+```
+
+### Ollama Interface 
+
+In order to use an Ollama server instance for the chatbot, it is possible to specify OllamaInterface for the model name. To then correctly use models on the Ollama server, in the keyword args, specify both the url of the server and the name of a model hosted on the server.
+use  
+
+```
+chains:
+  chain:
+    MODEL_NAME: OllamaInterface
+    MODEL_CLASS_MAP:
+      OllamaInterface:
+        kwargs:
+          base_model: "gemma3" # for instance 
+          url: "url-for-server" 
+
+```
+If needed it is also possible to specify the following arguments for your chatbot. For more information on the effects of these arguments, look at the ChatOllama documentation for the keyword arguments of the same name. 
+```
+num_ctx: 
+num_predict: 
+temperature:
+top_p: 
+top_k:
+num_gpu:
+repeat_penalty: 
+```
+
+### DockerHub images
+
+Depending on if you use the --gpu or --gpu-ids option when launching an instance of a2rchi, a2rchi will load from different base images on dockerhub. If you do not need to use gpus the python base image will be installed. Alternatively the pytorch base image will be installed. 
+The base docker file used to make these base images from which the chat interface inherits its changes from can be found in A2rchi/a2rchi/templates/dockerfiles/base-X-image directories. They are currently hosted on dockerhub at the following links: 
+pytorch: https://hub.docker.com/r/ipausuchicago/a2rchi-pytorch-base
+python: https://hub.docker.com/r/ipausuchicago/a2rchi-python-base
+

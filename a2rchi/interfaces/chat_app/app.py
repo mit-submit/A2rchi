@@ -228,7 +228,9 @@ class ChatWrapper:
                     link_k = sources[document_source_hash]
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
-                context += f"SOURCE {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {scores[k]}\n\n{content}\n\n\n\n"
+                # Safely get the score, use "N/A" if index is out of range
+                score_display = scores[k] if k < len(scores) else "N/A"
+                context += f"SOURCE {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {score_display}\n\n{content}\n\n\n\n"
 
         return context
 
@@ -309,6 +311,8 @@ class ChatWrapper:
         Execute the chat functionality.
         """
         # store timestamps for code profiling information
+        start_time = time.time()
+
         timestamps = {}
 
         self.lock.acquire()
@@ -393,13 +397,14 @@ class ChatWrapper:
             logger.debug(f"Similarity score reference:  {similarity_score_reference}")
             logger.debug(f"Similarity score:  {top_score}")
             link = ""
+            output = "<p>" + self.format_code_in_text(result["answer"])
             if source is not None and top_score < similarity_score_reference and source in sources.keys():
+
                 link = sources[source]
                 logger.info(f"Primary source:  {link}")
                 parsed_source = urlparse(link)
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>" + "\n\n<br /><br /><p><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + "</a></p>"
-            else:
-                output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
+                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + f"</a>(score:{top_score:.2f})</small></small>, "
+            output += f"<small><small>time: {time.time()-start_time:.2f}s</small></small>" + "\n<br>"
 
             # write user message and A2rchi response to database
             timestamps['a2rchi_message_ts'] = datetime.now()
@@ -471,6 +476,10 @@ class FlaskAppWrapper(object):
             self.add_endpoint('/api/search_docs', 'search_docs', self.search_docs, methods=["POST"])
         else:
             logger.info("ChromaDB API endpoints disabled by config")
+
+    @app.route("/api/health")
+    def health():
+        return jsonify({"status": "OK"}, 200)
 
     def configs(self, **configs):
         for config, value in configs:
