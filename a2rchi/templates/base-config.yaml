@@ -12,8 +12,8 @@ global:
     {%- for role in chains.base.ROLES | default(['User', 'A2rchi', 'Expert']) %}
     - {{ role }}
     {%- endfor %}
-    logging:
-      input_output_filename: "{{ chains.base.logging.input_output_filename | default('chain_input_output.log', true) }}"
+  logging:
+    input_output_filename: "{{ chains.base.logging.input_output_filename | default('chain_input_output.log', true) }}"
   verbosity: {{ verbosity | default(3, true) }}
 
 interfaces:
@@ -89,8 +89,8 @@ a2rchi:
         condense_prompt: "{{ '/root/A2rchi/condense.prompt' if a2rchi.pipeline_map.QAPipeline.condense_model else null }}"
         chat_prompt: "{{ '/root/A2rchi/main.prompt' if a2rchi.pipeline_map.QAPipeline.chat_model else null }}"
       models:
-        condense_model: {{ a2rchi.pipeline_map.QAPipeline.condense_model | default('null', true) }}
-        chat_model: {{ a2rchi.pipeline_map.QAPipeline.chat_model | default('null', true) }}
+        condense_model: {{ a2rchi.pipeline_map.QAPipeline.models.condense_model | default('DumbLLM', true) }}
+        chat_model: {{ a2rchi.pipeline_map.QAPipeline.models.chat_model | default('DumbLLM', true) }}
     # GradingPipeline:
     #   IMAGE_PROCESSING_PROMPT: "{{ '/root/A2rchi/image_processing.prompt' if chains.chain.IMAGE_PROCESSING_MODEL_NAME else null }}"
     #   GRADING_SUMMARY_PROMPT: "{{ '/root/A2rchi/grading_summary.prompt' if chains.chain.GRADING_SUMMARY_MODEL_NAME else null }}"
