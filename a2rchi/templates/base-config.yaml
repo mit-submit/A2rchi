@@ -96,8 +96,8 @@ a2rchi:
     QAPipeline:
       max_tokens: {{ a2rchi.pipeline_map.QAPipeline.max_tokens | default(10000, true) }}
       prompts:
-        condense_prompt: "{{ '/root/A2rchi/condense.prompt' if a2rchi.pipeline_map.QAPipeline.condense_prompt else null }}"
-        chat_prompt: "{{ '/root/A2rchi/main.prompt' if a2rchi.pipeline_map.QAPipeline.chat_prompt else null }}"
+        condense_prompt: /root/A2rchi/condense.prompt
+        chat_prompt: /root/A2rchi/chat.prompt
       models:
         condense_model: {{ a2rchi.pipeline_map.QAPipeline.models.condense_model | default('DumbLLM', true) }}
         chat_model: {{ a2rchi.pipeline_map.QAPipeline.models.chat_model | default('DumbLLM', true) }}

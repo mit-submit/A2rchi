@@ -14,7 +14,7 @@ import os
 from a2rchi.chains.utils.token_limiter import TokenLimiter
 from a2rchi.utils.logging import get_logger
 from a2rchi.chains.models import print_model_params
-from a2rchi.chains.retrievers import SubMITRetriever, GradingRetriever
+from a2rchi.chains.retrievers import SemanticRetriever, GradingRetriever
 from a2rchi.chains.utils import history_utils
 from a2rchi.chains.chain_wrappers import ChainWrapper
 from a2rchi.chains.utils.prompt_validator import ValidatedPromptTemplate
@@ -106,7 +106,7 @@ class QAPipeline(BasePipeline):
 
         # initialize chains
         self.condense_chain = ChainWrapper(
-            chain=self.condense_prompt | self.llm | StrOutputParser(),
+            chain=self.prompts['condense_prompt'] | self.llm | StrOutputParser(),
             llm=self.condense_llm,
             prompt=self.prompts['condense_prompt'],
             required_input_variables=['history'],
@@ -115,11 +115,11 @@ class QAPipeline(BasePipeline):
         self.chat_chain = ChainWrapper(
             chain = create_stuff_documents_chain(
                 llm=self.llm,
-                prompt=self.prompts['qa_prompt'],
+                prompt=self.prompts['chat_prompt'],
                 document_variable_name="retriever_output",
             ),
             llm=self.llm,
-            prompt=self.prompts['qa_prompt'],
+            prompt=self.prompts['chat_prompt'],
             required_input_variables=['question'],
             unprunable_input_variables=['question'],
             max_tokens=self.pipeline_config['max_tokens']
@@ -144,7 +144,7 @@ class QAPipeline(BasePipeline):
         print_model_params("qa", chat_model, model_class_map)
         print_model_params("condense", condense_model, model_class_map)
 
-    def _prepare_inputs(history, **kwargs) -> Dict[str, Any]:
+    def _prepare_inputs(self, history, **kwargs) -> Dict[str, Any]:
         """
         Prepare inputs to be processed.
         We feed all inputs to all the chains, and each prompt handles
@@ -172,28 +172,31 @@ class QAPipeline(BasePipeline):
         """
         Update the retriever with a new vectorstore.
         """
-        self.retriever = SubMITRetriever(
+        self.retriever = SemanticRetriever(
             vectorstore=vectorstore,
             search_kwargs={
-                "k": self.dm_config["data_manager"]["num_documents_to_retrieve"]
+                "k": self.dm_config["num_documents_to_retrieve"]
             },
             dm_config=self.dm_config
         )
 
-    def invoke(self, *args, **kwargs) -> Dict[str, Any]:
+    def invoke(self, **kwargs) -> Dict[str, Any]:
         """
         Execute the Pipeline.
         """
 
+        # update connection to database
         vs = kwargs.get("vectorstore")
         if vs: self.update_retriever(vs) 
 
-        inputs = self._prepare_inputs(kwargs.get("history"))
+        # prepare inputs
+        inputs = self._prepare_inputs(history=kwargs.get("history"))
 
+        # execute our Pipeline
         condense_output = self.condense_chain.invoke({
             **inputs
         })
-        retriever_output = self.retriever.invoke(condense_output)
+        retriever_output, retriever_scores = self.retriever.invoke(condense_output)
         answer_output = self.chat_chain.invoke({
             **inputs,
             'condense_output': condense_output['answer'],
@@ -203,7 +206,7 @@ class QAPipeline(BasePipeline):
         return {
             "answer": answer_output['answer'],
             "documents": retriever_output,
-            "condense_output": condense_output['answer']
+            "documents_scores": retriever_scores,
         }
 
 # TODO put this in ChainWrappers

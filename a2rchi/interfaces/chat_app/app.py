@@ -136,7 +136,7 @@ class ChatWrapper:
 
     def update_config(self, config_id):
         self.config_id = config_id
-        self.chain.update_config()
+        self.chain.update()
 
     @staticmethod
     def convert_to_app_history(history):
@@ -358,8 +358,8 @@ class ChatWrapper:
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
-                full_history = history + [(sender, content)] if not is_refresh else history
-                result = self.chain(full_history, conversation_id)
+                history = history + [(sender, content)] if not is_refresh else history
+                result = self.chain(history=history, conversation_id=conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
                 # for now let's return a timeout error, as returning a different
@@ -392,8 +392,8 @@ class ChatWrapper:
                     source = source_hash.split('/')[-1].split('.')[0]
 
             # if the score is low enough, include the source as a link, otherwise give just the answer
-            embedding_name = self.config["data_manager"]["embeddings"]["embedding_name"]
-            similarity_score_reference = self.config["data_manager"]["embeddings"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
+            embedding_name = self.config["data_manager"]["embedding_name"]
+            similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
             logger.debug(f"Similarity score reference:  {similarity_score_reference}")
             logger.debug(f"Similarity score:  {top_score}")
             link = ""

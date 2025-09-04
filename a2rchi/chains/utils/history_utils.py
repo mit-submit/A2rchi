@@ -10,7 +10,7 @@ def stringify_history(chat_history: List[Tuple[str, str]]) -> str:
     to a single string
     "User: message\nAI: response..."
     """
-    if type(chat_history) is str:
+    if chat_history is None or type(chat_history) is not list:
         return chat_history
     
     buffer = ""
@@ -35,7 +35,7 @@ def tuplize_history(chat_history: str) -> List[Tuple[str, str]]:
     Reverse the operaiton of get_chat_history.
     From a string, make a list of (identity, message).
     """
-    if type(chat_history) is tuple:
+    if chat_history is None or type(chat_history) is not str or len(chat_history) == 0:
         return chat_history
     
     history = []

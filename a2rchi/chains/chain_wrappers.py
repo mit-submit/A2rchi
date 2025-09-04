@@ -40,7 +40,8 @@ class ChainWrapper:
         self.token_limiter = TokenLimiter(
             llm=self.llm,
             prompt=self.prompt,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            unprunable_input_variables=unprunable_input_variables
         )
 
     def _check_prompt(self, prompt: BasePromptTemplate) -> BasePromptTemplate:
@@ -59,11 +60,13 @@ class ChainWrapper:
         """
 
         # grab all the input variables from the parameters given to the function
-        input_variables = {k:v for k,v in inputs.items() if k in self.prompt.input_variables}
+        input_variables = {k:v for k,v in inputs.items() if k in self.prompt.input_variables and v}
+        print("input_variables", input_variables)
 
         # reduce number of tokens, if necessary
         input_variables = self.token_limiter.prune_inputs_to_token_limit(**input_variables)
-
+        print("input_variables", input_variables)
+        
         return input_variables
 
     def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:

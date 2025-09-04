@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Dict
 from langchain_core.documents import Document
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
@@ -18,6 +18,7 @@ class TokenLimiter:
         min_history_messages: int = 2,
         min_docs: int = 0,
         large_msg_fraction: float = 0.5, 
+        unprunable_input_variables: List[str] = ["question"]
     ):
         """
         Args:
@@ -36,7 +37,8 @@ class TokenLimiter:
         self.prompt_tokens = self.safe_token_count(prompt.format(**{v: "" for v in prompt.input_variables})) # TODO fix
         self.max_tokens = self.get_max_tokens(max_tokens)
         self.effective_max_tokens = self.calculate_effective_max_tokens()
-
+        self.unprunable_input_variables = unprunable_input_variables
+    
         self.min_history_messages = min_history_messages
         self.min_docs = min_docs
         self.large_msg_threshold = int(self.effective_max_tokens * large_msg_fraction)
@@ -109,10 +111,11 @@ class TokenLimiter:
 
     def prune_inputs_to_token_limit(
         self,
-        docs: List[Document] = None,
-        history: List[Tuple[str, str]] | str = None,
+        question: str = "",
+        docs: List[Document] = [],
+        history: List[Tuple[str, str]] | str = [],
         **kwargs: Any
-    ) -> Tuple[List[Document], List[Tuple[str, str]]]:
+    ) -> Dict[List[Document], List[Tuple[str, str]]]:
         """
         Reduce input variable tokens below limit.
         Everything else in the prompt is already accounted for via the effective max tokens.
@@ -124,87 +127,95 @@ class TokenLimiter:
         1b. Remove old history messages
         2. Remove last documents
         3. Remove extras
-        Never remove user question! If user question is larger than effective max tokens
+        Never remove unprunables or the user question.
         """
-        
-        extras = {}
-        docs = docs or []
-        history = history or []
 
+        pruned_inputs = {}
+                
         # Validate and collect extras
+        extras = {}
         for k, v in kwargs.items():
             if not isinstance(v, str):
                 raise ValueError(f"Extra variable '{k}' must be a string, got {type(v)}")
             extras[k] = v
-
-        if not docs and not history:
-            return [], []
+        extra_tokens = [self.safe_token_count(v) for v in extras.values()]
         
         # if history is passed as a string, make a tuple so we can easily remove old messages
         # but remember at the end to return it as a string
-        orig_history_str = False
-        if type(history) is str:
-            history = history_utils.tuplize_history(history)
-            orig_history_str = True
+        orig_history = 0
+        history_tokens = []
+        if history:
+            orig_history_str = False
+            if type(history) is str:
+                history = history_utils.tuplize_history(history)
+                orig_history_str = True
+            orig_history = len(history)
+            history_tokens = [self.safe_token_count(h[1]) for h in history]
         
         # store original length to compare at the end
-        orig_docs = len(docs)
-        orig_history = len(history)
-                
-        extra_tokens = [self.safe_token_count(v) for v in extras.values()]
-        doc_tokens = [self.safe_token_count(d.page_content) for d in docs]
-        history_tokens = [self.safe_token_count(h[1]) for h in history]
+        orig_docs = 0
+        doc_tokens = []
+        if docs:
+            orig_docs = len(docs)
+            doc_tokens = [self.safe_token_count(d.page_content) for d in docs]
 
         def total_tokens():
             return sum(history_tokens) + sum(doc_tokens) + sum(extra_tokens)
 
-        # --- Step 1: Reduce history ---
-        # 1a. Remove very large messages
-        filtered_history = []
-        filtered_history_tokens = []
-        for msg, tcount in zip(history, history_tokens):
-            if tcount <= self.large_msg_threshold:
-                filtered_history.append(msg)
-                filtered_history_tokens.append(tcount)
-            else:
-                logger.info(f"Removed very large message ({tcount} tokens) from history")
+        if history and 'history' not in self.unprunable_input_variables:
+            # --- Step 1: Reduce history ---
+            # 1a. Remove very large messages
+            filtered_history = []
+            filtered_history_tokens = []
+            for msg, tcount in zip(history, history_tokens):
+                if tcount <= self.large_msg_threshold:
+                    filtered_history.append(msg)
+                    filtered_history_tokens.append(tcount)
+                else:
+                    logger.info(f"Removed very large message ({tcount} tokens) from history")
 
-        history = filtered_history
-        history_tokens = filtered_history_tokens
+            history = filtered_history
+            history_tokens = filtered_history_tokens
 
-        # 1b. Remove oldest messages while over budget and above min_history_messages
-        while total_tokens() > self.effective_max_tokens and len(history) > self.min_history_messages:
-            _ = history.pop(0)
-            removed_tokens = history_tokens.pop(0)
-            logger.info(f"Removed old message ({removed_tokens} tokens) from history")
+            # 1b. Remove oldest messages while over budget and above min_history_messages
+            while total_tokens() > self.effective_max_tokens and len(history) > self.min_history_messages:
+                _ = history.pop(0)
+                removed_tokens = history_tokens.pop(0)
+                logger.info(f"Removed old message ({removed_tokens} tokens) from history")
 
-        # --- Step 2: Reduce documents ---
-        while total_tokens() > self.effective_max_tokens and len(docs) > self.min_docs:
-            _ = docs.pop(0)
-            removed_tokens = doc_tokens.pop(0)
-            logger.info(f"Removed document ({doc_tokens} tokens)")
+        if docs and 'documents' not in self.unprunable_input_variables:
+            # --- Step 2: Reduce documents ---
+            while total_tokens() > self.effective_max_tokens and len(docs) > self.min_docs:
+                _ = docs.pop(0)
+                removed_tokens = doc_tokens.pop(0)
+                logger.info(f"Removed document ({doc_tokens} tokens)")
 
         # --- Step 3: Remove extras (last resort) ---
+        extras_removed = []
         if total_tokens() > self.effective_max_tokens and extras:
             sorted_extras = sorted(extras.items(), key=lambda kv: extra_tokens[kv[0]], reverse=True)
             for key, tcount in sorted_extras:
                 if total_tokens() <= self.effective_max_tokens:
                     break
-                logger.info(f"Removed extra '{key}' ({tcount} tokens)")
-                del extras[key]
-                del extra_tokens[key]
+                if key not in self.unprunable_input_variables:
+                    logger.info(f"Removed extra '{key}' ({tcount} tokens)")
+                    extras_removed.append(key)
+                    del extras[key]
+                    del extra_tokens[key]
 
         logger.info(
             f"Reduced from {orig_docs} docs + {orig_history} history items "
-            f"to {len(docs)} docs + {len(history)} history items + "
-            f"{len(extras)} extras, {total_tokens()} tokens total "
+            f"{ '+ '.join(extras.keys()) }"
+            f"to {len(docs)} docs + {len(history)} history items "
+            f"{ '+ '.join(extras_removed)}:"
+            f"{total_tokens()} tokens total "
             f"({self.effective_max_tokens} effective maximum allowed)"
         )
 
         if orig_history_str:
             history = history_utils.stringify_history(history)
 
-        return {'docuents': docs, 'history': history, **extras}
+        return {'documents': docs, 'history': history, "question": question, **extras}
     
     def check_input_size(
         self,

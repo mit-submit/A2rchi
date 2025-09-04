@@ -19,8 +19,7 @@ INSTRUCTION_AWARE_MODELS = [
     "Qwen/Qwen3-Embedding-8B",
 ]
 
-# TODO: Better to rename this to SemanticRetriever or DenseRetriever
-class SubMITRetriever(BaseRetriever):
+class SemanticRetriever(BaseRetriever):
     vectorstore: VectorStore = None
     search_kwargs: Dict[str, Any] = None
     instructions: str = None
@@ -47,8 +46,11 @@ class SubMITRetriever(BaseRetriever):
         elif self.instructions:
             logger.warning(f"Instructions provided but model '{embedding_model}' not in supported models: {INSTRUCTION_AWARE_MODELS}")
             
-        return self.vectorstore.similarity_search(query, **self.search_kwargs)
-
+        similarity_result = self.vectorstore.similarity_search_with_score(query, **self.search_kwargs)
+        for d, s in similarity_result:
+            logger.debug(f"Doc: {d.metadata['filename']} Score: {s}")
+        print(similarity_result)
+        return similarity_result
 
 class GradingRetriever(BaseRetriever):
     vectorstore: VectorStore = None

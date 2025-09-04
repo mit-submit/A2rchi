@@ -79,7 +79,7 @@ class PromptFormatter:
         Given a prompt divided by a given set of supported tags, split it up into a tuple.
         """
         
-        pattern = self._find_tags_pattern(text)
+        pattern = self._find_tags_pattern()
         result = []
         pos = 0  # current scanning position
 
@@ -94,7 +94,9 @@ class PromptFormatter:
 
             tag_type = match.group(1).lower()
             tag_content = match.group(2).strip()
-            if tag_type == 'history':
+            if tag_type == 'history' and len(tag_content) > 0:
+                print(tag_content)
+                print(len(tag_content))
                 # history is treated differently: we add each user/AI message as its own tuple
                 for message in history_utils.tuplize_history(tag_content):
                     result.append({"role": message[0], "content": message[1]})
@@ -137,5 +139,5 @@ class PromptFormatter:
     
     def _apply_chat_template(self, prompt: str) -> Tuple:
         logger.debug("Using chat template.")
-        message = self._split_tagged_prompt(prompt)
+        message = self._tuplize_tagged_prompt(prompt)
         return self.tokenizer.apply_chat_template(message, tokenize=False, add_generation_prompt=True), "assistant"

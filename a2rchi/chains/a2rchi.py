@@ -38,8 +38,8 @@ class A2rchi():
 
         dm_config = self.config["data_manager"]
 
-        embedding_class_map = dm_config["embeddings"]["embedding_class_map"]
-        embedding_name = dm_config["embeddings"]["embedding_name"]
+        embedding_class_map = dm_config["embedding_class_map"]
+        embedding_name = dm_config["embedding_name"]
         self.embedding_model = embedding_class_map[embedding_name]["class"](
             **embedding_class_map[embedding_name]["kwargs"]
         )
