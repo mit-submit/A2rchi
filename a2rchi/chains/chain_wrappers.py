@@ -11,7 +11,7 @@ from a2rchi.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # DEFINITIONS
-global_configs = load_global_config()["global"]
+global_configs = load_global_config()
 
 class ChainWrapper:
     """
@@ -35,7 +35,7 @@ class ChainWrapper:
         self.prompt = self._check_prompt(prompt)
 
         self.prompt_logger = PromptLogger(
-            os.path.join(global_configs["DATA_PATH"], config["logging"]["input_output_filename"])
+            os.path.join(global_configs["DATA_PATH"], global_configs["LOGGING"]["input_output_filename"])
         )
         self.token_limiter = TokenLimiter(
             llm=self.llm,

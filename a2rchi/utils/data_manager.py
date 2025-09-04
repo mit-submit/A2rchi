@@ -30,7 +30,7 @@ class DataManager():
 
     def __init__(self):
 
-        self.config = load_config(map=True)["utils"]
+        self.config = load_config(map=True)
         self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
         self.stemmer = None
@@ -55,7 +55,7 @@ class DataManager():
 
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
-        embedding_name = self.config["embeddings"]["embedding_name"]
+        embedding_name = self.config["data_manager"]["embedding_name"]
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
         logger.info(f"Using collection: {self.collection_name}")
 
@@ -68,8 +68,8 @@ class DataManager():
         self.delete_existing_collection_if_reset()
 
         # get the embedding model
-        embedding_class_map = self.config["embeddings"]["embedding_class_map"]
-        embedding_name = self.config["embeddings"]["embedding_name"]
+        embedding_class_map = self.config["data_manager"]["embedding_class_map"]
+        embedding_name = self.config["data_manager"]["embedding_name"]
         self.embedding_model = embedding_class_map[embedding_name]["class"](**embedding_class_map[embedding_name]["kwargs"])
 
         # create the text_splitter
@@ -79,7 +79,7 @@ class DataManager():
         )
 
         # makes sure nltk gets installed and initializes stemmer
-        if self.config["data_manager"]["stemming"].get("ENABLED", False):
+        if self.config["data_manager"]["stemming"].get("enabled", False):
             nltk.download('punkt_tab')
             self.stemmer = nltk.stem.PorterStemmer()
 

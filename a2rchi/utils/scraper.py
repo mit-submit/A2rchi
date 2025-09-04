@@ -18,7 +18,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 class Scraper():
     
-    def __init__(self, dm_configs: dict = {}, piazza_email=None, piazza_password=None):
+    def __init__(self, dm_config: dict = {}, piazza_email=None, piazza_password=None):
 
         self.config = utils_config["scraper"]
         self.piazza_config = utils_config.get("piazza", None)
@@ -32,7 +32,7 @@ class Scraper():
         self.websites_dir = os.path.join(self.data_path, "websites")
         os.makedirs(self.websites_dir, exist_ok=True)
 
-        self.input_lists = dm_configs["chains"].get("input_lists", [])
+        self.input_lists = dm_config.get("input_lists", [])
         if self.input_lists is None:
             self.input_lists = []
         logger.info(f"Input lists: {self.input_lists}")
@@ -124,9 +124,9 @@ class Scraper():
                 url = re.split("sso-", url)[1]
                 try:
                     # Use SSO scraper from config if available
-                    if sso_config and sso_config.get("ENABLED", False):
-                        sso_class_name = sso_config.get("SSO_CLASS", "CERNSSOScraper")
-                        sso_class_map = sso_config.get("SSO_CLASS_MAP", {})
+                    if sso_config and sso_config.get("enabled", False):
+                        sso_class_name = sso_config.get("sso_class", "CERNSSOScraper")
+                        sso_class_map = sso_config.get("sso_class_map", {})
 
                         if sso_class_name in sso_class_map:
                             sso_class = sso_class_map[sso_class_name]["class"]

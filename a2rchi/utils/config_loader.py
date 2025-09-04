@@ -33,23 +33,23 @@ def load_config(map: bool = False):
             "VLLM": VLLM,
             "OllamaInterface": OllamaInterface, 
         }
-        for model in config["chains"]["chain"]["MODEL_CLASS_MAP"].keys():
-            config["chains"]["chain"]["MODEL_CLASS_MAP"][model]["class"] = MODEL_MAPPING[model]
+        for model in config["a2rchi"]["model_class_map"].keys():
+            config["a2rchi"]["model_class_map"][model]["class"] = MODEL_MAPPING[model]
 
         EMBEDDING_MAPPING = {
             "OpenAIEmbeddings": OpenAIEmbeddings,
             "HuggingFaceEmbeddings": HuggingFaceEmbeddings
         }
-        for model in config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"].keys():
-            config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][model]["class"] = EMBEDDING_MAPPING[model]
+        for model in config["data_manager"]["embedding_class_map"].keys():
+            config["data_manager"]["embedding_class_map"][model]["class"] = EMBEDDING_MAPPING[model]
 
         # change the SSO class parameter from a string to an actual class
-        if "sso" in config["utils"] and config["utils"]["sso"].get("ENABLED", False):
+        if "sso" in config["utils"] and config["utils"]["sso"].get("enabled", False):
             SSO_MAPPING = {
                 "CERNSSOScraper": CERNSSOScraper,
             }
-            for sso_class in config["utils"]["sso"]["SSO_CLASS_MAP"].keys():
-                config["utils"]["sso"]["SSO_CLASS_MAP"][sso_class]["class"] = SSO_MAPPING[sso_class]
+            for sso_class in config["utils"]["sso"]["sso_class_map"].keys():
+                config["utils"]["sso"]["sso_class_map"][sso_class]["class"] = SSO_MAPPING[sso_class]
 
     return config
 

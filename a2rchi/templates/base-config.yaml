@@ -12,7 +12,7 @@ global:
     {%- for role in chains.base.ROLES | default(['User', 'A2rchi', 'Expert']) %}
     - {{ role }}
     {%- endfor %}
-  logging:
+  LOGGING:
     input_output_filename: "{{ chains.base.logging.input_output_filename | default('chain_input_output.log', true) }}"
   verbosity: {{ verbosity | default(3, true) }}
 
@@ -79,6 +79,15 @@ data_manager:
   chromadb_external_port:  {{ data_manager.chromadb_external_port | default(8000, true) }}
   reset_collection: {{ data_manager.reset_collection | default(true, true) }}
   num_documents_to_retrieve: {{ data_manager.num_documents_to_retrieve | default(5, true) }}
+  stemming:
+    enabled: {{ data_manager.stemming.enabled | default(false, true) }}
+  distance_metric: {{ data_manager.distance_metric | default('cosine', true) }}
+  use_hybrid_search: {{ data_manager.use_hybrid_search | default(false, true) }}
+  bm25_weight: {{ data_manager.bm25_weight | default(0.6, true) }}
+  semantic_weight: {{ data_manager.semantic_weight | default(0.4, true) }}
+  bm25:
+    k1: {{ data_manager.bm25.k1 | default(0.5, true) }}
+    b: {{ data_manager.bm25.b | default(0.75, true) }}
 
 a2rchi:
   pipeline: {{ a2rchi.pipeline | default('QAPipeline', true) }}
@@ -197,16 +206,16 @@ utils:
     database: {{ utils.postgres.database | default('a2rchi-db', true) }}
     host: {{ postgres_hostname }}
   sso:
-    ENABLED: {{ utils.sso.ENABLED | default(false, true) }}
-    SSO_CLASS: {{ utils.sso.SSO_CLASS | default('CERNSSOScraper', true) }}
-    SSO_CLASS_MAP:
+    enabled: {{ utils.sso.enabled | default(false, true) }}
+    sso_class: {{ utils.sso.sso_class | default('CERNSSOScraper', true) }}
+    sso_class_map:
       CERNSSOScraper:
         class: CERNSSOScraper
         kwargs:
-          headless: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.headless | default(true, true) }}
-          max_depth: {{ utils.sso.SSO_CLASS_MAP.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
+          headless: {{ utils.sso.sso_class_map.CERNSSOScraper.kwargs.headless | default(true, true) }}
+          max_depth: {{ utils.sso.sso_class_map.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
   git:
-    ENABLED: {{ utils.git.ENABLED | default(false, true) }}
+    enabled: {{ utils.git.enabled | default(false, true) }}
   scraper:
     reset_data: {{ utils.scraper.reset_data | default(true, true) }}
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}

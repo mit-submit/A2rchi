@@ -5,7 +5,7 @@ import yaml
 # ignore debug logs from these modules, too verbose :)
 ignore_debug_modules = ["urllib3.connectionpool", "filelock"]
 
-config = load_global_config(map=False)
+config = load_global_config()
 verbosity = config["verbosity"]
 
 logging_verboseLevel = [

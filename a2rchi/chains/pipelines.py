@@ -13,7 +13,6 @@ import os
 
 from a2rchi.chains.utils.token_limiter import TokenLimiter
 from a2rchi.utils.logging import get_logger
-from a2rchi.chains.prompts import PROMPTS
 from a2rchi.chains.models import print_model_params
 from a2rchi.chains.retrievers import SubMITRetriever, GradingRetriever
 from a2rchi.chains.utils import history_utils
