@@ -104,8 +104,6 @@ class QAPipeline(BasePipeline):
         # initialize models
         self._init_llms()
 
-        print("in pipeline", self.prompts['condense_prompt'])
-
         # initialize chains
         self.condense_chain = ChainWrapper(
             chain=self.prompts['condense_prompt'] | self.llm | StrOutputParser(),
