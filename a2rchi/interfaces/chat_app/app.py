@@ -165,7 +165,67 @@ class ChatWrapper:
         except: 
              logger.info("Rendering error: markdown formatting failed")
              return text
+        
+    def get_top_links(self, documents, scores):
+        """
+        Get the top links from the documents based on their scores.
+        """
 
+        # re-load the present list of sources
+        self.reload_links_db()
+
+        # don't assume the documents given by the pipeline are sorted
+        if scores:
+            sorted_indices = np.argsort(scores)
+            scores = [scores[i] for i in sorted_indices]
+            documents = [documents[i] for i in sorted_indices]
+
+        # prepare to show the best sources, if they have links
+        top_links, top_link_names, top_scores = [], [], []
+        if len(documents) > 0:
+            for i in range(5):
+                score = scores[i]
+                if score > self.similarity_score_reference: break # only show sources below a certain distance metric
+                source_hash = documents[i].metadata['source'] # only links have metadata['hash'] (?)
+                if '/' in source_hash and '.' in source_hash:
+                    source_hash = source_hash.split('/')[-1].split('.')[0]
+                    if source_hash in self.links_db: # only links have hashes in the sources.yaml (?)
+                        link = self.links_db[source_hash]
+                        parsed_link = urlparse(link)
+                        display_name = parsed_link.hostname
+                        if parsed_link.path and parsed_link.path != '/':
+                            first_path = parsed_link.path.strip('/').split('/')[0]
+                            display_name += f"/{first_path}"
+                        if link in top_links:
+                            continue # don't show the same link twice
+                        top_link_names.append(display_name)
+                        top_scores.append(score)
+                        top_links.append(link)
+
+        return top_links, top_link_names, top_scores
+        
+    @staticmethod
+    def format_links(top_links, top_link_names, top_scores):
+
+        _output = ""
+            
+        # Only show "Sources:" if there are any valid sources
+        if top_links:
+            _output += '<div style="margin-left: 2em;"><b>Sources:</b><br>'
+            _output += "<ul style='margin-left: 1em; padding-left: 0; list-style-type: disc;'>"
+            for score, link, display_name in zip(top_scores, top_links, top_link_names):
+                _output += (
+                    "<li style='margin-bottom: 0.2em; padding-bottom: 0; line-height: 1.2;'>"
+                    "<small>"
+                    f'<a href="{link}" target="_blank" rel="noopener noreferrer">{display_name}</a>'
+                    f" (score: {score:.2f})"
+                    "</small>"
+                    "</li>"
+                )
+            _output += "</ul>"
+            _output += "</div>"
+
+        return _output
 
     def insert_feedback(self, feedback):
         """
@@ -382,63 +442,23 @@ class ChatWrapper:
 
             # display answer
             output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
-            output += "<br>"
 
-            # re-load the present list of sources
-            self.reload_links_db()
 
-            # don't assume the documents given by the pipeline are sorted
+            # display sources that have links
             documents = result.get("documents", [])
             scores = result.get("documents_scores", [])
-            if scores:
-                sorted_indices = np.argsort(scores)
-                scores = [scores[i] for i in sorted_indices]
-                documents = [documents[i] for i in sorted_indices]
+            top_links, top_link_names, top_scores = self.get_top_links(documents, scores)
+            output += self.format_links(top_links, top_link_names, top_scores)
 
-            print(documents)
-
-            # prepare to show the best sources, if they have links
-            top_links, top_link_names, top_scores = [], [], []
-            if len(documents) > 0:
-                for i in range(5):
-                    score = scores[i]
-                    if score > self.similarity_score_reference: break # only show sources below a certain distance metric
-                    source_hash = documents[i].metadata['source'] # only links have metadata['hash'] (?)
-                    if '/' in source_hash and '.' in source_hash:
-                        source_hash = source_hash.split('/')[-1].split('.')[0]
-                        if source_hash in self.links_db: # only links have hashes in the sources.yaml (?)
-                            link = self.links_db[source_hash]
-                            parsed_link = urlparse(link)
-                            display_name = parsed_link.hostname
-                            if parsed_link.path and parsed_link.path != '/':
-                                first_path = parsed_link.path.strip('/').split('/')[0]
-                                display_name += f"/{first_path}"
-                            top_link_names.append(display_name)
-                            top_scores.append(score)
-                            top_links.append(link)
-                
-            # Only show "Sources:" if there are any valid sources
-            if top_links:
-                output += '<div style="margin-left: 2em;"><b>Sources:</b><br>'
-                output += "<ul style='margin-left: 1em; padding-left: 0; list-style-type: disc;'>"
-                for score, link, display_name in zip(top_scores, top_links, top_link_names):
-                    output += (
-                        "<li style='margin-bottom: 0.2em; padding-bottom: 0; line-height: 1.2;'>"
-                        "<small>"
-                        f'<a href="{link}" target="_blank" rel="noopener noreferrer">{display_name}</a>'
-                        f" (score: {score:.2f})"
-                        "</small>"
-                        "</li>"
-                    )
-                output += "</ul>"
-                output += "</div>"
-
-            # write user message and A2rchi response to database
+            # message is constructed!
             timestamps['a2rchi_message_ts'] = datetime.now()
-            user_message = (sender, content, server_received_msg_ts)
-            a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
+            
+            # write stuff to database
             context = self.prepare_context_for_storage(documents, self.links_db, scores)
 
+            # and now finally insert the conversation
+            user_message = (sender, content, server_received_msg_ts)
+            a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
             message_ids = self.insert_conversation(
                 conversation_id,
                 user_message,
