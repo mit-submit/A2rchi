@@ -16,6 +16,7 @@ class A2rchi():
     """
 
     def __init__(self):
+        self.required_output_keys = ["answer", "documents"]
         self.update()
         self._init_vectorstore_params()
 
@@ -106,7 +107,10 @@ class A2rchi():
         and then invokes the Pipeline.
         """
         vectorstore = self._update_vectorstore()
-        return self.pipeline.invoke(vectorstore=vectorstore, *args, **kwargs)
+        result = self.pipeline.invoke(vectorstore=vectorstore, *args, **kwargs)
+        if all([k not in result for k in self.required_output_keys]):
+            raise ValueError(f"Pipeline output does not contain any of the required keys: {self.required_output_keys}. Output keys are: {list(result.keys())}")
+        return result
 
     # TODO write workflows for these too
     # def _call_image_processing(self, images):

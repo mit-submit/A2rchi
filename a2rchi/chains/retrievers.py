@@ -37,7 +37,7 @@ class SemanticRetriever(BaseRetriever):
         Internal method to retrieve relevant documents based on the query.
         """
         logger.info(f"Retrieving top-{self.search_kwargs.get('k')} docs")
-        embedding_name = self.dm_config["embeddings"]["embedding_name"]
+        embedding_name = self.dm_config["embedding_name"]
         embedding_model, supported = supports_instructions(embedding_name, self.dm_config)
         
         if self.instructions and supported:
@@ -70,7 +70,7 @@ class GradingRetriever(BaseRetriever):
     
         
 def supports_instructions(embedding_name: str, dm_config: Dict[str, any]) -> Tuple[str, bool]:
-    embedding_kwargs = dm_config["embeddings"]["embedding_class_map"][embedding_name]["kwargs"]
+    embedding_kwargs = dm_config["embedding_class_map"][embedding_name]["kwargs"]
     embedding_model = embedding_kwargs.get("model") or embedding_kwargs.get("model_name")
     return embedding_model, embedding_model in INSTRUCTION_AWARE_MODELS
 

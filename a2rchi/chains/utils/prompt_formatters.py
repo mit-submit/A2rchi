@@ -41,26 +41,35 @@ class PromptFormatter:
         (formatted_prompt, end_tag) (Tuple[str, str]): tuple of formatted prompt and tag as strings
         """
 
+        print("in format prompt")
+        print(prompt)
+
+        # pre templating operations
+        print(prompt)
+        prompt = self._strip_tags(prompt)
+
         # optional prompt manipulations
         if self.strip_html:
             prompt = self._strip_html(prompt)
 
+        print(prompt)
+
         # apply defined template
         prompt = self.apply_format(prompt)
 
-        # post templating operations
-        prompt = self._strip_tags(prompt)
+        print(prompt)
 
         return prompt
     
     def _strip_tags(self, text: str) -> str:
         # Remove all <tags> and </tags> from the prompt
+        if len(text) == 0: return text
         logger.debug("Stripping tags from prompt.")
         pattern = re.compile(rf"</?({'|'.join(map(re.escape, SUPPORTED_INPUT_VARIABLES))})>", re.IGNORECASE)
         return pattern.sub("", text)
 
     def _strip_html(self, text: str) -> str:
-        # remove html form a string
+        # remove html from a string
         from html import unescape
         logger.debug("Stripping html from prompt.")
         text = unescape(text)
@@ -95,8 +104,6 @@ class PromptFormatter:
             tag_type = match.group(1).lower()
             tag_content = match.group(2).strip()
             if tag_type == 'history' and len(tag_content) > 0:
-                print(tag_content)
-                print(len(tag_content))
                 # history is treated differently: we add each user/AI message as its own tuple
                 for message in history_utils.tuplize_history(tag_content):
                     result.append({"role": message[0], "content": message[1]})

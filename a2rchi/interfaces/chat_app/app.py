@@ -286,7 +286,6 @@ class ChatWrapper:
             timestamps['vectorstore_update_ts'],
             timestamps['query_convo_history_ts'],
             timestamps['chain_finished_ts'],
-            timestamps['similarity_search_ts'],
             timestamps['a2rchi_message_ts'],
             timestamps['insert_convo_ts'],
             timestamps['finish_call_ts'],
@@ -318,7 +317,7 @@ class ChatWrapper:
         self.lock.acquire()
         timestamps['lock_acquisition_ts'] = datetime.now()
         try:
-            # update vector store through data manager; will only do something if new files have been added
+            # update vector store through data manager; will only do something if newwhere files have been added
             logger.info("Acquired lock file update vectorstore")
 
             self.data_manager.update_vectorstore()
@@ -370,13 +369,6 @@ class ChatWrapper:
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
-            # TODO this is not correct..
-            # get similarity score to see how close the input is to the source
-            # - low score means very close (it's a distance between embedding vectors approximated
-            #   by an approximate k-nearest neighbors algorithm called HNSW)
-            top_score, scores = self.chain.similarity_search(content)
-            timestamps['similarity_search_ts'] = datetime.now()
-
             # load the present list of sources
             try:
                 with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
@@ -384,10 +376,18 @@ class ChatWrapper:
             except FileNotFoundError:
                 sources = dict()
 
+            # don't assume they are sorted
+            documents = result.get("documents", [])
+            scores = result.get("documents_scores", [])
+            if scores:
+                sorted_indices = np.argsort(scores)
+                scores = [scores[i] for i in sorted_indices]
+                documents = [documents[i] for i in sorted_indices]
+
             # get the closest source to the document
             source = None
-            if len(result.get('source_documents', [])) > 0:
-                source_hash = result['source_documents'][0].metadata['source']
+            if len(documents) > 0:
+                source_hash = documents[0].metadata['source']
                 if '/' in source_hash and '.' in source_hash:
                     source = source_hash.split('/')[-1].split('.')[0]
 
@@ -395,22 +395,22 @@ class ChatWrapper:
             embedding_name = self.config["data_manager"]["embedding_name"]
             similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
             logger.debug(f"Similarity score reference:  {similarity_score_reference}")
-            logger.debug(f"Similarity score:  {top_score}")
+            logger.debug(f"Similarity score:  {scores[0] if scores else 'N/A'}")
             link = ""
             output = "<p>" + self.format_code_in_text(result["answer"])
-            if source is not None and top_score < similarity_score_reference and source in sources.keys():
-
+            if source is not None and scores[0] < similarity_score_reference and source in sources.keys():
                 link = sources[source]
                 logger.info(f"Primary source:  {link}")
                 parsed_source = urlparse(link)
-                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + f"</a>(score:{top_score:.2f})</small></small>, "
+                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname
+                output += f"</a>(score:{scores[0]:.2f})</small></small>, "
             output += f"<small><small>time: {time.time()-start_time:.2f}s</small></small>" + "\n<br>"
 
             # write user message and A2rchi response to database
             timestamps['a2rchi_message_ts'] = datetime.now()
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
-            context = self.prepare_context_for_storage(result.get('source_documents', []), sources, scores)
+            context = self.prepare_context_for_storage(documents, sources, scores)
 
             message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, link, context, is_refresh)
             timestamps['insert_convo_ts'] = datetime.now()

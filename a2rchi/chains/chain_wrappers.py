@@ -66,6 +66,11 @@ class ChainWrapper:
         # reduce number of tokens, if necessary
         input_variables = self.token_limiter.prune_inputs_to_token_limit(**input_variables)
         print("input_variables", input_variables)
+
+        # if there are variables asked for in the prompt that aren't passed, initialize to empty string
+        for var in self.prompt.input_variables:
+            if var not in input_variables:
+                input_variables[var] = ""
         
         return input_variables
 

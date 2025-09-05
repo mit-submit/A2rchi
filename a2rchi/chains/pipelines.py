@@ -104,6 +104,8 @@ class QAPipeline(BasePipeline):
         # initialize models
         self._init_llms()
 
+        print("in pipeline", self.prompts['condense_prompt'])
+
         # initialize chains
         self.condense_chain = ChainWrapper(
             chain=self.prompts['condense_prompt'] | self.llm | StrOutputParser(),
@@ -196,17 +198,20 @@ class QAPipeline(BasePipeline):
         condense_output = self.condense_chain.invoke({
             **inputs
         })
-        retriever_output, retriever_scores = self.retriever.invoke(condense_output)
+        retriever_output = self.retriever.invoke(
+            condense_output['answer']
+        )
+        docs, scores = zip(*retriever_output)
         answer_output = self.chat_chain.invoke({
             **inputs,
             'condense_output': condense_output['answer'],
-            'retriever_output': retriever_output
+            'retriever_output': docs
         })
 
         return {
             "answer": answer_output['answer'],
-            "documents": retriever_output,
-            "documents_scores": retriever_scores,
+            "documents": docs,
+            "documents_scores": scores,
         }
 
 # TODO put this in ChainWrappers

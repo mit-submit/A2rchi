@@ -112,7 +112,6 @@ class TokenLimiter:
     def prune_inputs_to_token_limit(
         self,
         question: str = "",
-        docs: List[Document] = [],
         history: List[Tuple[str, str]] | str = [],
         **kwargs: Any
     ) -> Dict[List[Document], List[Tuple[str, str]]]:
@@ -121,21 +120,33 @@ class TokenLimiter:
         Everything else in the prompt is already accounted for via the effective max tokens.
         History and documents are dealt with according to priority as below,
         other input variables (extras) are removed last, since we don't know what they are.
+        Document lists are inferred by the variable type.
+        If multiple document lists are passed, we alternate removing the last from each.
+        Never remove unprunables or the user question.
 
         Priority:
         1a. Remove large history messages
         1b. Remove old history messages
         2. Remove last documents
         3. Remove extras
-        Never remove unprunables or the user question.
         """
 
+        # this will be the output of this function
         pruned_inputs = {}
+
+        # count tokens of the question
+        question_tokens = self.safe_token_count(question)
                 
-        # Validate and collect extras
+        # Validate and collect docs, extras
+        docs_lists, docs_vars = [], []
         extras = {}
         for k, v in kwargs.items():
-            if not isinstance(v, str):
+            # check if the variable is a list/tuple of Documents
+            if (isinstance(v, tuple) or isinstance(v, list)) and len(v) > 0:
+                if hasattr(v[0], 'page_content'):
+                    docs_lists.append(v)
+                    docs_vars.append(k)
+            elif not isinstance(v, str):
                 raise ValueError(f"Extra variable '{k}' must be a string, got {type(v)}")
             extras[k] = v
         extra_tokens = [self.safe_token_count(v) for v in extras.values()]
@@ -143,6 +154,7 @@ class TokenLimiter:
         # if history is passed as a string, make a tuple so we can easily remove old messages
         # but remember at the end to return it as a string
         orig_history = 0
+        orig_history_str = False
         history_tokens = []
         if history:
             orig_history_str = False
@@ -152,19 +164,28 @@ class TokenLimiter:
             orig_history = len(history)
             history_tokens = [self.safe_token_count(h[1]) for h in history]
         
-        # store original length to compare at the end
-        orig_docs = 0
-        doc_tokens = []
-        if docs:
-            orig_docs = len(docs)
-            doc_tokens = [self.safe_token_count(d.page_content) for d in docs]
+        # separate documents lists we can prune from those we can't
+        orig_docs_counts, doc_tokens = [], []
+        prunable_docs_lists, prunable_indices = [], []
+        if docs_lists:
+            for docs_list in docs_lists:
+                orig_docs_counts.append(len(docs_list))
+                doc_tokens.append([self.safe_token_count(d.page_content) for d in docs_list])
+            prunable_docs_lists = [docs_list for docs_list, docs_var in zip(docs_lists, docs_vars) if docs_var not in self.unprunable_input_variables]
+            prunable_indices = [docs_lists.index(docs_list) for docs_list in prunable_docs_lists]
+            for k, v in zip(docs_vars, docs_lists):
+                if k in self.unprunable_input_variables:
+                    pruned_inputs[k] = v
 
         def total_tokens():
-            return sum(history_tokens) + sum(doc_tokens) + sum(extra_tokens)
+            return question_tokens + sum(history_tokens) + sum(sum(x) for x in doc_tokens) + sum(extra_tokens)
+        
+        # --- Step 0: Leave question ---
+        pruned_inputs['question'] = question
 
+        # --- Step 1: Reduce history ---
+        # 1a. Remove very large messages
         if history and 'history' not in self.unprunable_input_variables:
-            # --- Step 1: Reduce history ---
-            # 1a. Remove very large messages
             filtered_history = []
             filtered_history_tokens = []
             for msg, tcount in zip(history, history_tokens):
@@ -183,12 +204,25 @@ class TokenLimiter:
                 removed_tokens = history_tokens.pop(0)
                 logger.info(f"Removed old message ({removed_tokens} tokens) from history")
 
-        if docs and 'documents' not in self.unprunable_input_variables:
-            # --- Step 2: Reduce documents ---
-            while total_tokens() > self.effective_max_tokens and len(docs) > self.min_docs:
-                _ = docs.pop(0)
-                removed_tokens = doc_tokens.pop(0)
-                logger.info(f"Removed document ({doc_tokens} tokens)")
+            pruned_inputs['history'] = history
+
+        # --- Step 2: Reduce documents ---
+        if prunable_docs_lists:
+            # Remove one document at a time from each prunable docs list in round-robin fashion
+            # Map prunable_docs_lists to their indices in docs_lists to update the correct doc_tokens
+            
+            while total_tokens() > self.effective_max_tokens and any(len(docs) > self.min_docs for docs in prunable_docs_lists):
+                for idx, prunable_docs_list in enumerate(prunable_docs_lists):
+                    if len(prunable_docs_list) > self.min_docs:
+                        prunable_index = prunable_indices[idx]
+                        prunable_docs_list.pop()
+                        removed_tokens = doc_tokens[prunable_index].pop()
+                        logger.info(f"Removed document ({removed_tokens} tokens) from docs list {prunable_index}")
+                        if total_tokens() <= self.effective_max_tokens or not any(len(docs) > self.min_docs for docs in prunable_docs_lists):
+                            break
+            # Add back pruned docs lists to pruned_inputs
+            for idx, prunable_docs_list in zip(prunable_indices, prunable_docs_lists):
+                pruned_inputs[docs_vars[idx]] = prunable_docs_list
 
         # --- Step 3: Remove extras (last resort) ---
         extras_removed = []
@@ -202,20 +236,23 @@ class TokenLimiter:
                     extras_removed.append(key)
                     del extras[key]
                     del extra_tokens[key]
+            pruned_inputs.update(**extras)
 
         logger.info(
-            f"Reduced from {orig_docs} docs + {orig_history} history items "
+            f"Reduced from "
+            f"{ sum(orig_docs_counts) } docs "
+            f"+ {orig_history} history items "
             f"{ '+ '.join(extras.keys()) }"
-            f"to {len(docs)} docs + {len(history)} history items "
+            f"to { sum(len(pruned_inputs[docs]) for docs in docs_vars) } docs + {len(history)} history items"
             f"{ '+ '.join(extras_removed)}:"
             f"{total_tokens()} tokens total "
             f"({self.effective_max_tokens} effective maximum allowed)"
         )
 
         if orig_history_str:
-            history = history_utils.stringify_history(history)
+            pruned_inputs['history'] = history_utils.stringify_history(pruned_inputs['history'])
 
-        return {'documents': docs, 'history': history, "question": question, **extras}
+        return pruned_inputs
     
     def check_input_size(
         self,
