@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS timing (
     vectorstore_update_ts TIMESTAMP NOT NULL,
     query_convo_history_ts TIMESTAMP NOT NULL,
     chain_finished_ts TIMESTAMP NOT NULL,
-    similarity_search_ts TIMESTAMP NOT NULL,
     a2rchi_message_ts TIMESTAMP NOT NULL,
     insert_convo_ts TIMESTAMP NOT NULL,
     finish_call_ts TIMESTAMP NOT NULL,

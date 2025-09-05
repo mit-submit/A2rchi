@@ -14,7 +14,6 @@ def sliding_window(text, window_size, stride):
 def embedding_with_backoff(**kwargs):
     return openai.Embedding.create(**kwargs)
 
-
 def get_embedding(text, model="text-embedding-ada-002", api_key=None):
     if api_key is None:
         openai.api_key = os.environ.get("OPENAI_API_KEY")

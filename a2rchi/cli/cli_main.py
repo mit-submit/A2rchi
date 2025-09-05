@@ -230,8 +230,13 @@ def cli():
 
 
 @click.command()
+<<<<<<< HEAD
+@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment.")
+@click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
+=======
 @click.option('--name', type=str, required=True, help="Name of the a2rchi deployment.")
 @click.option('--config', '-c', 'a2rchi_config_filepath', type=str, required=True, help="Path to compose file.")
+>>>>>>> f3b9c001496256656e2d8274a793496c5df1c09f
 @click.option('--grafana', '-g', 'use_grafana', is_flag=True, help="Flag to add Grafana dashboard in deployment.")
 @click.option('--document-uploader', '-du', 'use_uploader_service', is_flag=True, help="Flag to add service for admins to upload data")
 @click.option('--redmine-tickets', '-rt', 'use_redmine_tickets', type=bool, default=False, help="Boolean to store redmine tickets in vector database for RAG. Automatically included if using --cleo-and-mailer.")
@@ -330,8 +335,6 @@ def create(
     required_fields = [
         'name', 
         'global.TRAINED_ON',
-        'chains.prompts.CONDENSING_PROMPT', 'chains.prompts.MAIN_PROMPT',
-        'chains.chain.MODEL_NAME', 'chains.chain.CONDENSE_MODEL_NAME',
     ]
 
     if use_piazza_service:
@@ -359,6 +362,7 @@ def create(
         if "collection_name" not in a2rchi_config:
             a2rchi_config["collection_name"] = f"collection_{name}"
 
+    print(a2rchi_config)
     locations_of_secrets = a2rchi_config["locations_of_secrets"]
 
     # prepare grader service if requested
@@ -556,73 +560,101 @@ def create(
         with open(os.path.join(a2rchi_name_dir, "init.sql"), 'w') as f:
             f.write(init_sql)
     
-    model_fields = ["MODEL_NAME", "CONDENSE_MODEL_NAME"] if not use_grader_service else ["IMAGE_PROCESSING_MODEL_NAME", "GRADING_FINAL_GRADE_MODEL_NAME"]
-    chain_config = a2rchi_config["chains"]["chain"]
+    chain_config = a2rchi_config['a2rchi']['pipeline_map']['QAPipeline']
+    print(chain_config)
 
-    if not dry:
-        # prepare needed api token secrets
-        if any("OpenAI" in chain_config[model] for model in model_fields) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
-            _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
-            compose_template_vars["openai"] = True
-        if any("Anthropic" in chain_config[model] for model in model_fields):
-            _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
-            compose_template_vars["anthropic"] = True
-        if  dry and "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
-            _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
-            #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
-            #compose_template_vars["huggingface"] = True
+    # prepare needed api token secrets
+    if any("OpenAI" in chain_config['models'][model] for model in chain_config['models']) or not "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
+        _prepare_secret(a2rchi_name_dir, "openai_api_key", locations_of_secrets)
+        compose_template_vars["openai"] = True
+    if any("Anthropic" in chain_config['models'][model] for model in chain_config['models']):
+        _prepare_secret(a2rchi_name_dir, "anthropic_api_key", locations_of_secrets)
+        compose_template_vars["anthropic"] = True
+    if "HuggingFace" in a2rchi_config.get("utils", {}).get("embeddings", {}).get("EMBEDDING_NAME", ""):
+        _print_msg("WARNING: You are using a HuggingFace embedding model. The default is public and doesn't require a token, but if you want to use a private model you will need one.")
+        #_prepare_secret(a2rchi_name_dir, "hf_token", locations_of_secrets)
+        #compose_template_vars["huggingface"] = True
 
-
-        _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
-        # SSO secrets
-        if  a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
-            compose_template_vars["sso"] = True
-            _print_msg("Preparing SSO secrets")
-            _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
-            _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
-
-        if a2rchi_config.get("utils",{}).get("git", {}).get("ENABLED", False):
-            compose_template_vars["git"] = True
-            _print_msg("Preparing GIT secrets")
-            _prepare_secret(a2rchi_name_dir, "git_username", locations_of_secrets)
-            _prepare_secret(a2rchi_name_dir, "git_token", locations_of_secrets)
+    _prepare_secret(a2rchi_name_dir, "pg_password", locations_of_secrets)
+    # SSO secrets
+    if a2rchi_config.get("utils",{}).get("sso", {}).get("ENABLED", False):
+        _print_msg("Preparing SSO secrets")
+        compose_template_vars["sso"] = True
+        _prepare_secret(a2rchi_name_dir, "sso_username", locations_of_secrets)
+        _prepare_secret(a2rchi_name_dir, "sso_password", locations_of_secrets)
 
 
-        # copy prompts (make this cleaner prob)
-        if use_grader_service:
-            shutil.copyfile(a2rchi_config["chains"]["prompts"]["IMAGE_PROCESSING_PROMPT"], os.path.join(a2rchi_name_dir, "image_processing.prompt"))
-            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_FINAL_GRADE_PROMPT"], os.path.join(a2rchi_name_dir, "grading_final_grade.prompt"))
-            compose_template_vars["summary"] = True
-            compose_template_vars["analysis"] = True
-            try:
-                shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "grading_summary.prompt"))
-            except KeyError:
-                compose_template_vars["summary"] = False
-                _print_msg("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
-            try:
-                shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_ANALYSIS_PROMPT"], os.path.join(a2rchi_name_dir, "grading_analysis.prompt"))
-            except KeyError:
-                compose_template_vars["analysis"] = False
-                _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
-        else:
-            shutil.copyfile(a2rchi_config["chains"]["prompts"]["MAIN_PROMPT"], os.path.join(a2rchi_name_dir, "main.prompt"))
-            shutil.copyfile(a2rchi_config["chains"]["prompts"]["CONDENSING_PROMPT"], os.path.join(a2rchi_name_dir, "condense.prompt"))
+    # copy prompts (make this cleaner prob)
+    if use_grader_service:
+        shutil.copyfile(a2rchi_config["chains"]["prompts"]["IMAGE_PROCESSING_PROMPT"], os.path.join(a2rchi_name_dir, "image_processing.prompt"))
+        shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_FINAL_GRADE_PROMPT"], os.path.join(a2rchi_name_dir, "grading_final_grade.prompt"))
+        compose_template_vars["summary"] = True
+        compose_template_vars["analysis"] = True
+        try:
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_SUMMARY_PROMPT"], os.path.join(a2rchi_name_dir, "grading_summary.prompt"))
+        except KeyError:
+            compose_template_vars["summary"] = False
+            _print_msg("Grading summary prompt not defined in configuration, there will be no grading summary step in the grading chain.")
+        try:
+            shutil.copyfile(a2rchi_config["chains"]["prompts"]["GRADING_ANALYSIS_PROMPT"], os.path.join(a2rchi_name_dir, "grading_analysis.prompt"))
+        except KeyError:
+            compose_template_vars["analysis"] = False
+            _print_msg("Grading analysis prompt not defined in configuration, there will be no grading analysis step in the grading chain.")
+    else:
+        shutil.copyfile(chain_config["prompts"]["qa_prompt"], os.path.join(a2rchi_name_dir, "main.prompt"))
+        shutil.copyfile(chain_config["prompts"]["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
 
 
-        # copy input lists
-        weblists_path = os.path.join(a2rchi_name_dir, "weblists")
-        os.makedirs(weblists_path, exist_ok=True)
-        web_input_lists = a2rchi_config["chains"].get("input_lists", [])
-        web_input_lists = web_input_lists or [] # protect against NoneType
-        for web_input_list in web_input_lists:
-            shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
+    # copy input lists
+    weblists_path = os.path.join(a2rchi_name_dir, "weblists")
+    os.makedirs(weblists_path, exist_ok=True)
+    web_input_lists = a2rchi_config["data_manager"].get("input_lists", [])
+    web_input_lists = web_input_lists or [] # protect against NoneType
+    for web_input_list in web_input_lists:
+        shutil.copyfile(web_input_list, os.path.join(weblists_path, os.path.basename(web_input_list)))
 
     # load and render config template
     config_template = env.get_template(BASE_CONFIG_TEMPLATE)
     config = config_template.render(verbosity=verbosity, **a2rchi_config)
 
-    if dry:
-      print(config)
+    # write final templated configuration
+    with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'w') as f:
+        f.write(config)
+
+    with open(os.path.join(a2rchi_name_dir, "config.yaml"), 'r') as f:
+        filled_config = yaml.load(f, Loader=yaml.FullLoader)
+
+    # Chat service ports
+    chat_port_host = filled_config.get('interfaces').get('chat_app').get('EXTERNAL_PORT')
+    chat_port_container = filled_config.get('interfaces').get('chat_app').get('PORT')
+    compose_template_vars['chat_port_host'] = chat_port_host
+    compose_template_vars['chat_port_container'] = chat_port_container
+    # ChromaDB service ports
+    chromadb_port_host = filled_config.get('data_manager').get('chromadb_external_port')
+    compose_template_vars['chromadb_port_host'] = chromadb_port_host
+    # Postgres service ports are never externally exposed, so they don't need to be managed!
+
+    # grader service ports
+    compose_template_vars["grader_port_host"] = filled_config.get('interfaces').get('grader_app').get('EXTERNAL_PORT')
+    compose_template_vars["grader_port_container"] = filled_config.get('interfaces').get('grader_app').get('PORT')
+
+    # load compose template
+    _print_msg("Preparing Compose")
+    compose_template = env.get_template(BASE_COMPOSE_TEMPLATE)
+    compose = compose_template.render({**compose_template_vars})
+    with open(os.path.join(a2rchi_name_dir, "compose.yaml"), 'w') as f:
+        # yaml.dump(compose, f)
+        f.write(compose)
+
+    # copy over the code into the a2rchi dir
+    shutil.copytree("a2rchi", os.path.join(a2rchi_name_dir, "a2rchi_code"))
+    shutil.copyfile("pyproject.toml", os.path.join(a2rchi_name_dir, "pyproject.toml"))
+    shutil.copyfile("requirements.txt", os.path.join(a2rchi_name_dir, "requirements.txt"))
+    shutil.copyfile("LICENSE", os.path.join(a2rchi_name_dir, "LICENSE"))
+
+    # create a2rchi system using docker
+    if use_podman:
+        compose_up = f"podman compose -f {os.path.join(a2rchi_name_dir, 'compose.yaml')} up -d --build --force-recreate --always-recreate-deps"
     else:
 
       # write final templated configuration
@@ -671,7 +703,7 @@ def create(
       _print_msg("DONE compose")
 
 @click.command()
-@click.option('--name', type=str, help="Name of the a2rchi deployment.")
+@click.option('--name', '-n', type=str, help="Name of the a2rchi deployment.")
 @click.option('--rmi', is_flag=True, help="Remove images after deleting the deployment.")
 def delete(name, rmi):
     """
@@ -723,7 +755,7 @@ def delete(name, rmi):
     _print_msg("Removing files in a2rchi directory")
     _run_bash_command(f"rm -rf {a2rchi_name_dir}")
 
-
+# TODO do we stlil want to support this?
 @click.command()
 @click.option('--name', type=str, default=None, help="Name of the a2rchi deployment.")
 @click.option('--a2rchi-config', '-f', 'a2rchi_config_filepath', type=str, default=None, help="Path to compose file.")
@@ -760,7 +792,7 @@ def update(name, a2rchi_config_filepath): #TODO: not sure if this works anymore,
         f.write(config)
 
     # copy prompts to keep consistent w/state of container
-    shutil.copyfile(a2rchi_config["main_prompt"], os.path.join(a2rchi_name_dir, "main.prompt"))
+    shutil.copyfile(a2rchi_config["qa_prompt"], os.path.join(a2rchi_name_dir, "qa.prompt"))
     shutil.copyfile(a2rchi_config["condense_prompt"], os.path.join(a2rchi_name_dir, "condense.prompt"))
 
     _print_msg("Updating config")

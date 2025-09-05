@@ -5,9 +5,12 @@ import requests
 import ssl
 import yaml
 
+from a2rchi.utils.config_loader import load_utils_config, load_global_config
 from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
+utils_config = load_utils_config()
+global_config = load_global_config()
 
 #clears the ssl certificates to allow web scraping
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -15,16 +18,12 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 class Scraper():
     
-    def __init__(self, piazza_email=None, piazza_password=None):
-        # fetch configs
-        from a2rchi.utils.config_loader import load_config
-        self.config_dict = load_config(map=True)
-        self.config = self.config_dict["utils"]["scraper"]
-        self.global_config = self.config_dict["global"]
-        self.piazza_config = self.config_dict["utils"].get("piazza", None)
-        self.data_path = self.global_config["DATA_PATH"]
-        # get SSO configuration
-        self.sso_config = self.config_dict["utils"].get("sso", None)
+    def __init__(self, dm_config: dict = {}, piazza_email=None, piazza_password=None):
+
+        self.config = utils_config["scraper"]
+        self.piazza_config = utils_config.get("piazza", None)
+        self.data_path = global_config["DATA_PATH"]
+        self.sso_config = utils_config.get("sso", None)
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
@@ -33,11 +32,12 @@ class Scraper():
         self.websites_dir = os.path.join(self.data_path, "websites")
         os.makedirs(self.websites_dir, exist_ok=True)
 
-        self.input_lists = self.config_dict["chains"].get("input_lists", [])
+        self.input_lists = dm_config.get("input_lists", [])
         if self.input_lists is None:
             self.input_lists = []
         logger.info(f"Input lists: {self.input_lists}")
 
+        # TODO what is this and do we need it?
         # # log in to piazza
         # if self.piazza_config is not None:
         #     # create sub-directory for piazza if it doesn't exist
@@ -70,8 +70,7 @@ class Scraper():
 
     def hard_scrape(self, verbose=False):
         """
-        Fills the data folder from scratch 
-        
+        Fills the data folder from scratch
         """
         # clear website data if specified
         if self.config["reset_data"] :
@@ -125,9 +124,9 @@ class Scraper():
                 url = re.split("sso-", url)[1]
                 try:
                     # Use SSO scraper from config if available
-                    if sso_config and sso_config.get("ENABLED", False):
-                        sso_class_name = sso_config.get("SSO_CLASS", "CERNSSOScraper")
-                        sso_class_map = sso_config.get("SSO_CLASS_MAP", {})
+                    if sso_config and sso_config.get("enabled", False):
+                        sso_class_name = sso_config.get("sso_class", "CERNSSOScraper")
+                        sso_class_map = sso_config.get("sso_class_map", {})
 
                         if sso_class_name in sso_class_map:
                             sso_class = sso_class_map[sso_class_name]["class"]
@@ -186,7 +185,8 @@ class Scraper():
         with open(sources_path, 'w') as file:
             yaml.dump(sources, file)
 
-
+    # TODO I think this is broken
+    # should we move PiazzaScraper to its own class?
     @staticmethod
     def scrape_piazza(upload_dir, sources_path):
         logger.debug(f"SOURCE: {sources_path}")

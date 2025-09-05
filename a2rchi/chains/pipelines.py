@@ -1,129 +1,218 @@
 """Chain for chatting with a vector database."""
 from __future__ import annotations
 from langchain_core.callbacks.file import FileCallbackHandler
-
-from a2rchi.chains.utils.token_limiter import TokenLimiter
-from a2rchi.chains.utils import history_utils
-from a2rchi.utils.config_loader import load_config
-from a2rchi.utils.logging import get_logger
-
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 from langchain.chains.llm import LLMChain # deprecated, should update
 from langchain.callbacks.manager import CallbackManagerForChainRun
-from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.prompts.base import BasePromptTemplate
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any, Dict, List, Optional
 import os 
-from datetime import datetime
+
+from a2rchi.chains.utils.token_limiter import TokenLimiter
+from a2rchi.utils.logging import get_logger
+from a2rchi.chains.models import print_model_params
+from a2rchi.chains.retrievers import SemanticRetriever, GradingRetriever
+from a2rchi.chains.utils import history_utils
+from a2rchi.chains.chain_wrappers import ChainWrapper
+from a2rchi.chains.utils.prompt_validator import ValidatedPromptTemplate
+from a2rchi.chains.utils.prompt_utils import read_prompt
 
 logger = get_logger(__name__)
 
-# DEFINITIONS
-config = load_config()["chains"]["base"]
-data_path = load_config()["global"]["DATA_PATH"]
-
-class BaseQAChain:
+class BasePipeline:
     """
-    Chain for chatting with an index, designed originally for SubMIT, now used for general QA
+    Basic structure of a Pipeline.
+
+    Methods:
+    --------
+    update_retriever(vectorstore)
+        Updates the retriever with a new vectorstore object
+
+    invoke()
+        Calls on the Pipeline with an user query, and other objects
+        like chat history, images, etc. as per your Pipeline inputs.
+
+    Returns:
+    --------
+    answer : str
+        Answer to the user query.
+    documents : list
+        List of relevant sources to the user query.
+
+    Examples:
+    >>> pipeline = BasePipeline()
+    >>> answer, docs = pipeline.invoke("What do we hold of the past?")
+
     """
 
-    def __init__(self, retriever: BaseRetriever, combine_docs_chain, condense_question_chain, llm: BaseLanguageModel, prompt: BasePromptTemplate):
-        self.retriever = retriever
-        self.combine_docs_chain = combine_docs_chain
-        self.condense_question_chain = condense_question_chain
-        self.llm = llm
-        self.prompt = prompt
-        logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
-        self.prompt_logger = PromptLogger(logfile)
-        self.token_limiter = TokenLimiter(llm=self.llm, prompt=self.prompt)
+    def __init__(
+        self,
+        config,
+        *args,
+        **kwargs
+    ):
+        self.config = config
 
-    def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        question = inputs["question"]
-        chat_history = inputs.get("chat_history", [])
+    def update_retriever(self, vectorstore):
+        self.retriever = None
 
-        # if the size of the question is too large, return a warning
-        if not self.token_limiter.check_question(question):
-            return {
-                "answer": self.token_limiter.QUESTION_SIZE_WARNING,
-                "question": question,
-                "chat_history": chat_history,
-                "source_documents": []
-            }
-
-        if chat_history:
-            _, reduced_history = self.token_limiter.reduce_tokens_below_limit(history=chat_history)
-            formatted_reduced_history = history_utils.stringify_history(reduced_history)
-            condensed_question = self.condense_question_chain.invoke(
-                {"question": question, "chat_history": formatted_reduced_history},
-                config={"callbacks": [self.prompt_logger]}
-            )
-            final_question = condensed_question
-        else:
-            final_question = question
-
-        # retrieve documents
-        docs = self.retriever.invoke(final_question) # n.b., using condensed question for retrieval
-
-        # reduce number of tokens, if necessary
-        reduced_docs, reduced_history = self.token_limiter.reduce_tokens_below_limit(docs=docs, history=chat_history)
-        formatted_reduced_history = history_utils.stringify_history(reduced_history)
-        
-        answer = self.combine_docs_chain.invoke(
-            {"question": final_question, "history": formatted_reduced_history, "context": reduced_docs},
-            config={"callbacks": [self.prompt_logger]}
-        )
-
+    def invoke(self, *args, **kwargs)  -> Dict[str, Any]:
         return {
-            "answer": answer,
-            "question": question,
-            "chat_history": reduced_history,
-            "source_documents": reduced_docs
+            "answer": "Stat rosa pristina nomine, nomina nuda tenemus.",
+            "documents": []
         }
 
-    @classmethod
-    def from_llm(
-        cls,
-        llm: BaseLanguageModel,
-        retriever: BaseRetriever,
-        qa_prompt: BasePromptTemplate,
-        condense_question_prompt: BasePromptTemplate,
-        condense_question_llm: Optional[BaseLanguageModel] = None,
-        combine_docs_chain_kwargs: Optional[Dict] = None,
-        **kwargs: Any,
-    ) -> "BaseQAChain":
+class QAPipeline(BasePipeline):
+    """
+    Simple question and answer Pipeline with document retrieval.
+
+    Graph:
+    (question) -> (condense prompt) -> (condense LLM) -> (condensed output)
+    (condensed_output) -> (retriever) -> (documents)
+    (documents, question, ...) -> (QA LLM) -> (answer)
+
+    Returns:
+    answer: LLM answer to question
+    documents: retrieved documents
+    condensed_output: LLM answer to condense prompt
+    """
+
+    def __init__(
+        self,
+        config,
+        *args,
+        **kwargs
+    ):
+
+        self.config = config
+        self.a2rchi_config = self.config["a2rchi"]
+        self.pipeline_config = self.a2rchi_config['pipeline_map']['QAPipeline']
+        self.dm_config = self.config["data_manager"]
+
+        # initialize prompts
+        self.prompts = {
+            name: ValidatedPromptTemplate(
+                name=name,
+                prompt_template=read_prompt(path),
+            )
+            for name, path in self.pipeline_config['prompts'].items() if path != ""
+        }
+
+        # initialize models
+        self._init_llms()
+
+        # initialize chains
+        self.condense_chain = ChainWrapper(
+            chain=self.prompts['condense_prompt'] | self.llm | StrOutputParser(),
+            llm=self.condense_llm,
+            prompt=self.prompts['condense_prompt'],
+            required_input_variables=['history'],
+            max_tokens=self.pipeline_config['max_tokens']
+        )
+        self.chat_chain = ChainWrapper(
+            chain = create_stuff_documents_chain(
+                llm=self.llm,
+                prompt=self.prompts['chat_prompt'],
+                document_variable_name="retriever_output",
+            ),
+            llm=self.llm,
+            prompt=self.prompts['chat_prompt'],
+            required_input_variables=['question'],
+            unprunable_input_variables=['question'],
+            max_tokens=self.pipeline_config['max_tokens']
+        )
+
+    def _init_llms(self):
+        """
+        Initalize LLM models from the config.
+        """
+        model_class_map = self.a2rchi_config["model_class_map"]
+        chat_model = self.pipeline_config['models']['chat_model']
+        condense_model = self.pipeline_config['models'].get("condense_model", chat_model)
+        self.llm = model_class_map[chat_model]["class"](
+            **model_class_map[chat_model]["kwargs"]
+        )
+        if condense_model == chat_model:
+            self.condense_llm = self.llm
+        else:
+            self.condense_llm = model_class_map[condense_model]["class"](
+                **model_class_map[condense_model]["kwargs"]
+            )
+        print_model_params("qa", chat_model, model_class_map)
+        print_model_params("condense", condense_model, model_class_map)
+
+    def _prepare_inputs(self, history, **kwargs) -> Dict[str, Any]:
+        """
+        Prepare inputs to be processed.
+        We feed all inputs to all the chains, and each prompt handles
+        what gets actually passed to the LLM to allow the user more
+        flexibility over the inputs.
+        All the inputs must be one of prompt_validator's SUPPORTED_INPUT_VARIABLES.
+        """
         
-        combine_docs_chain_kwargs = combine_docs_chain_kwargs or {}
-        document_variable_name = "context"
+        # seperate out the history into past interaction and current question input
+        full_history = history_utils.tuplize_history(history)
+        if len(full_history) > 0 and len(full_history[-1]) > 1:
+            question = full_history[-1][1]
+        else:
+            logger.error("No question found")
+            question = ""
+        history = full_history[:-1] if full_history is not None else None
 
-        # store templated inputs to llm (condense and main) in this file
-        logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
-        logger.info(f"Setting up BaseQAChain with log file for filled templates at: {logfile}, accessible outside the container at volume a2rchi-<name of your deployment>")
+        return {
+            "question": question,
+            "history": history,
+            "full_history": full_history
+        }
 
-        doc_chain = create_stuff_documents_chain(
-            llm=llm,
-            prompt=qa_prompt,
-            document_variable_name=document_variable_name,
-            **combine_docs_chain_kwargs
+    def update_retriever(self, vectorstore):
+        """
+        Update the retriever with a new vectorstore.
+        """
+        self.retriever = SemanticRetriever(
+            vectorstore=vectorstore,
+            search_kwargs={
+                "k": self.dm_config["num_documents_to_retrieve"]
+            },
+            dm_config=self.dm_config
         )
 
-        _llm = condense_question_llm or llm
-        condense_question_chain = condense_question_prompt | _llm | StrOutputParser()
+    def invoke(self, **kwargs) -> Dict[str, Any]:
+        """
+        Execute the Pipeline.
+        """
 
-        logger.debug("BaseQAChain created successfully")
+        # update connection to database
+        vs = kwargs.get("vectorstore")
+        if vs: self.update_retriever(vs) 
 
-        return cls(
-            retriever=retriever,
-            combine_docs_chain=doc_chain,
-            condense_question_chain=condense_question_chain,
-            llm=llm,
-            prompt=qa_prompt
+        # prepare inputs
+        inputs = self._prepare_inputs(history=kwargs.get("history"))
+
+        # execute our Pipeline
+        condense_output = self.condense_chain.invoke({
+            **inputs
+        })
+        retriever_output = self.retriever.invoke(
+            condense_output['answer']
         )
+        docs, scores = zip(*retriever_output)
+        answer_output = self.chat_chain.invoke({
+            **inputs,
+            'condense_output': condense_output['answer'],
+            'retriever_output': docs
+        })
 
-    
+        return {
+            "answer": answer_output['answer'],
+            "documents": docs,
+            "documents_scores": scores,
+        }
+
+# TODO put this in ChainWrappers
 class ImageLLMChain(LLMChain):
     """LLMChain but overriding _call method to ensure it points to custom LLM"""
     
@@ -147,6 +236,7 @@ class ImageLLMChain(LLMChain):
         
         return {"text": response}
 
+# TODO make this a Pipeline
 class BaseImageProcessingChain:
     """
     Chain for processing images.
@@ -193,16 +283,8 @@ class BaseImageProcessingChain:
         )
 
         return text_from_image
-    
-#prompt_text = self.image_processing_chain.llm_chain.prompt.format()
-#
-#        text_from_image = self.image_processing_chain._call(
-#            prompt=prompt_text,
-#            images=images,
-#        )
 
-
-
+# TODO make this a Pipeline
 class BaseGradingChain:
     """
     Construct chain for grading a response.
@@ -342,42 +424,3 @@ class BaseGradingChain:
         return reserved_tokens
     
 
-class PromptLogger(BaseCallbackHandler):
-    """Lightweight callback handler to log prompts and responses to file"""
-    
-    def __init__(self, logfile: str):
-        self.logfile = logfile
-        os.makedirs(os.path.dirname(logfile), exist_ok=True)
-    
-    def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
-        """Log the prompt when LLM starts"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(self.logfile, 'a', encoding='utf-8') as f:
-            f.write("-" * 41)
-            f.write(f"\n[{timestamp}] Prompt sent to LLM:\n")
-            f.write("-" * 41 + "\n\n")
-            for prompt in prompts:
-                f.write(f"{prompt}\n\n\n")
-    
-    def on_llm_end(self, response, **kwargs: Any) -> None:
-        """Log the response when LLM ends"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(self.logfile, 'a', encoding='utf-8') as f:
-            f.write("-" * 35)
-            f.write(f"\n[{timestamp}] LLM Response:\n")
-            f.write("-" * 35 + "\n\n")
-            
-            # handle different response formats
-            if hasattr(response, 'generations'):
-                for generation_list in response.generations:
-                    for generation in generation_list:
-                        if hasattr(generation, 'text'):
-                            f.write(f"{generation.text}\n\n\n")
-                        elif hasattr(generation, 'message'):
-                            f.write(f"{generation.message.content}\n\n\n")
-            else:
-                f.write(f"{response}\n\n\n")
-            
-            f.write("=" * 96 + "\n\n\n")
-
-    

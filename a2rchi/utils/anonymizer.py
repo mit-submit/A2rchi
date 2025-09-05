@@ -6,15 +6,15 @@ import re
 import spacy
 from typing import Set, List
 
-from a2rchi.utils.config_loader import load_config
-
+from a2rchi.utils.config_loader import load_utils_config
 
 class Anonymizer:
+
     def __init__(self):
         """
         Initialize the Anonymizer.
         """
-        self.anonymizer_config = load_config()["utils"]["anonymizer"]
+        self.anonymizer_config = load_utils_config()["anonymizer"]
         nlp_model = self.anonymizer_config["nlp_model"]
         excluded_words = self.anonymizer_config["excluded_words"]
         greeting_patterns = self.anonymizer_config["greeting_patterns"]

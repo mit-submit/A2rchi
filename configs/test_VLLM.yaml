@@ -4,8 +4,7 @@ global:
   TRAINED_ON: "the SubMIT Cluster"  
 
 locations_of_secrets:
-  - ~/.secrets/
-  - ~/.secrets/submit_cleo_and_mailer_passwords
+  - /home/submit/lavezzo/a2rchi/A2rchi/secrets
 
 chains:
   input_lists:  
@@ -33,7 +32,12 @@ chains:
 
 utils:
   data_manager:
-    chromadb_external_port: 8009
+    chromadb_external_port: 8006
+  embeddings:
+    EMBEDDING_NAME: HuggingFaceEmbeddings
+    EMBEDDING_CLASS_MAP:
+      HuggingFaceEmbeddings:
+        similarity_score_reference: 10
 interfaces:
   chat_app:
     HOSTNAME: "submit76.mit.edu" 
