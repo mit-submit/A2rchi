@@ -117,6 +117,8 @@ class ChatWrapper:
         # initialize data manager
         self.data_manager = DataManager()
         self.data_manager.update_vectorstore()
+        embedding_name = self.config["data_manager"]["embedding_name"]
+        self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
 
         # store postgres connection info
         self.pg_config = {
@@ -304,6 +306,15 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    def reload_links_db(self):
+        """
+        Load the sources.yaml file which contains the mapping from file hashes to links.
+        """
+        try:
+            with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
+                self.links_db = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            self.links_db = dict()
 
     def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
         """
@@ -369,14 +380,14 @@ class ChatWrapper:
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
-            # load the present list of sources
-            try:
-                with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
-                    sources = yaml.load(file, Loader=yaml.FullLoader)
-            except FileNotFoundError:
-                sources = dict()
+            # display answer
+            output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
+            output += "<br>"
 
-            # don't assume they are sorted
+            # re-load the present list of sources
+            self.reload_links_db()
+
+            # don't assume the documents given by the pipeline are sorted
             documents = result.get("documents", [])
             scores = result.get("documents_scores", [])
             if scores:
@@ -384,35 +395,58 @@ class ChatWrapper:
                 scores = [scores[i] for i in sorted_indices]
                 documents = [documents[i] for i in sorted_indices]
 
-            # get the closest source to the document
-            source = None
-            if len(documents) > 0:
-                source_hash = documents[0].metadata['source']
-                if '/' in source_hash and '.' in source_hash:
-                    source = source_hash.split('/')[-1].split('.')[0]
+            print(documents)
 
-            # if the score is low enough, include the source as a link, otherwise give just the answer
-            embedding_name = self.config["data_manager"]["embedding_name"]
-            similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
-            logger.debug(f"Similarity score reference:  {similarity_score_reference}")
-            logger.debug(f"Similarity score:  {scores[0] if scores else 'N/A'}")
-            link = ""
-            output = "<p>" + self.format_code_in_text(result["answer"])
-            if source is not None and scores[0] < similarity_score_reference and source in sources.keys():
-                link = sources[source]
-                logger.info(f"Primary source:  {link}")
-                parsed_source = urlparse(link)
-                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname
-                output += f"</a>(score:{scores[0]:.2f})</small></small>, "
-            output += f"<small><small>time: {time.time()-start_time:.2f}s</small></small>" + "\n<br>"
+            # prepare to show the best sources, if they have links
+            top_links, top_link_names, top_scores = [], [], []
+            if len(documents) > 0:
+                for i in range(5):
+                    score = scores[i]
+                    if score > self.similarity_score_reference: break # only show sources below a certain distance metric
+                    source_hash = documents[i].metadata['source'] # only links have metadata['hash'] (?)
+                    if '/' in source_hash and '.' in source_hash:
+                        source_hash = source_hash.split('/')[-1].split('.')[0]
+                        if source_hash in self.links_db: # only links have hashes in the sources.yaml (?)
+                            link = self.links_db[source_hash]
+                            parsed_link = urlparse(link)
+                            display_name = parsed_link.hostname
+                            if parsed_link.path and parsed_link.path != '/':
+                                first_path = parsed_link.path.strip('/').split('/')[0]
+                                display_name += f"/{first_path}"
+                            top_link_names.append(display_name)
+                            top_scores.append(score)
+                            top_links.append(link)
+                
+            # Only show "Sources:" if there are any valid sources
+            if top_links:
+                output += '<div style="margin-left: 2em;"><b>Sources:</b><br>'
+                output += "<ul style='margin-left: 1em; padding-left: 0; list-style-type: disc;'>"
+                for score, link, display_name in zip(top_scores, top_links, top_link_names):
+                    output += (
+                        "<li style='margin-bottom: 0.2em; padding-bottom: 0; line-height: 1.2;'>"
+                        "<small>"
+                        f'<a href="{link}" target="_blank" rel="noopener noreferrer">{display_name}</a>'
+                        f" (score: {score:.2f})"
+                        "</small>"
+                        "</li>"
+                    )
+                output += "</ul>"
+                output += "</div>"
 
             # write user message and A2rchi response to database
             timestamps['a2rchi_message_ts'] = datetime.now()
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
-            context = self.prepare_context_for_storage(documents, sources, scores)
+            context = self.prepare_context_for_storage(documents, self.links_db, scores)
 
-            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, link, context, is_refresh)
+            message_ids = self.insert_conversation(
+                conversation_id,
+                user_message,
+                a2rchi_message,
+                top_links[0] if top_links else None,
+                context,
+                is_refresh
+            )
             timestamps['insert_convo_ts'] = datetime.now()
 
         except Exception as e:
