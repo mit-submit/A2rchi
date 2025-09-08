@@ -61,20 +61,15 @@ class ChainWrapper:
         Prepare the input_variables to be passed to the chain.
         """
 
-        # grab all the input variables from the parameters given to the function
-        input_variables = {k:v for k,v in inputs.items() if k in self.prompt.input_variables and v}
-        print("input_variables", input_variables)
-
         # reduce number of tokens, if necessary
-        input_variables = self.token_limiter.prune_inputs_to_token_limit(**input_variables)
-        print("input_variables", input_variables)
+        inputs = self.token_limiter.prune_inputs_to_token_limit(**inputs)
 
         # if there are variables asked for in the prompt that aren't passed, initialize to empty string
         for var in self.prompt.input_variables:
-            if var not in input_variables:
-                input_variables[var] = ""
+            if var not in inputs:
+                inputs[var] = ""
         
-        return input_variables
+        return inputs
 
     def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """

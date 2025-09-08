@@ -15,6 +15,7 @@ data_manager:
   embedding_name: HuggingFaceEmbeddings
 
 a2rchi:
+  pipeline: QAPipeline
   pipeline_map:
     QAPipeline:
       prompts:

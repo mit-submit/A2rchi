@@ -387,8 +387,9 @@ class FlaskAppWrapper(object):
             #################################
 
             # IMAGE PROCESSING CALLED HERE !!!
-
-            raw_response = self.image_processor(base64_images)[0]
+            # TODO this is only for one image (?)
+            image_processor_output = self.image_processor(base64_images)
+            raw_response = image_processor_output['answer'].get("text", [""])[0]
             normalized_response = self.normalize_llm_response(raw_response)
 
             #################################

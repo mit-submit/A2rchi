@@ -30,7 +30,7 @@ a2rchi:
           image_processing_prompt: configs/prompts/image_processing.prompt
       models:
         required:
-          image_processing_model: HuggingFaceOpenLLM
+          image_processing_model: HuggingFaceImageLLM
 
 interfaces:
   grader_app:

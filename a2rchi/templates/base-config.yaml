@@ -109,7 +109,7 @@ a2rchi:
           image_processing_prompt: /root/A2rchi/image_processing.prompt
       models:
         required:
-          image_processing_model: {{ a2rchi.pipeline_map.ImageProcessingPipeline.models.image_processing_model | default('HuggingFaceOpenLLM', true) }}
+          image_processing_model: {{ a2rchi.pipeline_map.ImageProcessingPipeline.models.image_processing_model | default('HuggingFaceImageLLM', true) }}
     GradingPipeline:
       prompts:
         required:

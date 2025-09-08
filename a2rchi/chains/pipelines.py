@@ -372,6 +372,7 @@ class ImageProcessingPipeline(BasePipeline):
     def invoke(
         self,
         images: List[str, Any],
+        **kwargs
     ) -> Dict[str, str]:
         """
         Run the image processing chain with the provided images.
@@ -379,8 +380,7 @@ class ImageProcessingPipeline(BasePipeline):
         
         logger.info(f"Processing {len(images)} images.")
         text_from_image = self.image_processing_chain.invoke(
-            input={"images": images},
-            config={}
+            inputs={"images": images}
         )
 
         return text_from_image
