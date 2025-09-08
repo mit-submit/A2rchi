@@ -1,5 +1,5 @@
 from a2rchi.utils.config_loader import load_config, CONFIG_PATH
-from a2rchi.chains.chain import Chain
+from a2rchi.chains.a2rchi import A2rchi
 from a2rchi.utils import sender
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
@@ -29,7 +29,7 @@ class RedmineAIWrapper:
     """
 
     def __init__(self):
-        self.chain = Chain(cleo=True)
+        self.a2rchi = A2rchi()
 
         # initialize data manager
         self.data_manager = DataManager()
@@ -121,7 +121,7 @@ class RedmineAIWrapper:
         self.data_manager.update_vectorstore()
 
         # execute chain and get answer
-        result = self.chain(reformatted_history)
+        result = self.a2rchi(reformatted_history)
         answer = result["answer"]
 
         # prepare other information for storage

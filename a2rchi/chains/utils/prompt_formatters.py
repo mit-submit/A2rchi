@@ -41,23 +41,15 @@ class PromptFormatter:
         (formatted_prompt, end_tag) (Tuple[str, str]): tuple of formatted prompt and tag as strings
         """
 
-        print("in format prompt")
-        print(prompt)
-
         # pre templating operations
-        print(prompt)
         prompt = self._strip_tags(prompt)
 
         # optional prompt manipulations
         if self.strip_html:
             prompt = self._strip_html(prompt)
 
-        print(prompt)
-
         # apply defined template
         prompt = self.apply_format(prompt)
-
-        print(prompt)
 
         return prompt
     
