@@ -4,23 +4,36 @@ global:
   TRAINED_ON: "rubrics, class info, etc."
 
 locations_of_secrets:
-  - ~/.secrets/api_tokens
-  - ~/.secrets/salts_and_internal_passwords
-  - ~/.secrets/grader
+  - /home/submit/lavezzo/a2rchi/A2rchi/secrets/
+  - /home/submit/lavezzo/a2rchi/A2rchi/secrets/grader/
 
-chains:
+data_manager:
   input_lists:
     - configs/miscellanea.list
-  chain:
-    IMAGE_PROCESSING_MODEL_NAME: HuggingFaceImageLLM
-    GRADING_FINAL_GRADE_MODEL_NAME: HuggingFaceOpenLLM
+  chromadb_port: 8000
+  chromadb_external_port: 8001
+  embedding_name: HuggingFaceEmbeddings
 
-  prompts:
-    IMAGE_PROCESSING_PROMPT: configs/prompts/image_processing.prompt
-    GRADING_FINAL_GRADE_PROMPT: configs/prompts/grading_final_grade.prompt
+a2rchi:
+  pipeline: GradingPipeline
+  pipeline_map:
+    GradingPipeline:
+      prompts:
+        required:
+          grading_final_grade_prompt: configs/prompts/submit.prompt  
+      models:
+        required:
+          grading_final_grade_model: HuggingFaceOpenLLM
+    ImageProcessingPipeline:
+      prompts:
+        required:
+          image_processing_prompt: configs/prompts/image_processing.prompt
+      models:
+        required:
+          image_processing_model: HuggingFaceOpenLLM
 
 interfaces:
   grader_app:
     num_problems: 1
-    local_rubric_dir: ~/grading/my_rubrics
-    local_users_csv_dir: ~/grading/logins
+    local_rubric_dir: /home/submit/lavezzo/a2rchi/grading/my_rubrics
+    local_users_csv_dir: /home/submit/lavezzo/a2rchi/grading/logins

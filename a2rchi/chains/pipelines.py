@@ -3,8 +3,6 @@ from __future__ import annotations
 from langchain_core.callbacks.file import FileCallbackHandler
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
-from langchain.chains.llm import LLMChain # deprecated, should update
-from langchain.callbacks.manager import CallbackManagerForChainRun
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.prompts.base import BasePromptTemplate
@@ -16,6 +14,7 @@ from a2rchi.utils.logging import get_logger
 from a2rchi.chains.models import print_model_params
 from a2rchi.chains.retrievers import SemanticRetriever, GradingRetriever
 from a2rchi.chains.utils import history_utils
+from a2rchi.chains.chains import ImageLLMChain
 from a2rchi.chains.chain_wrappers import ChainWrapper
 from a2rchi.chains.utils.prompt_validator import ValidatedPromptTemplate
 from a2rchi.chains.utils.prompt_utils import read_prompt
@@ -24,28 +23,52 @@ logger = get_logger(__name__)
 
 class BasePipeline:
     """
-    Basic structure of a Pipeline.
+    BasePipeline provides a foundational structure for building pipeline classes that process user queries using configurable language models and prompts.
 
-    Methods:
+    Attributes
+    ----------
+    config : dict
+        Configuration dictionary containing pipeline, model, and data manager settings.
+    a2rchi_config : dict
+        Sub-configuration for A2rchi-specific settings.
+    dm_config : dict
+        Sub-configuration for data manager settings.
+    pipeline_config : dict
+        Pipeline-specific configuration extracted from a2rchi_config.
+    llms : dict
+        Dictionary mapping model names to initialized language model instances.
+    prompts : dict
+        Dictionary mapping prompt names to ValidatedPromptTemplate instances.
+
+    Methods
+    -------
+    - __init__(config, *args, **kwargs)
+        Initializes the pipeline with the provided configuration, setting up models and prompts.
+        Updates the pipeline's retriever with a new vectorstore object.
+    - invoke(*args, **kwargs) -> Dict[str, Any]
+        Processes a user query and returns an answer and relevant documents.
+    - _init_llms()
+        Initializes language model instances as specified in the configuration.
+    - _init_prompts()
+        Loads and validates prompt templates from the configuration.
+
+    Returns
+    -------
+    dict
+        {
+            "answer": str,                # LLM-generated answer to the query
+            "documents": List[Document],  # List of relevant documents
+        }
+
+    Usage
+    -----
+    Instantiate BasePipeline with the required configuration, then call `invoke()` with the user query and (optionally) a vectorstore.
+
+    Examples
     --------
-    update_retriever(vectorstore)
-        Updates the retriever with a new vectorstore object
-
-    invoke()
-        Calls on the Pipeline with an user query, and other objects
-        like chat history, images, etc. as per your Pipeline inputs.
-
-    Returns:
-    --------
-    answer : str
-        Answer to the user query.
-    documents : list
-        List of relevant sources to the user query.
-
-    Examples:
-    >>> pipeline = BasePipeline()
-    >>> answer, docs = pipeline.invoke("What do we hold of the past?")
-
+    >>> pipeline = BasePipeline(config)
+    >>> result = pipeline.invoke("What do we hold of the past?")
+    >>> print(result["answer"])
     """
 
     def __init__(
@@ -55,6 +78,11 @@ class BasePipeline:
         **kwargs
     ):
         self.config = config
+        self.a2rchi_config = self.config["a2rchi"]
+        self.dm_config = self.config["data_manager"]
+        self.pipeline_config = self.a2rchi_config['pipeline_map'][self.__class__.__name__]
+        self._init_llms()
+        self._init_prompts()
 
     def update_retriever(self, vectorstore):
         self.retriever = None
@@ -65,19 +93,155 @@ class BasePipeline:
             "documents": []
         }
 
+    def _init_llms(self):
+        """
+        Initialize LLM models from the config.
+
+        The config should look like:
+
+        ```
+            pipeline_map:
+                <PipelineName>:
+                    models:
+                        required:
+                            model_name: <ModelClassName>  # must be in model_class_map
+                            ...
+                        optional:
+                            model_name: <ModelClassName>  # must be in model_class_map
+                            ...
+        ``
+
+        If a ModelClass has already been initialized, copy it to another model_name.
+        LLMs are initialized to a self.llms dictionary containing:
+
+        ```
+            self.llms = {
+                "model_name": <ModelInstance>,
+                ...
+            }
+        ```
+        """
+
+        model_class_map = self.a2rchi_config["model_class_map"]
+        models_config = self.pipeline_config.get("models", {})
+        self.llms = {}
+
+        # Combine required and optional model configs
+        all_models = dict(models_config.get("required", {}), **models_config.get("optional", {}))
+
+        # Track already initialized model instances to avoid duplicates
+        initialized_models = {}
+
+        for model_name, model_class_name in all_models.items():
+            if model_class_name in initialized_models:
+                # Reuse the already initialized instance
+                self.llms[model_name] = initialized_models[model_class_name]
+            else:
+                model_class = model_class_map[model_class_name]["class"]
+                model_kwargs = model_class_map[model_class_name]["kwargs"]
+                instance = model_class(**model_kwargs)
+                self.llms[model_name] = instance
+                initialized_models[model_class_name] = instance
+
+    def _init_prompts(self):
+        """
+        Initialize prompts from the config.
+
+        The config should look like:
+
+        ```
+            pipeline_map:
+                <PipelineName>:
+                    prompts:
+                        required:
+                            prompt_name: path/to/prompt.txt
+                            ...
+                        optional:
+                            prompt_name: path/to/prompt.txt
+                            ...
+        ```
+
+        Prompts are initialized to a self.prompts dictionary containing:
+
+        ```
+            self.prompts = {
+                "prompt_name": <ValidatedPromptTemplateInstance>,
+                ...
+            }
+        ```
+        """
+
+        all_prompts = dict(
+            self.pipeline_config.get("prompts", {}).get("required", {}) | self.pipeline_config.get("prompts", {}).get("optional", {})
+        )
+        self.prompts = {}
+        for name, path in all_prompts.items():
+            if not path:
+                logger.warning(f"Prompt path for '{name}' is empty.")
+                continue
+            try:
+                prompt_template = read_prompt(path)
+                self.prompts[name] = ValidatedPromptTemplate(
+                    name=name,
+                    prompt_template=prompt_template,
+                )
+            except FileNotFoundError as e:
+                logger.warning(f"Optional prompt file '{path}' for '{name}' not found or unreadable: {e}")
+                continue
+
+
 class QAPipeline(BasePipeline):
     """
-    Simple question and answer Pipeline with document retrieval.
+    QAPipeline is a modular pipeline for question answering (QA) tasks that integrates document retrieval and large language model (LLM) reasoning.
 
-    Graph:
-    (question) -> (condense prompt) -> (condense LLM) -> (condensed output)
-    (condensed_output) -> (retriever) -> (documents)
-    (documents, question, ...) -> (QA LLM) -> (answer)
+    Overview
+    --------
+    This pipeline processes a user question by first condensing the conversation history, retrieving relevant documents, and then generating an answer using the retrieved context.
+    
+    Pipeline Flow
+    -------------
+    1. (question) -> (condense prompt) -> (condense LLM) -> (condensed output)
+    2. (condensed_output) -> (retriever) -> (documents)
+    3. (documents, question, ...) -> (QA LLM) -> (answer)
+    
+    Key Components
+    --------------
+    - condense_chain: Summarizes or condenses the conversation history to focus the retrieval step.
+    - retriever: Retrieves relevant documents from a vectorstore based on the condensed question.
+    - chat_chain: Generates the final answer using the question and retrieved documents.
 
-    Returns:
-    answer: LLM answer to question
-    documents: retrieved documents
-    condensed_output: LLM answer to condense prompt
+    Parameters
+    ----------
+    config : dict
+        Configuration dictionary for the pipeline, including LLMs, prompts, and pipeline settings.
+    *args, **kwargs
+        Additional arguments passed to the BasePipeline.
+    
+    Methods
+    -------
+    - __init__(config, *args, **kwargs): Initializes the pipeline, LLMs, prompts, and chains.
+    - _prepare_inputs(history, **kwargs): Prepares and formats inputs for the pipeline, extracting the current question and conversation history.
+    - update_retriever(vectorstore): Updates the retriever with a new vectorstore for document retrieval.
+    - invoke(**kwargs): Executes the pipeline end-to-end, returning the answer, retrieved documents, and their scores.
+    
+    Returns
+    -------
+    dict
+        {
+            "answer": str,                # LLM-generated answer to the question
+            "documents": List[Document],  # List of retrieved documents
+            "documents_scores": List[float], # Relevance scores for each document
+        }
+
+    Usage
+    -----
+    Instantiate QAPipeline with the required configuration, then call `invoke()` with the conversation history and (optionally) a vectorstore.
+    
+    Example
+    -------
+    >>> pipeline = QAPipeline(config)
+    >>> result = pipeline.invoke(history=chat_history, vectorstore=my_vectorstore)
+    >>> print(result["answer"])
     """
 
     def __init__(
@@ -87,62 +251,28 @@ class QAPipeline(BasePipeline):
         **kwargs
     ):
 
-        self.config = config
-        self.a2rchi_config = self.config["a2rchi"]
-        self.pipeline_config = self.a2rchi_config['pipeline_map']['QAPipeline']
-        self.dm_config = self.config["data_manager"]
-
-        # initialize prompts
-        self.prompts = {
-            name: ValidatedPromptTemplate(
-                name=name,
-                prompt_template=read_prompt(path),
-            )
-            for name, path in self.pipeline_config['prompts'].items() if path != ""
-        }
-
-        # initialize models
-        self._init_llms()
+        super().__init__(config, *args, **kwargs)
 
         # initialize chains
         self.condense_chain = ChainWrapper(
-            chain=self.prompts['condense_prompt'] | self.llm | StrOutputParser(),
-            llm=self.condense_llm,
+            chain=self.prompts['condense_prompt'] | self.llms['condense_model'] | StrOutputParser(),
+            llm=self.llms['condense_model'],
             prompt=self.prompts['condense_prompt'],
             required_input_variables=['history'],
             max_tokens=self.pipeline_config['max_tokens']
         )
         self.chat_chain = ChainWrapper(
-            chain = create_stuff_documents_chain(
-                llm=self.llm,
+            chain=create_stuff_documents_chain(
+                llm=self.llms['chat_model'],
                 prompt=self.prompts['chat_prompt'],
                 document_variable_name="retriever_output",
             ),
-            llm=self.llm,
+            llm=self.llms['chat_model'],
             prompt=self.prompts['chat_prompt'],
             required_input_variables=['question'],
             unprunable_input_variables=['question'],
             max_tokens=self.pipeline_config['max_tokens']
         )
-
-    def _init_llms(self):
-        """
-        Initalize LLM models from the config.
-        """
-        model_class_map = self.a2rchi_config["model_class_map"]
-        chat_model = self.pipeline_config['models']['chat_model']
-        condense_model = self.pipeline_config['models'].get("condense_model", chat_model)
-        self.llm = model_class_map[chat_model]["class"](
-            **model_class_map[chat_model]["kwargs"]
-        )
-        if condense_model == chat_model:
-            self.condense_llm = self.llm
-        else:
-            self.condense_llm = model_class_map[condense_model]["class"](
-                **model_class_map[condense_model]["kwargs"]
-            )
-        print_model_params("qa", chat_model, model_class_map)
-        print_model_params("condense", condense_model, model_class_map)
 
     def _prepare_inputs(self, history, **kwargs) -> Dict[str, Any]:
         """
@@ -212,69 +342,40 @@ class QAPipeline(BasePipeline):
             "documents_scores": scores,
         }
 
-# TODO put this in ChainWrappers
-class ImageLLMChain(LLMChain):
-    """LLMChain but overriding _call method to ensure it points to custom LLM"""
-    
-    def _call(
-        self,
-        inputs: Dict[str, Any],
-        run_manager: Optional[CallbackManagerForChainRun] = None,
-    ) -> Dict[str, str]:
-        images = inputs.get("images", [])
-        
-        # format prompt ourself now
-        prompt_inputs = {k: v for k, v in inputs.items() if k != "images"}
-        prompt = self.prompt.format(**prompt_inputs)
-        
-        # directly calling HuggingFaceImageLLM's _call method
-        response = self.llm._call(
-            prompt=prompt,
-            images=images,
-            run_manager=run_manager.get_child() if run_manager else None,
-        )
-        
-        return {"text": response}
 
-# TODO make this a Pipeline
-class BaseImageProcessingChain:
+class ImageProcessingPipeline(BasePipeline):
     """
-    Chain for processing images.
+    Simple pipeline for processing images.
     """
 
-    def __init__(self, image_processing_chain: ImageLLMChain):
-        """
-        Initialize the image processing chain with the provided LLM chain.
-        """
-        self.image_processing_chain = image_processing_chain
-
-    @classmethod
-    def from_llm(
-        cls,
-        llm: BaseLanguageModel,
-        prompt: BasePromptTemplate,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> "BaseImageProcessingChain":
+    def __init__(
+            self,
+            config,
+            *args,
+            **kwargs
+    ):
         
-        return cls(
-            image_processing_chain=ImageLLMChain(
-                llm=llm,
-                prompt=prompt,
-                verbose=verbose,
-                **kwargs,
-            )
+        super().__init__(config, *args, **kwargs)
+
+        self._image_llm_chain = ImageLLMChain(
+            llm=self.llms['image_processing_model'],
+            prompt=self.prompts['image_processing_prompt']
+        )
+        self.image_processing_chain = ChainWrapper(
+            chain=self._image_llm_chain,
+            llm=self.llms['image_processing_model'],
+            prompt=self.prompts['image_processing_prompt'],
+            required_input_variables=[],
+            **kwargs,
         )
 
-    def run(
+    def invoke(
         self,
         images: List[str, Any],
     ) -> Dict[str, str]:
         """
         Run the image processing chain with the provided images.
         """
-        if not self.image_processing_chain:
-            raise ValueError("Image processing chain is not defined.")
         
         logger.info(f"Processing {len(images)} images.")
         text_from_image = self.image_processing_chain.invoke(
@@ -284,143 +385,121 @@ class BaseImageProcessingChain:
 
         return text_from_image
 
-# TODO make this a Pipeline
-class BaseGradingChain:
+
+class GradingPipeline(BasePipeline):
     """
-    Construct chain for grading a response.
+    Pipeline for grading a response using summary, analysis, and final grade steps.
     """
 
-    def __init__(self, summary_chain: LLMChain, analysis_chain: LLMChain, final_grade_chain: LLMChain, retriever: Optional[BaseRetriever] = None):
-        """
-        Initialize the grading chain with the summary, analysis, and final grade chains.
-        """
-        self.summary_chain = summary_chain
-        self.analysis_chain = analysis_chain
-        self.final_grade_chain = final_grade_chain
-        self.retriever = retriever
+    def __init__(
+        self,
+        config,
+        *args,
+        **kwargs
+    ):
+        super().__init__(config, *args, **kwargs)
+        self.summary_chain = None
+        self.analysis_chain = None
+        self.final_grade_chain = None
+        self.retriever = None
+        self._init_chains()
 
-    @classmethod
-    def from_llm(
-        cls,
-        llm: BaseLanguageModel, # TODO: currently only supporting same llm for all grading steps, quick to update...
-        final_grade_prompt: BasePromptTemplate,
-        summary_prompt: Optional[BasePromptTemplate] = None,
-        analysis_prompt: Optional[BasePromptTemplate] = None,
-        retriever: Optional[BaseRetriever] = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> "BaseGradingChain":
-
-        logfile = os.path.join(data_path, config["logging"]["input_output_filename"])
-        logger.info(f"Setting up BaseGradingChain with log file for filled templates at: {logfile}")
-        handler = FileCallbackHandler(logfile)
-
-        # TODO: for supporting different LLMs for each step, define _llm = ... for passing to summary and analysis chains
-
-        # build chains
-        if summary_prompt is not None:
-            summary_chain = LLMChain(
-                llm=llm,
-                prompt=summary_prompt,
-                callbacks = [handler],
-                verbose=verbose,
+    def _init_chains(self):
+        # Initialize summary, analysis, and final grade chains if prompts are provided
+        if 'summary_prompt' in self.prompts:
+            self.summary_chain = ChainWrapper(
+                chain=self.prompts['summary_prompt'] | self.llms['grading_model'] | StrOutputParser(),
+                llm=self.llms['grading_model'],
+                prompt=self.prompts['summary_prompt'],
+                required_input_variables=['submission_text'],
+                max_tokens=self.pipeline_config.get('max_tokens', 7000)
             )
-        else:
-            summary_chain = None
-
-        if analysis_prompt is not None:
-            analysis_chain = LLMChain(
-                llm=llm,
-                prompt=analysis_prompt,
-                callbacks = [handler],
-                verbose=verbose,
+        if 'analysis_prompt' in self.prompts:
+            self.analysis_chain = ChainWrapper(
+                chain=self.prompts['analysis_prompt'] | self.llms['grading_model'] | StrOutputParser(),
+                llm=self.llms['grading_model'],
+                prompt=self.prompts['analysis_prompt'],
+                required_input_variables=['submission_text', 'rubric_text', 'summary'],
+                max_tokens=self.pipeline_config.get('max_tokens', 7000)
             )
-        else:
-            analysis_chain = None
+        if 'final_grade_prompt' in self.prompts:
+            self.final_grade_chain = ChainWrapper(
+                chain=self.prompts['final_grade_prompt'] | self.llms['grading_model'] | StrOutputParser(),
+                llm=self.llms['grading_model'],
+                prompt=self.prompts['final_grade_prompt'],
+                required_input_variables=['rubric_text', 'submission_text', 'analysis', 'additional_comments'],
+                max_tokens=self.pipeline_config.get('max_tokens', 7000)
+            )
 
-        final_grade_chain = LLMChain(
-            llm=llm,
-            prompt=final_grade_prompt,
-            callbacks = [handler],
-            verbose=verbose,
+    def update_retriever(self, vectorstore):
+        self.retriever = SemanticRetriever(
+            vectorstore=vectorstore,
+            search_kwargs={
+                "k": self.dm_config.get("num_documents_to_retrieve", 4)
+            },
+            dm_config=self.dm_config
         )
 
-        logger.debug("BaseGradingChain created successfully")
+    def _estimate_grader_reserved_tokens(self, submission_text: str, rubric_text: str, summary: str, additional_comments: str) -> int:
+        reserved_tokens = 300
+        llm = self.llms['grading_model']
+        reserved_tokens += llm.get_num_tokens(submission_text)
+        reserved_tokens += llm.get_num_tokens(rubric_text)
+        reserved_tokens += llm.get_num_tokens(summary)
+        reserved_tokens += llm.get_num_tokens(additional_comments)
+        logger.info(f"Estimated reserved tokens: {reserved_tokens}")
+        return reserved_tokens
 
-        return cls(
-            summary_chain=summary_chain,
-            analysis_chain=analysis_chain,
-            final_grade_chain=final_grade_chain,
-            retriever=retriever
-        )
-
-    def run(
+    def invoke(
         self,
         submission_text: str,
         rubric_text: str,
         additional_comments: str = "",
+        vectorstore=None,
+        **kwargs
     ) -> Dict[str, str]:
         """
-        Run the grading chain with the provided submission text and rubric.
+        Run the grading pipeline with the provided submission text and rubric.
         """
-        
-        if not self.summary_chain:
-            logger.info("Summary prompt, and thus chain, is not defined. Skipping summary step.")
-        else:
-            summary = self.summary_chain.run(
-                submission_text=submission_text,
-            )
+        if vectorstore:
+            self.update_retriever(vectorstore)
 
-        retrieved_docs = self.retriever.invoke(submission_text) if self.retriever else []
+        summary = "No solution summary."
+        if self.summary_chain:
+            summary = self.summary_chain.invoke({
+                "submission_text": submission_text
+            })['answer']
+
+        retrieved_docs = []
+        if self.retriever:
+            retrieved_docs, _ = zip(*self.retriever.invoke(submission_text)) if self.retriever.invoke(submission_text) else ([], [])
 
         token_limiter = TokenLimiter(
-            llm=self.final_grade_chain.llm,
-            max_tokens=self.final_grade_chain.llm.max_tokens if hasattr(self.final_grade_chain.llm, 'max_tokens') else 7000,
-            reserved_tokens=self._estimate_grader_reserved_tokens(submission_text, rubric_text, summary if self.summary_chain else "", additional_comments)
+            llm=self.llms['grading_model'],
+            max_tokens=getattr(self.llms['grading_model'], 'max_tokens', 7000),
+            reserved_tokens=self._estimate_grader_reserved_tokens(submission_text, rubric_text, summary, additional_comments)
         )
+        reduced_docs = token_limiter.reduce_tokens_below_limit(retrieved_docs) if retrieved_docs else []
+        retrieved_context = "\n\n".join(doc.page_content for doc in reduced_docs) if reduced_docs else "No relevant documents retrieved."
 
-        reduced_docs = token_limiter.reduce_tokens_below_limit(retrieved_docs)
+        analysis = "No preliminary analysis step."
+        if self.analysis_chain:
+            analysis = self.analysis_chain.invoke({
+                "submission_text": submission_text,
+                "rubric_text": rubric_text,
+                "summary": summary if self.summary_chain else "No solution summary provided. Complete the analysis without it.",
+            })['answer']
 
-
-        if reduced_docs:
-            retrieved_context = "\n\n".join(doc.page_content for doc in reduced_docs)
-
-        if not self.analysis_chain:
-            logger.info("Analysis prompt, and thus chain, is not defined. Skipping analysis step.")
-        else:
-            analysis = self.analysis_chain.run(
-                submission_text=submission_text,
-                rubric_text=rubric_text,
-                summary=summary if self.summary_chain else "No solution summary provided. Complete the analysis without it.",
-            )
-
-        final_grade = self.final_grade_chain.run(
-            rubric_text=rubric_text,
-            submission_text=submission_text,
-            analysis=analysis if self.analysis_chain else "No analysis summary, complete the final grading without it.",
-            additional_comments=additional_comments,
-        )
+        final_grade = self.final_grade_chain.invoke({
+            "rubric_text": rubric_text,
+            "submission_text": submission_text,
+            "analysis": analysis if self.analysis_chain else "No analysis summary, complete the final grading without it.",
+            "additional_comments": additional_comments,
+        })['answer'] if self.final_grade_chain else "No final grade chain defined."
 
         return {
-            "summary": summary if self.summary_chain else "No solution summary.",
-            "analysis": analysis if self.analysis_chain else "No preliminary analysis step.",
+            "summary": summary,
+            "analysis": analysis,
             "final_grade": final_grade,
-            "retrieved_context": retrieved_context if reduced_docs else "No relevant documents retrieved."
+            "retrieved_context": retrieved_context
         }
-
-    
-    def _estimate_grader_reserved_tokens(self, submission_text: str, rubric_text: str, summary: str, additional_comments: str) -> int:
-        """
-        Estimate the number of reserved tokens based on the input texts.
-        """
-        reserved_tokens = 300
-        reserved_tokens += self.final_grade_chain.llm.get_num_tokens(submission_text)
-        reserved_tokens += self.final_grade_chain.llm.get_num_tokens(rubric_text)
-        reserved_tokens += self.final_grade_chain.llm.get_num_tokens(summary)
-        reserved_tokens += self.final_grade_chain.llm.get_num_tokens(additional_comments)
-
-        logger.info(f"Estimated reserved tokens: {reserved_tokens}")
-
-        return reserved_tokens
-    
-

@@ -83,8 +83,5 @@ class ValidatedPromptTemplate(PromptTemplate):
             return match.group(0)  # leave unchanged if not supported
 
         prompt_template = pattern.sub(replacer, prompt_template)
-
-        print(prompt_template)
-
         logger.debug("Added tags to prompt.")
         return prompt_template

@@ -1,4 +1,4 @@
-from a2rchi.chains.chain import Chain
+from a2rchi.chains.a2rchi import A2rchi
 from a2rchi.utils.config_loader import load_config, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
@@ -60,7 +60,7 @@ class ImageToTextWrapper:
         self.lock = Lock()
 
         # initialize image processing chain
-        self.image_processor = Chain(image_processing=True)
+        self.image_processor = A2rchi(pipeline="ImageProcessingPipeline")
 
     def __call__(self, images: List[str]) -> str:
         """
@@ -108,7 +108,7 @@ class GradingWrapper:
         self.lock = Lock()
 
         # initialize grading chain
-        self.grader = Chain(grading=True) # more similar to chatwrapper, just need to handle the successive prompts SOMEWHERE
+        self.grader = A2rchi(pipeline="GradingPipeline") # more similar to chatwrapper, just need to handle the successive prompts SOMEWHERE
 
 
     ##################

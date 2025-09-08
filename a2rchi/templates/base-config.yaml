@@ -96,20 +96,32 @@ a2rchi:
     QAPipeline:
       max_tokens: {{ a2rchi.pipeline_map.QAPipeline.max_tokens | default(10000, true) }}
       prompts:
-        condense_prompt: /root/A2rchi/condense.prompt
-        chat_prompt: /root/A2rchi/chat.prompt
+        required:
+          condense_prompt: /root/A2rchi/condense.prompt
+          chat_prompt: /root/A2rchi/chat.prompt
       models:
-        condense_model: {{ a2rchi.pipeline_map.QAPipeline.models.condense_model | default('DumbLLM', true) }}
-        chat_model: {{ a2rchi.pipeline_map.QAPipeline.models.chat_model | default('DumbLLM', true) }}
-    # GradingPipeline:
-    #   IMAGE_PROCESSING_PROMPT: "{{ '/root/A2rchi/image_processing.prompt' if chains.chain.IMAGE_PROCESSING_MODEL_NAME else null }}"
-    #   GRADING_SUMMARY_PROMPT: "{{ '/root/A2rchi/grading_summary.prompt' if chains.chain.GRADING_SUMMARY_MODEL_NAME else null }}"
-    #   GRADING_ANALYSIS_PROMPT: "{{ '/root/A2rchi/grading_analysis.prompt' if chains.chain.GRADING_ANALYSIS_MODEL_NAME else null }}"
-    #   GRADING_FINAL_GRADE_PROMPT: "{{ '/root/A2rchi/grading_final_grade.prompt' if chains.chain.GRADING_FINAL_GRADE_MODEL_NAME else null }}"
-    #   IMAGE_PROCESSING_MODEL_NAME: {{ chains.chain.IMAGE_PROCESSING_MODEL_NAME | default('null', true) }}
-    #   GRADING_SUMMARY_MODEL_NAME: {{ chains.chain.GRADING_SUMMARY_MODEL_NAME | default('null', true) }}
-    #   GRADING_ANALYSIS_MODEL_NAME: {{ chains.chain.GRADING_ANALYSIS_MODEL_NAME | default('null', true) }}
-    #   GRADING_FINAL_GRADE_MODEL_NAME: {{ chains.chain.GRADING_FINAL_GRADE_MODEL_NAME | default('null', true) }}
+        required:
+          condense_model: {{ a2rchi.pipeline_map.QAPipeline.models.condense_model | default('DumbLLM', true) }}
+          chat_model: {{ a2rchi.pipeline_map.QAPipeline.models.chat_model | default('DumbLLM', true) }}
+    ImageProcessingPipeline:
+      prompts:
+        required:
+          image_processing_prompt: /root/A2rchi/image_processing.prompt
+      models:
+        required:
+          image_processing_model: {{ a2rchi.pipeline_map.ImageProcessingPipeline.models.image_processing_model | default('HuggingFaceOpenLLM', true) }}
+    GradingPipeline:
+      prompts:
+        required:
+          grading_final_grade_prompt: /root/A2rchi/grading_final_grade.prompt  
+        optional:
+          grading_analysis_prompt: /root/A2rchi/grading_analysis.prompt
+      models:
+        required:
+          grading_final_grade_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_final_grade_model | default('HuggingFaceOpenLLM', true) }}
+        optional:
+          grading_analysis_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_analysis_model | default('HuggingFaceOpenLLM', true) }}
+
   model_class_map:
     AnthropicLLM:
       class: AnthropicLLM

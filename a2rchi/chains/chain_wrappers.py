@@ -2,6 +2,8 @@ import os
 from typing import Any, Dict, List, Optional
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
+from langchain.chains.llm import LLMChain # deprecated, should update
+from langchain.callbacks.manager import CallbackManagerForChainRun
 
 from a2rchi.chains.utils.callback_handlers import PromptLogger
 from a2rchi.chains.utils.token_limiter import TokenLimiter

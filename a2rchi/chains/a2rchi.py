@@ -15,20 +15,20 @@ class A2rchi():
     creates and executes your Pipeline.
     """
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         self.required_output_keys = ["answer", "documents"]
-        self.update()
+        self.update(kwargs.get("pipeline", None))
         self._init_vectorstore_params()
 
-    def update(self):
+    def update(self, pipeline_name=None):
         """
         Read relevant configuration settings.
-        Initialize the Pipeline.
+        Initialize the Pipeline: either passed as argument or from config file.
         """
         logger.debug("Loading config")
         self.config = load_config(map=True)
         self.pipeline = self._create_pipeline_instance(
-            self.config["a2rchi"]["pipeline"],
+            pipeline_name if pipeline_name else self.config["a2rchi"]["pipeline"],
             config=self.config
         )
 
