@@ -268,7 +268,7 @@ class TemplateManager:
     def _prepare_postgres_init(self, base_dir: Path, compose_config, secrets) -> None:
         """Prepare PostgreSQL initialization script"""
         grafana_enabled = compose_config.get_service('grafana').enabled
-        grafana_pg_password = secrets.get_secret('GRAFANA_PG_PASSWORD')
+        grafana_pg_password = secrets.get_secret('GRAFANA_PG_PASSWORD') if grafana_enabled else ""
         
         init_sql_template = self.env.get_template(BASE_INIT_SQL_TEMPLATE)
         init_sql = init_sql_template.render(

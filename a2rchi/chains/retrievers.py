@@ -47,9 +47,12 @@ class SemanticRetriever(BaseRetriever):
             logger.warning(f"Instructions provided but model '{embedding_model}' not in supported models: {INSTRUCTION_AWARE_MODELS}")
             
         similarity_result = self.vectorstore.similarity_search_with_score(query, **self.search_kwargs)
+        logger.debug("=== Similarity Search Results ===")
+        logger.debug(f"Query: {query}")
+        logger.debug(f"Using embedding model: {embedding_model}")
         for d, s in similarity_result:
             logger.debug(f"Doc: {d.metadata['filename']} Score: {s}")
-        print(similarity_result)
+            logger.debug(f"Content: {d.page_content[:150]}...")
         return similarity_result
 
 class GradingRetriever(BaseRetriever):

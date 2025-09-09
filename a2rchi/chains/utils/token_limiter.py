@@ -146,6 +146,7 @@ class TokenLimiter:
                 if hasattr(v[0], 'page_content'):
                     docs_lists.append(v)
                     docs_vars.append(k)
+                    continue
             elif not isinstance(v, str):
                 raise ValueError(f"Extra variable '{k}' must be a string, got {type(v)}")
             extras[k] = v
@@ -242,9 +243,9 @@ class TokenLimiter:
             f"Reduced from "
             f"{ sum(orig_docs_counts) } docs "
             f"+ {orig_history} history items "
-            f"{ '+ '.join(extras.keys()) }"
-            f"to { sum(len(pruned_inputs[docs]) for docs in docs_vars) } docs + {len(history)} history items"
-            f"{ '+ '.join(extras_removed)}:"
+            f"{ ' + '.join(extras.keys()) }"
+            f" to { sum(len(pruned_inputs[docs]) for docs in docs_vars) } docs + {len(history)} history items "
+            f"{ ' + '.join(extras_removed)}: "
             f"{total_tokens()} tokens total "
             f"({self.effective_max_tokens} effective maximum allowed)"
         )

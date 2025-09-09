@@ -19,11 +19,13 @@ a2rchi:
   pipeline_map:
     QAPipeline:
       prompts:
-        condense_prompt: configs/prompts/condense.prompt  
-        chat_prompt: configs/prompts/submit.prompt  
+        required:
+          condense_prompt: configs/prompts/condense.prompt  
+          chat_prompt: configs/prompts/submit.prompt  
       models:
-        chat_model: HuggingFaceOpenLLM
-        condense_model: HuggingFaceOpenLLM
+        required:
+          chat_model: HuggingFaceOpenLLM
+          condense_model: HuggingFaceOpenLLM
 
 
 interfaces:

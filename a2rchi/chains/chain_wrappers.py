@@ -9,6 +9,7 @@ from a2rchi.chains.utils.callback_handlers import PromptLogger
 from a2rchi.chains.utils.token_limiter import TokenLimiter
 from a2rchi.utils.config_loader import load_global_config
 from a2rchi.utils.logging import get_logger
+import pprint
 
 logger = get_logger(__name__)
 
@@ -67,6 +68,7 @@ class ChainWrapper:
         # if there are variables asked for in the prompt that aren't passed, initialize to empty string
         for var in self.prompt.input_variables:
             if var not in inputs:
+                logger.debug(f"Input variable '{var}' not provided, initializing to empty string.")
                 inputs[var] = ""
         
         return inputs
@@ -75,6 +77,7 @@ class ChainWrapper:
         """
         Call the chain to produce the LLM answer with some given inputs determined by the prompt.
         """
+        logger.debug("Invoked chain with inputs:\n%s", pprint.pformat(inputs, indent=2))
 
         # check if any of the unprunables are too large
         for var in self.unprunable_input_variables:
@@ -83,11 +86,15 @@ class ChainWrapper:
 
         # get the payload
         input_variables = self._prepare_payload(inputs)
+
+        logger.debug("Prepared input variables for chain:\n%s", pprint.pformat(input_variables, indent=2))
         
         # produce LLM response
         answer = self.chain.invoke(
             input_variables,
             config={"callbacks": [self.prompt_logger]}
         )
+
+        logger.debug(f"Chain produced answer: {answer}")
 
         return {"answer": answer, **input_variables}
