@@ -240,11 +240,13 @@ def list_services():
 def list_deployments():
     """List all existing deployments"""
     
-    if not A2RCHI_DIR.exists():
+    a2rchi_dir = Path(A2RCHI_DIR)
+
+    if not a2rchi_dir.exists():
         click.echo("No deployments found")
         return
     
-    deployments = [d for d in A2RCHI_DIR.iterdir() 
+    deployments = [d for d in a2rchi_dir.iterdir() 
                   if d.is_dir() and d.name.startswith('a2rchi-')]
     
     if not deployments:
