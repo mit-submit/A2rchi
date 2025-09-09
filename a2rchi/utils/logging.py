@@ -5,9 +5,6 @@ import yaml
 # ignore debug logs from these modules, too verbose :)
 ignore_debug_modules = ["urllib3.connectionpool", "filelock"]
 
-config = load_global_config()
-verbosity = config["verbosity"]
-
 logging_verboseLevel = [
     logging.CRITICAL,
     logging.ERROR,
@@ -17,6 +14,9 @@ logging_verboseLevel = [
 ]
 
 def setup_logging():
+
+    config = load_global_config()
+    verbosity = config["verbosity"]
 
     format_str = '(%(asctime)s) [%(name)s] %(levelname)s: %(message)s'
 
@@ -34,6 +34,15 @@ def setup_logging():
         for module in ignore_debug_modules:
             logging.getLogger(module).setLevel(logging_verboseLevel[3])
 
+def setup_cli_logging(verbosity):
+    
+    format_str = '[%(name)s] %(levelname)s: %(message)s'
+    level = logging_verboseLevel[max(0, min(4, verbosity))]
+    logging.basicConfig(
+        level=level,
+        format=format_str,
+        force=True
+    )
 
 def get_logger(name):
     return logging.getLogger(name)

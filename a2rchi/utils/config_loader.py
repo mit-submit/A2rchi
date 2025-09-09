@@ -1,6 +1,3 @@
-from langchain_openai import OpenAIEmbeddings
-from langchain_huggingface import HuggingFaceEmbeddings
-
 import os
 import yaml
 
@@ -21,6 +18,8 @@ def load_config(map: bool = False):
 
         from a2rchi.chains.models import OpenAILLM, DumbLLM, LlamaLLM, AnthropicLLM, HuggingFaceOpenLLM, HuggingFaceImageLLM, VLLM, OllamaInterface
         from a2rchi.utils.sso_scraper import CERNSSOScraper
+        from langchain_openai import OpenAIEmbeddings
+        from langchain_huggingface import HuggingFaceEmbeddings
         
         MODEL_MAPPING = {
             "AnthropicLLM": AnthropicLLM,

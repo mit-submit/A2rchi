@@ -122,7 +122,7 @@ class ChatWrapper:
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -463,7 +463,7 @@ class ChatWrapper:
                 conversation_id,
                 user_message,
                 a2rchi_message,
-                top_links[0] if top_links else None,
+                top_links[0] if top_links else "Link unavailable",
                 context,
                 is_refresh
             )
@@ -499,7 +499,7 @@ class FlaskAppWrapper(object):
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -606,7 +606,7 @@ class FlaskAppWrapper(object):
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None

@@ -84,7 +84,7 @@ services:
     volumes:
       - {{ chat_volume_name }}:/root/data/
       - ./config.yaml:/root/A2rchi/config.yaml
-      - ./chat.prompt:/root/A2rchi/chat.prompt
+      - ./main.prompt:/root/A2rchi/main.prompt
       - ./condense.prompt:/root/A2rchi/condense.prompt
       {% if gpu_ids -%}
       - a2rchi-models:/root/models/
