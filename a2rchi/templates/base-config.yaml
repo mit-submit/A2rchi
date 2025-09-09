@@ -113,14 +113,14 @@ a2rchi:
     GradingPipeline:
       prompts:
         required:
-          grading_final_grade_prompt: /root/A2rchi/grading_final_grade.prompt  
+          final_grade_prompt: /root/A2rchi/final_grade.prompt
         optional:
-          grading_analysis_prompt: /root/A2rchi/grading_analysis.prompt
+          analysis_prompt: /root/A2rchi/analysis.prompt
       models:
         required:
-          grading_final_grade_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_final_grade_model | default('HuggingFaceOpenLLM', true) }}
+          final_grade_model: {{ a2rchi.pipeline_map.GradingPipeline.models.final_grade_model | default('HuggingFaceOpenLLM', true) }}
         optional:
-          grading_analysis_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_analysis_model | default('HuggingFaceOpenLLM', true) }}
+          analysis_model: {{ a2rchi.pipeline_map.GradingPipeline.models.analysis_model | default('HuggingFaceOpenLLM', true) }}
 
   model_class_map:
     AnthropicLLM:

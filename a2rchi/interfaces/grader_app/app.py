@@ -473,7 +473,7 @@ class FlaskAppWrapper(object):
         # GRADING CALLED HERE !!!
 
         grading_result = self.grader(final_student_solution, official_explanation, additional_comments)
-
+        print(grading_result)
         grading_result_score = grading_result["final_grade"]
 
         logger.info(f"Grading result score: {grading_result_score}")

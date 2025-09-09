@@ -236,7 +236,7 @@ class TokenLimiter:
                     extras_removed.append(key)
                     del extras[key]
                     del extra_tokens[key]
-            pruned_inputs.update(**extras)
+        pruned_inputs.update(**extras)
 
         logger.info(
             f"Reduced from "

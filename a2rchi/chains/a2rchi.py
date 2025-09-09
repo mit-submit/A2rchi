@@ -15,8 +15,11 @@ class A2rchi():
     creates and executes your Pipeline.
     """
 
-    def __init__(self, *args, **kwargs):
-        self.required_output_keys = ["answer", "documents"]
+    def __init__(
+            self,
+            *args,
+            **kwargs
+        ):
         self.update(kwargs.get("pipeline", None))
         self._init_vectorstore_params()
 
@@ -108,53 +111,7 @@ class A2rchi():
         """
         vectorstore = self._update_vectorstore()
         result = self.pipeline.invoke(vectorstore=vectorstore, *args, **kwargs)
-        if all([k not in result for k in self.required_output_keys]):
-            raise ValueError(f"Pipeline output does not contain any of the required keys: {self.required_output_keys}. Output keys are: {list(result.keys())}")
         return result
-
-    # TODO write workflows for these too
-    # def _call_image_processing(self, images):
-    #     """
-    #     Call for image processing chain to take image to text.
-
-    #     Input: a list of base64 encoded images
-    #     Output: text extracted from the images
-    #     """
-    #     # create chain w/up-to-date vectorstore
-    #     image_processing_chain = self.update_vectorstore_and_create_chain()
-
-    #     logger.info("Converting solution images to text")
-    #     text_from_images = image_processing_chain.run(images=images)
-    #     logger.info("Images converted to text")
-
-    #     # delete chain object to release chain, vectorstore, and client for garbage collection
-    #     del image_processing_chain
-
-    #     return text_from_images["text"]
-
-
-    # def _call_grading(self, submission_text, rubric_text, additional_comments=""):
-    #     """
-    #     Call for grading chain to grade a submission.
-
-    #     Input: a submission text, rubric text, and additional comments
-    #     Output: a dictionary containing the grade, feedback, and some metadata.
-    #     """
-    #     # create chain w/up-to-date vectorstore
-    #     grading_chain = self.update_vectorstore_and_create_chain()
-
-    #     logger.info("Grading submission")
-    #     grading_result = grading_chain.run(
-    #         submission_text=submission_text,
-    #         rubric_text=rubric_text,
-    #         additional_comments=additional_comments,
-    #     )
-    #     logger.info("Submission graded")
-
-    #     # delete chain object to release chain, vectorstore, and client for garbage collection
-    #     del grading_chain
-
-    #     return grading_result
 
     
     

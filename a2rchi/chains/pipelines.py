@@ -176,9 +176,6 @@ class BasePipeline:
         )
         self.prompts = {}
         for name, path in all_prompts.items():
-            if not path:
-                logger.warning(f"Prompt path for '{name}' is empty.")
-                continue
             try:
                 prompt_template = read_prompt(path)
                 self.prompts[name] = ValidatedPromptTemplate(
@@ -186,8 +183,11 @@ class BasePipeline:
                     prompt_template=prompt_template,
                 )
             except FileNotFoundError as e:
-                logger.warning(f"Optional prompt file '{path}' for '{name}' not found or unreadable: {e}")
-                continue
+                if name in self.pipeline_config.get("prompts", {}).get("required", {}):
+                    raise FileNotFoundError(f"Required prompt file '{path}' for '{name}' not found: {e}")
+                else:
+                    logger.warning(f"Optional prompt file '{path}' for '{name}' not found or unreadable: {e}")
+                    continue
 
 
 class QAPipeline(BasePipeline):
@@ -404,30 +404,32 @@ class GradingPipeline(BasePipeline):
         self.retriever = None
         self._init_chains()
 
+        print("we here bitch!!!", self.prompts)
+
     def _init_chains(self):
         # Initialize summary, analysis, and final grade chains if prompts are provided
         if 'summary_prompt' in self.prompts:
             self.summary_chain = ChainWrapper(
-                chain=self.prompts['summary_prompt'] | self.llms['grading_model'] | StrOutputParser(),
-                llm=self.llms['grading_model'],
+                chain=self.prompts['summary_prompt'] | self.llms['final_grade_model'] | StrOutputParser(),
+                llm=self.llms['final_grade_model'],
                 prompt=self.prompts['summary_prompt'],
                 required_input_variables=['submission_text'],
                 max_tokens=self.pipeline_config.get('max_tokens', 7000)
             )
         if 'analysis_prompt' in self.prompts:
             self.analysis_chain = ChainWrapper(
-                chain=self.prompts['analysis_prompt'] | self.llms['grading_model'] | StrOutputParser(),
-                llm=self.llms['grading_model'],
+                chain=self.prompts['analysis_prompt'] | self.llms['analysis_model'] | StrOutputParser(),
+                llm=self.llms['analysis_model'],
                 prompt=self.prompts['analysis_prompt'],
                 required_input_variables=['submission_text', 'rubric_text', 'summary'],
                 max_tokens=self.pipeline_config.get('max_tokens', 7000)
             )
         if 'final_grade_prompt' in self.prompts:
             self.final_grade_chain = ChainWrapper(
-                chain=self.prompts['final_grade_prompt'] | self.llms['grading_model'] | StrOutputParser(),
-                llm=self.llms['grading_model'],
+                chain=self.prompts['final_grade_prompt'] | self.llms['final_grade_model'] | StrOutputParser(),
+                llm=self.llms['final_grade_model'],
                 prompt=self.prompts['final_grade_prompt'],
-                required_input_variables=['rubric_text', 'submission_text', 'analysis', 'additional_comments'],
+                required_input_variables=['rubric_text', 'submission_text', 'analysis'],
                 max_tokens=self.pipeline_config.get('max_tokens', 7000)
             )
 
@@ -442,7 +444,7 @@ class GradingPipeline(BasePipeline):
 
     def _estimate_grader_reserved_tokens(self, submission_text: str, rubric_text: str, summary: str, additional_comments: str) -> int:
         reserved_tokens = 300
-        llm = self.llms['grading_model']
+        llm = self.llms['final_grade_model']
         reserved_tokens += llm.get_num_tokens(submission_text)
         reserved_tokens += llm.get_num_tokens(rubric_text)
         reserved_tokens += llm.get_num_tokens(summary)
@@ -474,14 +476,6 @@ class GradingPipeline(BasePipeline):
         if self.retriever:
             retrieved_docs, _ = zip(*self.retriever.invoke(submission_text)) if self.retriever.invoke(submission_text) else ([], [])
 
-        token_limiter = TokenLimiter(
-            llm=self.llms['grading_model'],
-            max_tokens=getattr(self.llms['grading_model'], 'max_tokens', 7000),
-            reserved_tokens=self._estimate_grader_reserved_tokens(submission_text, rubric_text, summary, additional_comments)
-        )
-        reduced_docs = token_limiter.reduce_tokens_below_limit(retrieved_docs) if retrieved_docs else []
-        retrieved_context = "\n\n".join(doc.page_content for doc in reduced_docs) if reduced_docs else "No relevant documents retrieved."
-
         analysis = "No preliminary analysis step."
         if self.analysis_chain:
             analysis = self.analysis_chain.invoke({
@@ -489,7 +483,7 @@ class GradingPipeline(BasePipeline):
                 "rubric_text": rubric_text,
                 "summary": summary if self.summary_chain else "No solution summary provided. Complete the analysis without it.",
             })['answer']
-
+        
         final_grade = self.final_grade_chain.invoke({
             "rubric_text": rubric_text,
             "submission_text": submission_text,
@@ -501,5 +495,5 @@ class GradingPipeline(BasePipeline):
             "summary": summary,
             "analysis": analysis,
             "final_grade": final_grade,
-            "retrieved_context": retrieved_context
+            "retrieved_context": retrieved_docs
         }

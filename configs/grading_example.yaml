@@ -20,10 +20,10 @@ a2rchi:
     GradingPipeline:
       prompts:
         required:
-          grading_final_grade_prompt: configs/prompts/submit.prompt  
+          final_grade_prompt: configs/prompts/final_grade.prompt
       models:
         required:
-          grading_final_grade_model: HuggingFaceOpenLLM
+          final_grade_model: HuggingFaceOpenLLM
     ImageProcessingPipeline:
       prompts:
         required:
