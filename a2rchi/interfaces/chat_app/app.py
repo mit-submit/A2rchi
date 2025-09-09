@@ -629,7 +629,8 @@ class FlaskAppWrapper(object):
         Returns:
             A json with a response list of the prompt names
         """
-        prompt_names = list(PROMPTS_DICTIONARY.values())
+        prompt_config = self.config["chains"]["prompts"]
+        prompt_names = list(prompt_config.values())
         return jsonify({'options':prompt_names}), 200
 
 
