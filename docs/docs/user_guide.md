@@ -1,5 +1,7 @@
 # User Guide
 
+## Overview
+
 A2rchi supports various **data sources** as easy ways to ingest your data into the vector store databased used for document retrieval. These include:
 - Links lists (even behind SSO)
 - Git scraping
@@ -20,6 +22,8 @@ Both data sources and interfaces/services are enabled via flags to the `a2rchi c
 a2rchi create --name my-archi --config my_config.yaml --services=chatbot,piazza,jira,...
 ```
 The parameters of the services are configured via the configuration file. See below for more details.
+
+We also support various **models** for both embeddings and LLMs, which can be run locally or accessed via APIs. See the `Models` section below for more details.
 
 ## Data Sources
 
