@@ -360,12 +360,12 @@ class ImageProcessingPipeline(BasePipeline):
 
         self._image_llm_chain = ImageLLMChain(
             llm=self.llms['image_processing_model'],
-            prompt=self.prompts['image_processing_prompt']
+            prompt=self.prompts['required']['image_processing_prompt']
         )
         self.image_processing_chain = ChainWrapper(
             chain=self._image_llm_chain,
             llm=self.llms['image_processing_model'],
-            prompt=self.prompts['image_processing_prompt'],
+            prompt=self.prompts['required']['image_processing_prompt'],
             required_input_variables=[],
             **kwargs,
         )

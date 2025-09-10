@@ -49,9 +49,9 @@ class ImageToTextWrapper:
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
-
+        print("PG_PASSWORD:", read_secret("PG_PASSWORD"))
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -99,7 +99,7 @@ class GradingWrapper:
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -175,7 +175,7 @@ class FlaskAppWrapper(object):
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
