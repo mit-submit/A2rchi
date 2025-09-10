@@ -1,3 +1,19 @@
+# A2rchi
+
+[//]: # (TODO: rewrite this section)
+
+A2rchi is an AI Augmented Research Chat Intelligence, originally built for the SubMIT project at the MIT physics department. 
+
+At its core, A2rchi is a RAG chat model which takes in a corpus of data and returns natural language output. However, there are a couple of things that make the A2rchi project unique and specialized toward research and education:
+
+- Along with a native chat interface, A2rchi comes shipped with various other interfaces that enable it to do things such as: give suggestions for answers on a student help forum and help tech support teams answers emails and create tickets.
+
+- A2rchi's fully customizable configuration allows users to tweak and adjust everything from prompts, to context lengths, to documents uploaded, etc. and is easy to deploy and modify.
+
+## About
+
+[//]: # (TODO: rewrite this section)
+
 A2rchi (AI Augmented Research Chat Intelligence) is an open source, end-to-end framework to quickly
 build an AI support agent for classes and research resources developed jointly by Prof. Paus, MIT
 Physics and Prof. Kraska, MIT EECS and their students. It has already been successfully deployed for SubMIT, the

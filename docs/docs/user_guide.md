@@ -132,6 +132,41 @@ Additional configuration options for the chatbot, deployed automatically with A2
 
 6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
 
+# Helpful Notes for Production Deployments
+
+You may wish to use the CLI in order to stage production deployments. This section covers some useful notes to keep in mind.
+
+### Running multiple deployments on the same machine
+
+The CLI is built to allow multiple deployments to run on the same daemon in the case of docker (podman has no daemon). The container networks between all the deployments are seperate, so there is very little risk of them accidentally communicating with one another.
+
+However, you need to be careful with the external ports. Suppose you're running two deployments and both of them are running the chat on external port 8000. There is no way to view both deployments at the same time from the same port, so instead you should split to forwarding the deployments to other external ports. Generally, this can be done in the configuration:
+```
+interfaces:
+  chat_app:
+    EXTERNAL_PORT: 7862 # default is 7681
+  uploader_app:
+    EXTERNAL_PORT: 5004 # default is 5003
+  grafana:
+    EXTERNAL_PORT: 3001 # default is 3000
+
+utils:
+  data_manager:
+    chromadb_external_port: 8001 # default is 8000
+```
+
+### Persisting data between deployments
+
+Volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo this every time you deploy. Of course, if you are editing any data, you should explicitly remove this infromation from the volume, or simply remove the volume itself with
+```nohighlight
+docker/podman volume rm <volume name>
+```
+
+You can see what volumes are currently up with
+```nohighlight
+docker/podman volume ls
+```
+
 # Add ChromaDB Document Management API Endpoints
 
 ##### Debugging ChromaDB endpoints
