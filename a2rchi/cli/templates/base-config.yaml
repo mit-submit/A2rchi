@@ -91,7 +91,7 @@ data_manager:
     b: {{ data_manager.bm25.b | default(0.75, true) }}
 
 a2rchi:
-  pipeline: {{ a2rchi.pipeline | default('QAPipeline', true) }}
+  pipelines: {{ a2rchi.pipelines | default(['QAPipeline'], true) }}
   pipeline_map:
     QAPipeline:
       max_tokens: {{ a2rchi.pipeline_map.QAPipeline.max_tokens | default(10000, true) }}
@@ -107,16 +107,16 @@ a2rchi:
       max_tokens: {{ a2rchi.pipeline_map.GradingPipeline.max_tokens | default(10000, true) }}
       prompts:
         required:
-          grading_final_grade_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.grading_final_grade_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.grading_final_grade_prompt }}"{% else %}null{% endif %}
+          final_grade_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt }}"{% else %}null{% endif %}
         optional:
-          grading_summary_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.grading_summary_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.grading_summary_prompt }}"{% else %}null{% endif %}
-          grading_analysis_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.grading_analysis_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.grading_analysis_prompt }}"{% else %}null{% endif %}
+          summary_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.optional.summary_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.optional.summary_prompt }}"{% else %}null{% endif %}
+          analysis_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.optional.analysis_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.optional.analysis_prompt }}"{% else %}null{% endif %}
       models:
         required:
-          grading_final_grade_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_final_grade_model | default('HuggingFaceOpenLLM', true) }}
+          final_grade_model: {{ a2rchi.pipeline_map.GradingPipeline.models.required.final_grade_model | default('HuggingFaceOpenLLM', true) }}
         optional:
-          grading_summary_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_summary_model | default('HuggingFaceOpenLLM', true) }}
-          grading_analysis_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_analysis_model | default('HuggingFaceOpenLLM', true) }}
+          summary_model: {{ a2rchi.pipeline_map.GradingPipeline.models.optional.summary_model | default('HuggingFaceOpenLLM', true) }}
+          analysis_model: {{ a2rchi.pipeline_map.GradingPipeline.models.optional.analysis_model | default('HuggingFaceOpenLLM', true) }}
     ImageProcessingPipeline:
       max_tokens: {{ a2rchi.pipeline_map.ImageProcessingPipeline.max_tokens | default(10000, true) }}
       prompts:

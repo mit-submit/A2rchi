@@ -6,6 +6,7 @@ WORKDIR /root/A2rchi
 COPY LICENSE LICENSE
 
 COPY a2rchi_code a2rchi
+COPY prompts prompts
 COPY pyproject.toml pyproject.toml
 COPY weblists weblists
 RUN pip install --upgrade pip && pip install .

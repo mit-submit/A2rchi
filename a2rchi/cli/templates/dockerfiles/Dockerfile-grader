@@ -65,8 +65,9 @@ RUN wget -q "https://github.com/mozilla/geckodriver/releases/download/v0.36.0/ge
     && rm "geckodriver-v0.36.0-linux64.tar.gz"
 
 COPY a2rchi_code a2rchi
+COPY prompts prompts
 COPY pyproject.toml pyproject.toml
-COPY weblists weblists
+#COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
 CMD ["python", "-u", "a2rchi/bin/service_grader.py"]
 # service_grader.py will just run the flask app as in service_chat.py ... don't even need the janky javascript templating function

@@ -32,7 +32,7 @@ class ConfigurationManager:
         requirements = [
             'name', 
             'global.TRAINED_ON',
-            'a2rchi.pipeline'
+            'a2rchi.pipelines'
         ]
 
         pipeline_requirements = self._get_active_pipeline_requirements()
@@ -57,12 +57,14 @@ class ConfigurationManager:
     
     def _get_active_pipeline_requirements(self) -> List[str]:
         """Get required prompt and/or model fields for the active pipeline"""
-        pipeline_name = self.config.get('a2rchi', {}).get('pipeline', "")
-        required_prompts = self.config.get('a2rchi', {}).get('pipeline_map', {}).get(pipeline_name, {}).get('prompts', {}).get('required', {})
-        required_models = self.config.get('a2rchi', {}).get('pipeline_map', {}).get(pipeline_name, {}).get('models', {}).get('required', {})
+        pipeline_names = self.config.get('a2rchi', {}).get('pipelines', "")
+        pipeline_requirements = []
+        for pipeline_name in pipeline_names:
+            required_prompts = self.config.get('a2rchi', {}).get('pipeline_map', {}).get(pipeline_name, {}).get('prompts', {}).get('required', {})
+            required_models = self.config.get('a2rchi', {}).get('pipeline_map', {}).get(pipeline_name, {}).get('models', {}).get('required', {})
         
-        pipeline_requirements = [f'a2rchi.pipeline_map.{pipeline_name}.prompts.required.{prompt_name}' for prompt_name in required_prompts.keys()]
-        pipeline_requirements.extend([f'a2rchi.pipeline_map.{pipeline_name}.models.required.{model_name}' for model_name in required_models.keys()])
+            pipeline_requirements.extend([f'a2rchi.pipeline_map.{pipeline_name}.prompts.required.{prompt_name}' for prompt_name in required_prompts.keys()])
+            pipeline_requirements.extend([f'a2rchi.pipeline_map.{pipeline_name}.models.required.{model_name}' for model_name in required_models.keys()])
         
         return pipeline_requirements
     
@@ -81,24 +83,36 @@ class ConfigurationManager:
         """Get the loaded configuration"""
         return self.config
     
-    def get_pipeline_config(self) -> Dict[str, Any]:
+    def get_pipeline_configs(self) -> Dict[str, Any]:
         """Get the active pipeline configuration"""
-        pipeline_name = self.config.get("a2rchi", {}).get("pipeline")
-        if not pipeline_name:
-            return {}
+        pipeline_names = self.config.get("a2rchi", {}).get("pipeline")
+        if not pipeline_names:
+            return [{}]
         
-        pipeline_map = self.config.get("a2rchi", {}).get("pipeline_map", {})
-        return pipeline_map.get(pipeline_name, {})
+        pipeline_configs = []
+        for pipeline_name in pipeline_names:
+            pipeline_map = self.config.get("a2rchi", {}).get("pipeline_map", {})
+            pipeline_configs.append(pipeline_map.get(pipeline_name, {}))
+
+        return pipeline_configs
     
-    def get_models_config(self) -> Dict[str, Any]:
+    def get_models_configs(self) -> Dict[str, Any]:
         """Get models configuration from active pipeline"""
-        pipeline_config = self.get_pipeline_config()
-        return pipeline_config.get("models", {})
+        pipeline_configs = self.get_pipeline_configs()
+        model_configs = []
+        for pipeline_config in pipeline_configs:
+            model_configs.append(pipeline_config.get("models", {}))
+
+        return model_configs
     
     def get_prompts_config(self) -> Dict[str, Any]:
         """Get prompts configuration from active pipeline"""
-        pipeline_config = self.get_pipeline_config()
-        return pipeline_config.get("prompts", {})
+        pipeline_configs = self.get_pipeline_configs()
+        prompt_configs = []
+        for pipeline_config in pipeline_configs:
+            prompt_configs.append(pipeline_config.get("prompts", {}))
+
+        return prompt_configs
     
     def get_interface_config(self, interface_name: str) -> Dict[str, Any]:
         """Get configuration for a specific interface"""

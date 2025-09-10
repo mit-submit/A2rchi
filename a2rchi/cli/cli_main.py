@@ -69,7 +69,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         
         # Initialize managers
         config_manager = ConfigurationManager(config_file)
-        secrets_manager = SecretsManager(env_file)
+        secrets_manager = SecretsManager(env_file, config_manager)
         
         # Validate configuration and secrets
         a2rchi_config = config_manager.get_config()

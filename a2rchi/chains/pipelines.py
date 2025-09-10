@@ -178,11 +178,12 @@ class BasePipeline:
         self.prompts = {}
         for name, path in all_prompts.items():
             try:
-                prompt_template = read_prompt(path)
-                self.prompts[name] = ValidatedPromptTemplate(
-                    name=name,
-                    prompt_template=prompt_template,
-                )
+                if path:
+                    prompt_template = read_prompt(path)
+                    self.prompts[name] = ValidatedPromptTemplate(
+                        name=name,
+                        prompt_template=prompt_template,
+                    )
             except FileNotFoundError as e:
                 if name in self.pipeline_config.get("prompts", {}).get("required", {}):
                     raise FileNotFoundError(f"Required prompt file '{path}' for '{name}' not found: {e}")
@@ -405,8 +406,6 @@ class GradingPipeline(BasePipeline):
         self.retriever = None
         self._init_chains()
 
-        print("we here bitch!!!", self.prompts)
-
     def _init_chains(self):
         # Initialize summary, analysis, and final grade chains if prompts are provided
         if 'summary_prompt' in self.prompts:
@@ -425,14 +424,13 @@ class GradingPipeline(BasePipeline):
                 required_input_variables=['submission_text', 'rubric_text', 'summary'],
                 max_tokens=self.pipeline_config.get('max_tokens', 7000)
             )
-        if 'final_grade_prompt' in self.prompts:
-            self.final_grade_chain = ChainWrapper(
-                chain=self.prompts['final_grade_prompt'] | self.llms['final_grade_model'] | StrOutputParser(),
-                llm=self.llms['final_grade_model'],
-                prompt=self.prompts['final_grade_prompt'],
-                required_input_variables=['rubric_text', 'submission_text', 'analysis'],
-                max_tokens=self.pipeline_config.get('max_tokens', 7000)
-            )
+        self.final_grade_chain = ChainWrapper(
+            chain=self.prompts['final_grade_prompt'] | self.llms['final_grade_model'] | StrOutputParser(),
+            llm=self.llms['final_grade_model'],
+            prompt=self.prompts['final_grade_prompt'],
+            required_input_variables=['rubric_text', 'submission_text', 'analysis'],
+            max_tokens=self.pipeline_config.get('max_tokens', 7000)
+        )
 
     def update_retriever(self, vectorstore):
         self.retriever = SemanticRetriever(

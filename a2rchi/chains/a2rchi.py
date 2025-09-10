@@ -17,13 +17,14 @@ class A2rchi():
 
     def __init__(
             self,
+            pipeline,
             *args,
             **kwargs
         ):
-        self.update(kwargs.get("pipeline", None))
+        self.update(pipeline)
         self._init_vectorstore_params()
 
-    def update(self, pipeline_name=None):
+    def update(self, pipeline_name):
         """
         Read relevant configuration settings.
         Initialize the Pipeline: either passed as argument or from config file.
@@ -31,7 +32,7 @@ class A2rchi():
         logger.debug("Loading config")
         self.config = load_config(map=True)
         self.pipeline = self._create_pipeline_instance(
-            pipeline_name if pipeline_name else self.config["a2rchi"]["pipeline"],
+            pipeline_name,
             config=self.config
         )
 

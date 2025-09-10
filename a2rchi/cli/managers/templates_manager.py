@@ -34,7 +34,6 @@ class TemplateManager:
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
         prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
-        logger.debug(f"prompt_mappings returned from _prepare_prompts: {prompt_mappings}")
         
         # Prepare main configuration file
         self._prepare_config_file(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity)
@@ -127,47 +126,51 @@ class TemplateManager:
         logger.debug(f"Received prompt_mappings: {prompt_mappings}")
         
         # Update prompt paths with mappings
-        pipeline_name = updated_config.get("a2rchi", {}).get("pipeline")
+        pipeline_names = updated_config.get("a2rchi", {}).get("pipelines")
         
-        if pipeline_name:
-            pipeline_config = updated_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
-            prompts_config = pipeline_config.get("prompts", {})
-                            
-            # Update prompt paths in all sections
-            for section_name, section_prompts in prompts_config.items():
-                if not isinstance(section_prompts, dict):
-                    continue
-                for prompt_key in section_prompts.keys():
-                    if prompt_key in prompt_mappings:
-                        old_value = section_prompts[prompt_key]
-                        section_prompts[prompt_key] = prompt_mappings[prompt_key]
-                        logger.debug(f"DEBUG: Updated {prompt_key}: '{old_value}' -> '{prompt_mappings[prompt_key]}'")
-                    else:
-                        logger.error(f"DEBUG: prompt_key '{prompt_key}' NOT found in mappings")
-                                    
+        for pipeline_name in pipeline_names:
+            if pipeline_name:
+                pipeline_config = updated_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+                prompts_config = pipeline_config.get("prompts", {})
+                                
+                # Update prompt paths in all sections
+                for section_name, section_prompts in prompts_config.items():
+                    if not isinstance(section_prompts, dict):
+                        continue
+                    for prompt_key in section_prompts.keys():
+                        if prompt_key in prompt_mappings:
+                            old_value = section_prompts[prompt_key]
+                            section_prompts[prompt_key] = prompt_mappings[prompt_key]
+                            logger.debug(f"Updated {prompt_key}: '{old_value}' -> '{prompt_mappings[prompt_key]}'")
+                        else:
+                            logger.error(f"Prompt_key '{prompt_key}' NOT found in mappings")
+                                        
         config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
         config = config_template.render(verbosity=verbosity, **updated_config)
-        
+            
         with open(base_dir / "config.yaml", 'w') as f:
             f.write(config)
     
     def _prepare_prompts(self, base_dir: Path, a2rchi_config: Dict[str, Any], enabled_services: List[str]) -> Dict[str, str]:
         """Prepare prompt files dynamically from pipeline configuration and return mappings"""
-        pipeline_name = a2rchi_config.get("a2rchi", {}).get("pipeline")
-        if not pipeline_name:
-            return {}  # Return empty dict instead of None
+        pipeline_names = a2rchi_config.get("a2rchi", {}).get("pipelines")
+        if not pipeline_names:
+            return {}
         
-        pipeline_config = a2rchi_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
-        prompts_config = pipeline_config.get("prompts", {})
-        
-        return self._copy_pipeline_prompts(base_dir, prompts_config)
+        prompt_mappings = {}
+        for pipeline_name in pipeline_names:
+            pipeline_config = a2rchi_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+            prompts_config = pipeline_config.get("prompts", {})
+            prompt_mappings.update(self._copy_pipeline_prompts(base_dir, prompts_config))
+
+        return prompt_mappings
     
     def _copy_pipeline_prompts(self, base_dir: Path, prompts_config: Dict[str, Any]) -> Dict[str, str]:
         """Copy all prompt files defined in pipeline configuration and return mappings"""
         prompt_mappings = {}
-                
+
         # Process all sections (required, optional, etc.)
-        for section_name, section_prompts in prompts_config.items():            
+        for _, section_prompts in prompts_config.items():            
             if not isinstance(section_prompts, dict):
                 continue
                 

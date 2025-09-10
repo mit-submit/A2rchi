@@ -1,4 +1,5 @@
 from a2rchi.cli.service_registry import service_registry
+from a2rchi.cli.managers.config_manager import ConfigurationManager
 from a2rchi.utils.logging import get_logger
 
 from dotenv import dotenv_values
@@ -10,7 +11,7 @@ logger = get_logger(__name__)
 class SecretsManager:
     """Manages secret loading and validation using .env files"""
 
-    def __init__(self, env_file_path: str = None):
+    def __init__(self, env_file_path: str = None, config_manager = None):
         if not env_file_path:
             raise ValueError("Environment filepath is required")
         
@@ -20,6 +21,8 @@ class SecretsManager:
         
         self.registry = service_registry
         self.secrets = self._load_env_file()
+
+        self.config_manager = config_manager
 
     def _load_env_file(self) -> None:
         """Load secrets from .env file"""
@@ -70,18 +73,13 @@ class SecretsManager:
         """Extract required secrets based on models being used for selected pipeline"""
         model_secrets = set()
 
-        pipeline = config.get("a2rchi", {}).get("pipeline")
-        if not pipeline:
-            raise ValueError("No pipeline specified.")
-        
-        pipeline_map = config.get("a2rchi", {}).get("pipeline_map", {})
-        pipeline_config = pipeline_map.get(pipeline, {})
-        models_config = pipeline_config.get("models", {}).get("required", {})
+        model_configs = self.config_manager.get_models_configs()
 
         model_names = []
-        for model_key, model_name in models_config.items():
-            if model_name:
-                model_names.append(model_name.strip())
+        for model_config in model_configs:
+            for _, model_name in model_config.items():
+                if model_name:
+                    model_names.append(model_name.strip())
 
         for model_name in model_names:
             if "OpenAI" in model_name:
@@ -90,7 +88,8 @@ class SecretsManager:
                 model_secrets.add("ANTHROPIC_API_KEY")
             elif "HuggingFace" in model_name or "Llama" in model_name or "VLLM" in model_name:
                 logger.warning("You are using open source models; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
-
+                
+        logger.debug(f"Required model secrets: {model_secrets}")
         return model_secrets
 
     def _extract_embedding_secrets(self, config: Dict[str, Any]) -> Set[str]:
