@@ -85,7 +85,7 @@ class ConfigurationManager:
     
     def get_pipeline_configs(self) -> Dict[str, Any]:
         """Get the active pipeline configuration"""
-        pipeline_names = self.config.get("a2rchi", {}).get("pipeline")
+        pipeline_names = self.config.get("a2rchi", {}).get("pipelines")
         if not pipeline_names:
             return [{}]
         

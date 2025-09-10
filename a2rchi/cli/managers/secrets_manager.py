@@ -35,7 +35,7 @@ class SecretsManager:
         except Exception as e:
             raise ValueError(f"Error parsing .env file {self.env_file_path}: {e}")
         
-    def get_required_secrets_for_services(self, config: Dict[str, Any], services: Set[str]) -> Set[str]:
+    def get_required_secrets_for_services(self, services: Set[str]) -> Set[str]:
         """Determine required secrets based on configuration and enabled services"""
         required_secrets = set()
 
@@ -43,13 +43,14 @@ class SecretsManager:
         required_secrets.add("PG_PASSWORD")
 
         # LLM
-        model_secrets = self._get_model_based_secrets(config)
+        model_secrets = self._get_model_based_secrets()
         required_secrets.update(model_secrets)
 
         # embeddings
-        embedding_secrets = self._extract_embedding_secrets(config)
+        embedding_secrets = self._extract_embedding_secrets()
         required_secrets.update(embedding_secrets)
 
+        config = self.config_manager.get_config()
         # SSO
         if config.get("utils", {}).get("sso", {}).get("enabled", False):
             required_secrets.update(["SSO_USERNAME", "SSO_PASSWORD"])
@@ -69,32 +70,31 @@ class SecretsManager:
 
         return required_secrets
 
-    def _get_model_based_secrets(self, config: Dict[str, Any]) -> Set[str]:
+    def _get_model_based_secrets(self) -> Set[str]:
         """Extract required secrets based on models being used for selected pipeline"""
         model_secrets = set()
 
-        model_configs = self.config_manager.get_models_configs()
+        models_configs = self.config_manager.get_models_configs()
 
-        model_names = []
-        for model_config in model_configs:
-            for _, model_name in model_config.items():
-                if model_name:
-                    model_names.append(model_name.strip())
-
-        for model_name in model_names:
-            if "OpenAI" in model_name:
-                model_secrets.add("OPENAI_API_KEY")
-            elif "Anthropic" in model_name:
-                model_secrets.add("ANTHROPIC_API_KEY")
-            elif "HuggingFace" in model_name or "Llama" in model_name or "VLLM" in model_name:
-                logger.warning("You are using open source models; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
+        for models_config in models_configs:
+            for _ , section_models in models_config.items():
+                if not isinstance(section_models, dict):
+                    continue
+                for _ , model_name in section_models.items():
+                    if "OpenAI" in model_name:
+                        model_secrets.add("OPENAI_API_KEY")
+                    elif "Anthropic" in model_name:
+                        model_secrets.add("ANTHROPIC_API_KEY")
+                    elif "HuggingFace" in model_name or "Llama" in model_name or "VLLM" in model_name:
+                        logger.warning("You are using open source models; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
                 
         logger.debug(f"Required model secrets: {model_secrets}")
         return model_secrets
 
-    def _extract_embedding_secrets(self, config: Dict[str, Any]) -> Set[str]:
+    def _extract_embedding_secrets(self) -> Set[str]:
         """Extract required secrets for embedding models"""
         embedding_secrets = set()
+        config = self.config_manager.get_config()
         embedding_name = config.get("data_manager", {}).get("embedding_name", "")
         
         if "OpenAI" in embedding_name:
