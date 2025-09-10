@@ -169,16 +169,12 @@ services:
         condition: service_healthy
       {% endif %}
     environment:
-      {% for secret in service_secrets.uploader | default([]) -%}
-      {% if secret in required_secrets -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret }}
-      {% endif -%}
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
     secrets:
-      {% for secret in service_secrets.uploader | default([]) -%}
-      {% if secret in required_secrets -%}
-      - {{ secret }}
-      {% endif -%}
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
       {% endfor %}
     ports:
       - {{ uploader_port_host }}:{{ uploader_port_container }}
@@ -210,11 +206,9 @@ services:
         condition: service_healthy
       {% endif %}
     environment:
-      {% for secret in service_secrets.grader | default([]) -%}
-      {% if secret in required_secrets -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret }}
-      {% endif -%}
-      {% endfor -%}
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
       {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
@@ -233,10 +227,8 @@ services:
               capabilities: [gpu]
     {% endif %}
     secrets:
-      {% for secret in service_secrets.grader | default([]) -%}
-      {% if secret in required_secrets -%}
-      - {{ secret }}
-      {% endif -%}
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
       {% endfor %}
     ports: 
       - {{ grader_port_host }}:{{ grader_port_container }}
@@ -290,16 +282,12 @@ services:
         condition: service_healthy
       {% endif %}
     environment:
-      {% for secret in service_secrets.piazza | default([]) -%}
-      {% if secret in required_secrets -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret }}
-      {% endif -%}
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
     secrets:
-      {% for secret in service_secrets.piazza | default([]) -%}
-      {% if secret in required_secrets -%}
-      - {{ secret }}
-      {% endif -%}
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
       {% endfor %}
     volumes:
       - {{ chromadb_volume_name }}:/root/data/
@@ -337,11 +325,9 @@ services:
         condition: service_healthy
       {% endif %}
     environment:
-      {% for secret in service_secrets.mattermost | default([]) -%}
-      {% if secret in required_secrets -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret }}
-      {% endif -%}
-      {% endfor -%}
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
       {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
@@ -356,10 +342,8 @@ services:
               capabilities: [gpu]
     {% endif %}
     secrets:
-      {% for secret in service_secrets.mattermost | default([]) -%}
-      {% if secret in required_secrets -%}
-      - {{ secret }}
-      {% endif -%}
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
       {% endfor %}
     volumes:
       - {{ chromadb_volume_name }}:/root/data/
@@ -407,20 +391,17 @@ services:
         condition: service_healthy
       {% endif %}
     environment:
-      {% for secret in service_secrets.redmine_mailer | default([]) -%}
-      {% if secret in required_secrets -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret }}
-      {% endif -%}
-      {% endfor -%}
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
       {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
     secrets:
-      {% for secret in service_secrets.redmine_mailer | default([]) -%}
-      {% if secret in required_secrets -%}
-      - {{ secret }}
-      {% endif -%}
+      secrets:
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
       {% endfor %}
     volumes:
       - {{ chromadb_volume_name }}:/root/data/
@@ -466,20 +447,17 @@ services:
         condition: service_healthy
       {% endif %}
     environment:
-      {% for secret in service_secrets.mailbox | default([]) -%}
-      {% if secret in required_secrets -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret }}
-      {% endif -%}
-      {% endfor -%}
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
       {% if gpu_ids -%}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
     secrets:
-      {% for secret in service_secrets.mailbox | default([]) -%}
-      {% if secret in required_secrets -%}
-      - {{ secret }}
-      {% endif -%}
+      secrets:
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
       {% endfor %}
     volumes:
       - ./config.yaml:/root/A2rchi/config.yaml
