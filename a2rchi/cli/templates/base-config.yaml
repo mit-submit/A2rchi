@@ -112,16 +112,19 @@ a2rchi:
           grading_summary_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.grading_summary_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.grading_summary_prompt }}"{% else %}null{% endif %}
           grading_analysis_prompt: {% if a2rchi.pipeline_map.GradingPipeline.prompts.grading_analysis_prompt %}"{{ a2rchi.pipeline_map.GradingPipeline.prompts.grading_analysis_prompt }}"{% else %}null{% endif %}
       models:
-        grading_final_grade_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_final_grade_model | default('HuggingFaceOpenLLM', true) }}
-        grading_summary_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_summary_model | default('HuggingFaceOpenLLM', true) }}
-        grading_analysis_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_analysis_model | default('HuggingFaceOpenLLM', true) }}
+        required:
+          grading_final_grade_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_final_grade_model | default('HuggingFaceOpenLLM', true) }}
+        optional:
+          grading_summary_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_summary_model | default('HuggingFaceOpenLLM', true) }}
+          grading_analysis_model: {{ a2rchi.pipeline_map.GradingPipeline.models.grading_analysis_model | default('HuggingFaceOpenLLM', true) }}
     ImageProcessingPipeline:
-      max_tokens: {{ a2rchi.pipeline_map.GradingPipeline.max_tokens | default(10000, true) }}
+      max_tokens: {{ a2rchi.pipeline_map.ImageProcessingPipeline.max_tokens | default(10000, true) }}
       prompts:
         required:
-          image_processing_prompt: {% if a2rchi.pipeline_map.ImageProcessingPipeline.required.prompts.image_processing_prompt %}"{{ a2rchi.pipeline_map.ImageProcessingPipeline.required.prompts.image_processing_prompt }}"{% else %}null{% endif %}
+          image_processing_prompt: {% if a2rchi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt %}"{{ a2rchi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt }}"{% else %}null{% endif %}
       models:
-        image_processing_model: {{ a2rchi.pipeline_map.ImageProcessingPipeline.models.image_processing_model | default('HuggingFaceImageLLM', true) }}
+        required:
+          image_processing_model: {{ a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model | default('HuggingFaceImageLLM', true) }}
     
   model_class_map:
     AnthropicLLM:
