@@ -130,7 +130,7 @@ class ChatWrapper:
 
         # initialize lock and chain
         self.lock = Lock()
-        self.a2rchi = A2rchi()
+        self.a2rchi = A2rchi(pipeline="QAPipeline")
         self.number_of_queries = 0
 
         # initialize config_id to be None

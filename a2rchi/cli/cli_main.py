@@ -78,7 +78,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
             config_manager.validate_config(required_fields)
         logger.info("Configuration validated successfully")
 
-        required_secrets = secrets_manager.get_required_secrets_for_services(a2rchi_config, set(enabled_services))
+        required_secrets = secrets_manager.get_required_secrets_for_services(set(enabled_services))
         secrets_manager.validate_secrets(required_secrets)
         logger.info(f"Required secrets validated: {', '.join(sorted(required_secrets))}")
         
