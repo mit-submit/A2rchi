@@ -7,6 +7,7 @@ from typing import Dict, List, Any
 
 import os
 import shutil
+import copy
 
 logger = get_logger(__name__)
 
@@ -31,6 +32,10 @@ class TemplateManager:
         """Prepare all necessary files for deployment"""
         base_dir = compose_config.base_dir
 
+        configs = config_manager.get_configs()
+
+        a2rchi_config = config_manager.get_current_config()
+
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
         prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
@@ -52,6 +57,7 @@ class TemplateManager:
         self._prepare_compose_file(base_dir, compose_config, a2rchi_config, **kwargs)
         
         # Copy web input lists if they exist
+        #TODO: Generalize for various configurations
         self._copy_web_input_lists(base_dir, a2rchi_config)
         
         # Copy source code

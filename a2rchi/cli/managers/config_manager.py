@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict, List, Any
+import os
 
 import yaml
 
@@ -7,15 +8,31 @@ class ConfigurationManager:
     """Manages A2rchi configuration loading and validation"""
     
     def __init__(self, config_filepath: str):
-        self.config_filepath = Path(config_filepath)
-        self.config = self._load_config()
+        self.configs = {}
+        if os.path.isdir(config_filepath):
+            config_dir = Path(config_filepath)
+            for yaml_file in config_dir.glob('*.yaml'):
+                config_filepath = Path(yaml_file)
+                try:
+                    self.configs[config_filepath.stem] = self._load_config(config_filepath)
+                except Exception as e:
+                    print(f"Unable to load configuration file {yaml_file} : {e}")
+
+            if len(self.configs)==0:
+                raise ValueError(f"No suitable configurations were found in {config_filepath}")
+
+        else:
+            config_filepath = Path(config_filepath)
+            self.configs[config_filepath.stem] = self._load_config(config_filepath)
         
-    def _load_config(self) -> Dict[str, Any]:
+        self.current_config = next(iter(self.configs.values()))
+        
+    def _load_config(self,config_filepath) -> Dict[str, Any]:
         """Load and validate basic structure of config file"""
-        if not self.config_filepath.exists():
-            raise FileNotFoundError(f"Configuration file not found: {self.config_filepath}")
+        if not config_filepath.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_filepath}")
             
-        with open(self.config_filepath, 'r') as f:
+        with open(config_filepath, 'r') as f:
             config = yaml.safe_load(f)
             
         if not config:
@@ -68,20 +85,41 @@ class ConfigurationManager:
         
         return pipeline_requirements
     
+    def validate_configs(self, required_fields: List[str]) -> None:
+        for name, config in self.configs.items():
+            try:
+                self.validate_config(required_fields=required_fields,config=config)
+            except ValueError as e:
+                #TODO: Change prints to logs
+                print(f'Removing config {name} due to: {e}')
+                self.delete_config(name)
+
+            
+    def delete_config(self, name: str) -> None:
+        removed_config = self.configs.pop(name)
+        if len(self.configs)==0:
+            raise ValueError(f"No available configurations.")
+        
+        if self.current_config == removed_config:
+            self.current_config = self.configs.values[0]
     
-    def validate_config(self, required_fields: List[str]) -> None:
+    def validate_config(self, required_fields: List[str], config: Dict[str, Any]) -> None:
         """Validate that all required fields are present in config"""
         for field in required_fields:
             keys = field.split('.')
-            value = self.config
+            value = config
             for key in keys:
                 if key not in value:
                     raise ValueError(f"Missing required field: '{field}' in the configuration")
                 value = value[key]
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_current_config(self) -> Dict[str, Any]:
         """Get the loaded configuration"""
-        return self.config
+        return self.current_config
+    
+    def get_configs(self) -> Dict[str, Any]:
+        """Get all valid configurations"""
+        return self.configs
     
     def get_pipeline_configs(self) -> Dict[str, Any]:
         """Get the active pipeline configuration"""
@@ -116,8 +154,8 @@ class ConfigurationManager:
     
     def get_interface_config(self, interface_name: str) -> Dict[str, Any]:
         """Get configuration for a specific interface"""
-        return self.config.get("interfaces", {}).get(interface_name, {})
+        return self.current_configconfig.get("interfaces", {}).get(interface_name, {})
     
     def get_service_config(self, service_name: str) -> Dict[str, Any]:
         """Get configuration for a specific service"""
-        return self.config.get("utils", {}).get(service_name, {})
+        return self.current_configconfig.get("utils", {}).get(service_name, {})
