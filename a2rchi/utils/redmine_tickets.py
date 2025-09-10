@@ -14,10 +14,10 @@ ANSWER_TAG = load_utils_config()["redmine"]["answer_tag"]
 
 class RedmineClient():
     def __init__(self) -> None:
-            self.redmine_url = read_secret("CLEO_URL")
-            self.redmine_user = read_secret("CLEO_USER")
-            self.redmine_pw = read_secret("CLEO_PW")
-            self.redmine_project = read_secret("CLEO_PROJECT")
+            self.redmine_url = read_secret("REDMINE_URL")
+            self.redmine_user = read_secret("REDMINE_USER")
+            self.redmine_pw = read_secret("REDMINE_PW")
+            self.redmine_project = read_secret("REDMINE_PROJECT")
 
             if self._verify():
                 self._connect()
