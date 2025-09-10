@@ -136,6 +136,7 @@ class BasePipeline:
             if model_class_name in initialized_models:
                 # Reuse the already initialized instance
                 self.llms[model_name] = initialized_models[model_class_name]
+                logger.debug(f"Reusing initialized model '{model_name}' of class '{model_class_name}'")
             else:
                 model_class = model_class_map[model_class_name]["class"]
                 model_kwargs = model_class_map[model_class_name]["kwargs"]

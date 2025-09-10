@@ -205,6 +205,13 @@ a2rchi:
         trust_remote_code: {{ a2rchi.model_class_map.VLLM.kwargs.trust_remote_code | default(true, true) }}
         tokenizer_mode: {{ a2rchi.model_class_map.VLLM.kwargs.tokenizer_mode | default("auto", true) }}
         max_model_len: {{ a2rchi.model_class_map.VLLM.kwargs.max_model_len | default(none, true) }}
+    OllamaInterface:
+      class: OllamaInterface
+      kwargs:
+        base_model: {{ a2rchi.model_class_map.OllamaInterface.kwargs.base_model | default("gemma3", true) }}
+        temperature: {{ a2rchi.model_class_map.OllamaInterface.kwargs.temperature | default(1, true) }}
+        max_tokens: {{ a2rchi.model_class_map.OllamaInterface.kwargs.max_tokens | default(1000, true) }}
+        url: {{ a2rchi.model_class_map.OllamaInterface.kwargs.url | default("http://localhost:7680", true) }}
   chain_update_time: {{ a2rchi.chain_update_time | default(10, true) }}
 
 utils:
@@ -212,7 +219,7 @@ utils:
     port: {{ utils.postgres.port | default(5432, true) }}
     user: {{ utils.postgres.user | default('a2rchi', true) }}
     database: {{ utils.postgres.database | default('a2rchi-db', true) }}
-    host: {{ postgres_hostname | default('postgres', true) }}
+    host: {{ utils.postgres.host | default('postgres', true) }}
   sso:
     enabled: {{ utils.sso.enabled | default(false, true) }}
     sso_class: {{ utils.sso.sso_class | default('CERNSSOScraper', true) }}
