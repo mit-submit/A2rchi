@@ -191,7 +191,7 @@ class TemplateManager:
                     
                     # Verify the file was actually copied
                     if target_path.exists():
-                        logger.info(f"Copied prompt: {source_path} -> {target_path}")
+                        logger.debug(f"Copied prompt: {source_path} -> {target_path}")
                     else:
                         logger.error(f"Copy failed - file does not exist: {target_path}")
                         
