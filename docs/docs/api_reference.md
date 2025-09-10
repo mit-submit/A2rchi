@@ -98,19 +98,19 @@ a2rchi list_deployments
 ---
 
 
-# Configuration YAML API Reference
+## Configuration YAML API Reference
 
 The A2rchi configuration YAML file defines the deployment, services, data sources, pipelines, models, and interface settings for your A2rchi instance.
 
 ---
 
-## Top-Level Fields
+### Top-Level Fields
 
-### `name`
+#### `name`
 - **Type:** string
 - **Description:** Name of the deployment.
 
-### `global`
+#### `global`
 - **TRAINED_ON:** string  
   Description of the data or corpus the system was trained on.
 - **DATA_PATH:** string  
@@ -128,11 +128,11 @@ The A2rchi configuration YAML file defines the deployment, services, data source
 
 ---
 
-## `interfaces`
+### `interfaces`
 
 Settings for each web interface or service.
 
-### `chat_app`, `uploader_app`, `grader_app`, `grafana`
+#### `chat_app`, `uploader_app`, `grader_app`, `grafana`
 - **port:** int  
   Internal port that the Flask application binds to inside the container. This is the port the Flask server listens on within the container's network namespace. Usually don't need to change this unless you have port conflicts within the container. Default is `7861`.
 - **external_port:** int  
@@ -164,7 +164,7 @@ Settings for each web interface or service.
 
 ---
 
-## `data_manager`
+### `data_manager`
 
 Controls vector store, chunking, and embedding settings.
 
@@ -229,7 +229,7 @@ Controls vector store, chunking, and embedding settings.
 
 ---
 
-## `a2rchi`
+### `a2rchi`
 
 Pipeline and model configuration.
 
@@ -259,7 +259,7 @@ Each model (e.g., `AnthropicLLM`, `OpenAIGPT4`, `LlamaLLM`, etc.) has:
 
 ---
 
-## `utils`
+### `utils`
 
 Utility and integration settings.
 
@@ -293,19 +293,27 @@ Utility and integration settings.
   - **mailbox_update_time:** int  
 - **jira:**  
   - **url:** string  
+    The URL of the JIRA instance from which A2rchi will fetch data. Its type is string. This option is required if `--jira` flag is used.
   - **projects:** list  
+    List of JIRA project names that A2rchi will fetch data from. Its type is a list of strings. This option is required if `--jira` flag is used.
   - **anonymize_data:** bool  
+    Boolean flag indicating whether the fetched data from JIRA should be anonymized or not. This option is optional if `--jira` flag is used. Its default value is True.
 - **anonymizer:**  
   - **nlp_model:** string  
+    The NLP model that the `spacy` library will use to perform Name Entity Recognition (NER). Its type is string. 
   - **excluded_words:** list  
+    The list of words that the anonymizer should remove. Its type is list of strings. 
   - **greeting_patterns:** list  
+    The regex pattern to use match and remove greeting patterns. Its type is string.
   - **signoff_patterns:** list  
+    The regex pattern to use match and remove signoff patterns. Its type is string.
   - **email_pattern:** string  
+    The regex pattern to use match and remove email addresses. Its type is string.
   - **username_pattern:** string  
-
+    The regex pattern to use match and remove JIRA usernames. Its type is string.
 ---
 
-## Required Fields
+### Required Fields
 
 Some fields are required depending on enabled services and pipelines.  
 For example:
@@ -318,7 +326,7 @@ See the [User Guide](user_guide.md) for more configuration examples and explanat
 
 ---
 
-## Example
+### Example
 
 ```yaml
 name: my_deployment

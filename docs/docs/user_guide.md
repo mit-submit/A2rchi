@@ -7,13 +7,19 @@ A2rchi supports various **data sources** as easy ways to ingest your data into t
 - Local documents
 
 Additionally, A2rchi supports various **interfaces/services**, which are applications that interact with the RAG system. These include:
-- Chat interface: a web-based chat application
-- Piazza integration: read posts from Piazza and post draft responses to a Slack channel
-- Cleo/Redmine integration: read emails and create tickets in Redmine
-- Mattermost integration: read posts from Mattermost and post draft responses to a Mattermost channel
-- Grafana monitoring dashboard: monitor system and LLM performance metrics
-- Document uploader: web interface for uploading and managing documents
-- Grader: automated grading service for assignments with web interface
+- **Chat interface**: a web-based chat application
+- **Piazza integration**: read posts from Piazza and post draft responses to a Slack channel
+- **Cleo/Redmine integration**: read emails and create tickets in Redmine
+- **Mattermost integration**: read posts from Mattermost and post draft responses to a Mattermost channel
+- **Grafana monitoring dashboard**: monitor system and LLM performance metrics
+- **Document uploader**: web interface for uploading and managing documents
+- **Grader**: automated grading service for assignments with web interface
+
+Both data sources and interfaces/services are enabled via flags to the `a2rchi create` command,
+```bash
+a2rchi create --name my-archi --config my_config.yaml --services=chatbot,piazza,jira,...
+```
+The parameters of the services are configured via the configuration file. See below for more details.
 
 ## Data Sources
 
@@ -34,38 +40,31 @@ In the input lists, make sure to prepend `git-` to the URL of the repositories y
 git-https://gitlab.cern.ch/cms-tier0-ops/documentation.git
 ```
 
-##### Git token
+#### Git token
 
-You would need a git username and token for authenticating to the repositories you are interested in scraping (read only should work fine). Place your account username in `git_username.txt` and your token in `git_token.txt` in the secrets folder.
-
+You would need a git username and token for authenticating to the repositories you are interested in scraping (read only should work fine). Place your account username and token in the secrets file as `GIT_USERNAME` and `GIT_TOKEN` respectively.
 
 ### JIRA
 
-Find below the configuration fields for JIRA feature.
+The JIRA integration allows A2rchi to fetch issues and comments from specified JIRA projects and add them to the vector store, using the `JiraScraper` class.
 
-1. **`utils:jira:JIRA_URL`**: The URL of the JIRA instance from which A2rchi will fetch data. Its type is string. This option is required if `--jira` flag is used.
-2. **`utils:jira:JIRA_PROJECTS`**: List of JIRA project names that A2rchi will fetch data from. Its type is a list of strings. This option is required if `--jira` flag is used.
-3. **`utils:jira:ANONYMIZE_DATA`**: Boolean flag indicating whether the fetched data from JIRA should be anonymized or not. This option is optional if `--jira` flag is used. Its default value is True.
+#### JIRA secret
 
-##### JIRA secret
-
-A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be put in a file called `jira_pat.txt`. This file should be put in the secrets folder.
+A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be placed in a secrets file as `JIRA_PAT`.
 
 #### Anonymizer
 
-Find below the configuration fields for anonymization feature. All of them are optional.
+You can turn on an automatic anonymizer of the data fetched from JIRA via the config
+```yaml
+utils:
+  jira:
+    anonymize_data: true
+```
+See the API reference for more details on the configuration fields. The anonymizer will remove names, emails, usernames, greetings, signoffs, and any other words you specify from the fetched data. This is useful if you want to avoid having personal information in the vector store.
 
-1. **`utils:anonymizer:nlp_model`**: The NLP model that the `spacy` library will use to perform Name Entity Recognition (NER). Its type is string. 
-2. **`utils:anonymizer:excluded_words`**: The list of words that the anonymizer should remove. Its type is list of strings. 
-3. **`utils:anonymizer:greeting_patterns`**: The regex pattern to use match and remove greeting patterns. Its type is string.
-4. **`utils:anonymizer:signoff_patterns`**: The regex pattern to use match and remove signoff patterns. Its type is string.
-5. **`utils:anonymizer:email_pattern`**: The regex pattern to use match and remove email addresses. Its type is string.
-6. **`utils:anonymizer:username_pattern`**: The regex pattern to use match and remove JIRA usernames. Its type is string.
+### Adding Documents and the Uploader Interface
 
-
-## Adding Documents and the Uploader Interface
-
-### Adding Documents
+#### Adding Documents
 
 There are two main ways to add documents to A2rchi's vector database. They are:
 
@@ -101,8 +100,6 @@ chains:
 ```
 When you restart the service, all the documents will be uploaded to the vector store. Note, this may take a few minutes.
 
-## Interfaces/Services
-
 #### Manual Uploader
 
 In order to upload papers while a2rchi is running via an easily accessible GUI, use the data manager built into the system. The manager is run as an additional docker service by adding the following argument to the CLI command: 
@@ -129,8 +126,9 @@ Once you have created an account, visit the outgoing port of the data manager do
 
 The documents used for RAG live in the chat container at `/root/data/<directory>/<files>`. Thus, in a pinch, you can `docker/podman cp` a file at this directory level, e.g., `podman/docker cp myfile.pdf <container name or ID>:/root/data/<new_dir>/`. If you need to make a new directory in the container, you can do `podman exec -it <container name or ID> mkdir /root/data/<new_dir>`.
 
+## Interfaces/Services
 
-## Piazza Interface
+### Piazza Interface
 
 Set up A2rchi to read posts from your Piazza forum and post draft responses to a specified slack channel (other options coming soon). To do this, a Piazza login (email and password) is required, plus the network ID of your Piazza channel, and lastly, a Webhook for the slack channel A2rchi will post to. See below for a step-by-step description of this.
 
@@ -141,7 +139,7 @@ Set up A2rchi to read posts from your Piazza forum and post draft responses to a
 5. Click 'Add New Webhook', and select the channel you want A2rchi to post to.
 6. Now, copy the 'Webhook URL' and paste it into a file called 'slack_webhook.txt', and handle it like any other secret!
 
-### Secrets
+#### Secrets
 
 The necessary secrets for deploying the Piazza service are the following:
 
@@ -151,7 +149,7 @@ The necessary secrets for deploying the Piazza service are the following:
 
 The slack webhook secret is described above. The piazza email and password should be those of one of the class instructors. Remember to put this information in files named following what is written above.
 
-### Configuration
+#### Configuration
 
 Beyond standard required configuration fields, the network ID of the Piazza channel is required (see below for an example config). You can get the network ID by simply navigating to the class homepage, and grabbing the sequence that follows 'https://piazza.com/class/'. For example, the 8.01 Fall 2024 homepage is: 'https://piazza.com/class/m0g3v0ahsqm2lg'. The network ID is thus 'm0g3v0ahsqm2lg'. Example minimal config for the Piazza interface:
 
@@ -182,7 +180,7 @@ utils:
     network_id: <your Piazza network ID here> # REQUIRED
 ```
 
-### Running the Piazza service
+#### Running the Piazza service
 
 To run the Piazza service, simply add the piazza flag. For example:
 
@@ -190,20 +188,20 @@ To run the Piazza service, simply add the piazza flag. For example:
 a2rchi create --name my_piazza_service --a2rchi-config configs/my_piazza_config.yaml --podman --piazza 
 ```
 
-## Cleo/Mailbox Interface
+### Cleo/Mailbox Interface
 
 TODO: add description of interface here
 
-### Secrets
+#### Secrets
 
-### Configuration
+#### Configuration
 
 
-## Mattermost Interface
+### Mattermost Interface
 
 Set up A2rchi to read posts from your mattermost forum and post draft responses to a specified mattermost channel.
 
-### Secrets
+#### Secrets
 
 You need to specify a webhook, a key and the id of two channels to read and write. Should be specified like this.
 
@@ -215,7 +213,7 @@ You need to specify a webhook, a key and the id of two channels to read and writ
 location_of_secrets: #REQUIRED
   - ~/.secrets/mattermost
 
-### Running the Mattermost service
+#### Running the Mattermost service
 
 To run the Mattermost service, simply add the mattermost flag. For example:
 
@@ -223,9 +221,7 @@ To run the Mattermost service, simply add the mattermost flag. For example:
 a2rchi create --name my_mm_service --a2rchi-config configs/my_mm_config.yaml --podman --mattermost 
 ```
 
-
-
-## Grafana Interface 
+### Grafana Interface 
 
 To run the grafana service, you first need to specify a password for the grafana to access the postgres database that stores the information. Simply set the environment variable as follows:
 ```nohighlight
@@ -252,17 +248,17 @@ Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean
 
 Pro tip 2: If you want to download all of the information from any panel as a CSV, go to the same three dots and click "Inspect", and you should see the option.
 
-### Secrets
+#### Secrets
 
-### Configuration
+#### Configuration
 
-## Grader Interface
+### Grader Interface
 
 Interface to launch a website which for a provided solution and rubric (and a couple of other things detailed below), will grade scanned images of a handwritten solution for the specified problem(s).
 
 Nota bene: this is not yet fully generalized and "service" ready, but instead for testing grading pipelines and a base off of which to build a potential grading app.
 
-### Requirements
+#### Requirements
 
 To launch the service the following files are required:
 
@@ -286,7 +282,7 @@ These files should live in a directory which you will pass to the config, and A2
 
 - `admin_password.txt`. This file will be passed as a secret and be the admin code to login in to the page where you can reset attempts for students.
 
-### Secrets
+#### Secrets
 
 The only grading specific secret is the admin password, which like shown above, should be put in the following file
 
@@ -296,7 +292,7 @@ admin_password.txt
 
 Then it behaves like any other secret.
 
-### Configuration
+#### Configuration
 
 The required fields in the configuration file are different from the rest of the A2rchi services. Below is an example:
 
@@ -341,13 +337,13 @@ interfaces:
 10. `interfaces.grader_app.local_rubric_dir` -- The directory where the `users.csv` file is.
 
 
-### Grader-Specific Optional Configuration Fields
+#### Grader-Specific Optional Configuration Fields
 
 1. `chains.chain.GRADING_ANALYSIS_MODEL_NAME` and `chains.prompts.GRADING_ANALYSIS_PROMPT` -- The model name and path to the analysis prompt, respectively, if you want to include the analysis step in the grading chain (recommended to include summary step as well, but not required).
 2. `chains.chain.GRADING_SUMMARY_MODEL_NAME` and `chains.prompts.GRADING_SUMMARY_PROMPT` -- The model name and path to the summary prompt, respectively, if you want to include the summary step in the grading chain (this is only used in the analysis step, so you shouldn't include the summary step without it).
 
 
-### Deployment
+#### Deployment
 
 With a minimal configuration like that detailed above that is required for the grading service, we are ready to deploy! For example, to launch the grader interface on a machine with gpus (for now, only support open-source models for grader so **--gpu is required**) and podman, the following command will launch a2rchi:
 
@@ -366,32 +362,43 @@ utils:
       ENABLED: true
 ```
 
-### Ollama Interface 
+## Models
 
-In order to use an Ollama server instance for the chatbot, it is possible to specify OllamaInterface for the model name. To then correctly use models on the Ollama server, in the keyword args, specify both the url of the server and the name of a model hosted on the server.
-use  
+Models are either:
+1. Hosted locally, either via VLLM or HuggingFace transformers.
+2. Accessed via an API, e.g., OpenAI, Anthropic, etc.
+3. Accessed via an Ollama server instance.
+
+### Local Models
+
+To use a local model, specify one of the local model classes in `models.py`:
+- `HuggingFaceOpenLLM`
+- `HuggingFaceImageLLM`
+- `VLLM`
+
+### Models via APIs
+
+We support the following model classes in `models.py` for models accessed via APIs:
+- `OpenAILLM`
+- `ClaudeLLM`
+- `AnthropicLLM`
+
+### Ollama 
+
+In order to use an Ollama server instance for the chatbot, it is possible to specify `OllamaInterface` for the model name. To then correctly use models on the Ollama server, in the keyword args, specify both the url of the server and the name of a model hosted on the server.  
 
 ```
-chains:
+a2rchi:
   chain:
-    MODEL_NAME: OllamaInterface
-    MODEL_CLASS_MAP:
+    model_class_map:
       OllamaInterface:
         kwargs:
-          base_model: "gemma3" # for instance 
+          base_model: "gemma3" # example 
           url: "url-for-server" 
 
 ```
-If needed it is also possible to specify the following arguments for your chatbot. For more information on the effects of these arguments, look at the ChatOllama documentation for the keyword arguments of the same name. 
-```
-num_ctx: 
-num_predict: 
-temperature:
-top_p: 
-top_k:
-num_gpu:
-repeat_penalty: 
-```
+
+In this case, the `gemma3` model is hosted on the Ollama server at `url-for-server`. You can check which models are hosted on your server by going to `url-for-server/models`.
 
 ## Other
 
