@@ -16,6 +16,12 @@ Note, please do NOT edit files in the gh-pages branch by hand, again, make a PR 
 
 ## DockerHub Images
 
+A2rchi will load from different base images hosted on dockerhub. If you do not need to use GPUs the python base image will be installed. Alternatively, the pytorch base image will be installed. 
+The base Docker file used to make these base images from which the chat interface inherits its changes from can be found in `a2rchi/cli/templates/dockerfiles/base-X-image` directories.
+They are currently hosted on dockerhub at the following links: 
+pytorch: https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base
+python: https://hub.docker.com/r/a2rchi/a2rchi-python-base
+
 In order to rebuild the base images from which the dockerfiles inherit, go to the `base-xxx-image` directory found in `templates/dockerfiles/`.
 In these directories, there is a different set of requirements for each along with their license and respective dockerfiles.
 To regenerate the requirements if they have been changed run the following commands to ensure that the right header is used for each: 

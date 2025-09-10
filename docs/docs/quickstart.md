@@ -142,6 +142,24 @@ Here we specify:
 <summary> Output Example</summary>
 
 ```bash
+$ a2rchi create --name my-a2rchi -c test.yaml --podman -e secrets.env  --services chatbot
+```
+```
+Starting A2RCHI deployment process...
+[a2rchi] Creating deployment 'my-a2rchi' with services: chatbot
+[a2rchi] Auto-enabling dependencies: postgres, chromadb
+[a2rchi] Configuration validated successfully
+[a2rchi] You are using an embedding model from HuggingFace; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced
+[a2rchi] Required secrets validated: PG_PASSWORD
+[a2rchi] Volume 'a2rchi-pg-my-a2rchi' already exists. No action needed.
+[a2rchi] Volume 'a2rchi-my-a2rchi' already exists. No action needed.
+[a2rchi] Starting compose deployment from /path/to/my/.a2rchi/a2rchi-my-a2rchi
+[a2rchi] Using compose file: /path/to/my/.a2rchi/a2rchi-my-a2rchi/compose.yaml
+[a2rchi] (This might take a minute...)
+[a2rchi] Deployment started successfully
+A2RCHI deployment 'my-a2rchi' created successfully!
+Services running: chatbot, postgres, chromadb
+[a2rchi] Chatbot: http://localhost:7861
 ```
 
 </details>
@@ -155,8 +173,7 @@ Check that a deployment is running with the A2rchi CLI:
 a2rchi list-deployments
 ```
 You should see something like:
-```bash
-$ a2rchi list-deployments
+```console
 Existing deployments:
   my-a2rchi
 ```
@@ -166,7 +183,7 @@ You can also verify that all your images are up and running properly in containe
 podman ps
 ```
 You should see something like:
-```bash
+```console
 CONTAINER ID  IMAGE                              COMMAND               CREATED             STATUS                       PORTS                   NAMES
 7e823e15e8d8  localhost/chromadb-my-a2rchi:2000  uvicorn chromadb....  About a minute ago  Up About a minute (healthy)  0.0.0.0:8010->8000/tcp  chromadb-my-a2rchi
 8d561db18278  docker.io/library/postgres:16      postgres              About a minute ago  Up About a minute (healthy)  5432/tcp                postgres-my-a2rchi

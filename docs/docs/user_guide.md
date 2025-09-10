@@ -1,251 +1,45 @@
 # User Guide
 
-A2rchi is built with several interfaces which supplement a base deployment in order to create a customized RAG system. If you haven't already, read the `Getting Started` page to install and deploy a basic version of A2rchi.
+A2rchi supports various **data sources** as easy ways to ingest your data into the vector store databased used for document retrieval. These include:
+- Links lists (even behind SSO)
+- Git scraping
+- JIRA
+- Local documents
 
-The user's guide is broken up into detailing the additional command line options, the different parameters accessible via the configuration file, and the various interfaces and the secrets/configurations they require.
+Additionally, A2rchi supports various **interfaces/services**, which are applications that interact with the RAG system. These include:
+- Chat interface: a web-based chat application
+- Piazza integration: read posts from Piazza and post draft responses to a Slack channel
+- Cleo/Redmine integration: read emails and create tickets in Redmine
+- Mattermost integration: read posts from Mattermost and post draft responses to a Mattermost channel
+- Grafana monitoring dashboard: monitor system and LLM performance metrics
+- Document uploader: web interface for uploading and managing documents
+- Grader: automated grading service for assignments with web interface
 
-### Optional command line options
+## Data Sources
 
-There are a few additional options you can pass to the `create` command that are not specific to a given interface.
+### URL Link Lists
 
-1. **`--podman`**: If your machine is running Podman, you should pass this flag. The CLI will otherwise default to using Docker. 
+A URL link list is a simple text file containing a list of URLs, one per line. A2rchi will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
 
-    Note, if using Podman, to ensure your containers stay running for extended periods, you need to enable lingering. To do this, the following command should work:
+### Git scraping
 
-          loginctl enable-linger
-
-    To check/confirm the lingering status, simply do
-
-          loginctl user-status | grep -m1 Linger
-
-    Click [here](https://access.redhat.com/solutions/7054698) to read more.
-
-
-
-2. **`--gpu`**: This will deploy A2rchi onto the GPUs on your machine, which you will need to do should you decide to run open-source models. NOTE: this has only been tested with Podman, so will likely not work with Docker, for now.
-
-    There are a few additional system requirements for this to work:
-
-    First, make sure you have nvidia drivers installed. Then, for the containers where a2rchi will run to access the GPUs, please install the [nvidia container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Then, for Podman, run
-
-          sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-          
-    Then, the following command
-          
-          nvidia-ctk cdi list
-          
-    should show an output that includes
-          
-          INFO[0000] Found 9 CDI devices 
-          ...
-          nvidia.com/gpu=0
-          nvidia.com/gpu=1
-          ...
-          nvidia.com/gpu=all
-          
-    These listed "CDI devices" will be referenced to run A2rchi on the GPUs, so make sure this is there. To see more about accessing GPUs with Podman, click [here](https://podman-desktop.io/docs/podman/gpu).
-    If you have Docker, run
-
-          sudo nvidia-ctk runtime configure --runtime=docker
-
-    What follows should be the same as above -- NOTE: this has not been tested yet with Docker. To see more about accessing GPUs with Docker, click [here](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuration).
-
-    
-    Once these requirements are met, the `--gpu` option will automatically deploy A2rchi across all GPUs on the machine. If you want to instead select specific GPUs see the `--gpu-ids` options below
-
-
-3. **`--gpu-ids`**: Instead of `--gpu`, you can select one or more specific GPU ids, e.g., in case some are in use. Options are `all` (same as `--gpu`), or integers, e.g., `0` or `0,1` (multiple ids should be separated by commas)
-
-4. **`--tag`**: The tag for the images that are built locally. Can be useful when trying different configurations.
-
-5. **`--jira`**: If True, it will make A2rchi fetch ticket data from the JIRA ticketing system and insert the documents into its vector database. Additional configuration and secret are needed for this option. See below for details.
-
-6. **`--debug`**: Flag to set logging level to DEBUG. Default is INFO.
-
-
-### Optional configuration fields (see required in Getting Started page)
-
-#### RAG-related options
-
-1. **`chains:input_lists`**: A list of file(s), each containing a list of websites separated by new lines, used for A2rchi's starting context (more can be uploaded later). For example, `configs/miscellanea.list` contains information of the MIT Professors who started the A2rchi project:
-
-        # web pages of various people
-        https://people.csail.mit.edu/kraska
-        https://physics.mit.edu/faculty/christoph-paus
-    
-    Then, include the file in the config:
-    
-        chains:
-          input_lists:
-            - configs/miscellanea.list
-    
-2. **`utils:data_manager:CHUNK_SIZE`**: Number of characters that define a "chunk", i.e., a string that will get embdedded and stored in the vector database. Default is `1000`.
-
-3. **`utils:data_manager:CHUNK_OVERLAP`**: When splitting documents into chunks, how much should they overlap. Default is `0`.
-
-4. **`utils:data_manager:num_documents_to_retrieve`**: How many chunks to query in order of decreasing similarity (so 1 would return the most similar only, 2 the next most similar, etc.).
-
-5. **`utils:data_manager:distance_metric`**: Distance metric to use for similarity search in ChromaDB. Options are `cosine`, `l2`, and `ip`. Read more (here)[https://docs.trychroma.com/docs/collections/configure]. Default for A2rchi is cosine.
-
-6. **`utils:embeddings:EMBEDDING_NAME`**: `OpenAIEmbeddings` (default) or `HuggingFaceEmbeddings`. To choose the specific model, see next lines.
-
-7. **`utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:kwargs:model_name`**: The OpenAI embedding model you want to use. Default is `text-embedding-3-small`.
-
-8. **`utils:embeddings:EMBEDDING_CLASS_MAP:OpenAIEmbeddings:similarity_score_reference`**: The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more [here](https://docs.trychroma.com/docs/collections/configure)), so smaller values represent higher similarity. The link will be included if the score is *below* the chosen value. Default is `10` (scores are usually order 1, so default is to always include link).
-
-9. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_name`**: The HuggingFace embedding model you want to use. Default is `sentence-transformers/all-MiniLM-L6-v2`. TODO: fix logic to require token if private model is requested.
-
-10. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:model_kwargs:device`**: Argument passed to embedding model initialization, to load onto `cpu` (default) or `cuda` (GPU), which you can select if you are deploying a2rchi onto GPU.
-
-11. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:kwargs:encode_kwargs:normalize_embeddings`**: Whether to normalize the embedded vectors or not. Default is `true`. Note, the default distance metric that chromadb uses is l2, which mesasures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.
-
-12. **`utils:embeddings:EMBEDDING_CLASS_MAP:HuggingFaceEmbeddings:similarity_score_reference`**: Same as #7.
-
-13. **`utils:embeddings:query_embedding_instructions`**: Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see `INSTRUCTION_AWARE_MODELS` in `a2rchi/chains/retrievers.py` to add models that support this. For example, the `Qwen/Qwen3-Embedding-XB` embedding models support this and are listed, see more [here](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B). Default is `None`. You should write the string directly into the config. An example instruction might look like: `"Given a query, retrieve relevant information to answer the query"`. You might tune it to be more specific to your use case which might improve performance.
-
-14. **`utils.data_manager.use_hybrid_search`**: Enables hybrid search, that is performing lexical search as well as semantic search. Docs retrieved from both searches are combined. The default is `False`
-
-15. **`utils.data_manager.bm25_weight`**: If hybrid search is enabled, defines the weight of the lexical (bm25) search.
-
-16. **`utils.data_manager.semantic_weight`**: If hybrid search is enabled, defines the weight of the semantic search.
-
-17. **`utils.data_manager.bm25.k1`**: Term frequency saturation. Controls how much the score increases with additional occurrences of a term in a document. Range: `[1.2,2.0]`
-
-18. **`utils.data_manager.bm25.b`**: Length normalization. Controls how much the document length influences the score. BM25 normalizes term frequency by document length compared to the average document length in the corpus. Range: `[0,1]`
-
-
-
-
-#### Chat Service
-
-Additional configuration options for the chatbot, deployed automatically with A2rchi:
-
-1. **`interfaces:chat_app:PORT`**: Internal port that the Flask application binds to inside the container. This is the port the Flask server listens on within the container's network namespace. Usually don't need to change this unless you have port conflicts within the container. Default is `7861`.
-
-2. **`interfaces:chat_app:EXTERNAL_PORT`**: External port that maps to the container's internal port, making the chat application accessible from outside the container. This is the port users will connect to in their browser (e.g., `your-hostname:7861`). When running multiple deployments on the same machine, each deployment must use a different external port to avoid conflicts. Default is `7861`.
-
-3. **`interfaces:chat_app:HOST`**: Network interface address that the Flask application binds to inside the container. Setting this to `0.0.0.0` allows the application to accept connections from any network interface, which is necessary for the application to be accessible from outside the container. Shouldn't remain unchanged unless you have specific networking requirements. Default is `0.0.0.0`.
-
-4. **`interfaces:chat_app:HOSTNAME`**: The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using `localhost` will only work if accessing the application from the same machine. Default is `localhost`.
-
-5. **`interfaces:chat_app:num_responses_until_feedback`**: Number of responses before the user is encouraged to provide feedback.
-
-6. **`interfaces:chat_app:flask_debug_mode`**: Boolean for whether to run the flask app in debug mode or not. Default is True.
-
-# Helpful Notes for Production Deployments
-
-You may wish to use the CLI in order to stage production deployments. This section covers some useful notes to keep in mind.
-
-### Running multiple deployments on the same machine
-
-The CLI is built to allow multiple deployments to run on the same daemon in the case of docker (podman has no daemon). The container networks between all the deployments are seperate, so there is very little risk of them accidentally communicating with one another.
-
-However, you need to be careful with the external ports. Suppose you're running two deployments and both of them are running the chat on external port 8000. There is no way to view both deployments at the same time from the same port, so instead you should split to forwarding the deployments to other external ports. Generally, this can be done in the configuration:
-```
-interfaces:
-  chat_app:
-    EXTERNAL_PORT: 7862 # default is 7681
-  uploader_app:
-    EXTERNAL_PORT: 5004 # default is 5003
-  grafana:
-    EXTERNAL_PORT: 3001 # default is 3000
-
-utils:
-  data_manager:
-    chromadb_external_port: 8001 # default is 8000
-```
-
-### Persisting data between deployments
-
-Volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo this every time you deploy. Of course, if you are editing any data, you should explicitly remove this infromation from the volume, or simply remove the volume itself with
-```nohighlight
-docker/podman volume rm <volume name>
-```
-
-You can see what volumes are currently up with
-```nohighlight
-docker/podman volume ls
-```
-
-# Add ChromaDB Document Management API Endpoints
-
-##### Debugging ChromaDB endpoints
-Debugging REST API endpoints to the A2rchi chat application for programmatic access to the ChromaDB vector database can be exposed with the following configuration change.
-To enable the ChromaDB endpoints, add the following to your config file under `interfaces.chat_app`:
-
+In some cases, the RAG input may be documentations based on MKDocs git repositories. Instead of scraping these sites as regular HTML sites you can obtain the relevant content using the `GitScraper` class. To configure it, simply add the following field in the configuration file:
 ```yaml
-interfaces:
-  chat_app:
-    # ... other config options ...
-    enable_debug_chroma_endpoints: true  # Default: false
+utils:
+  git:
+    enabled: {{ utils.git.enabled | default(false, true) }}
 ```
-
-###### ChromaDB  Endpoints Info
-
-####### `/api/list_docs` (GET)
-Lists all documents indexed in ChromaDB with pagination support.
-
-**Query Parameters:**
-- `page`: Page number (1-based, default: 1)
-- `per_page`: Documents per page (default: 50, max: 500)
-- `content_length`: Content preview length (default: -1 for full content)
-
-**Response:**
-```json
-{
-  "pagination": {
-    "page": 1,
-    "per_page": 50,
-    "total_documents": 1250,
-    "total_pages": 25,
-    "has_next": true,
-    "has_prev": false
-  },
-  "documents": [...]
-}
+In the input lists, make sure to prepend `git-` to the URL of the repositories you are interested in scraping.
+```nohighlight
+git-https://gitlab.cern.ch/cms-tier0-ops/documentation.git
 ```
-
-####### `/api/search_docs` (POST)
-Performs semantic search on the document collection using vector similarity.
-
-**Request Body:**
-- `query`: Search query string (required)
-- `n_results`: Number of results (default: 5, max: 100)
-- `content_length`: Max content length (default: -1, max: 5000)
-- `include_full_content`: Include complete document content (default: false)
-
-**Response:**
-```json
-{
-  "query": "machine learning",
-  "search_params": {...},
-  "documents": [
-    {
-      "content": "Document content...",
-      "content_length": 1200,
-      "metadata": {...},
-      "similarity_score": 0.85
-    }
-  ]
-}
-```
-
-#### Git scraping
-
-In some cases, the RAG input may be documentations based on MKDocs git repositores. Instead of scraping these sites as regular HTML sites you can obtain the relevant content using the git scraper. To configure it, simply add the following field:
-
-**`utils:git:ENABLED:True`**
-In the input lists, make sure to prepend `git-` to the url of the repositories you are interested in scraping.
-
-        git-https://gitlab.cern.ch/cms-tier0-ops/documentation.git
-
 
 ##### Git token
 
 You would need a git username and token for authenticating to the repositories you are interested in scraping (read only should work fine). Place your account username in `git_username.txt` and your token in `git_token.txt` in the secrets folder.
 
 
-#### JIRA
+### JIRA
 
 Find below the configuration fields for JIRA feature.
 
@@ -306,6 +100,8 @@ chains:
     - miscellanea.list
 ```
 When you restart the service, all the documents will be uploaded to the vector store. Note, this may take a few minutes.
+
+## Interfaces/Services
 
 #### Manual Uploader
 
@@ -597,10 +393,67 @@ num_gpu:
 repeat_penalty: 
 ```
 
-### DockerHub images
+## Other
 
-Depending on if you use the --gpu or --gpu-ids option when launching an instance of a2rchi, a2rchi will load from different base images on dockerhub. If you do not need to use gpus the python base image will be installed. Alternatively the pytorch base image will be installed. 
-The base docker file used to make these base images from which the chat interface inherits its changes from can be found in A2rchi/a2rchi/templates/dockerfiles/base-X-image directories. They are currently hosted on dockerhub at the following links: 
-pytorch: https://hub.docker.com/r/ipausuchicago/a2rchi-pytorch-base
-python: https://hub.docker.com/r/ipausuchicago/a2rchi-python-base
+### Add ChromaDB Document Management API Endpoints
 
+##### Debugging ChromaDB endpoints
+Debugging REST API endpoints to the A2rchi chat application for programmatic access to the ChromaDB vector database can be exposed with the following configuration change.
+To enable the ChromaDB endpoints, add the following to your config file under `interfaces.chat_app`:
+
+```yaml
+interfaces:
+  chat_app:
+    # ... other config options ...
+    enable_debug_chroma_endpoints: true  # Default: false
+```
+
+###### ChromaDB  Endpoints Info
+
+####### `/api/list_docs` (GET)
+Lists all documents indexed in ChromaDB with pagination support.
+
+**Query Parameters:**
+- `page`: Page number (1-based, default: 1)
+- `per_page`: Documents per page (default: 50, max: 500)
+- `content_length`: Content preview length (default: -1 for full content)
+
+**Response:**
+```json
+{
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total_documents": 1250,
+    "total_pages": 25,
+    "has_next": true,
+    "has_prev": false
+  },
+  "documents": [...]
+}
+```
+
+####### `/api/search_docs` (POST)
+Performs semantic search on the document collection using vector similarity.
+
+**Request Body:**
+- `query`: Search query string (required)
+- `n_results`: Number of results (default: 5, max: 100)
+- `content_length`: Max content length (default: -1, max: 5000)
+- `include_full_content`: Include complete document content (default: false)
+
+**Response:**
+```json
+{
+  "query": "machine learning",
+  "search_params": {...},
+  "documents": [
+    {
+      "content": "Document content...",
+      "content_length": 1200,
+      "metadata": {...},
+      "similarity_score": 0.85
+    }
+  ]
+}
+```
