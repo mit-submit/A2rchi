@@ -56,7 +56,7 @@ class CommandRunner:
                     if line:
                         collector.append(line)
                         # Print with prefix for clarity
-                        print(f"{prefix}{line.rstrip()}", flush=True)
+                        logger.debug(f"{prefix}{line.rstrip()}", flush=True)
             except Exception as e:
                 logger.debug(f"Error reading stream: {e}")
             finally:

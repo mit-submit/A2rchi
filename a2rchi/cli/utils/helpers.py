@@ -168,6 +168,6 @@ def log_deployment_start(name: str, services: List[str], sources: List[str], dry
 def log_deployment_success(name: str, service_only_resolved: List[str], services: List[str], 
                           a2rchi_config: Dict[str, Any]) -> None:
     """Log successful deployment and show service URLs"""
-    logger.info(f"A2RCHI deployment '{name}' created successfully!")
-    logger.info(f"Services running: {', '.join(service_only_resolved)}\n")
+    print(f"A2RCHI deployment '{name}' created successfully!")
+    print(f"Services running: {', '.join(service_only_resolved)}")
     show_service_urls(services, a2rchi_config)

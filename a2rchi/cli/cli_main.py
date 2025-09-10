@@ -47,6 +47,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
            force: bool, dry: bool, verbosity: int, **other_flags):
     """Create an A2RCHI deployment with selected services and data sources."""
 
+    print("Starting A2RCHI deployment process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
     

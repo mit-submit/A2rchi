@@ -34,6 +34,7 @@ class DeploymentManager:
         
         logger.info(f"Starting compose deployment from {deployment_dir}")
         logger.info(f"Using compose file: {compose_file}")
+        logger.info(f"(This might take a minute...)")
         
         # Validate compose file syntax first
         try:
