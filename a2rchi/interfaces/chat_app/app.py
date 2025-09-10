@@ -1,5 +1,5 @@
 from a2rchi.chains.a2rchi import A2rchi
-from a2rchi.utils.config_loader import load_config, CONFIG_PATH
+from a2rchi.utils.config_loader import load_config, CONFIG_PATH, get_config_names
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
@@ -523,6 +523,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
+        self.add_endpoint('/api/get_configs', 'get_configs', self.get_configs, methods=["GET"])
         
         # conditionally add ChromaDB endpoints based on config
         if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
@@ -621,17 +622,17 @@ class FlaskAppWrapper(object):
 
         return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
     
-    def get_prompts(self):
+    def get_configs(self):
         """
-        Gets the names of prompts used in the chain
+        Gets the names of configs loaded in A2rchi.
 
 
         Returns:
-            A json with a response list of the prompt names
+            A json with a response list of the configs names
         """
-        prompt_config = self.config["chains"]["prompts"]
-        prompt_names = list(prompt_config.values())
-        return jsonify({'options':prompt_names}), 200
+
+        config_names = get_config_names()
+        return jsonify({'options':config_names}), 200
 
 
     def get_chat_response(self):

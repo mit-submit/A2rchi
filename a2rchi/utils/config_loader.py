@@ -2,15 +2,21 @@ import os
 import yaml
 
 # DEFINITIONS
+CONFIG_FOLDER_PATH = "/root/A2rchi/configs/"
+#TODO: Obsolete?
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 
-def load_config(map: bool = False):
+def load_config(map: bool = False, name: str = None):
     """
     Load the config.yaml file.
     Optionally maps models to the corresponding class.
     """
 
-    with open(CONFIG_PATH, "r") as f:
+    if name is None:
+        # If no name provided, the default configuration will be the first one found
+        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
+
+    with open(path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     # change the model class parameter from a string to an actual class
@@ -52,35 +58,59 @@ def load_config(map: bool = False):
 
     return config
 
-def load_global_config():
+def load_global_config(name: str = None):
     """
     Load the global part of the config.yaml file.
     This is assumed to be static.
     """
 
-    with open(CONFIG_PATH, "r") as f:
+    #TODO: How to do this more elegantly? Perhaps this should be a class
+    if name is None:
+        # If no name provided, the default configuration will be the first one found
+        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
+
+    with open(path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["global"]
 
-def load_utils_config():
+def load_utils_config(name: str = None):
     """
     Load the utils part of the config.yaml file.
     This is assumed to be static.
     """
 
-    with open(CONFIG_PATH, "r") as f:
+    if name is None:
+        # If no name provided, the default configuration will be the first one found
+        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
+
+    with open(path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["utils"]
 
-def load_data_manager_config():
+def load_data_manager_config(name: str = None):
     """
     Load the data_manager part of the config.yaml file.
     This is assumed to be static.
     """
 
-    with open(CONFIG_PATH, "r") as f:
+    if name is None:
+        # If no name provided, the default configuration will be the first one found
+        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
+
+    with open(path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["data_manager"]
+
+def get_config_names():
+    """
+    Gets the available configurations names.
+    """
+
+    config_files = os.listdir(CONFIG_FOLDER_PATH)
+    return [f_name.replace('.yaml','') for f_name in config_files]
+
+
+

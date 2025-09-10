@@ -32,10 +32,6 @@ class TemplateManager:
         """Prepare all necessary files for deployment"""
         base_dir = compose_config.base_dir
 
-        configs = config_manager.get_configs()
-
-        a2rchi_config = config_manager.get_current_config()
-
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
         prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
@@ -77,6 +73,7 @@ class TemplateManager:
         template_vars.setdefault('rubrics', [])
         
         # Add grader rubrics if grader is enabled
+        #TODO: Generalize this for various configurations
         if compose_config.get_service('grader').enabled:
             template_vars['rubrics'] = self._get_grader_rubrics(a2rchi_config)
         

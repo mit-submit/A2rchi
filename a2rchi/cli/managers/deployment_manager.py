@@ -23,7 +23,7 @@ class DeploymentManager:
     
     def __init__(self, use_podman: bool = False):
         self.use_podman = use_podman
-        self.compose_tool = "podman compose" if use_podman else "docker compose"
+        self.compose_tool = "podman compose" if use_podman else "docker-compose"
     
     def start_deployment(self, deployment_dir: Path) -> None:
         """Start the deployment using compose"""

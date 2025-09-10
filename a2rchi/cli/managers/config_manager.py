@@ -1,8 +1,10 @@
+from a2rchi.utils.logging import get_logger
 from pathlib import Path
 from typing import Dict, List, Any
 import os
-
 import yaml
+
+logger = get_logger(__name__)
 
 class ConfigurationManager:
     """Manages A2rchi configuration loading and validation"""
@@ -16,7 +18,7 @@ class ConfigurationManager:
                 try:
                     self.configs[config_filepath.stem] = self._load_config(config_filepath)
                 except Exception as e:
-                    print(f"Unable to load configuration file {yaml_file} : {e}")
+                    logger.error(f"Unable to load configuration file {yaml_file} : {e}")
 
             if len(self.configs)==0:
                 raise ValueError(f"No suitable configurations were found in {config_filepath}")
@@ -90,8 +92,7 @@ class ConfigurationManager:
             try:
                 self.validate_config(required_fields=required_fields,config=config)
             except ValueError as e:
-                #TODO: Change prints to logs
-                print(f'Removing config {name} due to: {e}')
+                logger.debug(f'Removing config {name} due to: {e}')
                 self.delete_config(name)
 
             
