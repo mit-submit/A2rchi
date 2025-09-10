@@ -522,6 +522,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
+        self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
         
         # conditionally add ChromaDB endpoints based on config
         if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
@@ -531,10 +532,9 @@ class FlaskAppWrapper(object):
         else:
             logger.info("ChromaDB API endpoints disabled by config")
 
-    # @app.route("/api/health")
-    # def health():
-    #     return jsonify({"status": "OK"}, 200)
-
+    def health(self):
+        return jsonify({"status": "OK"}, 200)
+      
     def configs(self, **configs):
         for config, value in configs:
             self.app.config[config.upper()] = value
