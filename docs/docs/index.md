@@ -27,7 +27,7 @@ git clone https://github.com/mit-submit/A2rchi.git
 ```
 Then, activate a virtual/conda environment, and from the root of the repository (i.e., where the `pyproject.toml` file is) run:
 ```nohighlight
-pip install .
+pip install -e .
 ```
 This will install A2rchi's dependencies as well as a local CLI tool. You should be able to see that it is installed with
 ```nohighlight
@@ -39,11 +39,14 @@ which will show the full path of the executable that is `a2rchi`.
 
 Secrets are values which are sensitive and therefore should not be directly included in code or configuration files. They typically include passwords, API keys, etc.
 
-To manage these secrets, we ask that you write them to a location on your file system in `.txt` files titled the name of the secrets. You will then give the location of the folder to the configuration file (see next section). You may also use multiple different folders/locations and supply them all to the configuration.
+To manage these secrets, we ask that you write them to a location on your file system in  a single `.env` files passed to via
+```nohighlight
+a2rchi create -e <env-file-path>
+```
 
 The only secret that is required to launch a minimal version of A2rchi (chatbot with open source LLM and embeddings) is:
 
-- `pg_password`: some password you pick which encrypts the database.
+- `PS_PASSWORD`: some password you pick which encrypts the database.
 
 If you are not running an open source model, you can use various OpenAI or Anthropic models if you provide the following secrets,
 
@@ -60,13 +63,13 @@ For many of the other services provided by A2rchi, additional secrets are requir
 
 The nominal setup of A2rchi launches its chat interface and data management interface. The CLI has the following commands:
 ```nohighlight
-a2rchi create --name <name> --a2rchi-config <path-to-config> [OPTIONS]
+a2rchi create --name <name> --config <path-to-config> [OPTIONS]
 a2rchi delete --name <name> [OPTIONS]
 ```
 
 The `--name` represents the name of your a2rchi deployment, and will be used in naming the images, containers, and also volumes associated with the deployment. All files needed to deploy a2rchi will be stored by default under `~/.a2rchi/a2rchi-{name}` on your local machine, where `docker/podman compose` will be run from. Note, you might need to change this, e.g., for permission reasons, in which case simply set the environment variable `A2RCHI_DIR` to the desired path.
 
-The `--a2rchi-config` is a configuration file provided by the user which can override any of the templatable fields in `a2rchi/templates/base-config.yaml`. See more below.
+The `--config` is a configuration file provided by the user which can override any of the templatable fields in `a2rchi/templates/base-config.yaml`. See more below.
 
 You can see additional options with `a2rchi create --help`, which are also further detailed in the User Guide.
 
