@@ -1,14 +1,15 @@
 import os
 
-from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.config_loader import load_global_config
 from a2rchi.utils.jira import JiraClient
 from a2rchi.utils.redmine_tickets import RedmineClient
 
+global_config = load_global_config()
 
 class TicketManager():
     
     def __init__(self):
-        self.data_path = load_config()["global"]["DATA_PATH"]
+        self.data_path = global_config["DATA_PATH"]
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)

@@ -1,9 +1,12 @@
 site_name: A2rchi Docs
 nav:
-  - Home: index.md
+  - A2rchi: overview.md
+  - Install: install.md
+  - Quickstart: quickstart.md
   - User Guide: user_guide.md
+  - Advanced Setup & Deployment: advanced_setup_deploy.md
+  - API Reference: api_reference.md
   - Developer Guide: developer_guide.md
-  - About: about.md
 theme: readthedocs
 repo_url: https://github.com/mit-submit/A2rchi
 repo_name: 'GitHub'

@@ -2,7 +2,7 @@ import jira
 import os
 from typing import Iterator, Optional
 
-from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.config_loader import load_utils_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.anonymizer import Anonymizer
 from a2rchi.utils.logging import get_logger
@@ -12,9 +12,9 @@ logger = get_logger(__name__)
 class JiraClient():
     def __init__(self) -> None:
         try:
-            self.jira_config = load_config()["utils"]["jira"]
-            self.jira_url = self.jira_config["JIRA_URL"]
-            self.jira_projects = self.jira_config["JIRA_PROJECTS"]
+            self.jira_config = load_utils_config()["jira"]
+            self.jira_url = self.jira_config["url"]
+            self.jira_projects = self.jira_config["projects"]
 
             if not self.jira_url or not self.jira_projects:
                 logger.info("JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA")
@@ -28,7 +28,7 @@ class JiraClient():
             raise FileNotFoundError("JIRA Personal Access Token (PAT) not found. Please set it up in your environment.")
 
         try:
-            self.anonymize_data = self.jira_config.get("ANONYMIZE_DATA", True)
+            self.anonymize_data = self.jira_config.get("anonymize_data", True)
 
             self.client = self.log_in(self.pat)
             self.anonymizer = Anonymizer()

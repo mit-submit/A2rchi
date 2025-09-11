@@ -2,6 +2,7 @@ from a2rchi.utils.scraper import Scraper
 from a2rchi.utils.ticket_manager import TicketManager
 from a2rchi.utils.git_scraper import GitScraper
 from a2rchi.utils.logging import get_logger
+from a2rchi.utils.config_loader import load_config
 
 from chromadb.config import Settings
 from langchain_community.document_loaders.text import TextLoader
@@ -28,8 +29,8 @@ SUPPORTED_DISTANCE_METRICS = ['l2', 'cosine', 'ip']
 class DataManager():
 
     def __init__(self):
-        from a2rchi.utils.config_loader import load_config
-        self.config = load_config(map=True)["utils"]
+
+        self.config = load_config(map=True)
         self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
         self.stemmer = None
@@ -39,7 +40,7 @@ class DataManager():
 
         # scrape data onto the filesystem
         logger.info("Scraping documents onto filesystem")
-        scraper = Scraper()
+        scraper = Scraper(dm_config=self.config['data_manager'])
         scraper.hard_scrape(verbose=True)
 
         # Fetch ticket data via APIs and copy onto the filesystem
@@ -54,7 +55,7 @@ class DataManager():
 
         # get the collection (reset it if it already exists and reset_collection = True)
         # the actual name of the collection is the name given by config with the embeddings specified
-        embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
+        embedding_name = self.config["data_manager"]["embedding_name"]
         self.collection_name = self.config["data_manager"]["collection_name"] + "_with_" + embedding_name
         logger.info(f"Using collection: {self.collection_name}")
 
@@ -67,18 +68,18 @@ class DataManager():
         self.delete_existing_collection_if_reset()
 
         # get the embedding model
-        embedding_class_map = self.config["embeddings"]["EMBEDDING_CLASS_MAP"]
-        embedding_name = self.config["embeddings"]["EMBEDDING_NAME"]
+        embedding_class_map = self.config["data_manager"]["embedding_class_map"]
+        embedding_name = self.config["data_manager"]["embedding_name"]
         self.embedding_model = embedding_class_map[embedding_name]["class"](**embedding_class_map[embedding_name]["kwargs"])
 
         # create the text_splitter
         self.text_splitter = CharacterTextSplitter(
-            chunk_size=self.config["data_manager"]["CHUNK_SIZE"],
-            chunk_overlap=self.config["data_manager"]["CHUNK_OVERLAP"],
+            chunk_size=self.config["data_manager"]["chunk_size"],
+            chunk_overlap=self.config["data_manager"]["chunk_overlap"],
         )
 
         # makes sure nltk gets installed and initializes stemmer
-        if self.config["data_manager"]["stemming"].get("ENABLED", False):
+        if self.config["data_manager"]["stemming"].get("enabled", False):
             nltk.download('punkt_tab')
             self.stemmer = nltk.stem.PorterStemmer()
 
@@ -122,7 +123,7 @@ class DataManager():
             )
         else:
             client = chromadb.PersistentClient(
-                path=self.global_config["LOCAL_VSTORE_PATH"],
+                path=self.config["data_manager"]["local_vstore_path"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         collection = client.get_or_create_collection(
@@ -222,7 +223,7 @@ class DataManager():
         """
         for filename, file in files_to_add.items():
 
-            logger.info(f"<MP> Processing file: {filename}")
+            logger.info(f"Processing file: {filename}")
 
             # create the chunks
             loader = None
@@ -246,7 +247,7 @@ class DataManager():
                 new_chunks = [document.page_content for document in self.text_splitter.split_documents([doc])]
                 
                 for new_chunk in new_chunks:
-                    if self.config["data_manager"]["stemming"].get("ENABLED", False):
+                    if self.config["data_manager"]["stemming"].get("enabled", False):
                         words = nltk.tokenize.word_tokenize(new_chunk)
                         stemmed_words = [self.stemmer.stem(word) for word in words]
                         new_chunk = " ".join(stemmed_words)
@@ -257,7 +258,7 @@ class DataManager():
             filehash = filename.split(".")[0]
             url = sources[filehash] if filehash in sources.keys() else ""
 
-            logger.info(f"<MP> Corresponding: {filename} {filehash} -> {url}")
+            logger.info(f"Corresponding: {filename} {filehash} -> {url}")
 
             # embeds each chunk
             embeddings = self.embedding_model.embed_documents(chunks)

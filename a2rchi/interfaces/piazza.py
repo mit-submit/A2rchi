@@ -1,4 +1,4 @@
-from a2rchi.chains.chain import Chain
+from a2rchi.chains.a2rchi import A2rchi
 from a2rchi.interfaces.uploader_app.app import FlaskAppWrapper
 from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.data_manager import DataManager
@@ -24,7 +24,7 @@ class PiazzaAIWrapper:
         self.data_manager.update_vectorstore()
 
         # intialize chain
-        self.chain = Chain()
+        self.a2rchi = A2rchi(pipeline="QAPipeline")
 
     def __call__(self, post):
 
@@ -32,7 +32,7 @@ class PiazzaAIWrapper:
         post_str = "SUBJECT: " + post['history'][-1]['subject'] + "\n\nCONTENT: " + post['history'][-1]['content']
         history = [("User", post_str)]
 
-        answer = self.chain(history)["answer"]
+        answer = self.a2rchi(history=history)["answer"]
 
         return answer, post_str
     

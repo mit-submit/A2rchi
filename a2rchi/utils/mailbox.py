@@ -1,5 +1,5 @@
 #!/bin/python
-from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.config_loader import load_utils_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
 
@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 ### DEFINITIONS
 # this constant defines an offset into the message description
-# which contains the Cleo issue id that a message refers to.
+# which contains the Redmine issue id that a message refers to.
 ISSUE_ID_OFFSET = 9
 
 
@@ -27,16 +27,16 @@ class Mailbox:
         self.mailbox = None
         self.user = user
         self.password = password
-        self.config = load_config()["utils"]["mailbox"]
+        self.config = load_utils_config()["mailbox"]
 
         # make sure to open the mailbox
         if self._verify():
             self.mailbox = self._connect()
 
 
-    def process_message(self, num, cleo):
+    def process_message(self, num, redmine):
         """
-        Process a single message, including addition to cleo and removal from inbox
+        Process a single message, including addition to redmine and removal from inbox
         """
         _, msg_data = self.mailbox.fetch(num, '(RFC822)')
         for response_part in msg_data:
@@ -54,10 +54,10 @@ class Mailbox:
                 if issue_id > 0:
                     note = f"ISSUE_ID:{issue_id} continued (leave for reference)\n\n"
                     note += f"{subject}: {description}"
-                    cleo.reopen_issue(issue_id, note, attachments)
+                    redmine.reopen_issue(issue_id, note, attachments)
                     self._cleanup_message(num, attachments)
                 else:
-                    issue_id = cleo.new_issue(sender, cc, subject, description, attachments)
+                    issue_id = redmine.new_issue(sender, cc, subject, description, attachments)
                     if issue_id > 0:
                         self._cleanup_message(num, attachments)
                     else:
@@ -66,7 +66,7 @@ class Mailbox:
         return
 
 
-    def process_messages(self, cleo):
+    def process_messages(self, redmine):
         """
         Select all messages in the mailbx and process them.
         """
@@ -75,7 +75,7 @@ class Mailbox:
         logger.info(f"mailbox.process_messages: {len(data[0].split())}")
 
         for num in data[0].split():
-            self.process_message(num, cleo)
+            self.process_message(num, redmine)
 
         self.mailbox.close()
         self.mailbox.logout()
@@ -226,7 +226,7 @@ class Mailbox:
         Open the mailbox
         """
         logger.info(f"Open mailbox (U:{self.user} P:*********)")
-        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=self.config["IMAP4_PORT"], timeout=None)
+        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=self.config["imap4_port"], timeout=None)
         mailbox.login(self.user, self.password)
 
         return mailbox
@@ -247,7 +247,7 @@ class Mailbox:
         Make sure the environment is setup
         """
         if self.user == None or self.password == None:
-            logger.error("Did not find all cleo configs: IMAP_USER, IMAP_PW (source ~/.imap).")
+            logger.error("Did not find all redmine configs: IMAP_USER, IMAP_PW (source ~/.imap).")
             return False
 
         return True

@@ -19,32 +19,32 @@ def main():
     os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
     os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
     
-    config = load_config()["interfaces"]["chat_app"]
+    chat_config = load_config()["interfaces"]["chat_app"]
     global_config = load_config()["global"]
-    print(f"Starting Chat Service with (host, port): ({config['HOST']}, {config['PORT']})")
-    print(f"Accessible externally at (host, port): ({config['HOSTNAME']}, {config['EXTERNAL_PORT']})")
+    print(f"Starting Chat Service with (host, port): ({chat_config['host']}, {chat_config['port']})")
+    print(f"Accessible externally at (host, port): ({chat_config['hostname']}, {chat_config['external_port']})")
 
-    generate_script(config,global_config)
+    generate_script(chat_config,global_config)
     app = FlaskAppWrapper(Flask(
         __name__,
-        template_folder=config["template_folder"],
-        static_folder=config["static_folder"],
+        template_folder=chat_config["template_folder"],
+        static_folder=chat_config["static_folder"],
     ))
-    app.run(debug=True, use_reloader=False, port=config["PORT"], host=config["HOST"])
+    app.run(debug=True, use_reloader=False, port=chat_config["port"], host=chat_config["host"])
 
 
-def generate_script(config,global_config):
+def generate_script(chat_config,global_config):
     """
     This is not elegant but it creates the javascript file from the template using the config.yaml parameters
     """
-    script_template = os.path.join(config["static_folder"], "script.js-template")
+    script_template = os.path.join(chat_config["static_folder"], "script.js-template")
     with open(script_template, "r") as f:
         template = f.read()
 
-    filled_template = template.replace('XX-NUM-RESPONSES-XX', str(config["num_responses_until_feedback"]))
+    filled_template = template.replace('XX-NUM-RESPONSES-XX', str(chat_config["num_responses_until_feedback"]))
     filled_template = filled_template.replace('XX-TRAINED_ON-XX', str(global_config["TRAINED_ON"]))
 
-    script_file = os.path.join(config["static_folder"], "script.js")
+    script_file = os.path.join(chat_config["static_folder"], "script.js")
     with open(script_file, "w") as f:
         f.write(filled_template)
 

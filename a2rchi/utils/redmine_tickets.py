@@ -1,5 +1,5 @@
 from a2rchi.utils.anonymizer import Anonymizer
-from a2rchi.utils.config_loader import load_config
+from a2rchi.utils.config_loader import load_utils_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
 
@@ -10,14 +10,14 @@ from typing import Any, Dict, Iterator
 logger = get_logger(__name__)
 
 # use this to grab the answer for a given ticket, then remove it from answer text
-ANSWER_TAG = load_config()["utils"]["redmine"]["answer_tag"]
+ANSWER_TAG = load_utils_config()["redmine"]["answer_tag"]
 
 class RedmineClient():
     def __init__(self) -> None:
-            self.redmine_url = read_secret("CLEO_URL")
-            self.redmine_user = read_secret("CLEO_USER")
-            self.redmine_pw = read_secret("CLEO_PW")
-            self.redmine_project = read_secret("CLEO_PROJECT")
+            self.redmine_url = read_secret("REDMINE_URL")
+            self.redmine_user = read_secret("REDMINE_USER")
+            self.redmine_pw = read_secret("REDMINE_PW")
+            self.redmine_project = read_secret("REDMINE_PROJECT")
 
             if self._verify():
                 self._connect()

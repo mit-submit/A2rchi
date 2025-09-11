@@ -24,6 +24,18 @@ from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+def print_model_params(name, model_name, model_class_map):
+    """
+    Print the parameters of the model.
+    
+    Parameters:
+    name (str): The name of the model instance.
+    model_name (str): The name of the model class.
+    model_class_map (dict): The mapping of model class names to their classes and parameters.
+    """
+    params_str = "\n".join([f"\t\t\t{param}: {value}" for param, value in model_class_map[model_name]["kwargs"].items()])
+    logger.info(f"Using {name} model {model_name} with parameters:\n{params_str}")
+
 class BaseCustomLLM(LLM):
     """
     Abstract class used to load a custom LLM
@@ -118,7 +130,6 @@ class LlamaLLM(BaseCustomLLM):
             setattr(self, key, value)
 
         #Packages needed
-        from peft import PeftModel
         from transformers import LlamaForCausalLM, LlamaTokenizer
 
          # Set the seeds for reproducibility
@@ -132,6 +143,7 @@ class LlamaLLM(BaseCustomLLM):
         # removed "load_in_8bit" argument, need to install correct bitsandbytes version then use BitsAndBytesConfig object and pass that
         base_model = LlamaForCausalLM.from_pretrained(pretrained_model_name_or_path=self.base_model, local_files_only= False, device_map='auto', torch_dtype = torch.float16, safetensors=True)
         if self.peft_model:
+            from peft import PeftModel
             self.llama_model = PeftModel.from_pretrained(base_model, self.peft_model, safetensors=True)
         else:
             self.llama_model = base_model
@@ -742,28 +754,6 @@ class OllamaInterface(ChatOllama):
             logger.error("No base-url selected for Ollama model")
 
         if model_name == "": 
-            logger.error(f"No Ollama model selected please choose from the following: \n{self.list_ollama_models(url=url)}")
+            logger.error(f"No Ollama model selected.")
 
         super().__init__(model=model_name, base_url=url, **kwargs)
-
-    def list_ollama_models(self, url: Optional[str] = None) -> list:
-        """
-        Connects to the Ollama server and lists all available models.
-
-        Returns:
-            A list of dictionaries, where each dictionary represents a model
-            and contains its details (e.g., name, size).
-        """
-
-        if self.base_url is None: url_to_use = url
-        else: url_to_use = self.base_url
-
-        try:
-            response = requests.get(f"{url_to_use}/api/tags")
-            response.raise_for_status()  # Raise an exception for bad status codes
-            data = response.json()
-            return data.get("models", [])
-        except requests.exceptions.RequestException as e:
-            print(f"Error connecting to Ollama server: {e}")
-            return []
-

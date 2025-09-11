@@ -1,4 +1,4 @@
-from a2rchi.chains.chain import Chain
+from a2rchi.chains.a2rchi import A2rchi
 from a2rchi.utils.config_loader import load_config, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
@@ -117,10 +117,12 @@ class ChatWrapper:
         # initialize data manager
         self.data_manager = DataManager()
         self.data_manager.update_vectorstore()
+        embedding_name = self.config["data_manager"]["embedding_name"]
+        self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -128,7 +130,7 @@ class ChatWrapper:
 
         # initialize lock and chain
         self.lock = Lock()
-        self.chain = Chain()
+        self.a2rchi = A2rchi(pipeline="QAPipeline")
         self.number_of_queries = 0
 
         # initialize config_id to be None
@@ -136,7 +138,7 @@ class ChatWrapper:
 
     def update_config(self, config_id):
         self.config_id = config_id
-        self.chain.update_config()
+        self.a2rchi.update()
 
     @staticmethod
     def convert_to_app_history(history):
@@ -163,7 +165,67 @@ class ChatWrapper:
         except: 
              logger.info("Rendering error: markdown formatting failed")
              return text
+        
+    def get_top_links(self, documents, scores):
+        """
+        Get the top links from the documents based on their scores.
+        """
 
+        # re-load the present list of sources
+        self.reload_links_db()
+
+        # don't assume the documents given by the pipeline are sorted
+        if scores:
+            sorted_indices = np.argsort(scores)
+            scores = [scores[i] for i in sorted_indices]
+            documents = [documents[i] for i in sorted_indices]
+
+        # prepare to show the best sources, if they have links
+        top_links, top_link_names, top_scores = [], [], []
+        if len(documents) > 0:
+            for i in range(5):
+                score = scores[i]
+                if score > self.similarity_score_reference: break # only show sources below a certain distance metric
+                source_hash = documents[i].metadata['source'] # only links have metadata['hash'] (?)
+                if '/' in source_hash and '.' in source_hash:
+                    source_hash = source_hash.split('/')[-1].split('.')[0]
+                    if source_hash in self.links_db: # only links have hashes in the sources.yaml (?)
+                        link = self.links_db[source_hash]
+                        parsed_link = urlparse(link)
+                        display_name = parsed_link.hostname
+                        if parsed_link.path and parsed_link.path != '/':
+                            first_path = parsed_link.path.strip('/').split('/')[0]
+                            display_name += f"/{first_path}"
+                        if link in top_links:
+                            continue # don't show the same link twice
+                        top_link_names.append(display_name)
+                        top_scores.append(score)
+                        top_links.append(link)
+
+        return top_links, top_link_names, top_scores
+        
+    @staticmethod
+    def format_links(top_links, top_link_names, top_scores):
+
+        _output = ""
+            
+        # Only show "Sources:" if there are any valid sources
+        if top_links:
+            _output += '<div style="margin-left: 2em;"><b>Sources:</b><br>'
+            _output += "<ul style='margin-left: 1em; padding-left: 0; list-style-type: disc;'>"
+            for score, link, display_name in zip(top_scores, top_links, top_link_names):
+                _output += (
+                    "<li style='margin-bottom: 0.2em; padding-bottom: 0; line-height: 1.2;'>"
+                    "<small>"
+                    f'<a href="{link}" target="_blank" rel="noopener noreferrer">{display_name}</a>'
+                    f" (score: {score:.2f})"
+                    "</small>"
+                    "</li>"
+                )
+            _output += "</ul>"
+            _output += "</div>"
+
+        return _output
 
     def insert_feedback(self, feedback):
         """
@@ -286,7 +348,6 @@ class ChatWrapper:
             timestamps['vectorstore_update_ts'],
             timestamps['query_convo_history_ts'],
             timestamps['chain_finished_ts'],
-            timestamps['similarity_search_ts'],
             timestamps['a2rchi_message_ts'],
             timestamps['insert_convo_ts'],
             timestamps['finish_call_ts'],
@@ -305,6 +366,15 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    def reload_links_db(self):
+        """
+        Load the sources.yaml file which contains the mapping from file hashes to links.
+        """
+        try:
+            with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
+                self.links_db = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            self.links_db = dict()
 
     def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
         """
@@ -318,7 +388,7 @@ class ChatWrapper:
         self.lock.acquire()
         timestamps['lock_acquisition_ts'] = datetime.now()
         try:
-            # update vector store through data manager; will only do something if new files have been added
+            # update vector store through data manager; will only do something if newwhere files have been added
             logger.info("Acquired lock file update vectorstore")
 
             self.data_manager.update_vectorstore()
@@ -358,8 +428,8 @@ class ChatWrapper:
 
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
-                full_history = history + [(sender, content)] if not is_refresh else history
-                result = self.chain(full_history, conversation_id)
+                history = history + [(sender, content)] if not is_refresh else history
+                result = self.a2rchi(history=history, conversation_id=conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
                 # for now let's return a timeout error, as returning a different
@@ -370,48 +440,33 @@ class ChatWrapper:
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
-            # get similarity score to see how close the input is to the source
-            # - low score means very close (it's a distance between embedding vectors approximated
-            #   by an approximate k-nearest neighbors algorithm called HNSW)
-            top_score, scores = self.chain.similarity_search(content)
-            timestamps['similarity_search_ts'] = datetime.now()
+            # display answer
+            output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
-            # load the present list of sources
-            try:
-                with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
-                    sources = yaml.load(file, Loader=yaml.FullLoader)
-            except FileNotFoundError:
-                sources = dict()
 
-            # get the closest source to the document
-            source = None
-            if len(result['source_documents']) > 0:
-                source_hash = result['source_documents'][0].metadata['source']
-                if '/' in source_hash and '.' in source_hash:
-                    source = source_hash.split('/')[-1].split('.')[0]
+            # display sources that have links
+            documents = result.get("documents", [])
+            scores = result.get("documents_scores", [])
+            top_links, top_link_names, top_scores = self.get_top_links(documents, scores)
+            output += self.format_links(top_links, top_link_names, top_scores)
 
-            # if score is low enough, include source as link, otherwise just give answer
-            embedding_name = self.config["utils"]["embeddings"]["EMBEDDING_NAME"]
-            similarity_score_reference = self.config["utils"]["embeddings"]["EMBEDDING_CLASS_MAP"][embedding_name]["similarity_score_reference"]
-            logger.debug(f"Similarity score reference:  {similarity_score_reference}")
-            logger.debug(f"Similarity score:  {top_score}")
-            link = ""
-            output = "<p>" + self.format_code_in_text(result["answer"])
-            if source is not None and top_score < similarity_score_reference and source in sources.keys():
-
-                link = sources[source]
-                logger.info(f"Primary source:  {link}")
-                parsed_source = urlparse(link)
-                output += " <small><small><a href=" + link + " target=\"_blank\" rel=\"noopener noreferrer\">" + parsed_source.hostname + f"</a>(score:{top_score:.2f})</small></small>, "
-            output += f"<small><small>time: {time.time()-start_time:.2f}s</small></small>" + "\n<br>"
-
-            # write user message and A2rchi response to database
+            # message is constructed!
             timestamps['a2rchi_message_ts'] = datetime.now()
+            
+            # write stuff to database
+            context = self.prepare_context_for_storage(documents, self.links_db, scores)
+
+            # and now finally insert the conversation
             user_message = (sender, content, server_received_msg_ts)
             a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
-            context = self.prepare_context_for_storage(result['source_documents'], sources, scores)
-
-            message_ids = self.insert_conversation(conversation_id, user_message, a2rchi_message, link, context, is_refresh)
+            message_ids = self.insert_conversation(
+                conversation_id,
+                user_message,
+                a2rchi_message,
+                top_links[0] if top_links else "Link unavailable",
+                context,
+                is_refresh
+            )
             timestamps['insert_convo_ts'] = datetime.now()
 
         except Exception as e:
@@ -444,7 +499,7 @@ class FlaskAppWrapper(object):
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -479,7 +534,7 @@ class FlaskAppWrapper(object):
 
     def health(self):
         return jsonify({"status": "OK"}, 200)
-
+      
     def configs(self, **configs):
         for config, value in configs:
             self.app.config[config.upper()] = value
@@ -529,6 +584,7 @@ class FlaskAppWrapper(object):
             f.write(config_str)
 
         # parse prompts and write them to their respective locations
+        # TODO fix
         main_prompt = request.json.get('main_prompt')
         with open(MAIN_PROMPT_FILE, 'w') as f:
             f.write(main_prompt)
@@ -550,7 +606,7 @@ class FlaskAppWrapper(object):
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -809,6 +865,8 @@ class FlaskAppWrapper(object):
             print(f"ERROR in list_docs: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
+    # TODO should this call a2rchi rather than connect to db directly?
+    # in any case, code-duplication should be elminated here
     def search_docs(self):
         """
         API endpoint to search for the nearest documents to a given query with pagination.

@@ -1,4 +1,4 @@
-from a2rchi.chains.chain import Chain
+from a2rchi.chains.a2rchi import A2rchi
 from a2rchi.interfaces.uploader_app.app import FlaskAppWrapper
 from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.data_manager import DataManager
@@ -23,7 +23,7 @@ class MattermostAIWrapper:
         self.data_manager.update_vectorstore()
 
         # intialize chain
-        self.chain = Chain()
+        self.a2rchi = A2rchi()
 
     def __call__(self, post):
 
@@ -37,7 +37,7 @@ class MattermostAIWrapper:
         self.data_manager.update_vectorstore()
 
         # call chain
-        answer = self.chain(formatted_history)["answer"]
+        answer = self.a2rchi(formatted_history)["answer"]
         logger.debug('ANSWER = ',answer)
 
         return answer, post_str

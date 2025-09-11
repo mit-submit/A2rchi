@@ -1,4 +1,4 @@
-from a2rchi.chains.chain import Chain
+from a2rchi.chains.a2rchi import A2rchi
 from a2rchi.utils.config_loader import load_config, CONFIG_PATH
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
@@ -49,9 +49,8 @@ class ImageToTextWrapper:
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.data_path = self.global_config["DATA_PATH"]
-
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -60,7 +59,7 @@ class ImageToTextWrapper:
         self.lock = Lock()
 
         # initialize image processing chain
-        self.image_processor = Chain(image_processing=True)
+        self.image_processor = A2rchi(pipeline="ImageProcessingPipeline")
 
     def __call__(self, images: List[str]) -> str:
         """
@@ -99,7 +98,7 @@ class GradingWrapper:
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -108,7 +107,7 @@ class GradingWrapper:
         self.lock = Lock()
 
         # initialize grading chain
-        self.grader = Chain(grading=True) # more similar to chatwrapper, just need to handle the successive prompts SOMEWHERE
+        self.grader = A2rchi(pipeline="GradingPipeline") # more similar to chatwrapper, just need to handle the successive prompts SOMEWHERE
 
 
     ##################
@@ -175,7 +174,7 @@ class FlaskAppWrapper(object):
 
         # store postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -387,8 +386,9 @@ class FlaskAppWrapper(object):
             #################################
 
             # IMAGE PROCESSING CALLED HERE !!!
-
-            raw_response = self.image_processor(base64_images)[0]
+            # TODO this is only for one image (?)
+            image_processor_output = self.image_processor(base64_images)
+            raw_response = image_processor_output['answer'].get("text", [""])[0]
             normalized_response = self.normalize_llm_response(raw_response)
 
             #################################
@@ -472,7 +472,7 @@ class FlaskAppWrapper(object):
         # GRADING CALLED HERE !!!
 
         grading_result = self.grader(final_student_solution, official_explanation, additional_comments)
-
+        print(grading_result)
         grading_result_score = grading_result["final_grade"]
 
         logger.info(f"Grading result score: {grading_result_score}")

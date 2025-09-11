@@ -4,39 +4,29 @@ global:
   TRAINED_ON: "the SubMIT Cluster"  
 
 locations_of_secrets:
-  - ~/.secrets/api_tokens
-  - ~/.secrets/salts_and_internal_passwords
-  - ~/.secrets/submit_cleo_and_mailer_passwords
+  - /home/submit/lavezzo/a2rchi/A2rchi/secrets/
 
-chains:
+data_manager:
   input_lists:  
     - configs/submit.list
     - configs/miscellanea.list
-  chain:
-    MODEL_NAME: VLLM
-    CONDENSE_MODEL_NAME: VLLM
-    CLEO_MODEL_NAME: HuggingFaceOpenLLM
-    MODEL_CLASS_MAP:
-      VLLM:
-        kwargs:
-          base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
-          quantization: True
-          max_model_len: 32768
-          tensor_parallel_size: 4
-          repetition_penalty: 1.0
-          gpu_memory_utilization: 0.5
-      HuggingFaceOpenLLM:
-        kwargs:
-          base_model: "Qwen/Qwen2.5-14B-Instruct-1M"
-          quantization: True
+  chromadb_port: 8000
+  chromadb_external_port: 8001
+  embedding_name: HuggingFaceEmbeddings
 
-  prompts:
-    CONDENSING_PROMPT: configs/prompts/condense.prompt  
-    MAIN_PROMPT: configs/prompts/submit.prompt  
+a2rchi:
+  pipeline: QAPipeline
+  pipeline_map:
+    QAPipeline:
+      prompts:
+        required:
+          condense_prompt: configs/prompts/condense.prompt  
+          chat_prompt: configs/prompts/submit.prompt  
+      models:
+        required:
+          chat_model: HuggingFaceOpenLLM
+          condense_model: HuggingFaceOpenLLM
 
-utils:
-  embeddings:
-    EMBEDDING_NAME: HuggingFaceEmbeddings
 
 interfaces:
   chat_app:
