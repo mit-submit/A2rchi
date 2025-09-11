@@ -27,7 +27,7 @@ class TemplateManager:
         self.env = jinja_env
         self.registry = service_registry
     
-    def prepare_deployment_files(self, compose_config, a2rchi_config: Dict[str, Any], secrets_manager) -> None:
+    def prepare_deployment_files(self, compose_config, a2rchi_config: Dict[str, Any], secrets_manager, **kwargs) -> None:
         """Prepare all necessary files for deployment"""
         base_dir = compose_config.base_dir
 
@@ -36,7 +36,7 @@ class TemplateManager:
         prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
         
         # Prepare main configuration file
-        self._prepare_config_file(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity)
+        self._prepare_config_file(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity, **kwargs)
         
         # Prepare service-specific files
         if compose_config.get_service('grafana').enabled:
@@ -118,7 +118,7 @@ class TemplateManager:
         return port_config
     
     def _prepare_config_file(self, base_dir: Path, a2rchi_config: Dict[str, Any], 
-                        prompt_mappings: Dict[str, str], verbosity: int) -> None:
+                        prompt_mappings: Dict[str, str], verbosity: int, **kwargs) -> None:
         """Prepare the main A2RCHI configuration file with updated prompt paths"""
         import copy
         updated_config = copy.deepcopy(a2rchi_config)
@@ -144,7 +144,10 @@ class TemplateManager:
                             logger.debug(f"Updated {prompt_key}: '{old_value}' -> '{prompt_mappings[prompt_key]}'")
                         else:
                             logger.error(f"Prompt_key '{prompt_key}' NOT found in mappings")
-                                        
+        
+        if "host_mode" in kwargs:
+            updated_config["host_mode"] = kwargs["host_mode"]
+
         config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
         config = config_template.render(verbosity=verbosity, **updated_config)
             
