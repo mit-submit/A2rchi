@@ -106,7 +106,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config)
         
-        template_manager.prepare_deployment_files(compose_config, a2rchi_config, secrets_manager)
+        template_manager.prepare_deployment_files(compose_config, a2rchi_config, secrets_manager, **other_flags)
         
         deployment_manager = DeploymentManager(compose_config.use_podman)
         deployment_manager.start_deployment(base_dir)
