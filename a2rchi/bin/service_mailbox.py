@@ -24,7 +24,7 @@ time.sleep(60)
 
 print("Starting Mailbox Service")
 mailbox_config = load_config()["utils"]["mailbox"]
-redmine = redmine.Redmine('Redmine_Helpdesk')
+redmine = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize A2rchi() class
 
 while True:
     mail = mailbox.Mailbox(user = user, password = password)

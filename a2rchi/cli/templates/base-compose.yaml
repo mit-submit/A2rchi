@@ -379,10 +379,11 @@ services:
 
   {% if redmine_mailer_enabled -%}
   redmine:
-    image: {{ redmine_mailer_image }}:{{ redmine_mailer_tag }}
+    image: {{ redmine_mailer_image }}-redmine:{{ redmine_mailer_tag }}
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-redmine{{ '-gpu' if gpu_ids else '' }}
+    container_name: {{ redmine_mailer_container_name }}-redmine
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -401,7 +402,6 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
     secrets:
-      secrets:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
       {% endfor %}
@@ -435,10 +435,11 @@ services:
     {%- endif %}
 
   mailbox:
-    image: {{ redmine_mailer_image }}:{{ redmine_mailer_tag }}
+    image: {{ redmine_mailer_image }}-mailer:{{ redmine_mailer_tag }}
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-mailbox{{ '-gpu' if gpu_ids else '' }}
+    container_name: {{ redmine_mailer_container_name }}-mailer
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -457,7 +458,6 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
     secrets:
-      secrets:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
       {% endfor %}

@@ -3,7 +3,7 @@ apiVersion: 1
 datasources:
   - name: Postgres
     type: postgres
-    url: postgres:5432  # templated by install script
+    url: {{ 'localhost:5432' if host_mode else 'postgres:5432' }}
     user: grafana
     secureJsonData:
       password: {{ grafana_pg_password }}

@@ -40,7 +40,7 @@ class TemplateManager:
         
         # Prepare service-specific files
         if compose_config.get_service('grafana').enabled:
-            self._prepare_grafana_files(base_dir, a2rchi_config, compose_config.name, secrets_manager)
+            self._prepare_grafana_files(base_dir, a2rchi_config, compose_config.name, secrets_manager, **kwargs)
         
         if compose_config.get_service('grader').enabled:
             self._prepare_grader_files(base_dir, a2rchi_config)
@@ -114,7 +114,7 @@ class TemplateManager:
                 except (KeyError, TypeError):
                     # Config path not found, defaults already set above
                     pass
-                
+
         return port_config
     
     def _prepare_config_file(self, base_dir: Path, a2rchi_config: Dict[str, Any], 
@@ -212,7 +212,7 @@ class TemplateManager:
         
         return prompt_mappings
     
-    def _prepare_grafana_files(self, base_dir: Path, a2rchi_config: Dict[str, Any], deployment_name: str, secrets) -> None:
+    def _prepare_grafana_files(self, base_dir: Path, a2rchi_config: Dict[str, Any], deployment_name: str, secrets, **kwargs) -> None:
         """Prepare Grafana configuration files"""
         grafana_dir = base_dir / "grafana"
         grafana_dir.mkdir(exist_ok=True)
@@ -221,7 +221,7 @@ class TemplateManager:
         
         # Prepare datasources.yaml
         datasources_template = self.env.get_template(BASE_GRAFANA_DATASOURCES_TEMPLATE)
-        datasources = datasources_template.render(grafana_pg_password=grafana_pg_password)
+        datasources = datasources_template.render(grafana_pg_password=grafana_pg_password, host_mode=kwargs['host_mode'])
         with open(grafana_dir / "datasources.yaml", 'w') as f:
             f.write(datasources)
         

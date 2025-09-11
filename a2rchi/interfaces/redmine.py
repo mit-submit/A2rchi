@@ -5,7 +5,7 @@ from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
 
-from redminelib import Redmine
+from redminelib import Redmine as RedmineClient
 
 import datetime
 import psycopg2
@@ -29,7 +29,7 @@ class RedmineAIWrapper:
     """
 
     def __init__(self):
-        self.a2rchi = A2rchi()
+        self.a2rchi = A2rchi(pipeline="QAPipeline")
 
         # initialize data manager
         self.data_manager = DataManager()
@@ -43,7 +43,7 @@ class RedmineAIWrapper:
 
         # postgres connection info
         self.pg_config = {
-            "password": read_secret("POSTGRES_PASSWORD"),
+            "password": read_secret("PG_PASSWORD"),
             **self.utils_config["postgres"],
         }
         self.conn = None
@@ -161,7 +161,6 @@ class Redmine:
         self.smtp = sender.Sender()
         self.user = None
         self.project = None
-        self.ai_wrapper = RedmineAIWrapper()
         self.ai_wrapper = None
         if self.name != "Redmine_Helpdesk_Mail":
             logger.info("Loading AI wrapper for Redmine service")
@@ -365,7 +364,7 @@ class Redmine:
         Open the redmine web site called redmine
         """
         logger.info(f"Open redmine (URL:{self.redmine_url} U:{self.redmine_user} P:*********)")
-        rd = Redmine(self.redmine_url, username=self.redmine_user, password=self.redmine_pw)
+        rd = RedmineClient(self.redmine_url, username=self.redmine_user, password=self.redmine_pw)
         return rd
         
     def _verify(self):
