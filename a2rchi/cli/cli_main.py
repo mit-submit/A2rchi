@@ -132,7 +132,8 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
 @click.option('--rmv', is_flag=True, help="Remove volumes (--volumes)")
 @click.option('--keep-files', is_flag=True, help="Keep deployment files (don't remove directory)")
 @click.option('--list', 'list_deployments', is_flag=True, help="List all available deployments")
-def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool):
+@click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
+def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int):
     """
     Delete an A2RCHI deployment with the specified name.
     
@@ -156,7 +157,7 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
     a2rchi delete --name mybot --keep-files
     """
     
-    setup_cli_logging(verbosity=3)
+    setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
 
     try:

@@ -114,7 +114,7 @@ class TemplateManager:
                 except (KeyError, TypeError):
                     # Config path not found, defaults already set above
                     pass
-            
+                
         return port_config
     
     def _prepare_config_file(self, base_dir: Path, a2rchi_config: Dict[str, Any], 
@@ -147,6 +147,8 @@ class TemplateManager:
         
         if "host_mode" in kwargs:
             updated_config["host_mode"] = kwargs["host_mode"]
+            if a2rchi_config.get("data_manager", {}).get("chromadb_external_port", None):
+                updated_config["data_manager"]["chromadb_port"] = a2rchi_config["data_manager"]["chromadb_external_port"]
 
         config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
         config = config_template.render(verbosity=verbosity, **updated_config)

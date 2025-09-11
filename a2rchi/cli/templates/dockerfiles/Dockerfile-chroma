@@ -5,4 +5,8 @@ RUN apt-get update -y && apt-get install -y curl
 # permissions for OpenShift/OKD
 RUN chmod g+rx /root; chmod -R g+rwx /chroma
 
-CMD ["uvicorn", "chromadb.app:app", "--reload", "--workers", "1", "--host", "0.0.0.0", "--port", "8000", "--log-config", "chromadb/log_config.yml"]
+# set default port if not provided
+ENV CHROMA_PORT=8000
+
+# shell form to allow for env variable expansion
+CMD ["sh", "-c", "uvicorn chromadb.app:app --reload --workers 1 --host 0.0.0.0 --port $CHROMA_PORT --log-config chromadb/log_config.yml"]

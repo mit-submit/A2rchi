@@ -11,6 +11,8 @@ services:
       - {{ chromadb_port_host }}:8000
     volumes:
       - {{ chromadb_volume_name }}:/chroma/chroma/
+    environment:
+      - CHROMA_PORT={{ chromadb_port_host if host_mode else 8000 }}
     logging:
       options:
         max-size: 10m
@@ -19,7 +21,7 @@ services:
     network_mode: host
     {% endif %}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/api/v1/heartbeat"]
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:{{ chromadb_port_host if host_mode else 8000 }}/api/v1/heartbeat"]
       interval: 15s
       timeout: 10s
       retries: 3
