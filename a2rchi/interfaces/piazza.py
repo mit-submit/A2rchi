@@ -24,7 +24,7 @@ class PiazzaAIWrapper:
         self.data_manager.update_vectorstore()
 
         # intialize chain
-        self.a2rchi = A2rchi()
+        self.a2rchi = A2rchi(pipeline="QAPipeline")
 
     def __call__(self, post):
 
@@ -32,7 +32,7 @@ class PiazzaAIWrapper:
         post_str = "SUBJECT: " + post['history'][-1]['subject'] + "\n\nCONTENT: " + post['history'][-1]['content']
         history = [("User", post_str)]
 
-        answer = self.a2rchi(history)["answer"]
+        answer = self.a2rchi(history=history)["answer"]
 
         return answer, post_str
     

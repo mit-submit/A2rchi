@@ -22,7 +22,7 @@ class A2rchi():
             **kwargs
         ):
         self.update(pipeline)
-        self.pipeline = pipeline
+        self.pipeline_name = pipeline
         self._init_vectorstore_params()
 
     def update(self, pipeline=None):
@@ -33,9 +33,9 @@ class A2rchi():
         logger.debug("Loading config")
         self.config = load_config(map=True)
         if pipeline:
-            self.pipeline=pipeline
+            self.pipeline_name=pipeline
         self.pipeline = self._create_pipeline_instance(
-            self.pipeline,
+            self.pipeline_name,
             config=self.config
         )
 

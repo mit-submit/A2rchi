@@ -135,6 +135,8 @@ class ServiceRegistry:
             name='piazza',
             description='Integration service for Piazza posts and Slack notifications',
             category='integration',
+            requires_volume=True,
+            depends_on=['chromadb', 'postgres'],
             required_secrets=['PIAZZA_EMAIL', 'PIAZZA_PASSWORD', 'SLACK_WEBHOOK']
         ))
         

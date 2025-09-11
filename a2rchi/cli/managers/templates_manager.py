@@ -145,7 +145,7 @@ class TemplateManager:
                         else:
                             logger.error(f"Prompt_key '{prompt_key}' NOT found in mappings")
         
-        if "host_mode" in kwargs:
+        if kwargs['host_mode']:
             updated_config["host_mode"] = kwargs["host_mode"]
             if a2rchi_config.get("data_manager", {}).get("chromadb_external_port", None):
                 updated_config["data_manager"]["chromadb_port"] = a2rchi_config["data_manager"]["chromadb_external_port"]
