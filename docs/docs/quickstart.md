@@ -158,7 +158,7 @@ Here we specify:
 ```bash
 $ a2rchi create --name my-a2rchi -c test.yaml --podman -e secrets.env  --services chatbot
 ```
-```
+```nohighlight
 Starting A2RCHI deployment process...
 [a2rchi] Creating deployment 'my-a2rchi' with services: chatbot
 [a2rchi] Auto-enabling dependencies: postgres, chromadb

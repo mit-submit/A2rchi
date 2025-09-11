@@ -7,7 +7,7 @@ A2rchi is deployed using a python-based CLI onto containers. It requires:
 - `docker` version 24+ or `podman` version 5.4.0+ (for containers)
 - `python 3.10.0+` (for CLI)
 
-> Note: We support either running open source models locally, or connecting to existing APIs. If you plan to run open source models on your machine's GPUs, please check out the `User Guide` for more information.
+> Note: We support either running open source models locally, or connecting to existing APIs. If you plan to run open source models on your machine's GPUs, please check out the [Advanced Setup & Deployment](advanced_setup_deploy.md) section for more information.
 
 ## Install
 

@@ -21,7 +21,7 @@ Additionally, A2rchi supports various **interfaces/services**, which are applica
 
 Both data sources and interfaces/services are enabled via flags to the `a2rchi create` command,
 ```bash
-a2rchi create --name my-archi --config my_config.yaml --services=chatbot,piazza,jira,...
+a2rchi create [...] --services=chatbot,piazza,jira,...
 ```
 The parameters of the services are configured via the configuration file. See below for more details.
 
@@ -43,33 +43,27 @@ See the `Vector Store` section below for more details.
 
 These are the different ways to ingest data into the vector store used for document retrieval.
 
-### URL Link Lists
+### WEb Link Lists
 
-A URL link list is a simple text file containing a list of URLs, one per line. A2rchi will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
-This is defined in the configuration file as follows:
+A web link list is a simple text file containing a list of URLs, one per line.
+A2rchi will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
+
+#### Configuration
+
+You can define which lists of links A2rchi will inject in the configuration file as follows:
 ```yaml
 data_manager:
   input_lists:  # REQUIRED
     - configs/miscellanea.list  # list of websites with relevant info
+    - [...other lists...]
 ```
 
-#### Secrets
-
-Depending on the class, you may need to provide your login credentials in a secrets file as follows:
-```bash
-SSO_USERNAME=username
-SSO_PASSWORD=password
+Each list should be a simple text file containing one URL per line, e.g.,
 ```
-Then, make sure that the links you provide in the `.list` file(s) start with `sso-`, e.g.,
+https://example.com/page1
+https://example.com/page2
+[...]
 ```
-sso-https://example.com/protected/page
-```
-
-#### Configuration
-
-Link scraping is automatically enabled in A2rchi, you don't need to add any arguments to the `create` command.
-
-#### SSO
 
 In the case that some of the links are behind a Single Sign-On (SSO) system, you can use the `SSOScraper`.
 To enable it, add the enable it and pick the class you want in the configuration file:
@@ -79,6 +73,22 @@ utils:
     sso_class: CERNSSO  # or whichever class you want to use
     enabled: true
 ```
+
+#### Secrets
+
+If you are using SSO, depending on the class, you may need to provide your login credentials in a secrets file as follows:
+```bash
+SSO_USERNAME=username
+SSO_PASSWORD=password
+```
+Then, make sure that the links you provide in the `.list` file(s) start with `sso-`, e.g.,
+```
+sso-https://example.com/protected/page
+```
+
+#### Running
+
+Link scraping is automatically enabled in A2rchi, you don't need to add any arguments to the `create` command.
 
 ---
 
@@ -118,7 +128,7 @@ Git link scraping is automatically enabled in A2rchi once enabled in the config,
 
 The JIRA integration allows A2rchi to fetch issues and comments from specified JIRA projects and add them to the vector store, using the `JiraScraper` class.
 
-### Configuration
+#### Configuration
 
 Select which projects to scrape in the configuration file:
 ```yaml
@@ -130,11 +140,34 @@ jira:
       {%- endfor %}
     anonymize_data: {{ utils.jira.ANONYMIZE_DATA | default(true, true) }}
 ```
-See the [API guide](api_reference.md) for more details.
+
+You can turn on an automatic anonymizer of the data fetched from JIRA via the `anonymize_data` config.
+```yaml
+  anonymizer:
+    nlp_model: {{ utils.anonymizer.nlp_model | default('en_core_web_sm', true) }}
+    excluded_words: 
+      {%- for word in utils.anonymizer.excluded_words | default(['John', 'Jane', 'Doe']) %}
+      - {{ word }}
+      {%- endfor %}
+    greeting_patterns: 
+      {%- for pattern in utils.anonymizer.greeting_patterns | default(['^(hi|hello|hey|greetings|dear)\\b', '^\\w+,\\s*']) %}
+      - {{ pattern }}
+      {%- endfor %}
+    signoff_patterns: 
+      {%- for pattern in utils.anonymizer.signoff_patterns | default(['\\b(regards|sincerely|best regards|cheers|thank you)\\b', '^\\s*[-~]+\\s*$']) %}
+      - {{ pattern }}
+      {%- endfor %}
+    email_pattern: '{{ utils.anonymizer.email_pattern | default("[\\w\\.-]+@[\\w\\.-]+\\.\\w+") }}'
+    username_pattern: '{{ utils.anonymizer.username_pattern | default("\\[~[^\\]]+\\]") }}'
+```
+
+The anonymizer will remove names, emails, usernames, greetings, signoffs, and any other words you specify from the fetched data.
+This is useful if you want to avoid having personal information in the vector store.
 
 #### Secrets
 
-A personal access token (PAT) is required to authenticate and authorize with JIRA. This token should be placed in a secrets file as `JIRA_PAT`.
+A personal access token (PAT) is required to authenticate and authorize with JIRA.
+This token should be placed in a secrets file as `JIRA_PAT`.
 
 #### Running
 
@@ -142,16 +175,6 @@ To enable JIRA scraping, run with,
 ```bash
 a2rchi create [...] --services=jira
 ```
-
-#### Anonymizer
-
-You can turn on an automatic anonymizer of the data fetched from JIRA via the config
-```yaml
-utils:
-  jira:
-    anonymize_data: true
-```
-See the API reference for more details on the configuration fields. The anonymizer will remove names, emails, usernames, greetings, signoffs, and any other words you specify from the fetched data. This is useful if you want to avoid having personal information in the vector store.
 
 ---
 
@@ -161,8 +184,8 @@ See the API reference for more details on the configuration fields. The anonymiz
 
 There are two main ways to add documents to A2rchi's vector database. They are:
 
-- Manually adding files while the service is running via the uploader.
-- Directly copying files into the container, in a pinch
+- Manually adding files while the service is running via the uploader GUI
+- Directly copying files into the container
 
 These methods are outlined below.
 
@@ -280,15 +303,9 @@ a2rchi create [...] --services=piazza
 
 ### Redmine/Mailbox Interface
 
-TODO: add description of interface here
-
-#### Secrets
-
-```py
-required_secrets=['IMAP_USER', 'IMAP_PW', 'REDMINE_URL', 'REDMINE_USER', 
-                            'REDMINE_PW', 'REDMINE_PROJECT', 'SENDER_SERVER', 'SENDER_PORT', 
-                            'SENDER_REPLYTO', 'SENDER_USER', 'SENDER_PW']
-```
+A2rchi will read all new tickets in a Redmine project, and draft a response as a comment to the ticket.
+Once the ticket is updated to the "Resolved" status by an admin, A2rchi will send the response as an email to the user who opened the ticket.
+The admin can modify A2rchi's response before sending it out.
 
 #### Configuration
 
@@ -296,6 +313,14 @@ required_secrets=['IMAP_USER', 'IMAP_PW', 'REDMINE_URL', 'REDMINE_USER',
 redmine: 
   redmine_update_time: {{ utils.redmine.redmine_update_time | default(10, true) }}
   answer_tag: {{ utils.redmine.answer_tag | default('-- A2rchi -- Resolving email was sent', true) }}
+```
+
+#### Secrets
+
+```py
+required_secrets=['IMAP_USER', 'IMAP_PW', 'REDMINE_URL', 'REDMINE_USER', 
+                            'REDMINE_PW', 'REDMINE_PROJECT', 'SENDER_SERVER', 'SENDER_PORT', 
+                            'SENDER_REPLYTO', 'SENDER_USER', 'SENDER_PW']
 ```
 
 #### Running
@@ -310,6 +335,13 @@ a2rchi create [...] --services=redmine-mailer
 
 Set up A2rchi to read posts from your Mattermost forum and post draft responses to a specified Mattermost channel.
 
+#### Configuration
+
+```yaml
+mattermost:
+  update_time: {{ utils.mattermost.update_time | default(60, true) }}
+```
+
 #### Secrets
 
 You need to specify a webhook, a key and the id of two channels to read and write. Should be specified like this.
@@ -319,13 +351,6 @@ MATTERMOST_WEBHOOK=...
 MATTERMOST_KEY=...
 MATTERMOST_CHANNEL_ID_READ=...
 MATTERMOST_CHANNEL_ID_WRITE=...
-```
-
-### Configuration
-
-```yaml
-mattermost:
-  update_time: {{ utils.mattermost.update_time | default(60, true) }}
 ```
 
 #### Running
@@ -344,14 +369,14 @@ Monitor the performance of your A2rchi instance with the Grafana interface. This
 
 > Note, if you are deploying a version of A2rchi you have already used (i.e., you haven't removed the images/volumes for a given `--name`), the postgres will have already been created without the Grafana user created, and it will not work, so make sure to deploy a fresh instance.
 
-### Configuration
+#### Configuration
 
 ```yaml
 grafana:
   external_port: {{ interfaces.grafana.external_port | default(3000, true) }}
 ```
 
-### Secrets
+#### Secrets
 
 To run the Grafana service, you first need to specify a password for the Grafana to access the postgres database that stores the information.
 Set the environment variable as follows in the secrets file:
@@ -483,6 +508,7 @@ a2rchi create [...] --services=grader
 ## Models
 
 Models are either:
+
 1. Hosted locally, either via VLLM or HuggingFace transformers.
 2. Accessed via an API, e.g., OpenAI, Anthropic, etc.
 3. Accessed via an Ollama server instance.
@@ -490,6 +516,7 @@ Models are either:
 ### Local Models
 
 To use a local model, specify one of the local model classes in `models.py`:
+
 - `HuggingFaceOpenLLM`
 - `HuggingFaceImageLLM`
 - `VLLM`
@@ -497,6 +524,7 @@ To use a local model, specify one of the local model classes in `models.py`:
 ### Models via APIs
 
 We support the following model classes in `models.py` for models accessed via APIs:
+
 - `OpenAILLM`
 - `ClaudeLLM`
 - `AnthropicLLM`

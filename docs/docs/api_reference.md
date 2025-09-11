@@ -18,6 +18,7 @@ a2rchi create --name <deployment_name> --config <config.yaml> --env-file <secret
 ```
 
 **Options:**
+
 - `--name, -n` (str, required): Name of the deployment.
 - `--config, -c` (str, required): Path to the YAML configuration file.
 - `--env-file, -e` (str, required): Path to the secrets `.env` file.
@@ -43,6 +44,7 @@ a2rchi delete --name <deployment_name> [OPTIONS]
 ```
 
 **Options:**
+
 - `--name, -n` (str): Name of the deployment to delete.
 - `--rmi`: Remove container images.
 - `--rmv`: Remove volumes.
@@ -210,113 +212,194 @@ Controls vector store, chunking, and embedding settings.
   BM25 length normalization. Controls how much the document length influences the score. BM25 normalizes term frequency by document length compared to the average document length in the corpus. Range: `[0,1]`
 
 #### `embedding_class_map`
-- **OpenAIEmbeddings:**  
-  - **class:** string  
-  - **kwargs.model:** string  
-  - **similarity_score_reference:** float  
-- **HuggingFaceEmbeddings:**  
-  - **class:** string  
-  - **kwargs.model_name:** string  
-    The HuggingFace embedding model you want to use. Default is `sentence-transformers/all-MiniLM-L6-v2`. TODO: fix logic to require token if private model is requested.
-  - **kwargs.model_kwargs.device:** string (`cpu` or `cuda`)
-    Argument passed to embedding model initialization, to load onto `cpu` (default) or `cuda` (GPU), which you can select if you are deploying a2rchi onto GPU.
-  - **kwargs.encode_kwargs.normalize_embeddings:** bool  
-    Whether to normalize the embedded vectors or not. Default is `true`. Note, the default distance metric that chromadb uses is l2, which mesasures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.
-  - **similarity_score_reference:** float
-    The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more [here](https://docs.trychroma.com/docs/collections/configure)), so smaller values represent higher similarity. The link will be included if the score is *below* the chosen value. Default is `10` (scores are usually order 1, so default is to always include link).
-  - **query_embedding_instructions:** string or null
-    Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see `INSTRUCTION_AWARE_MODELS` in `a2rchi/chains/retrievers.py` to add models that support this. For example, the `Qwen/Qwen3-Embedding-XB` embedding models support this and are listed, see more [here](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B). Default is `None`. You should write the string directly into the config. An example instruction might look like: `"Given a query, retrieve relevant information to answer the query"`. You might tune it to be more specific to your use case which might improve performance.
+<ul>
+  <li>
+    <strong>OpenAIEmbeddings:</strong>
+    <ul>
+      <li><strong>class:</strong> <code>string</code></li>
+      <li><strong>kwargs.model:</strong> <code>string</code></li>
+      <li><strong>similarity_score_reference:</strong> <code>float</code></li>
+    </ul>
+  </li>
+  <li>
+    <strong>HuggingFaceEmbeddings:</strong>
+    <ul>
+      <li><strong>class:</strong> <code>string</code></li>
+      <li>
+        <strong>kwargs.model_name:</strong> <code>string</code><br>
+        The HuggingFace embedding model you want to use. Default is <code>sentence-transformers/all-MiniLM-L6-v2</code>. TODO: fix logic to require token if private model is requested.
+      </li>
+      <li>
+        <strong>kwargs.model_kwargs.device:</strong> <code>string</code> (<code>cpu</code> or <code>cuda</code>)<br>
+        Argument passed to embedding model initialization, to load onto <code>cpu</code> (default) or <code>cuda</code> (GPU), which you can select if you are deploying a2rchi onto GPU.
+      </li>
+      <li>
+        <strong>kwargs.encode_kwargs.normalize_embeddings:</strong> <code>bool</code><br>
+        Whether to normalize the embedded vectors or not. Default is <code>true</code>. Note, the default distance metric that chromadb uses is l2, which measures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.
+      </li>
+      <li>
+        <strong>similarity_score_reference:</strong> <code>float</code><br>
+        The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more <a href="https://docs.trychroma.com/docs/collections/configure">here</a>), so smaller values represent higher similarity. The link will be included if the score is <em>below</em> the chosen value. Default is <code>10</code> (scores are usually order 1, so default is to always include link).
+      </li>
+      <li>
+        <strong>query_embedding_instructions:</strong> <code>string</code> or <code>null</code><br>
+        Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see <code>INSTRUCTION_AWARE_MODELS</code> in <code>a2rchi/chains/retrievers.py</code> to add models that support this. For example, the <code>Qwen/Qwen3-Embedding-XB</code> embedding models support this and are listed, see more <a href="https://huggingface.co/Qwen/Qwen3-Embedding-0.6B">here</a>. Default is <code>None</code>. You should write the string directly into the config. An example instruction might look like: <code>"Given a query, retrieve relevant information to answer the query"</code>. You might tune it to be more specific to your use case which might improve performance.
+      </li>
+    </ul>
+  </li>
+</ul>
 
 ---
 
 ### `a2rchi`
 
 Pipeline and model configuration.
-
-- **pipelines:** list  
-  List of enabled pipelines (e.g., `QAPipeline`, `GradingPipeline`).
-- **pipeline_map:** dict  
-  Configuration for each pipeline:
-  - **max_tokens:** int  
-  - **prompts.required:** dict  
-    Required prompt files for the pipeline.
-  - **prompts.optional:** dict  
-    Optional prompt files.
-  - **models.required:** dict  
-    Required models for the pipeline.
-  - **models.optional:** dict  
-    Optional models.
-- **model_class_map:** dict  
-  Model backend configuration (see below).
-- **chain_update_time:** int  
-  Time (seconds) between chain updates.
+<ul>
+  <li><strong>pipelines:</strong> <code>list</code><br>
+    List of enabled pipelines (e.g., <code>QAPipeline</code>, <code>GradingPipeline</code>).
+  </li>
+  <li><strong>pipeline_map:</strong> <code>dict</code><br>
+    Configuration for each pipeline:
+    <ul>
+      <li><strong>max_tokens:</strong> <code>int</code></li>
+      <li><strong>prompts.required:</strong> <code>dict</code><br>
+        Required prompt files for the pipeline.
+      </li>
+      <li><strong>prompts.optional:</strong> <code>dict</code><br>
+        Optional prompt files.
+      </li>
+      <li><strong>models.required:</strong> <code>dict</code><br>
+        Required models for the pipeline.
+      </li>
+      <li><strong>models.optional:</strong> <code>dict</code><br>
+        Optional models.
+      </li>
+    </ul>
+  </li>
+  <li><strong>model_class_map:</strong> <code>dict</code><br>
+    Model backend configuration (see below).
+  </li>
+  <li><strong>chain_update_time:</strong> <code>int</code><br>
+    Time (seconds) between chain updates.
+  </li>
+</ul>
 
 #### `model_class_map`
+
 Each model (e.g., `AnthropicLLM`, `OpenAIGPT4`, `LlamaLLM`, etc.) has:
-- **class:** string  
-- **kwargs:** dict  
-  Model-specific parameters (see template for details).
+
+<ul>
+  <li><strong>class:</strong> <code>string</code></li>
+  <li><strong>kwargs:</strong> <code>dict</code><br>
+    Model-specific parameters (see template for details).
+  </li>
+</ul>
 
 ---
 
 ### `utils`
 
-Utility and integration settings.
-
-- **postgres:**  
-  - **port:** int  
-  - **user:** string  
-  - **database:** string  
-  - **host:** string  
-- **sso:**  
-  - **enabled:** bool  
-  - **sso_class:** string  
-  - **sso_class_map:** dict  
-    - **class:** string  
-    - **kwargs:** dict  
-- **git:**  
-  - **enabled:** bool  
-- **scraper:**  
-  - **reset_data:** bool  
-  - **verify_urls:** bool  
-  - **enable_warnings:** bool  
-- **piazza:**  
-  - **network_id:** string  
-  - **update_time:** int  
-- **mattermost:**  
-  - **update_time:** int  
-- **redmine:**  
-  - **redmine_update_time:** int  
-  - **answer_tag:** string  
-- **mailbox:**  
-  - **imap4_port:** int  
-  - **mailbox_update_time:** int  
-- **jira:**  
-  - **url:** string  
-    The URL of the JIRA instance from which A2rchi will fetch data. Its type is string. This option is required if `--jira` flag is used.
-  - **projects:** list  
-    List of JIRA project names that A2rchi will fetch data from. Its type is a list of strings. This option is required if `--jira` flag is used.
-  - **anonymize_data:** bool  
-    Boolean flag indicating whether the fetched data from JIRA should be anonymized or not. This option is optional if `--jira` flag is used. Its default value is True.
-- **anonymizer:**  
-  - **nlp_model:** string  
-    The NLP model that the `spacy` library will use to perform Name Entity Recognition (NER). Its type is string. 
-  - **excluded_words:** list  
-    The list of words that the anonymizer should remove. Its type is list of strings. 
-  - **greeting_patterns:** list  
-    The regex pattern to use match and remove greeting patterns. Its type is string.
-  - **signoff_patterns:** list  
-    The regex pattern to use match and remove signoff patterns. Its type is string.
-  - **email_pattern:** string  
-    The regex pattern to use match and remove email addresses. Its type is string.
-  - **username_pattern:** string  
-    The regex pattern to use match and remove JIRA usernames. Its type is string.
+<ul>
+  <li><strong>postgres:</strong>
+    <ul>
+      <li><strong>port:</strong> <code>int</code></li>
+      <li><strong>user:</strong> <code>string</code></li>
+      <li><strong>database:</strong> <code>string</code></li>
+      <li><strong>host:</strong> <code>string</code></li>
+    </ul>
+  </li>
+  <li><strong>sso:</strong>
+    <ul>
+      <li><strong>enabled:</strong> <code>bool</code></li>
+      <li><strong>sso_class:</strong> <code>string</code></li>
+      <li><strong>sso_class_map:</strong> <code>dict</code>
+        <ul>
+          <li><strong>class:</strong> <code>string</code></li>
+          <li><strong>kwargs:</strong> <code>dict</code></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><strong>git:</strong>
+    <ul>
+      <li><strong>enabled:</strong> <code>bool</code></li>
+    </ul>
+  </li>
+  <li><strong>scraper:</strong>
+    <ul>
+      <li><strong>reset_data:</strong> <code>bool</code></li>
+      <li><strong>verify_urls:</strong> <code>bool</code></li>
+      <li><strong>enable_warnings:</strong> <code>bool</code></li>
+    </ul>
+  </li>
+  <li><strong>piazza:</strong>
+    <ul>
+      <li><strong>network_id:</strong> <code>string</code></li>
+      <li><strong>update_time:</strong> <code>int</code></li>
+    </ul>
+  </li>
+  <li><strong>mattermost:</strong>
+    <ul>
+      <li><strong>update_time:</strong> <code>int</code></li>
+    </ul>
+  </li>
+  <li><strong>redmine:</strong>
+    <ul>
+      <li><strong>redmine_update_time:</strong> <code>int</code></li>
+      <li><strong>answer_tag:</strong> <code>string</code></li>
+    </ul>
+  </li>
+  <li><strong>mailbox:</strong>
+    <ul>
+      <li><strong>imap4_port:</strong> <code>int</code></li>
+      <li><strong>mailbox_update_time:</strong> <code>int</code></li>
+    </ul>
+  </li>
+<ul>
+  <li><strong>jira:</strong>
+    <ul>
+      <li><strong>url:</strong> <code>string</code><br>
+        The URL of the JIRA instance from which A2rchi will fetch data.
+      </li>
+      <li><strong>projects:</strong> <code>list</code><br>
+        List of JIRA project names that A2rchi will fetch data from.
+      </li>
+      <li><strong>anonymize_data:</strong> <code>bool</code><br>
+        Boolean flag indicating whether the fetched data from JIRA should be anonymized. Default is <code>True</code>.
+      </li>
+    </ul>
+  </li>
+  <li><strong>anonymizer:</strong>
+    <ul>
+      <li><strong>nlp_model:</strong> <code>string</code><br>
+        The NLP model that the <code>spacy</code> library will use to perform Named Entity Recognition (NER).
+      </li>
+      <li><strong>excluded_words:</strong> <code>list</code><br>
+        The list of words that the anonymizer should remove.
+      </li>
+      <li><strong>greeting_patterns:</strong> <code>list</code><br>
+        The regex patterns to match and remove greeting patterns.
+      </li>
+      <li><strong>signoff_patterns:</strong> <code>list</code><br>
+        The regex patterns to match and remove signoff patterns.
+      </li>
+      <li><strong>email_pattern:</strong> <code>string</code><br>
+        The regex pattern to match and remove email addresses.
+      </li>
+      <li><strong>username_pattern:</strong> <code>string</code><br>
+        The regex pattern to match and remove JIRA usernames.
+      </li>
+    </ul>
+  </li>
+</ul>
+</ul>
 ---
 
 ### Required Fields
 
 Some fields are required depending on enabled services and pipelines.  
 For example:
+
 - `name`
 - `global.TRAINED_ON`
 - `a2rchi.pipelines`
