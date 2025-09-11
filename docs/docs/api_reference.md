@@ -135,6 +135,7 @@ The A2rchi configuration YAML file defines the deployment, services, data source
 Settings for each web interface or service.
 
 #### `chat_app`, `uploader_app`, `grader_app`, `grafana`
+
 - **port:** int  
   Internal port that the Flask application binds to inside the container. This is the port the Flask server listens on within the container's network namespace. Usually don't need to change this unless you have port conflicts within the container. Default is `7861`.
 - **external_port:** int  
