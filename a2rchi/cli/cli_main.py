@@ -78,14 +78,17 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
             config_manager.validate_config(required_fields)
         logger.info("Configuration validated successfully")
 
-        required_secrets = secrets_manager.get_required_secrets_for_services(set(enabled_services))
+        required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services))
         secrets_manager.validate_secrets(required_secrets)
         logger.info(f"Required secrets validated: {', '.join(sorted(required_secrets))}")
+        extra = all_secrets - required_secrets
+        if extra:
+            logger.info(f"Also passing additional secrets found: {', '.join(sorted(extra))}")
         
         # Build compose configuration
         compose_config = ServiceBuilder.build_compose_config(
             name=name, verbosity=verbosity, base_dir=base_dir,
-            enabled_services=enabled_services, required_secrets=required_secrets,
+            enabled_services=enabled_services, secrets=all_secrets,
             **other_flags
         )
         
@@ -101,7 +104,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         template_manager = TemplateManager(env)
         base_dir.mkdir(parents=True, exist_ok=True)
         
-        secrets_manager.write_secrets_to_files(base_dir, required_secrets)
+        secrets_manager.write_secrets_to_files(base_dir, all_secrets)
         
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config)

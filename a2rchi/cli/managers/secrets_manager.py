@@ -35,6 +35,12 @@ class SecretsManager:
         except Exception as e:
             raise ValueError(f"Error parsing .env file {self.env_file_path}: {e}")
         
+    def get_secrets(self, services: Set[str]) -> Set[str]:
+        """Return both secrets required by services and full list"""
+        required = self.get_required_secrets_for_services(services)
+        all = set(self.secrets.keys())
+        return required, all
+        
     def get_required_secrets_for_services(self, services: Set[str]) -> Set[str]:
         """Determine required secrets based on configuration and enabled services"""
         required_secrets = set()
@@ -130,12 +136,12 @@ class SecretsManager:
             raise KeyError(f"Secret '{key}' not found in .env file")
         return self.secrets[key]
     
-    def write_secrets_to_files(self, target_dir: Path, required_secrets: Set[str]) -> None:
+    def write_secrets_to_files(self, target_dir: Path, secrets: Set[str]) -> None:
         """Write required secrets to individual files in the target directory"""
         secrets_dir = target_dir / "secrets"
         secrets_dir.mkdir(exist_ok=True)
 
-        for secret_name in required_secrets:
+        for secret_name in secrets:
             try:
                 secret_value = self.get_secret(secret_name)
                 # lowercase for compose

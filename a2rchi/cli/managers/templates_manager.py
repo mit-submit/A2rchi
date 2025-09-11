@@ -49,7 +49,7 @@ class TemplateManager:
         self._prepare_postgres_init(base_dir, compose_config, secrets_manager)
         
         # Prepare Compose file
-        self._prepare_compose_file(base_dir, compose_config, a2rchi_config)
+        self._prepare_compose_file(base_dir, compose_config, a2rchi_config, **kwargs)
         
         # Copy web input lists if they exist
         self._copy_web_input_lists(base_dir, a2rchi_config)
@@ -57,14 +57,14 @@ class TemplateManager:
         # Copy source code
         self._copy_source_code(base_dir)
     
-    def _prepare_compose_file(self, base_dir: Path, compose_config, a2rchi_config: Dict[str, Any]) -> None:
+    def _prepare_compose_file(self, base_dir: Path, compose_config, a2rchi_config: Dict[str, Any], **kwargs) -> None:
         """Prepare the Compose file - pure rendering with all data from compose_config"""
         
         # Get template variables from compose config
         template_vars = compose_config.to_template_vars()
         
         # Add port configuration from registry
-        template_vars.update(self._extract_port_config(a2rchi_config))
+        template_vars.update(self._extract_port_config(a2rchi_config, **kwargs))
         
         # Add optional template variables
         template_vars.setdefault('prompt_files', [])
@@ -81,7 +81,7 @@ class TemplateManager:
         with open(base_dir / "compose.yaml", 'w') as f:
             f.write(compose)
     
-    def _extract_port_config(self, a2rchi_config: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_port_config(self, a2rchi_config: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Extract port configurations using service registry"""
         port_config = {}
         

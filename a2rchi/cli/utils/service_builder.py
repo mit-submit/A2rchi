@@ -61,7 +61,7 @@ class ServiceBuilder:
     @staticmethod  
     def build_compose_config(name: str, verbosity: int, base_dir: Path, 
                         enabled_services: List[str], 
-                        required_secrets: Set[str] = None,
+                        secrets: Set[str] = None,
                         **other_flags) -> ComposeConfig:
         """Build complete compose configuration using ONLY service registry"""
         
@@ -80,8 +80,8 @@ class ServiceBuilder:
         )
         
         # Store required secrets
-        if required_secrets:
-            config._required_secrets = required_secrets
+        if secrets:
+            config._required_secrets = secrets
         
         # Enable all resolved services using ONLY registry data
         for service_name in all_services:
