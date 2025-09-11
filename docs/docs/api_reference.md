@@ -75,25 +75,25 @@ a2rchi list_deployments
 
 ### Examples
 
-- **Create a deployment:**
-  ```sh
-  a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chat_app,uploader_app
-  ```
+**Create a deployment:**  
+```sh
+a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chat_app,uploader_app
+```
 
-- **Delete a deployment and remove images/volumes:**
-  ```sh
-  a2rchi delete --name mybot --rmi --rmv
-  ```
+**Delete a deployment and remove images/volumes:**
+```sh
+a2rchi delete --name mybot --rmi --rmv
+```
 
-- **List all deployments:**
-  ```sh
-  a2rchi list_deployments
-  ```
+**List all deployments:**
+```sh
+a2rchi list_deployments
+```
 
-- **List all services:**
-  ```sh
-  a2rchi list_services
-  ```
+**List all services:**
+```sh
+a2rchi list_services
+```
 
 ---
 

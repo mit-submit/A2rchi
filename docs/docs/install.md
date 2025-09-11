@@ -27,7 +27,7 @@ which will show the full path of the `a2rchi` executable.
 
 <details>
 <summary>Show Full Installation Script</summary>
-
+<br>
 You can use the following script to set up A2rchi from scratch. Copy and paste it into your terminal:
 
 ```bash
@@ -49,3 +49,4 @@ which a2rchi
 ```
 
 </details>
+<br>

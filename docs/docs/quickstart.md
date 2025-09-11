@@ -5,7 +5,7 @@ Deploy your first instance of A2rchi and walk through the important concepts.
 ## Sources and Services
 
 A2rchi can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command, and decide which ones you want to use, so that we can configure them.
-```
+```nohighlight
 $ a2rchi list-services
 Available A2RCHI services:
 
@@ -25,15 +25,21 @@ Data Sources:
   jira                 Jira issue tracking integration
 ```
 
+See the [User Guide](user_guide.md) for detailed information about each service and source.
+
 ## Pipelines
 
-A2rchi supports several pipelines, which are pre-defined sequences of operations that process user inputs and generate responses. A particular service will support a subset of the pipelines, see the User's Guide for more details. 
+A2rchi supports several pipelines, which are pre-defined sequences of operations that process user inputs and generate responses. A particular service will support a subset of the pipelines, see the [User Guide](user_guide.md) for more details. 
 
 An example pipeline is the `QAPipeline`, which is a question-answering pipeline that takes a user's question, retrieves relevant documents from the vector store, and generates an answer using a language model.
 
+We will specify which pipelines we are interested in making available to A2rchi in the configuration file.
+
 ## Configuration
 
-Once you have chosen the services and sources you want to use, you can create a configuration file which specifies these and their settings. You can start from one of the example configuration files in `configs/`, or create your own from scratch.
+Once you have chosen the services, sources, and pipelines you want to use, you can create a configuration file which specifies these and their settings.
+You can start from one of the example configuration files in `configs/`, or create your own from scratch.
+The services and sources that A2rchi will use are not determined here, only their parameters are being set.
 
 > **Important:**  
 > The configuration file follows the format of `a2rchi/templates/base-config.yaml`, and any fields not specified in your configuration file will be filled in with the defaults from this base config.
@@ -77,26 +83,34 @@ interfaces:
 
 <details>
 <summary>Explanation of config parameters</summary>
+<br>
 Here is a brief explanation of the parameters in the example configuration file:
 
-- `name`: The name of your A2rchi deployment.
-
-- `global:TRAINED_ON`: A brief description of the documents you are uploading to A2rchi.
-
-- `data_manager`: Settings related to data management, including:
-  - `input_lists`: A list of files containing links to be ingested.
-  - `embedding_name`: The embedding model to use for vectorization.
-  - `chromadb_host`: The host where ChromaDB is running.
-
-- `a2rchi`: Settings related to the A2rchi core, including:
-  - `pipelines`: The pipelines to use (e.g., `QAPipeline`).
-  - `pipeline_map`: Configuration for each pipeline, including prompts and models.
-  - `model_class_map`: Mapping of model names to their classes and parameters.
-
-- `interfaces`: Settings for the services/interfaces, including:
-  - `chat_app`: Configuration for the chat application, including the hostname.
-
+<ul>
+  <li><code>name</code>: The name of your A2rchi deployment.</li>
+  <li><code>global:TRAINED_ON</code>: A brief description of the documents you are uploading to A2rchi.</li>
+  <li><code>data_manager</code>: Settings related to data management, including:
+    <ul>
+      <li><code>input_lists</code>: A list of files containing links to be ingested.</li>
+      <li><code>embedding_name</code>: The embedding model to use for vectorization.</li>
+      <li><code>chromadb_host</code>: The host where ChromaDB is running.</li>
+    </ul>
+  </li>
+  <li><code>a2rchi</code>: Settings related to the A2rchi core, including:
+    <ul>
+      <li><code>pipelines</code>: The pipelines to use (e.g., <code>QAPipeline</code>).</li>
+      <li><code>pipeline_map</code>: Configuration for each pipeline, including prompts and models.</li>
+      <li><code>model_class_map</code>: Mapping of model names to their classes and parameters.</li>
+    </ul>
+  </li>
+  <li><code>interfaces</code>: Settings for the services/interfaces, including:
+    <ul>
+      <li><code>chat_app</code>: Configuration for the chat application, including the hostname.</li>
+    </ul>
+  </li>
+</ul>
 </details>
+<br>
 
 ## Secrets
 
@@ -163,8 +177,11 @@ Services running: chatbot, postgres, chromadb
 ```
 
 </details>
+<br>
 
-The first time you run this command it will take longer than usual (order minutes) because `docker`/`podman` will have to build the container images from scratch, then subsequent deployments will be quicker.
+The first time you run this command it will take longer than usual (order minutes) because `docker`/`podman` will have to build the container images from scratch; subsequent deployments which will re-use the images will be quicker (around a minute).
+
+> Note: having issues? Run the command with the `-v 4` flag to enable `DEBUG` level logging.
 
 ### Verifying a deployment
 
