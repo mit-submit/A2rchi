@@ -88,7 +88,7 @@ class ConfigurationManager:
         return pipeline_requirements
     
     def validate_configs(self, required_fields: List[str]) -> None:
-        for name, config in self.configs.items():
+        for name, config in list(self.configs.items()):
             try:
                 self.validate_config(required_fields=required_fields,config=config)
             except ValueError as e:

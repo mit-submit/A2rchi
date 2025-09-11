@@ -74,6 +74,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         # Validate configuration and secrets
         #a2rchi_config = config_manager.get_config()
         required_fields = config_manager.get_required_fields_for_services(enabled_services)
+        logger.info(required_fields)
         if required_fields:
             config_manager.validate_configs(required_fields)
         logger.info("Configurations validated successfully")

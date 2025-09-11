@@ -61,19 +61,11 @@ async function populateDropdown() {
         // Clear any existing options
         configDropdown.innerHTML = '';
 
-        // Create and append a default/placeholder option
-        const defaultOption = document.createElement("option");
-        defaultOption.textContent = "Please select...";
-        defaultOption.value = "";
-        defaultOption.disabled = true;
-        defaultOption.selected = true;
-        configDropdown.appendChild(defaultOption);
-
         // Populate the dropdown with options from the API response
         response.options.forEach(optionText => {
             const option = document.createElement("option");
             option.textContent = optionText;
-            option.value = optionText; // Or a more specific value if needed
+            option.value = optionText;
             configDropdown.appendChild(option);
         });
     }catch (error) {
