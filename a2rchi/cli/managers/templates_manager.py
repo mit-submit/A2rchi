@@ -26,6 +26,29 @@ class TemplateManager:
     def __init__(self, jinja_env: Environment):
         self.env = jinja_env
         self.registry = service_registry
+
+    def prepare_benchmarking_deployment(self, compose_config, aggregate_config,  secrets_manager, **kwargs) -> None:
+        """prepare necessary files for benchmarking deployment should probably be removed later"""
+
+        base_dir = compose_config.base_dir
+        configs = kwargs.pop("configs_path")
+
+        self._prepare_prompts(base_dir, aggregate_config, [])
+
+        # Prepare PostgreSQL initialization
+        self._prepare_postgres_init(base_dir, compose_config, secrets_manager)
+        
+        # Prepare Compose file
+        self._prepare_compose_file(base_dir, compose_config, aggregate_config, **kwargs)
+        
+        # Copy web input lists to seperate directories if they exist and make a mapping
+        self._copy_web_input_lists(base_dir, aggregate_config)
+        
+        # Copy source code
+        self._copy_source_code(base_dir)
+
+        configs_dir = base_dir / "configs"
+        shutil.copytree(configs, configs_dir)
     
     def prepare_deployment_files(self, compose_config, a2rchi_config: Dict[str, Any], secrets_manager, **kwargs) -> None:
         """Prepare all necessary files for deployment"""
@@ -33,7 +56,7 @@ class TemplateManager:
 
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
-        prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
+        self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
         
         # Prepare main configuration file
         self._prepare_config_file(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity, **kwargs)

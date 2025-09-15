@@ -29,8 +29,7 @@ services:
       start_interval: 5s
   {%- endif %}
 
-  {% if postgres_enabled -%}
-  postgres:
+  {% if postgres_enabled -%} postgres:
     image: docker.io/postgres:16
     container_name: {{ postgres_container_name }}
     environment:
@@ -477,6 +476,63 @@ services:
     {% if host_mode -%}
     network_mode: host
     {% endif %}
+    {% if gpu_ids and use_podman -%}
+    security_opt:
+      - label:disable
+    devices:
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
+    {%- endif %}
+    {%- endif %}
+  {%- endif %}
+
+  {% if benchmarking -%}
+  benchmark:
+    image: {{ benchmarking_image }}:{{ benchmarking_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-benchmarks{{ '-gpu' if gpu_ids else '' }}
+    container_name: {{ benchmarking_container_name }}
+    environment:
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
+      {% if gpu_ids -%}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
+    {% if gpu_ids and not use_podman -%}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    {% endif %}
+    secrets:
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
+      {% endfor %}
+    volumes:
+      - {{ benchmarker_volume_name }}:/root/data/
+      - ./configs:/root/A2rchi/configs
+      - ./queries.txt:/root/A2rchi/QandA.txt
+      - {{ benchmarking_dest }}:/root/A2rchi/benchmarks
+      {% for prompt_file in prompt_files | default([]) -%}
+      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      {% endfor %}
+      {% if gpu_ids -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
+    logging:
+      options:
+        max-size: 10m
+    restart: always
     {% if gpu_ids and use_podman -%}
     security_opt:
       - label:disable

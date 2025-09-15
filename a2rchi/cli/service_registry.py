@@ -156,6 +156,14 @@ class ServiceRegistry:
                             'REDMINE_PW', 'REDMINE_PROJECT', 'SENDER_SERVER', 'SENDER_PORT', 
                             'SENDER_REPLYTO', 'SENDER_USER', 'SENDER_PW']
         ))
+
+        self.register(ServiceDefinition(
+            name='benchmarking',
+            depends_on=['chromadb', 'postgres'],
+            requires_volume=True, 
+            description='Benchmarking runtime, its not really a service but under the hood it will be',
+            category='benchmarking runtime', # not technically a service
+        ))
     
     def register(self, service_def: ServiceDefinition):
         """Register a new service definition"""
@@ -163,7 +171,7 @@ class ServiceRegistry:
     
     def get_service(self, name: str) -> ServiceDefinition:
         """Get service definition by name"""
-        if name not in self._services:
+        if name not in self._services.keys():
             raise ValueError(f"Unknown service: {name}")
         return self._services[name]
     

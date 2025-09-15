@@ -83,7 +83,7 @@ class SecretsManager:
         models_configs = self.config_manager.get_models_configs()
 
         for models_config in models_configs:
-            for _ , section_models in models_config.items():
+            for _ , section_models in models_config.items(): 
                 if not isinstance(section_models, dict):
                     continue
                 for _ , model_name in section_models.items():

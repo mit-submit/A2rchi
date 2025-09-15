@@ -1,3 +1,4 @@
+from a2rchi.cli.managers.benchmarking_config_manager import BenchmarkingConfigManager
 from a2rchi.cli.managers.config_manager import ConfigurationManager
 from a2rchi.cli.managers.deployment_manager import DeploymentManager
 from a2rchi.cli.managers.secrets_manager import SecretsManager
@@ -23,6 +24,36 @@ env = Environment(
     undefined=ChainableUndefined,
 )
 A2RCHI_DIR = os.environ.get('A2RCHI_DIR',os.path.join(os.path.expanduser('~'), ".a2rchi"))
+
+# this method  is really only used in the benchmarking
+def get_git_information():
+    import subprocess
+    meta_data = {}
+    wd = Path(__file__).parent 
+
+    if (
+        subprocess.call(
+            ["git", "branch"],
+            cwd=wd,
+            stderr=subprocess.STDOUT,
+            stdout=open(os.devnull, "w"),
+        )
+        != 0
+    ):
+        meta_data["git_info"] = {
+            "hash": "Not a git repository!",
+            "diff": "Not a git repository",
+        }
+    else:
+        meta_data["last_commit"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=wd, encoding="UTF-8"
+        )
+        diff_comm = ["git", "diff"]
+        meta_data["git_diff"] = subprocess.check_output(
+            diff_comm, encoding="UTF-8", cwd=wd
+        )
+    return meta_data
+
 
 @click.group()
 def cli():
@@ -162,7 +193,7 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
 
     try:
         # We don't know which tool was used to create it, so try to detect from files
-        deployment_manager = DeploymentManager(use_podman=False)  # Will try both tools
+        deployment_manager = DeploymentManager(use_podman=True)  # Will try both tools
         
         # Handle list option
         if list_deployments:
@@ -272,6 +303,85 @@ def list_deployments():
         except Exception:
             click.echo(f"  {name} (status unknown)")
 
+@click.command()
+@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
+@click.option('--config', '-c', 'config_dir', type=str, required=True, help="Path to .yaml a2rchi configuration")
+@click.option('--queries', '-q', 'query_file', type=str, required=True, help="Path to the queries to be asked")
+@click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with 'secrets")
+@click.option('--dest', '-d', 'dest', type=str, required=True, help="Path to the output directory")
+@click.option('--sources', '-src', callback=parse_sources_option,
+              help="Comma-separated list of data sources: jira,redmine")
+@click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
+@click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
+@click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
+@click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
+def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_file:str, dest: str,
+            verbosity: int, **other_flags):
+    """Create an A2RCHI deployment with selected services and data sources."""
+
+    print("Starting A2RCHI benchmarking process...")
+    setup_cli_logging(verbosity=verbosity)
+    logger = get_logger(__name__)
+
+    gpu = other_flags.get("gpu-ids") != None
+
+    try: 
+        base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
+
+        enabled_services = ["chromadb", "postgres", "benchmarking"] 
+
+        if base_dir.exists():
+            raise click.ClickException(
+                    f"Benchmarking runtime '{name}' already exists at {base_dir}"
+                    )
+
+        config_manager = BenchmarkingConfigManager(config_dir, gpu)
+        aggregate_config = config_manager.get_config()
+        
+        # the benchmarking config  manager is duck typed to look like a regular config manager so its chill
+        benchmarking_secrets_manager = SecretsManager(env_file, config_manager)
+        _, all_secrets = benchmarking_secrets_manager.get_secrets(set())
+
+        other_flags['benchmarking'] = True
+        other_flags['configs_path'] = Path(config_dir)
+        other_flags['benchmarking_dest'] = os.path.abspath(dest)
+
+        compose_config = ServiceBuilder.build_compose_config(
+                name=name, verbosity=verbosity, base_dir=base_dir, 
+                enabled_services=enabled_services, secrets=all_secrets,
+                **other_flags
+                )
+
+
+        template_manager = TemplateManager(env)
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # make the additional files needed for evaluation
+        import shutil
+        query_file_dest = base_dir / "queries.txt"
+        shutil.copyfile(query_file, query_file_dest)
+
+        git_info = get_git_information()
+        git_info_path = base_dir / "git_info.yaml"
+        with open(git_info_path, "w") as f:
+            import yaml
+            yaml.dump(git_info, f)
+
+        benchmarking_secrets_manager.write_secrets_to_files(base_dir, all_secrets)
+
+        volume_manager = VolumeManager(compose_config.use_podman)
+        volume_manager.create_required_volumes(compose_config)
+        
+        template_manager.prepare_benchmarking_deployment(compose_config, aggregate_config, benchmarking_secrets_manager, **other_flags)
+
+
+        deployment_manager = DeploymentManager(compose_config.use_podman)
+        deployment_manager.start_deployment(base_dir)
+    except Exception as e:
+        if verbosity >=4: 
+            traceback.print_exc()
+        else: 
+            raise click.ClickException(f"Failed due to the following exception: {e}")
 
 def main():
     """
@@ -282,4 +392,5 @@ def main():
     cli.add_command(delete)
     cli.add_command(list_services)
     cli.add_command(list_deployments)
+    cli.add_command(evaluate)
     cli()
