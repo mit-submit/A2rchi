@@ -10,10 +10,10 @@ from typing import Any, Dict, Iterator
 logger = get_logger(__name__)
 
 # use this to grab the answer for a given ticket, then remove it from answer text
-ANSWER_TAG = load_utils_config()["redmine"]["answer_tag"]
 
 class RedmineClient():
     def __init__(self) -> None:
+            self.ANSWER_TAG = load_utils_config()["redmine"]["answer_tag"]
             self.redmine_url = read_secret("REDMINE_URL")
             self.redmine_user = read_secret("REDMINE_USER")
             self.redmine_pw = read_secret("REDMINE_PW")
@@ -144,8 +144,8 @@ class RedmineClient():
         answers = []
         for record in journals[::-1]:
             note = record.notes
-            if note and ANSWER_TAG in note:
-                answer = note.replace(ANSWER_TAG, "")
+            if note and self.ANSWER_TAG in note:
+                answer = note.replace(self.ANSWER_TAG, "")
                 answer = "\n".join(line for line in answer.splitlines() if "ISSUE_ID" not in line)
                 answer = answer.replace("\n", " ")
                 answer = self.anonymizer.anonymize(answer)

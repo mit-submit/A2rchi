@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 from a2rchi.utils.config_loader import load_global_config
 
-global_config = load_global_config()
 
 def stringify_history(chat_history: List[Tuple[str, str]]) -> str:
     """
@@ -10,6 +9,7 @@ def stringify_history(chat_history: List[Tuple[str, str]]) -> str:
     to a single string
     "User: message\nAI: response..."
     """
+    global_config = load_global_config()
     if chat_history is None or type(chat_history) is not list:
         return chat_history
     
@@ -35,6 +35,7 @@ def tuplize_history(chat_history: str) -> List[Tuple[str, str]]:
     Reverse the operaiton of get_chat_history.
     From a string, make a list of (identity, message).
     """
+    global_config = load_global_config()
     if chat_history is None or type(chat_history) is not str or len(chat_history) == 0:
         return chat_history
     

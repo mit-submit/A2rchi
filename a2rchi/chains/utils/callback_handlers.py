@@ -3,10 +3,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 import os
 
-from a2rchi.utils.config_loader import load_config
-
-data_path = load_config()["global"]["DATA_PATH"]
-
 class PromptLogger(BaseCallbackHandler):
     """Lightweight callback handler to log prompts and responses to file"""
     

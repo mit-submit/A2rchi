@@ -21,6 +21,7 @@ RUN wget -q "https://github.com/mozilla/geckodriver/releases/download/v0.36.0/ge
     && chmod +x /usr/local/bin/geckodriver \
     && rm "geckodriver-v0.36.0-linux64.tar.gz"
 
+RUN touch config.yaml
 COPY a2rchi_code a2rchi
 COPY prompts prompts
 COPY pyproject.toml pyproject.toml

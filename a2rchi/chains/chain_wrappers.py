@@ -14,7 +14,6 @@ import pprint
 logger = get_logger(__name__)
 
 # DEFINITIONS
-global_configs = load_global_config()
 
 class ChainWrapper:
     """
@@ -31,6 +30,7 @@ class ChainWrapper:
             unprunable_input_variables: Optional[List[str]] = [],
             max_tokens: int = 1e10
         ):
+        self.global_configs = load_global_config()
         self.chain = chain
         self.llm = llm
         self.required_input_variables = required_input_variables
@@ -38,7 +38,7 @@ class ChainWrapper:
         self.prompt = self._check_prompt(prompt)
 
         self.prompt_logger = PromptLogger(
-            os.path.join(global_configs["DATA_PATH"], global_configs["LOGGING"]["input_output_filename"])
+            os.path.join(self.global_configs["DATA_PATH"], self.global_configs["LOGGING"]["input_output_filename"])
         )
         self.token_limiter = TokenLimiter(
             llm=self.llm,

@@ -9,8 +9,6 @@ from a2rchi.utils.config_loader import load_utils_config, load_global_config
 from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
-utils_config = load_utils_config()
-global_config = load_global_config()
 
 #clears the ssl certificates to allow web scraping
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -20,10 +18,12 @@ class Scraper():
     
     def __init__(self, dm_config: dict = {}, piazza_email=None, piazza_password=None):
 
-        self.config = utils_config["scraper"]
-        self.piazza_config = utils_config.get("piazza", None)
-        self.data_path = global_config["DATA_PATH"]
-        self.sso_config = utils_config.get("sso", None)
+        self.utils_config = load_utils_config()
+        self.global_config = load_global_config()
+        self.config = self.utils_config["scraper"]
+        self.piazza_config = self.utils_config.get("piazza", None)
+        self.data_path = self.global_config["DATA_PATH"]
+        self.sso_config = self.utils_config.get("sso", None)
 
         # create data path if it doesn't exist
         os.makedirs(self.data_path, exist_ok=True)
