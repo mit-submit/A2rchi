@@ -1,0 +1,21 @@
+# Testing dependencies for A2rchi unit tests
+pytest>=8.0.0
+pytest-cov>=5.0.0
+
+# Core dependencies for models and chains
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.3.0
+langchain-anthropic>=0.3.0
+langchain-ollama>=0.3.0
+
+# Model dependencies
+numpy>=1.24.0
+torch>=2.0.0
+torchvision>=0.15.0
+sentence-transformers>=5.0.0
+qwen-vl-utils>=0.0.11
+
+# Utils
+pydantic>=2.0.0
+python-dotenv>=1.0.0

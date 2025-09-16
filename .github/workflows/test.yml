@@ -25,17 +25,72 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-cov
         pip install -e .
-        # Install core testing dependencies
-        pip install langchain langchain-core langchain-openai langchain-anthropic
-        pip install pydantic python-dotenv
+        # Install test dependencies
+        pip install -r requirements/requirements-test.txt
+
+    - name: Create test configuration
+      run: |
+        mkdir -p /tmp/a2rchi_test
+        cat > /tmp/a2rchi_test/config.yaml << 'EOF'
+        name: test_config
+
+        global:
+          TRAINED_ON: "Test Environment"
+          DATA_PATH: "/tmp/test_data"
+          LOGGING:
+            input_output_filename: "test_logs.txt"
+
+        a2rchi:
+          model_class_map:
+            DumbLLM:
+              class: DumbLLM
+              kwargs: {}
+            OpenAILLM:
+              class: OpenAILLM
+              kwargs:
+                model: "gpt-3.5-turbo"
+                temperature: 0.7
+
+        data_manager:
+          embedding_class_map:
+            HuggingFaceEmbeddings:
+              class: HuggingFaceEmbeddings
+              kwargs:
+                model_name: "sentence-transformers/all-MiniLM-L6-v2"
+          embedding_name: "HuggingFaceEmbeddings"
+          collection_name: "test_collection"
+          use_HTTP_chromadb_client: false
+          local_vstore_path: "/tmp/test_chroma"
+          chromadb_host: "localhost"
+          chromadb_port: 8000
+
+        qa_pipeline:
+          prompts:
+            condensing_prompt: "configs/prompts/condense.prompt"
+            main_prompt: "configs/prompts/submit.prompt"
+          model_class_map:
+            DumbLLM:
+              class: DumbLLM
+              kwargs: {}
+
+        utils:
+          test_setting: true
+        EOF
+        
+        # Monkey patch the config path for testing
+        export A2RCHI_CONFIG_PATH="/tmp/a2rchi_test/config.yaml"
+        mkdir -p /tmp/test_data
 
     - name: Run unit tests
+      env:
+        A2RCHI_CONFIG_PATH: "/tmp/a2rchi_test/config.yaml"
       run: |
         python -m pytest tests/unit/ -v --tb=short
 
     - name: Generate coverage report
+      env:
+        A2RCHI_CONFIG_PATH: "/tmp/a2rchi_test/config.yaml"
       run: |
         python -m pytest tests/unit/ --cov=a2rchi --cov-report=xml --cov-report=html
 
