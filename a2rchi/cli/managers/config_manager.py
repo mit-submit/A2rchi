@@ -10,36 +10,42 @@ class ConfigurationManager:
     """Manages A2rchi configuration loading and validation"""
     
     def __init__(self, config_filepath: str):
-        self.configs = {}
-        if os.path.isdir(config_filepath):
-            config_dir = Path(config_filepath)
-            for yaml_file in config_dir.glob('*.yaml'):
-                config_filepath = Path(yaml_file)
-                try:
-                    self.configs[config_filepath.stem] = self._load_config(config_filepath)
-                except Exception as e:
-                    logger.error(f"Unable to load configuration file {yaml_file} : {e}")
-
-            if len(self.configs)==0:
-                raise ValueError(f"No suitable configurations were found in {config_filepath}")
-
-        else:
-            config_filepath = Path(config_filepath)
-            self.configs[config_filepath.stem] = self._load_config(config_filepath)
+        self.config_filepath = Path(config_filepath)
+        self.config = self._load_config()
+        self.config['extra_configs'] = self._load_additional_configs()
         
-        self.current_config = next(iter(self.configs.values()))
-        
-    def _load_config(self,config_filepath) -> Dict[str, Any]:
+    def _load_additional_configs(self) -> Dict[str,Any]:
+        """Loads and validate the basic structure of all other"""
+        parent_directory = self.config_filepath.parent
+
+        additional_configs = {}
+
+        for config_file in parent_directory.glob('*.yaml'):
+            with open(config_file,'r') as f:
+                config = yaml.safe_load(f)
+            if not config:
+                logger.info(f"Configuration file is empty or invalid. Skipping {config_file}")
+            else:
+                if 'a2rchi' in config:
+                    name = config['name']
+                    a2rchi_config = config['a2rchi']
+                    additional_configs[name] = a2rchi_config
+                else:
+                    logger.info(f"File {config_file.stem} does not contain a2rchi config; skipping.")
+
+        return additional_configs
+    
+    def _load_config(self) -> Dict[str, Any]:
         """Load and validate basic structure of config file"""
-        if not config_filepath.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_filepath}")
-            
-        with open(config_filepath, 'r') as f:
+        if not self.config_filepath.exists():
+            raise FileNotFoundError(f"Configuration file not found: {self.config_filepath}")
+
+        with open(self.config_filepath, 'r') as f:
             config = yaml.safe_load(f)
-            
+
         if not config:
             raise ValueError("Configuration file is empty or invalid")
-            
+
         return config
     
     def get_required_fields_for_services(self, services: List[str]) -> List[str]:
@@ -87,40 +93,19 @@ class ConfigurationManager:
         
         return pipeline_requirements
     
-    def validate_configs(self, required_fields: List[str]) -> None:
-        for name, config in list(self.configs.items()):
-            try:
-                self.validate_config(required_fields=required_fields,config=config)
-            except ValueError as e:
-                logger.debug(f'Removing config {name} due to: {e}')
-                self.delete_config(name)
-
-            
-    def delete_config(self, name: str) -> None:
-        removed_config = self.configs.pop(name)
-        if len(self.configs)==0:
-            raise ValueError(f"No available configurations.")
-        
-        if self.current_config == removed_config:
-            self.current_config = self.configs.values[0]
-    
-    def validate_config(self, required_fields: List[str], config: Dict[str, Any]) -> None:
+    def validate_config(self, required_fields: List[str]) -> None:
         """Validate that all required fields are present in config"""
         for field in required_fields:
             keys = field.split('.')
-            value = config
+            value = self.config
             for key in keys:
                 if key not in value:
                     raise ValueError(f"Missing required field: '{field}' in the configuration")
                 value = value[key]
     
-    def get_current_config(self) -> Dict[str, Any]:
+    def get_config(self) -> Dict[str, Any]:
         """Get the loaded configuration"""
-        return self.current_config
-    
-    def get_configs(self) -> Dict[str, Any]:
-        """Get all valid configurations"""
-        return self.configs
+        return self.config
     
     def get_pipeline_configs(self) -> Dict[str, Any]:
         """Get the active pipeline configuration"""
@@ -155,12 +140,8 @@ class ConfigurationManager:
     
     def get_interface_config(self, interface_name: str) -> Dict[str, Any]:
         """Get configuration for a specific interface"""
-        return self.current_configconfig.get("interfaces", {}).get(interface_name, {})
+        return self.config.get("interfaces", {}).get(interface_name, {})
     
     def get_service_config(self, service_name: str) -> Dict[str, Any]:
         """Get configuration for a specific service"""
-<<<<<<< HEAD
-        return self.current_configconfig.get("utils", {}).get(service_name, {})
-=======
-        return self.configconfig.get("utils", {}).get(service_name, {})
->>>>>>> 6e85e80 (ready for pr)
+        return self.config.get("utils", {}).get(service_name, {})

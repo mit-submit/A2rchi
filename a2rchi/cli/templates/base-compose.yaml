@@ -96,9 +96,7 @@ services:
       {% endfor %}
     volumes:
       - {{ chatbot_volume_name }}:/root/data/
-      {% for config_file in config_files | default([]) -%}
-      - ./{{ config_file }}:/root/A2rchi/configs/{{ config_file }}
-      {% endfor %}
+      - ./config.yaml:/root/A2rchi/config.yaml
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
       {% endfor %}
@@ -184,9 +182,7 @@ services:
       - {{ uploader_port_host }}:{{ uploader_port_container }}
     volumes:
       - {{ chromadb_volume_name }}:/root/data/
-      {% for config_file in config_files | default([]) -%}
-      - ./{{ config_file }}:/root/A2rchi/configs/{{ config_file }}
-      {% endfor %}
+      - ./config.yaml:/root/A2rchi/config.yaml
     logging:
       options:
         max-size: 10m
@@ -240,9 +236,7 @@ services:
       - {{ grader_port_host }}:{{ grader_port_container }}
     volumes:
       - {{ grader_volume_name }}:/root/data/
-      {% for config_file in config_files | default([]) -%}
-      - ./{{ config_file }}:/root/A2rchi/configs/{{ config_file }}
-      {% endfor %}
+      - ./config.yaml:/root/A2rchi/config.yaml
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
       {% endfor %}
@@ -300,9 +294,7 @@ services:
       {% endfor %}
     volumes:
       - {{ chromadb_volume_name }}:/root/data/
-      {% for config_file in config_files | default([]) -%}
-      - ./{{ config_file }}:/root/A2rchi/configs/{{ config_file }}
-      {% endfor %}
+      - ./config.yaml:/root/A2rchi/config.yaml
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
       {% endfor %}
@@ -358,9 +350,7 @@ services:
       {% endfor %}
     volumes:
       - {{ chromadb_volume_name }}:/root/data/
-      {% for config_file in config_files | default([]) -%}
-      - ./{{ config_file }}:/root/A2rchi/configs/{{ config_file }}
-      {% endfor %}
+      - ./config.yaml:/root/A2rchi/config.yaml
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
       {% endfor %}
@@ -418,9 +408,7 @@ services:
       {% endfor %}
     volumes:
       - {{ chromadb_volume_name }}:/root/data/
-      {% for config_file in config_files | default([]) -%}
-      - ./{{ config_file }}:/root/A2rchi/configs/{{ config_file }}
-      {% endfor %}
+      - ./config.yaml:/root/A2rchi/config.yaml
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
       {% endfor %}
@@ -475,9 +463,7 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      {% for config_file in config_files | default([]) -%}
-      - ./{{ config_file }}:/root/A2rchi/configs/{{ config_file }}
-      {% endfor %}
+      - ./config.yaml:/root/A2rchi/config.yaml
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
       {% endfor %}

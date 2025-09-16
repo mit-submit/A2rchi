@@ -72,11 +72,12 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         secrets_manager = SecretsManager(env_file, config_manager)
         
         # Validate configuration and secrets
-        #a2rchi_config = config_manager.get_config()
+        a2rchi_config = config_manager.get_config()
         required_fields = config_manager.get_required_fields_for_services(enabled_services)
         logger.info(required_fields)
         if required_fields:
-            config_manager.validate_configs(required_fields)
+            #TODO: Right now it only validates current config; not extra ones
+            config_manager.validate_config(required_fields)
         logger.info("Configurations validated successfully")
 
         required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services))
@@ -109,7 +110,6 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config)
-        
         template_manager.prepare_deployment_files(compose_config, a2rchi_config, secrets_manager, **other_flags)
         
         deployment_manager = DeploymentManager(compose_config.use_podman)
@@ -118,7 +118,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         # Log success
         service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
                                if s in service_registry.get_all_services()]
-        log_deployment_success(name, service_only_resolved, services, config_manager.get_current_config())
+        log_deployment_success(name, service_only_resolved, services, a2rchi_config)
         
     except Exception as e:
         if verbosity >= 4:

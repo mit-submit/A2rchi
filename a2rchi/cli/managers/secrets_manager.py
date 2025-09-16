@@ -45,7 +45,7 @@ class SecretsManager:
         """Determine required secrets based on configuration and enabled services"""
         required_secrets = set()
 
-        configs = config_manager.get_configs()
+        config = self.config_manager.get_config()
 
         # always required
         required_secrets.add("PG_PASSWORD")
@@ -60,10 +60,8 @@ class SecretsManager:
 
         config = self.config_manager.get_config()
         # SSO
-        for config in configs.values():
-            if config.get("utils", {}).get("sso", {}).get("enabled", False):
-                required_secrets.update(["SSO_USERNAME", "SSO_PASSWORD"])
-                break
+        if config.get("utils", {}).get("sso", {}).get("enabled", False):
+            required_secrets.update(["SSO_USERNAME", "SSO_PASSWORD"])
 
         # jira
         # TODO: this needs to be changed,

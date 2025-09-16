@@ -2,8 +2,6 @@ import os
 import yaml
 
 # DEFINITIONS
-CONFIG_FOLDER_PATH = "/root/A2rchi/configs/"
-#TODO: Obsolete?
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 
 def load_config(map: bool = False, name: str = None):
@@ -12,11 +10,7 @@ def load_config(map: bool = False, name: str = None):
     Optionally maps models to the corresponding class.
     """
 
-    if name is None:
-        # If no name provided, the default configuration will be the first one found
-        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
-
-    with open(path, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     
     if name is not None:
@@ -73,12 +67,7 @@ def load_global_config(name: str = None):
     This is assumed to be static.
     """
 
-    #TODO: How to do this more elegantly? Perhaps this should be a class
-    if name is None:
-        # If no name provided, the default configuration will be the first one found
-        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
-
-    with open(path, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["global"]
@@ -89,11 +78,7 @@ def load_utils_config(name: str = None):
     This is assumed to be static.
     """
 
-    if name is None:
-        # If no name provided, the default configuration will be the first one found
-        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
-
-    with open(path, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["utils"]
@@ -104,11 +89,7 @@ def load_data_manager_config(name: str = None):
     This is assumed to be static.
     """
 
-    if name is None:
-        # If no name provided, the default configuration will be the first one found
-        path = os.path.join(CONFIG_FOLDER_PATH,os.listdir(CONFIG_FOLDER_PATH)[0])
-
-    with open(path, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["data_manager"]
@@ -118,8 +99,9 @@ def get_config_names():
     Gets the available configurations names.
     """
 
-    config_files = os.listdir(CONFIG_FOLDER_PATH)
-    return [f_name.replace('.yaml','') for f_name in config_files]
+    with open(CONFIG_PATH, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    return list(config['extra_configs'].keys())
 
 
 

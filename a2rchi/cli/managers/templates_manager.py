@@ -58,7 +58,7 @@ class TemplateManager:
         
         # Copy source code
         self._copy_source_code(base_dir)
-    
+        
     def _prepare_compose_file(self, base_dir: Path, compose_config, a2rchi_config: Dict[str, Any], **kwargs) -> None:
         """Prepare the Compose file - pure rendering with all data from compose_config"""
         
