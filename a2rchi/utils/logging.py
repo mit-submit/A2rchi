@@ -3,7 +3,7 @@ import logging
 import yaml
 
 # ignore debug logs from these modules, too verbose :)
-ignore_debug_modules = ["urllib3.connectionpool", "filelock"]
+ignore_debug_modules = ["urllib3.connectionpool", "filelock", "httpcore", "openai._base_client"]
 
 logging_verboseLevel = [
     logging.CRITICAL,
