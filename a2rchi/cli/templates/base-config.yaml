@@ -223,6 +223,14 @@ a2rchi:
         url: {{ a2rchi.model_class_map.OllamaInterface.kwargs.url | default("http://localhost:7680", true) }}
   chain_update_time: {{ a2rchi.chain_update_time | default(10, true) }}
 
+extra_configs:
+{%- for name, item in extra_configs.items() %}
+  {{ name }}:
+{%- for key, value in item.items() %}
+    {{key}} : {{value}}
+{%- endfor %}
+{%- endfor %}
+
 utils:
   postgres:
     port: {{ utils.postgres.port | default(5432, true) }}

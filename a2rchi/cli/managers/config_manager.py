@@ -159,4 +159,8 @@ class ConfigurationManager:
     
     def get_service_config(self, service_name: str) -> Dict[str, Any]:
         """Get configuration for a specific service"""
+<<<<<<< HEAD
         return self.current_configconfig.get("utils", {}).get(service_name, {})
+=======
+        return self.configconfig.get("utils", {}).get(service_name, {})
+>>>>>>> 6e85e80 (ready for pr)

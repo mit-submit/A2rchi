@@ -125,6 +125,7 @@ const refreshChat = async () => {
 const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     const API_URL = "/api/get_chat_response";
     const pElement = document.createElement("div");
+    const configName = configDropdown.value;
 
      // Define the properties and data for the API request
      const requestOptions = {
@@ -135,6 +136,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
         body: JSON.stringify({
             last_message: conversation.slice(-1),
             conversation_id: conversation_id,
+            config_name: configName,
             is_refresh: isRefresh,
             client_sent_msg_ts: Date.now(),
             client_timeout: DEFAULT_TIMEOUT_SECS * 1000

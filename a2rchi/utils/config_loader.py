@@ -18,6 +18,15 @@ def load_config(map: bool = False, name: str = None):
 
     with open(path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+    
+    if name is not None:
+        extra_config = config['extra_configs'][name]
+        for pipeline_name in extra_config['pipelines']:
+            if pipeline_name in config['a2rchi']['pipelines']:
+                config['a2rchi']['pipeline_map'][pipeline_name].update(extra_config['pipeline_map'][pipeline_name])
+            else:
+                config['a2rchi']['pipelines'].append(pipeline_name)
+                config['a2rchi']['pipeline_map'].update({pipeline_name:extra_config['pipeline_map'][pipeline_name]})
 
     # change the model class parameter from a string to an actual class
     if map:

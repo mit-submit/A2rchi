@@ -136,9 +136,9 @@ class ChatWrapper:
         # initialize config_id to be None
         self.config_id = None
 
-    def update_config(self, config_id):
+    def update_config(self, config_id, config_name=None):
         self.config_id = config_id
-        self.a2rchi.update()
+        self.a2rchi.update(pipeline="QAPipeline",config_name=config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -376,7 +376,7 @@ class ChatWrapper:
         except FileNotFoundError:
             self.links_db = dict()
 
-    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
         """
@@ -429,6 +429,7 @@ class ChatWrapper:
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 history = history + [(sender, content)] if not is_refresh else history
+                self.update_config(config_id=self.config_id,config_name=config_name)
                 result = self.a2rchi(history=history, conversation_id=conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
@@ -656,13 +657,14 @@ class FlaskAppWrapper(object):
         # get user input and conversation_id from the request
         message = request.json.get('last_message')
         conversation_id = request.json.get('conversation_id')
+        config_name = request.json.get('config_name')
         is_refresh = request.json.get('is_refresh')
         client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
         client_timeout = request.json.get('client_timeout') / 1000
 
         # query the chat and return the results.
         logger.debug("Calling the ChatWrapper()")
-        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout)
+        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout,config_name)
 
         # handle errors
         if error_code is not None:
