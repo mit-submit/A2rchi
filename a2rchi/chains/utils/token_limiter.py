@@ -172,8 +172,9 @@ class TokenLimiter:
             for docs_list in docs_lists:
                 orig_docs_counts.append(len(docs_list))
                 doc_tokens.append([self.safe_token_count(d.page_content) for d in docs_list])
-            prunable_docs_lists = [docs_list for docs_list, docs_var in zip(docs_lists, docs_vars) if docs_var not in self.unprunable_input_variables]
-            prunable_indices = [docs_lists.index(docs_list) for docs_list in prunable_docs_lists]
+            # Calculate indices before converting tuples to lists
+            prunable_indices = [i for i, (docs_list, docs_var) in enumerate(zip(docs_lists, docs_vars)) if docs_var not in self.unprunable_input_variables]
+            prunable_docs_lists = [list(docs_lists[i]) if isinstance(docs_lists[i], tuple) else docs_lists[i] for i in prunable_indices]
             for k, v in zip(docs_vars, docs_lists):
                 if k in self.unprunable_input_variables:
                     pruned_inputs[k] = v
