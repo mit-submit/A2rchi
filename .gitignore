@@ -17,5 +17,5 @@ venv
 logos/
 docs/site
 setup.sh
-.*
+.env
 build/
