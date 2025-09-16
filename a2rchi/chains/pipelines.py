@@ -331,11 +331,14 @@ class QAPipeline(BasePipeline):
         retriever_output = self.retriever.invoke(
             condense_output['answer']
         )
-        docs, scores = zip(*retriever_output)
+        if retriever_output:
+            docs, scores = zip(*retriever_output)
+        else:
+            docs, scores = [], []
         answer_output = self.chat_chain.invoke({
             **inputs,
             'condense_output': condense_output['answer'],
-            'retriever_output': docs
+            'retriever_output': docs if docs else ""
         })
 
         return {
