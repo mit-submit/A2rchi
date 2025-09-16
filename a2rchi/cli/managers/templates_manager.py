@@ -158,6 +158,10 @@ class TemplateManager:
     
     def _prepare_prompts(self, base_dir: Path, a2rchi_config: Dict[str, Any], enabled_services: List[str]) -> Dict[str, str]:
         """Prepare prompt files dynamically from pipeline configuration and return mappings"""
+        # Always create prompts directory for Docker build compatibility
+        prompts_path = base_dir / "prompts"
+        prompts_path.mkdir(exist_ok=True)
+        
         pipeline_names = a2rchi_config.get("a2rchi", {}).get("pipelines")
         if not pipeline_names:
             return {}
@@ -295,12 +299,13 @@ class TemplateManager:
     
     def _copy_web_input_lists(self, base_dir: Path, a2rchi_config: Dict[str, Any]) -> None:
         """Copy web input lists if they exist"""
+        # Always create weblists directory for Docker build compatibility
+        weblists_path = base_dir / "weblists"
+        weblists_path.mkdir(exist_ok=True)
+        
         input_lists = a2rchi_config.get("data_manager", {}).get("input_lists", [])
         if not input_lists:
             return
-        
-        weblists_path = base_dir / "weblists"
-        weblists_path.mkdir(exist_ok=True)
         
         for input_list in input_lists:
             if os.path.exists(input_list):
