@@ -19,6 +19,34 @@ BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
+# for right now its only really used for the benchmarking configs
+def get_git_information():
+    import subprocess
+    meta_data = {}
+    wd = Path(__file__).parent 
+
+    if (
+        subprocess.call(
+            ["git", "branch"],
+            cwd=wd,
+            stderr=subprocess.STDOUT,
+            stdout=open(os.devnull, "w"),
+        )
+        != 0
+    ):
+        meta_data["git_info"] = {
+            "hash": "Not a git repository!",
+            "diff": "Not a git repository",
+        }
+    else:
+        meta_data["last_commit"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=wd, encoding="UTF-8"
+        )
+        diff_comm = ["git", "diff"]
+        meta_data["git_diff"] = subprocess.check_output(
+            diff_comm, encoding="UTF-8", cwd=wd
+        )
+    return meta_data
 
 class TemplateManager:
     """Manages template rendering and file preparation using service registry"""
@@ -27,11 +55,12 @@ class TemplateManager:
         self.env = jinja_env
         self.registry = service_registry
 
-    def prepare_benchmarking_deployment(self, compose_config, aggregate_config,  secrets_manager, configs_path, **kwargs) -> None:
+    def prepare_benchmarking_deployment(self, compose_config, aggregate_config,  secrets_manager, query_file, **kwargs) -> None:
         """prepare necessary files for benchmarking deployment should probably be removed later"""
 
         base_dir = compose_config.base_dir
-        # configs = kwargs.pop("configs_path")
+        configs = kwargs.pop("configs_path")
+        configs_path = Path(configs)
 
         prompt_mappings = self._prepare_prompts(base_dir, aggregate_config, [])
         
@@ -48,6 +77,14 @@ class TemplateManager:
         
         # Copy source code
         self._copy_source_code(base_dir)
+        query_file_dest = base_dir / "queries.txt"
+        shutil.copyfile(query_file, query_file_dest)
+
+        import yaml
+        git_info = get_git_information()
+        git_info_path = base_dir / "git_info.yaml"
+        with open(git_info_path, "w") as f:
+            yaml.dump(git_info, f)
 
     
     def prepare_deployment_files(self, compose_config, a2rchi_config: Dict[str, Any], secrets_manager, **kwargs) -> None:
@@ -143,24 +180,28 @@ class TemplateManager:
     def _modify_configs_and_map_prompts(self, prompt_mappings: Dict[str, Any], configs_path: Path) -> Dict[str, Dict[str, Any]]:
 
         prompt_set = set(prompt_mappings.values())
+        print(prompt_set)
         res = []
 
         import yaml
         # change the prompt writing for each file 
         for file in configs_path.iterdir():
-            print(f"currently working on the following file rn: {file}")
             with open(file, "r") as f: 
                 config = yaml.safe_load(f)
                 pipelines = config.get('a2rchi',  {}).get('pipelines', [])
 
             for pipeline in pipelines:
                 prompts = config.get('a2rchi', {}).get('pipeline_map').get(pipeline).get('prompts')
-                for section in prompts.keys():
-                    for key, prompt in section.items():
-                        if prompt in prompt_set: 
-                            section[key] = prompt
+                for _, section_info in prompts.items():
+                    for key, prompt in section_info.items():
+                        prompt_path = Path(prompt)
+                        to_check = prompt_path.name
+                        if to_check in prompt_set: 
+                            section_info[key] = prompt
             res.append((file.name, config))
 
+
+        print(f"got the following result: {res}")
         return dict(res)
 
     

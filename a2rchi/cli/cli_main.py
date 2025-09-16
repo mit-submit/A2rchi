@@ -26,33 +26,6 @@ env = Environment(
 A2RCHI_DIR = os.environ.get('A2RCHI_DIR',os.path.join(os.path.expanduser('~'), ".a2rchi"))
 
 # this method  is really only used in the benchmarking
-def get_git_information():
-    import subprocess
-    meta_data = {}
-    wd = Path(__file__).parent 
-
-    if (
-        subprocess.call(
-            ["git", "branch"],
-            cwd=wd,
-            stderr=subprocess.STDOUT,
-            stdout=open(os.devnull, "w"),
-        )
-        != 0
-    ):
-        meta_data["git_info"] = {
-            "hash": "Not a git repository!",
-            "diff": "Not a git repository",
-        }
-    else:
-        meta_data["last_commit"] = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=wd, encoding="UTF-8"
-        )
-        diff_comm = ["git", "diff"]
-        meta_data["git_diff"] = subprocess.check_output(
-            diff_comm, encoding="UTF-8", cwd=wd
-        )
-    return meta_data
 
 
 @click.group()
@@ -339,8 +312,8 @@ def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_fil
         aggregate_config = config_manager.get_config()
         
         # the benchmarking config  manager is duck typed to look like a regular config manager so its chill
-        benchmarking_secrets_manager = SecretsManager(env_file, config_manager)
-        _, all_secrets = benchmarking_secrets_manager.get_secrets(set())
+        secrets_manager = SecretsManager(env_file, config_manager)
+        _, all_secrets = secrets_manager.get_secrets(set())
 
         other_flags['benchmarking'] = True
         other_flags['configs_path'] = Path(config_dir)
@@ -357,22 +330,14 @@ def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_fil
         base_dir.mkdir(parents=True, exist_ok=True)
         
         # make the additional files needed for evaluation
-        import shutil
-        query_file_dest = base_dir / "queries.txt"
-        shutil.copyfile(query_file, query_file_dest)
 
-        git_info = get_git_information()
-        git_info_path = base_dir / "git_info.yaml"
-        with open(git_info_path, "w") as f:
-            import yaml
-            yaml.dump(git_info, f)
 
-        benchmarking_secrets_manager.write_secrets_to_files(base_dir, all_secrets)
+        secrets_manager.write_secrets_to_files(base_dir, all_secrets)
 
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config)
         
-        template_manager.prepare_benchmarking_deployment(compose_config, aggregate_config, benchmarking_secrets_manager, Path(config_dir), **other_flags)
+        template_manager.prepare_benchmarking_deployment(compose_config, aggregate_config, secrets_manager, query_file, **other_flags)
 
         deployment_manager = DeploymentManager(compose_config.use_podman)
         deployment_manager.start_deployment(base_dir)
