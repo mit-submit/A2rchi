@@ -372,8 +372,7 @@ def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_fil
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config)
         
-        template_manager.prepare_benchmarking_deployment(compose_config, aggregate_config, benchmarking_secrets_manager, **other_flags)
-
+        template_manager.prepare_benchmarking_deployment(compose_config, aggregate_config, benchmarking_secrets_manager, Path(config_dir), **other_flags)
 
         deployment_manager = DeploymentManager(compose_config.use_podman)
         deployment_manager.start_deployment(base_dir)

@@ -154,7 +154,7 @@ class Benchmarker:
 
         # for now it only uses one pipeline (the first one) but maybe later we make this work for mulitple
         print(f"loaded new configuration: {self.current_config}")
-        pipeline = config.get('a2rchi').get('pipelines')[0]
+        pipeline = small_config.get('a2rchi').get('pipelines')[0]
 
         self.chain = A2rchi(pipeline) 
 

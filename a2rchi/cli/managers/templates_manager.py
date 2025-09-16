@@ -27,13 +27,15 @@ class TemplateManager:
         self.env = jinja_env
         self.registry = service_registry
 
-    def prepare_benchmarking_deployment(self, compose_config, aggregate_config,  secrets_manager, **kwargs) -> None:
+    def prepare_benchmarking_deployment(self, compose_config, aggregate_config,  secrets_manager, configs_path, **kwargs) -> None:
         """prepare necessary files for benchmarking deployment should probably be removed later"""
 
         base_dir = compose_config.base_dir
-        configs = kwargs.pop("configs_path")
+        # configs = kwargs.pop("configs_path")
 
-        self._prepare_prompts(base_dir, aggregate_config, [])
+        prompt_mappings = self._prepare_prompts(base_dir, aggregate_config, [])
+        
+        self._prepare_config_files(base_dir, prompt_mappings, configs_path)
 
         # Prepare PostgreSQL initialization
         self._prepare_postgres_init(base_dir, compose_config, secrets_manager)
@@ -47,8 +49,6 @@ class TemplateManager:
         # Copy source code
         self._copy_source_code(base_dir)
 
-        configs_dir = base_dir / "configs"
-        shutil.copytree(configs, configs_dir)
     
     def prepare_deployment_files(self, compose_config, a2rchi_config: Dict[str, Any], secrets_manager, **kwargs) -> None:
         """Prepare all necessary files for deployment"""
@@ -56,7 +56,7 @@ class TemplateManager:
 
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
-        self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
+        prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
         
         # Prepare main configuration file
         self._prepare_config_file(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity, **kwargs)
@@ -139,7 +139,43 @@ class TemplateManager:
                     pass
 
         return port_config
+
+    def _modify_configs_and_map_prompts(self, prompt_mappings: Dict[str, Any], configs_path: Path) -> Dict[str, Dict[str, Any]]:
+
+        prompt_set = set(prompt_mappings.values())
+        res = []
+
+        import yaml
+        # change the prompt writing for each file 
+        for file in configs_path.iterdir():
+            print(f"currently working on the following file rn: {file}")
+            with open(file, "r") as f: 
+                config = yaml.safe_load(f)
+                pipelines = config.get('a2rchi',  {}).get('pipelines', [])
+
+            for pipeline in pipelines:
+                prompts = config.get('a2rchi', {}).get('pipeline_map').get(pipeline).get('prompts')
+                for section in prompts.keys():
+                    for key, prompt in section.items():
+                        if prompt in prompt_set: 
+                            section[key] = prompt
+            res.append((file.name, config))
+
+        return dict(res)
+
     
+    def _prepare_config_files(self, base_dir: Path, 
+                              prompt_mappings:Dict[str,str], configs_path: Path, **kwargs): 
+        new_configs = self._modify_configs_and_map_prompts(prompt_mappings, configs_path)
+
+        configs_end_dir = base_dir / 'configs'
+
+        import yaml
+        for file_name, config in new_configs: 
+            file_path = configs_end_dir / file_name
+            with open(file_path, "w") as f: 
+                yaml.dump(config, f)
+
     def _prepare_config_file(self, base_dir: Path, a2rchi_config: Dict[str, Any], 
                         prompt_mappings: Dict[str, str], verbosity: int, **kwargs) -> None:
         """Prepare the main A2RCHI configuration file with updated prompt paths"""
