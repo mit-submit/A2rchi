@@ -240,6 +240,7 @@ span.material-symbols-rounded {
 .typing-textarea textarea::placeholder {
   color: var(--placeholder-color);
 }
+
 .typing-content span {
   width: 55px;
   height: 55px;
@@ -262,6 +263,24 @@ span.material-symbols-rounded {
 .typing-controls {
   display: flex;
 }
+
+.typing-controls select {
+  resize: none;
+  border: none;
+  color: var(--placeholder-color);
+  border-radius: 4px;
+  overflow-y: auto;
+  background: var(--incoming-chat-bg);
+  outline: 1px solid var(--incoming-chat-border);
+  font-family:  "Poppins", sans-serif;
+  appearance: none;
+  -webkit-appearance: none; 
+  -moz-appearance: none;
+  padding: 15px 15px;
+  margin-left: 7px;
+  max-width: 30%;
+}
+
 .typing-controls span {
   margin-left: 7px;
   font-size: 1.4rem;

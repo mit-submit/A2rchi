@@ -45,6 +45,8 @@ class SecretsManager:
         """Determine required secrets based on configuration and enabled services"""
         required_secrets = set()
 
+        config = self.config_manager.get_config()
+
         # always required
         required_secrets.add("PG_PASSWORD")
 

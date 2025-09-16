@@ -25,13 +25,13 @@ class A2rchi():
         self.pipeline_name = pipeline
         self._init_vectorstore_params()
 
-    def update(self, pipeline=None):
+    def update(self, pipeline=None, config_name = None):
         """
         Read relevant configuration settings.
         Initialize the Pipeline: either passed as argument or from config file.
         """
         logger.debug("Loading config")
-        self.config = load_config(map=True)
+        self.config = load_config(map=True, name=config_name)
         if pipeline:
             self.pipeline_name=pipeline
         self.pipeline = self._create_pipeline_instance(

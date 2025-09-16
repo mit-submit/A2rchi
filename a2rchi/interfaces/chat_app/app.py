@@ -1,5 +1,5 @@
 from a2rchi.chains.a2rchi import A2rchi
-from a2rchi.utils.config_loader import load_config, CONFIG_PATH
+from a2rchi.utils.config_loader import load_config, CONFIG_PATH, get_config_names
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
@@ -136,9 +136,9 @@ class ChatWrapper:
         # initialize config_id to be None
         self.config_id = None
 
-    def update_config(self, config_id):
+    def update_config(self, config_id, config_name=None):
         self.config_id = config_id
-        self.a2rchi.update()
+        self.a2rchi.update(pipeline="QAPipeline",config_name=config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -376,7 +376,7 @@ class ChatWrapper:
         except FileNotFoundError:
             self.links_db = dict()
 
-    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
         """
@@ -429,6 +429,7 @@ class ChatWrapper:
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 history = history + [(sender, content)] if not is_refresh else history
+                self.update_config(config_id=self.config_id,config_name=config_name)
                 result = self.a2rchi(history=history, conversation_id=conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
@@ -523,6 +524,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
+        self.add_endpoint('/api/get_configs', 'get_configs', self.get_configs, methods=["GET"])
         
         # conditionally add ChromaDB endpoints based on config
         if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
@@ -620,6 +622,18 @@ class FlaskAppWrapper(object):
         self.chat.update_config(self.config_id)
 
         return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
+    
+    def get_configs(self):
+        """
+        Gets the names of configs loaded in A2rchi.
+
+
+        Returns:
+            A json with a response list of the configs names
+        """
+
+        config_names = get_config_names()
+        return jsonify({'options':config_names}), 200
 
 
     def get_chat_response(self):
@@ -643,13 +657,14 @@ class FlaskAppWrapper(object):
         # get user input and conversation_id from the request
         message = request.json.get('last_message')
         conversation_id = request.json.get('conversation_id')
+        config_name = request.json.get('config_name')
         is_refresh = request.json.get('is_refresh')
         client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
         client_timeout = request.json.get('client_timeout') / 1000
 
         # query the chat and return the results.
         logger.debug("Calling the ChatWrapper()")
-        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout)
+        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout,config_name)
 
         # handle errors
         if error_code is not None:

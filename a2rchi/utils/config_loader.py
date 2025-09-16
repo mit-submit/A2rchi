@@ -4,7 +4,7 @@ import yaml
 # DEFINITIONS
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 
-def load_config(map: bool = False):
+def load_config(map: bool = False, name: str = None):
     """
     Load the config.yaml file.
     Optionally maps models to the corresponding class.
@@ -12,6 +12,15 @@ def load_config(map: bool = False):
 
     with open(CONFIG_PATH, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+    
+    if name is not None:
+        extra_config = config['extra_configs'][name]
+        for pipeline_name in extra_config['pipelines']:
+            if pipeline_name in config['a2rchi']['pipelines']:
+                config['a2rchi']['pipeline_map'][pipeline_name].update(extra_config['pipeline_map'][pipeline_name])
+            else:
+                config['a2rchi']['pipelines'].append(pipeline_name)
+                config['a2rchi']['pipeline_map'].update({pipeline_name:extra_config['pipeline_map'][pipeline_name]})
 
     # change the model class parameter from a string to an actual class
     if map:
@@ -52,7 +61,7 @@ def load_config(map: bool = False):
 
     return config
 
-def load_global_config():
+def load_global_config(name: str = None):
     """
     Load the global part of the config.yaml file.
     This is assumed to be static.
@@ -63,7 +72,7 @@ def load_global_config():
 
     return config["global"]
 
-def load_utils_config():
+def load_utils_config(name: str = None):
     """
     Load the utils part of the config.yaml file.
     This is assumed to be static.
@@ -74,7 +83,7 @@ def load_utils_config():
 
     return config["utils"]
 
-def load_data_manager_config():
+def load_data_manager_config(name: str = None):
     """
     Load the data_manager part of the config.yaml file.
     This is assumed to be static.
@@ -84,3 +93,15 @@ def load_data_manager_config():
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["data_manager"]
+
+def get_config_names():
+    """
+    Gets the available configurations names.
+    """
+
+    with open(CONFIG_PATH, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    return list(config['extra_configs'].keys())
+
+
+

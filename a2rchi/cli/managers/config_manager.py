@@ -1,7 +1,10 @@
+from a2rchi.utils.logging import get_logger
 from pathlib import Path
 from typing import Dict, List, Any
-
+import os
 import yaml
+
+logger = get_logger(__name__)
 
 class ConfigurationManager:
     """Manages A2rchi configuration loading and validation"""
@@ -9,18 +12,40 @@ class ConfigurationManager:
     def __init__(self, config_filepath: str):
         self.config_filepath = Path(config_filepath)
         self.config = self._load_config()
+        self.config['extra_configs'] = self._load_additional_configs()
         
+    def _load_additional_configs(self) -> Dict[str,Any]:
+        """Loads and validate the basic structure of all other"""
+        parent_directory = self.config_filepath.parent
+
+        additional_configs = {}
+
+        for config_file in parent_directory.glob('*.yaml'):
+            with open(config_file,'r') as f:
+                config = yaml.safe_load(f)
+            if not config:
+                logger.info(f"Configuration file is empty or invalid. Skipping {config_file}")
+            else:
+                if 'a2rchi' in config:
+                    name = config['name']
+                    a2rchi_config = config['a2rchi']
+                    additional_configs[name] = a2rchi_config
+                else:
+                    logger.info(f"File {config_file.stem} does not contain a2rchi config; skipping.")
+
+        return additional_configs
+    
     def _load_config(self) -> Dict[str, Any]:
         """Load and validate basic structure of config file"""
         if not self.config_filepath.exists():
             raise FileNotFoundError(f"Configuration file not found: {self.config_filepath}")
-            
+
         with open(self.config_filepath, 'r') as f:
             config = yaml.safe_load(f)
-            
+
         if not config:
             raise ValueError("Configuration file is empty or invalid")
-            
+
         return config
     
     def get_required_fields_for_services(self, services: List[str]) -> List[str]:
@@ -67,7 +92,6 @@ class ConfigurationManager:
             pipeline_requirements.extend([f'a2rchi.pipeline_map.{pipeline_name}.models.required.{model_name}' for model_name in required_models.keys()])
         
         return pipeline_requirements
-    
     
     def validate_config(self, required_fields: List[str]) -> None:
         """Validate that all required fields are present in config"""
