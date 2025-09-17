@@ -16,8 +16,8 @@ os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 
-data_manager_config = load_config()["data_manager"]
-uploader_config = load_config()["interfaces"]["uploader_app"]
+chroma_config = load_config()["services"]["chromadb"]
+uploader_config = load_config()["services"]["uploader_app"]
 
 # Decision whether or not to run the vectorstore as a dynamic service or a static one
 #
@@ -28,7 +28,7 @@ uploader_config = load_config()["interfaces"]["uploader_app"]
 #   dynamically. Thus the vectorstore is only updated once and the uploader app
 #   is not run.
 
-run_dynamically = data_manager_config["use_HTTP_chromadb_client"]
+run_dynamically = chroma_config["use_HTTP_chromadb_client"]
 
 if run_dynamically:
     app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))

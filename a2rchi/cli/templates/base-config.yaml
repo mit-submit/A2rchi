@@ -7,17 +7,16 @@ global:
     {%- for file_type in global.ACCEPTED_FILES | default(['.txt', '.html', '.pdf']) %}
     - "{{ file_type }}"
     {%- endfor %}
--  ROLES:
-    {%- for role in global.ROLES | default(['User', 'A2rchi', 'Expert']) %}
-    - {{ role }}
-    {%- endfor %}
   LOGGING:
     input_output_filename: "{{ global.LOGGING.input_output_filename | default('chain_input_output.log', true) }}"
   verbosity: {{ verbosity | default(3, true) }}
 
-
-# remember you made postgress a service and made chromadb one as well
-
+# CHANGES THAT HAVE BEEN MADE SO FAR:
+# rename interfaces -> services 
+# piazza, mattermost, redmine, mailbox, postgres, and chromadb are all services now 
+# global trained on -> chat_app
+# global ROLES -> deleted 
+#
 services:
   {% if services.piazza and services.piazza.network_id -%}
   piazza:
@@ -37,8 +36,8 @@ services:
     user: {{ services.postgres.user | default('a2rchi', true) }}
     database: {{ services.postgres.database | default('a2rchi-db', true) }}
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
-  chat_trained_on:
-    trained_on: {{ services.chat_app.TRAINED_ON | default("", true) }}
+  chat_app:
+    trained_on: {{ services.chat_app.trained_on | default("", true) }}
     port: {{ services.chat_app.port | default(7861, true) }}
     external_port: {{ services.chat_app.external_port | default(7861, true) }}
     host: {{ services.chat_app.host | default("0.0.0.0", true) }}

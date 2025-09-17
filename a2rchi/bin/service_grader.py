@@ -14,7 +14,7 @@ setup_logging()
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
-grader_config = load_config()["interfaces"]["grader_app"]
+grader_config = load_config()["services"]["grader_app"]
 
 app = FlaskAppWrapper(Flask(
     __name__,

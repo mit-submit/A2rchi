@@ -86,7 +86,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
         code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
 
-        if self.config["interfaces"]["chat_app"]["include_copy_button"]:
+        if self.config["services"]["chat_app"]["include_copy_button"]:
             button = """<button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>"""
         else: button = ""
         
@@ -112,6 +112,7 @@ class ChatWrapper:
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # initialize data manager
@@ -123,7 +124,7 @@ class ChatWrapper:
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -493,14 +494,16 @@ class FlaskAppWrapper(object):
         self.configs(**configs)
         self.config = load_config()
         self.global_config = self.config["global"]
+        self.services_config = self.config["services"]
+        self.chroma_config = self.config["services"]["chromadb"]
         self.utils_config = self.config["utils"]
-        self.chat_app_config = self.config["interfaces"]["chat_app"]
+        self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -601,13 +604,13 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
-        self.chat_app_config = self.config["interfaces"]["chat_app"]
+        self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -900,15 +903,15 @@ class FlaskAppWrapper(object):
             
             # Connect to ChromaDB and create vectorstore
             client = None
-            if self.utils_config["data_manager"]["use_HTTP_chromadb_client"]:
+            if self.chroma_config["use_HTTP_chromadb_client"]:
                 client = chromadb.HttpClient(
-                    host=self.utils_config["data_manager"]["chromadb_host"],
-                    port=self.utils_config["data_manager"]["chromadb_port"],
+                    host=self.chroma_config["chromadb_host"],
+                    port=self.chroma_config["chromadb_port"],
                     settings=Settings(allow_reset=True, anonymized_telemetry=False),
                 )
             else:
                 client = chromadb.PersistentClient(
-                    path=self.global_config["LOCAL_VSTORE_PATH"],
+                    path=self.chroma_config["local_vstore_path"],
                     settings=Settings(allow_reset=True, anonymized_telemetry=False),
                 )
             

@@ -50,7 +50,7 @@ class Piazza:
 
         logger.info("Initializing Piazza service")
 
-        self.piazza_config = load_config()["utils"].get("piazza", None)
+        self.piazza_config = load_config()["services"].get("piazza", None)
 
         # login to piazza
         self.piazza = PiazzaAPI()

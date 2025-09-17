@@ -63,6 +63,18 @@ def load_global_config():
 
     return config["global"]
 
+def load_services_config():
+    """
+    Load the services part of the config.yaml file.
+
+    This is assumed to be static during runtime
+    """
+
+    with open(CONFIG_PATH, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    return config["services"]
+
 def load_utils_config():
     """
     Load the utils part of the config.yaml file.

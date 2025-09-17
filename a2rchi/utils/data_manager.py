@@ -33,6 +33,7 @@ class DataManager():
         self.config = load_config(map=True)
         self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
+        self.chroma_config = self.config['services']['chromadb']
         self.stemmer = None
         
         # create data path if it doesn't exist
@@ -93,15 +94,15 @@ class DataManager():
 
         # connect to chromadb server
         client = None
-        if self.config["data_manager"]["use_HTTP_chromadb_client"]:
+        if self.chroma_config["use_HTTP_chromadb_client"]:
             client = chromadb.HttpClient(
-                host=self.config["data_manager"]["chromadb_host"],
-                port=self.config["data_manager"]["chromadb_port"],
+                host=self.chroma_config["chromadb_host"],
+                port=self.chroma_config["chromadb_port"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         else:
             client = chromadb.PersistentClient(
-                path=self.global_config["LOCAL_VSTORE_PATH"],
+                path=self.chroma_config["local_vstore_path"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
 
@@ -115,15 +116,15 @@ class DataManager():
         """
         # connect to chromadb server
         client = None
-        if self.config["data_manager"]["use_HTTP_chromadb_client"]:
+        if self.chroma_config["use_HTTP_chromadb_client"]:
             client = chromadb.HttpClient(
-                host=self.config["data_manager"]["chromadb_host"],
-                port=self.config["data_manager"]["chromadb_port"],
+                host=self.chroma_config["chromadb_host"],
+                port=self.chroma_config["chromadb_port"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         else:
             client = chromadb.PersistentClient(
-                path=self.config["data_manager"]["local_vstore_path"],
+                path=self.chroma_config["local_vstore_path"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         collection = client.get_or_create_collection(

@@ -1,5 +1,5 @@
 from a2rchi.utils.anonymizer import Anonymizer
-from a2rchi.utils.config_loader import load_utils_config
+from a2rchi.utils.config_loader import load_services_config
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
 
@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 class RedmineClient():
     def __init__(self) -> None:
-            self.ANSWER_TAG = load_utils_config()["redmine"]["answer_tag"]
+            self.ANSWER_TAG = load_services_config()["redmine"]["answer_tag"]
             self.redmine_url = read_secret("REDMINE_URL")
             self.redmine_user = read_secret("REDMINE_USER")
             self.redmine_pw = read_secret("REDMINE_PW")

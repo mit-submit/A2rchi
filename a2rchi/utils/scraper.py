@@ -5,7 +5,7 @@ import requests
 import ssl
 import yaml
 
-from a2rchi.utils.config_loader import load_utils_config, load_global_config
+from a2rchi.utils.config_loader import load_utils_config, load_global_config, load_services_config
 from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -20,8 +20,9 @@ class Scraper():
 
         self.utils_config = load_utils_config()
         self.global_config = load_global_config()
+        self.services_config = load_services_config()
         self.config = self.utils_config["scraper"]
-        self.piazza_config = self.utils_config.get("piazza", None)
+        self.piazza_config = self.services_config.get("piazza", None)
         self.data_path = self.global_config["DATA_PATH"]
         self.sso_config = self.utils_config.get("sso", None)
 

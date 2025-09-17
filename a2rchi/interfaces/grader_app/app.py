@@ -51,7 +51,7 @@ class ImageToTextWrapper:
         self.data_path = self.global_config["DATA_PATH"]
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.config["services"]["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -99,7 +99,7 @@ class GradingWrapper:
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.config["services_config"]["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -175,7 +175,7 @@ class FlaskAppWrapper(object):
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.config["services"]["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -757,7 +757,7 @@ class FlaskAppWrapper(object):
 
 
     def get_total_problems(self):
-        return self.config['interfaces']['grader_app'].get('num_problems')
+        return self.config['services']['grader_app'].get('num_problems')
 
     def count_attempts(self, user_email, problem_number):
         count = 0

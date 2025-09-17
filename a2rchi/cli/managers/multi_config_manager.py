@@ -121,6 +121,10 @@ class MultiConfigManager:
     def get_ports_config(self):
         pass
 
+    # TODO: implement 
+    def get_pipelines_and_info(self):
+        return
+
     # TODO: figure this out because the secrets manager needs this
     def get_models_configs(self):
         return self.models_config
