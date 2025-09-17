@@ -4,7 +4,7 @@ CHANGES THAT NEED TO BE MADE HERE BEFORE WE SWAP THIS IN FOR THE REGULAR TEMPLAT
     anywhere where we pass in a2rchi_config as an argument to a function, just have the config manager get the info through a function 
     and pass it in accordingly 
     - templated configs need to be all copied over to the context directory (.a2rchi), template them in here, map the prompts and copy them to the 
-    context directory (for right now im thinking of having each prompt mapped to  a uuid that just lives in something like a prompts folder, 
+    context directory (for right now im thinking of having each prompt mapped to a uuid that just lives in something like a prompts folder, 
     that way we basically dont have to think of anything crazy to handle this well)
     - grafana stuff has to be handled for multiple configs 
 
@@ -20,6 +20,7 @@ from typing import Dict, List, Any
 
 import os
 import shutil
+import uuid
 
 logger = get_logger(__name__)
 
@@ -279,7 +280,7 @@ class MultiTemplateManager:
         return prompt_mappings
     
     # TODO: the only thing that needs to be done here is we need to make the config manager pass the first model that it finds (maybe this gets fixed later)
-    def _prepare_grafana_files(self, base_dir: Path, a2rchi_config: Dict[str, Any], deployment_name: str, secrets, **kwargs) -> None:
+    def _prepare_grafana_files(self, base_dir: Path, config_manager: MultiConfigManager, deployment_name: str, secrets, **kwargs) -> None:
         """Prepare Grafana configuration files"""
         grafana_dir = base_dir / "grafana"
         grafana_dir.mkdir(exist_ok=True)
@@ -299,11 +300,9 @@ class MultiTemplateManager:
             f.write(dashboards)
         
         # Prepare default dashboard
-        # TODO: HERE JUST PASS IN THE FIRST REQUIRED MODEL, ONE MODEL AT LEAST ALWAYS IS REQUIRED (figure out the logic in config manager for this)
-        pipeline_name = a2rchi_config.get("a2rchi", {}).get("pipeline")
-        pipeline_config = a2rchi_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {}) if pipeline_name else {}
-        models_config = pipeline_config.get("models", {})
-        model_name = next(iter(models_config.values())) if models_config else "DumbLLM"
+        # this just grabs a model from a random config (could probably be  made much better)
+        models_config = config_manager.get_models_config()
+        model_name = models_config.get('required', {}).items()[0][1]
         
         dashboard_template = self.env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
         dashboard = dashboard_template.render(
@@ -395,3 +394,6 @@ class MultiTemplateManager:
                 shutil.copytree(src, dst_path)
             elif src_path.exists():
                 shutil.copyfile(src, dst_path)
+
+    def _generate_random_string(self): 
+        return str(uuid.uuid4())[:10]

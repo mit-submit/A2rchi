@@ -23,6 +23,7 @@ import uuid
 class MultiConfigManager:
 
     def __init__(self, config_paths_list: List[Path], enabled_services, gpu: bool):
+        assert(len(config_paths_list) > 0)
         self.raw_configs = [(file, self._load_raw_config(file)) for file in config_paths_list]
         self.enabled_services = enabled_services
         self.gpu = gpu
@@ -33,8 +34,10 @@ class MultiConfigManager:
         # later on in template manager
         self._validate_configs(self.raw_configs, enabled_services):
 
+    # in the future, we might want to validate that each pipeline has at least one required model, 
+    # i leave this as an exercise to the reader 
     def _validate_configs(self, raw_configs, enabled_services): 
-
+        
         static_requirements = self._build_static_requirements(enabled_services) 
         static_config_values = [self._get_values(config, static_requirements) for _, config in raw_configs]
 
@@ -54,7 +57,16 @@ class MultiConfigManager:
             failure_requirement = static_requirements[mismatch[1]] 
             raise EnvironmentError(f"Necessarily Static values do not match across all files,\
                     Failing in file {failure_file} on requirement: {failure_requirement}")
-        
+
+        # use the first raw config as the base for grabbing of static info
+        self.base_file = self.raw_configs[0][0]
+        self.base_config = self.raw_configs[0][1]
+
+        if 'benchmarking' not in enabled_services: 
+            enabled_set = set(enabled_services)
+        else: 
+            enabled_set = {'postgres', 'chromadb'}
+        self.service_configs = dict(filter(lambda kv: kv[0] in enabled_set, self.base_config.items()))
 
         # handle the combination of input lists across all files to get copied in
         input_lists = [conf.get('data_manager', {}).get('input_lists', []) for _, conf in raw_configs]
@@ -70,12 +82,8 @@ class MultiConfigManager:
         embedding_models_used = list(set([conf.get("data_manager", {}).get("embedding_name", "") for _, conf in raw_configs]))
         self.embedding_models_used = " ".join(embedding_models_used)
 
-        # TODO handle the ports configurations (for multi services)
-        port_configs = 
-
-        # TODO get the models config 
-
-        return
+        all_prompts = [self.get_all_prompts(conf) for _, conf in raw_configs]
+        self.unique_prompt_paths = 
 
     def _build_static_requirements(self, enabled_services: List[str]):
         # NOTE THIS IS HARDCODED PLEASE BE CAREFUL MOVING THESE FILES AROUND IN THE FUTURE
@@ -90,10 +98,13 @@ class MultiConfigManager:
         global_static_requirements = [".".join(l) for l in global_configs_list]
 
         enabled_set = set(enabled_services)
-        service_configs = default_full_config.get('services', {})
-        enabled_service_configs = dict(filter(lambda kv: kv in enabled_set, service_configs.items()))
-        enabled_services_list = self.get_all_keys(enabled_service_configs, path=['services'])
-        service_static_requirements = [".".join(l) for l in enabled_services_list] 
+        if "benchmarking" not in enabled_set: 
+            service_configs = default_full_config.get('services', {})
+            enabled_service_configs = dict(filter(lambda kv: kv[0] in enabled_set, service_configs.items()))
+            enabled_services_list = self.get_all_keys(enabled_service_configs, path=['services'])
+            service_static_requirements = [".".join(l) for l in enabled_services_list] 
+        else:
+            service_static_requirements = []
 
         return global_static_requirements + service_static_requirements
             
@@ -127,22 +138,21 @@ class MultiConfigManager:
         if res is None: 
             raise KeyError(f"Required values given resulted in a key error in the config")
         return res
+
+    def _get_all_prompts(self, conf):
+        pipelines = conf.get('a2rchi', {}).get('pipelines', [])
+
+        for pipeline in pipelines: 
+            
     
     def _load_raw_config(self, file_path):
         """literally just loads a config file from the file into a bunch of dictionaries"""
         with open(file_path, "r") as f: 
             config = yaml.safe_load(f)
         return config
-
-    def _generate_random_string(self): 
-        return str(uuid.uuid4())[:8]
         
     def get_sso(self):
         return self.using_sso
-
-    # TODO implement
-    def get_unique_prompt_file_paths():
-        return 
 
     # NOTE that this just returns the embedding models used in a string separated by spaces
     def get_embedding_name(self):
@@ -151,24 +161,29 @@ class MultiConfigManager:
     def get_input_lists(self):
         return self.input_list
 
-    #TODO: handle getting the ports config
-    def get_ports_config(self):
-        pass
-
-    # TODO: implement 
-    def get_pipelines_and_info(self):
-        return
-
-    # TODO: implement 
-    def get_grader_rubrics(self):
-        return
-
-    def get_service_configs(self):
-        return 
-
     def get_raw_configs(self):
         return self.raw_configs
 
-    # TODO: figure this out because the secrets manager needs this
+    def get_service_configs(self):
+        return self.service_configs
+
+    def get_grader_rubrics(self):
+        if 'grader' not in self.enabled_services:
+            raise EnvironmentError(f"Grader is not an enabled service")
+        num_problems = self.base_config.get('services', {}).get('grader_app', {}).get('num_problems', 1)
+        return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
+
+    # TODO implement
+    def get_unique_prompt_file_paths(self):
+        return self.unique_prompt_paths
+
     def get_models_configs(self):
-        return self.models_config
+        pipelines = self.base_config.get('a2rchi', {}).get('pipelines', [])
+        if not pipelines: 
+            raise Exception("No model found in base config: {self.base_file}")
+        
+        first_pipeline = self.base_config.get(pipelines[0], {})
+        if not first_pipeline: 
+            raise Exception("No pipeline mapping found in base config for: {pipelines[0]}")
+        
+        return first_pipeline.get('models')
