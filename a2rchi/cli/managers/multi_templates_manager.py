@@ -1,3 +1,15 @@
+"""
+CHANGES THAT NEED TO BE MADE HERE BEFORE WE SWAP THIS IN FOR THE REGULAR TEMPLATE MANAGER:
+    - config manager should handle giving all the stuff that needs to be used here instead of just getting the a2rchi config, as in, 
+    anywhere where we pass in a2rchi_config as an argument to a function, just have the config manager get the info through a function 
+    and pass it in accordingly 
+    - templated configs need to be all copied over to the context directory (.a2rchi), template them in here, map the prompts and copy them to the 
+    context directory (for right now im thinking of having each prompt mapped to  a uuid that just lives in something like a prompts folder, 
+    that way we basically dont have to think of anything crazy to handle this well)
+    - grafana stuff has to be handled for multiple configs 
+
+** i put comments above each of the functions that need to be changed right now 
+"""
 from a2rchi.cli.service_registry import service_registry
 from a2rchi.utils.logging import get_logger
 
@@ -19,7 +31,7 @@ BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
-# for right now its only really used for the benchmarking configs
+# this function is used for benchmarking, do not remove
 def get_git_information():
     import subprocess
     meta_data = {}
@@ -48,61 +60,36 @@ def get_git_information():
         )
     return meta_data
 
-class TemplateManager:
+class MultiTemplateManager:
     """Manages template rendering and file preparation using service registry"""
     
-    def __init__(self, jinja_env: Environment):
+    def __init__(self, jinja_env: Environment, config_manager: MultiConfigManager):
         self.env = jinja_env
         self.registry = service_registry
+        self.config_manager = config_manager
 
-    def prepare_benchmarking_deployment(self, compose_config, aggregate_config,  secrets_manager, query_file, **kwargs) -> None:
-        """prepare necessary files for benchmarking deployment should probably be removed later"""
-
-        base_dir = compose_config.base_dir
-        configs = kwargs.pop("configs_path")
-        configs_path = Path(configs)
-
-        prompt_mappings = self._prepare_prompts(base_dir, aggregate_config, [])
-        
-        self._prepare_config_files(base_dir, prompt_mappings, configs_path)
-
-        # Prepare PostgreSQL initialization
-        self._prepare_postgres_init(base_dir, compose_config, secrets_manager)
-        
-        # Prepare Compose file
-        self._prepare_compose_file(base_dir, compose_config, aggregate_config, **kwargs)
-        
-        # Copy web input lists to seperate directories if they exist and make a mapping
-        self._copy_web_input_lists(base_dir, aggregate_config)
-        
-        # Copy source code
-        self._copy_source_code(base_dir)
-        query_file_dest = base_dir / "queries.txt"
-        shutil.copyfile(query_file, query_file_dest)
-
-        import yaml
-        git_info = get_git_information()
-        git_info_path = base_dir / "git_info.yaml"
-        with open(git_info_path, "w") as f:
-            yaml.dump(git_info, f)
-
-    
-    def prepare_deployment_files(self, compose_config, a2rchi_config: Dict[str, Any], secrets_manager, **kwargs) -> None:
+    # TODO: handle passing all of the info through config manager instead of expecting an a2rchi config
+    def prepare_deployment_files(self, compose_config, secrets_manager, **kwargs) -> None:
         """Prepare all necessary files for deployment"""
         base_dir = compose_config.base_dir
 
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
-        prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
+
+
+        pipelines_and_info = self.config_manager.get_pipelines()
+        prompt_mappings = self._prepare_prompts(base_dir, pipelines_and_info, enabled_services)
         
         # Prepare main configuration file
-        self._prepare_config_file(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity, **kwargs)
+        self._prepare_config_files(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity, **kwargs)
         
         # Prepare service-specific files
         if compose_config.get_service('grafana').enabled:
+            # DEAL WITH THESE FUNCTIONS LAST
             self._prepare_grafana_files(base_dir, a2rchi_config, compose_config.name, secrets_manager, **kwargs)
         
         if compose_config.get_service('grader').enabled:
+            # DEAL WITH THESE FUNCTIONS LAST
             self._prepare_grader_files(base_dir, a2rchi_config)
         
         # Prepare PostgreSQL initialization
@@ -112,10 +99,21 @@ class TemplateManager:
         self._prepare_compose_file(base_dir, compose_config, a2rchi_config, **kwargs)
         
         # Copy web input lists if they exist
-        self._copy_web_input_lists(base_dir, a2rchi_config)
+        self.config_manager.get_input_lists()
+        self._copy_web_input_lists(base_dir, input_lists)
         
         # Copy source code
         self._copy_source_code(base_dir)
+        
+        if benchmarking:
+            query_file_dest = base_dir / "queries.txt"
+            shutil.copyfile(query_file, query_file_dest)
+
+            import yaml
+            git_info = get_git_information()
+            git_info_path = base_dir / "git_info.yaml"
+            with open(git_info_path, "w") as f:
+                yaml.dump(git_info, f)
     
     def _prepare_compose_file(self, base_dir: Path, compose_config, a2rchi_config: Dict[str, Any], **kwargs) -> None:
         """Prepare the Compose file - pure rendering with all data from compose_config"""
@@ -124,7 +122,8 @@ class TemplateManager:
         template_vars = compose_config.to_template_vars()
         
         # Add port configuration from registry
-        template_vars.update(self._extract_port_config(a2rchi_config, **kwargs))
+        port_config = self.config_manager.get_port_config()
+        template_vars.update(self._extract_port_config(port_config, **kwargs))
         
         # Add optional template variables
         template_vars.setdefault('prompt_files', [])
@@ -217,8 +216,8 @@ class TemplateManager:
             with open(file_path, "w") as f: 
                 yaml.dump(config, f)
 
-    # TODO: again make this support doing this for multiple files (or possibly make separate functions for multi)
-    def _prepare_config_file(self, base_dir: Path, a2rchi_config: Dict[str, Any], 
+    # TODO: here i just want the files to get templated and get filepath -> uuid mappings, then we copy into the context directory 
+    def _prepare_config_files(self, base_dir: Path, a2rchi_config: Dict[str, Any], 
                         prompt_mappings: Dict[str, str], verbosity: int, **kwargs) -> None:
         """Prepare the main A2RCHI configuration file with updated prompt paths"""
         import copy
@@ -257,13 +256,9 @@ class TemplateManager:
         with open(base_dir / "config.yaml", 'w') as f:
             f.write(config)
     
-    # TODO: fix this to support multiple configs
+    # TODO: read the prepare_configs comment above, we might remove or rework this entirely
     def _prepare_prompts(self, base_dir: Path, a2rchi_config: Dict[str, Any], enabled_services: List[str]) -> Dict[str, str]:
         """Prepare prompt files dynamically from pipeline configuration and return mappings"""
-        # Always create prompts directory for Docker build compatibility
-        prompts_path = base_dir / "prompts"
-        prompts_path.mkdir(exist_ok=True)
-        
         pipeline_names = a2rchi_config.get("a2rchi", {}).get("pipelines")
         if not pipeline_names:
             return {}
@@ -276,7 +271,8 @@ class TemplateManager:
 
         return prompt_mappings
     
-    # TODO: make this work with multiple configs
+    # TODO: ultimately the unique filepaths to a prompt file should be mapped to uuid and sent to the appropriate folder in the context config
+    # then have the docker files copy them into the container 
     def _copy_pipeline_prompts(self, base_dir: Path, prompts_config: Dict[str, Any]) -> Dict[str, str]:
         """Copy all prompt files defined in pipeline configuration and return mappings"""
         prompt_mappings = {}
@@ -319,7 +315,7 @@ class TemplateManager:
         
         return prompt_mappings
     
-    # TODO: we need this to work with multi configs as well ... (aggrgate config might be the move here unfortunately)
+    # TODO: the only thing that needs to be done here is we need to make the config manager pass the first model that it finds (maybe this gets fixed later)
     def _prepare_grafana_files(self, base_dir: Path, a2rchi_config: Dict[str, Any], deployment_name: str, secrets, **kwargs) -> None:
         """Prepare Grafana configuration files"""
         grafana_dir = base_dir / "grafana"
@@ -340,6 +336,7 @@ class TemplateManager:
             f.write(dashboards)
         
         # Prepare default dashboard
+        # TODO: HERE JUST PASS IN THE FIRST REQUIRED MODEL, ONE MODEL AT LEAST ALWAYS IS REQUIRED (figure out the logic in config manager for this)
         pipeline_name = a2rchi_config.get("a2rchi", {}).get("pipeline")
         pipeline_config = a2rchi_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {}) if pipeline_name else {}
         models_config = pipeline_config.get("models", {})
@@ -359,7 +356,7 @@ class TemplateManager:
         with open(grafana_dir / "grafana.ini", 'w') as f:
             f.write(config)
     
-    # TODO: AGAIN this should only run if the grader service is enabled in  the first place
+    # TODO: dont pass in a2rchi config, just have the config manager handle getting the appropriate info
     def _prepare_grader_files(self, base_dir: Path, a2rchi_config: Dict[str, Any]) -> None:
         """Prepare grader-specific files"""
         grader_config = a2rchi_config.get('interfaces', {}).get('grader_app', {})
@@ -396,24 +393,22 @@ class TemplateManager:
         with open(base_dir / "init.sql", 'w') as f:
             f.write(init_sql)
     
-    # TODO: fix tf out of this, make this something that gets dealt with at the service level this should only run if 
-    # the grader service is even enabled in the first place
+    # TODO: again, make the config manager handle this, luckily this should all be static so the config manager can just easily hand back the info
+    # we need here
     def _get_grader_rubrics(self, a2rchi_config: Dict[str, Any]) -> List[str]:
         """Get list of rubric files for grader service"""
         grader_config = a2rchi_config.get('interfaces', {}).get('grader_app', {})
         num_problems = grader_config.get('num_problems', 1)
         return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
     
-    # TODO: here it really makes sense to do a multi config
-    def _copy_web_input_lists(self, base_dir: Path, a2rchi_config: Dict[str, Any]) -> None:
+    # This was already handled it, take it as an example of what our config manager should be doing
+    def _copy_web_input_lists(self, base_dir: Path, input_lists: List | None ) -> None:
         """Copy web input lists if they exist"""
-        # Always create weblists directory for Docker build compatibility
+        if input_lists is None:
+            return
+        
         weblists_path = base_dir / "weblists"
         weblists_path.mkdir(exist_ok=True)
-        
-        input_lists = a2rchi_config.get("data_manager", {}).get("input_lists", [])
-        if not input_lists:
-            return
         
         for input_list in input_lists:
             if os.path.exists(input_list):

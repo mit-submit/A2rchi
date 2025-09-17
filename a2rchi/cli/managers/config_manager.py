@@ -113,7 +113,13 @@ class ConfigurationManager:
             prompt_configs.append(pipeline_config.get("prompts", {}))
 
         return prompt_configs
+
+    def get_embedding_name(self):
+        return self.config.get("data_manager", {}).get("embedding_name", "")
     
+    def get_using_sso(self):
+        return self.config.get("utils", {}).get("sso", {}).get("enabled", False)        
+
     def get_interface_config(self, interface_name: str) -> Dict[str, Any]:
         """Get configuration for a specific interface"""
         return self.config.get("interfaces", {}).get(interface_name, {})

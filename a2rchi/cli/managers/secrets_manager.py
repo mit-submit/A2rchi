@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 class SecretsManager:
     """Manages secret loading and validation using .env files"""
 
-    def __init__(self, env_file_path: str = None, config_manager = None):
+    def __init__(self, env_file_path: str = None, config_manager = None, multi: bool = False):
         if not env_file_path:
             raise ValueError("Environment filepath is required")
         
@@ -22,6 +22,7 @@ class SecretsManager:
         self.registry = service_registry
         self.secrets = self._load_env_file()
 
+        self.multi = multi
         self.config_manager = config_manager
 
     def _load_env_file(self) -> None:
@@ -56,9 +57,10 @@ class SecretsManager:
         embedding_secrets = self._extract_embedding_secrets()
         required_secrets.update(embedding_secrets)
 
-        config = self.config_manager.get_config()
+        using_sso = self.config_manager.get_using_sso()
+
         # SSO
-        if config.get("utils", {}).get("sso", {}).get("enabled", False):
+        if using_sso:
             required_secrets.update(["SSO_USERNAME", "SSO_PASSWORD"])
 
         # jira
@@ -100,12 +102,11 @@ class SecretsManager:
     def _extract_embedding_secrets(self) -> Set[str]:
         """Extract required secrets for embedding models"""
         embedding_secrets = set()
-        config = self.config_manager.get_config()
-        embedding_name = config.get("data_manager", {}).get("embedding_name", "")
-        
+        embedding_name = self.config_manager.get_embedding_name()
+
         if "OpenAI" in embedding_name:
             embedding_secrets.add("OPENAI_API_KEY")
-        elif "HuggingFace" in embedding_name:
+        if "HuggingFace" in embedding_name:
             logger.warning("You are using an embedding model from HuggingFace; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
         
         return embedding_secrets

@@ -1,4 +1,5 @@
-from a2rchi.cli.managers.benchmarking_config_manager import BenchmarkingConfigManager
+from a2rchi.cli.managers.multi_config_manager import MultiConfigManager
+from a2rchi.cli.managers.multi_template_manager import MultiTemplateManager
 from a2rchi.cli.managers.config_manager import ConfigurationManager
 from a2rchi.cli.managers.deployment_manager import DeploymentManager
 from a2rchi.cli.managers.secrets_manager import SecretsManager
@@ -72,12 +73,15 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         handle_existing_deployment(base_dir, name, force, dry, other_flags.get('podman', False))
         
         # Initialize managers
-        config_manager = ConfigurationManager(config_file)
+        config_manager = MultiConfigManager(config_file)
         secrets_manager = SecretsManager(env_file, config_manager)
         
         # Validate configuration and secrets
-        a2rchi_config = config_manager.get_config()
+        # a2rchi_config = config_manager.get_config() ALL CONFIG MANAGER STUFF SHOULD BE DEALT WITH BY CONFIG MANAGER
+
+        # TODO: this function still has to be made  
         required_fields = config_manager.get_required_fields_for_services(enabled_services)
+
         if required_fields:
             config_manager.validate_config(required_fields)
         logger.info("Configuration validated successfully")
@@ -105,7 +109,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
             return
         
         # Actual deployment
-        template_manager = TemplateManager(env)
+        template_manager = MultiTemplateManager(env)
         base_dir.mkdir(parents=True, exist_ok=True)
         
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
@@ -113,6 +117,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config)
         
+        # again we should only be passing in the config manager here 
         template_manager.prepare_deployment_files(compose_config, a2rchi_config, secrets_manager, **other_flags)
         
         deployment_manager = DeploymentManager(compose_config.use_podman)
@@ -330,8 +335,6 @@ def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_fil
         base_dir.mkdir(parents=True, exist_ok=True)
         
         # make the additional files needed for evaluation
-
-
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
 
         volume_manager = VolumeManager(compose_config.use_podman)
