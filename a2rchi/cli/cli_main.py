@@ -35,7 +35,8 @@ def cli():
 
 @click.command()
 @click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
-@click.option('--config', '-c', 'config_file', type=str, required=True, help="Path to .yaml a2rchi configuration")
+@click.option('--config', '-cf', 'config_files', type=str, help="Path to .yaml a2rchi configuration")
+@click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with secrets")
 @click.option('--services', '-s', callback=parse_services_option, 
               help="Comma-separated list of services")
@@ -48,9 +49,17 @@ def cli():
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
-def create(name: str, config_file: str, env_file: str, services: list, sources: list, 
+def create(name: str, config_files: str, config_dir: str,  env_file: str, services: list, sources: list, 
            force: bool, dry: bool, verbosity: int, **other_flags):
     """Create an A2RCHI deployment with selected services and data sources."""
+
+    if not (bool(config_files) ^ bool(config_dir)): 
+        raise click.ClickException(f"Must specify only one of config files or config dir")
+    if config_dir: 
+        config_path = Path(config_dir)
+        configs = [Path(item) for item in config_path.iterdir() if item.is_file()]
+    else: 
+        configs = [Path(item) for item in config_files.split(",")]
 
     print("Starting A2RCHI deployment process...")
     setup_cli_logging(verbosity=verbosity)
@@ -66,26 +75,21 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         
         # Log deployment info and dependency resolution
         log_deployment_start(name, services, sources, dry)
-        log_dependency_resolution(services, enabled_services)
+        added_services = log_dependency_resolution(services, enabled_services)
+        enabled_services += list(added_services)
+
         
         # Handle existing deployment
         base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
         handle_existing_deployment(base_dir, name, force, dry, other_flags.get('podman', False))
         
         # Initialize managers
-        config_manager = MultiConfigManager(config_file)
+        logger.info(f"current enabled services: {enabled_services}")
+        gpu = other_flags.get("gpu-ids") != None
+        config_manager = MultiConfigManager(configs, enabled_services, gpu, env)
+        logger.info("Configuration validated successfully")
         secrets_manager = SecretsManager(env_file, config_manager)
         
-        # Validate configuration and secrets
-        # a2rchi_config = config_manager.get_config() ALL CONFIG MANAGER STUFF SHOULD BE DEALT WITH BY CONFIG MANAGER
-
-        # TODO: this function still has to be made  
-        required_fields = config_manager.get_required_fields_for_services(enabled_services)
-
-        if required_fields:
-            config_manager.validate_config(required_fields)
-        logger.info("Configuration validated successfully")
-
         required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services))
         secrets_manager.validate_secrets(required_secrets)
         logger.info(f"Required secrets validated: {', '.join(sorted(required_secrets))}")
@@ -99,7 +103,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
             enabled_services=enabled_services, secrets=all_secrets,
             **other_flags
         )
-        
+
         # Handle dry run
         if dry:
             service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
@@ -109,7 +113,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
             return
         
         # Actual deployment
-        template_manager = MultiTemplateManager(env)
+        template_manager = MultiTemplateManager(env, config_manager)
         base_dir.mkdir(parents=True, exist_ok=True)
         
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
@@ -118,7 +122,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         volume_manager.create_required_volumes(compose_config)
         
         # again we should only be passing in the config manager here 
-        template_manager.prepare_deployment_files(compose_config, a2rchi_config, secrets_manager, **other_flags)
+        template_manager.prepare_deployment_files(compose_config, secrets_manager, **other_flags)
         
         deployment_manager = DeploymentManager(compose_config.use_podman)
         deployment_manager.start_deployment(base_dir)
@@ -126,7 +130,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         # Log success
         service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
                                if s in service_registry.get_all_services()]
-        log_deployment_success(name, service_only_resolved, services, a2rchi_config)
+        log_deployment_success(name, service_only_resolved, services, config_manager)
         
     except Exception as e:
         if verbosity >= 4:
@@ -313,7 +317,7 @@ def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_fil
                     f"Benchmarking runtime '{name}' already exists at {base_dir}"
                     )
 
-        config_manager = BenchmarkingConfigManager(config_dir, gpu)
+        config_manager = MultiConfigManager(config_dir, gpu)
         aggregate_config = config_manager.get_config()
         
         # the benchmarking config  manager is duck typed to look like a regular config manager so its chill
@@ -322,6 +326,7 @@ def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_fil
 
         other_flags['benchmarking'] = True
         other_flags['configs_path'] = Path(config_dir)
+        other_flags['query_file'] = query_file
         other_flags['benchmarking_dest'] = os.path.abspath(dest)
 
         compose_config = ServiceBuilder.build_compose_config(
@@ -331,6 +336,7 @@ def evaluate(name: str, config_dir: str, env_file: str, sources: list, query_fil
                 )
 
 
+        # change over to MultiTemplateManager when you later test this
         template_manager = TemplateManager(env)
         base_dir.mkdir(parents=True, exist_ok=True)
         

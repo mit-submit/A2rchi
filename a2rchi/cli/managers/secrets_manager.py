@@ -57,7 +57,7 @@ class SecretsManager:
         embedding_secrets = self._extract_embedding_secrets()
         required_secrets.update(embedding_secrets)
 
-        using_sso = self.config_manager.get_using_sso()
+        using_sso = self.config_manager.get_sso()
 
         # SSO
         if using_sso:
@@ -84,17 +84,13 @@ class SecretsManager:
 
         models_configs = self.config_manager.get_models_configs()
 
-        for models_config in models_configs:
-            for _ , section_models in models_config.items(): 
-                if not isinstance(section_models, dict):
-                    continue
-                for _ , model_name in section_models.items():
-                    if "OpenAI" in model_name:
-                        model_secrets.add("OPENAI_API_KEY")
-                    elif "Anthropic" in model_name:
-                        model_secrets.add("ANTHROPIC_API_KEY")
-                    elif "HuggingFace" in model_name or "Llama" in model_name or "VLLM" in model_name:
-                        logger.warning("You are using open source models; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
+        for model_name in models_configs: 
+            if "OpenAI" in model_name:
+                model_secrets.add("OPENAI_API_KEY")
+            elif "Anthropic" in model_name:
+                model_secrets.add("ANTHROPIC_API_KEY")
+            elif "HuggingFace" in model_name or "Llama" in model_name or "VLLM" in model_name:
+                logger.warning("You are using open source models; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
                 
         logger.debug(f"Required model secrets: {model_secrets}")
         return model_secrets

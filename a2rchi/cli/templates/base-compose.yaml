@@ -29,7 +29,8 @@ services:
       start_interval: 5s
   {%- endif %}
 
-  {% if postgres_enabled -%} postgres:
+  {% if postgres_enabled -%}
+  postgres:
     image: docker.io/postgres:16
     container_name: {{ postgres_container_name }}
     environment:
@@ -56,13 +57,13 @@ services:
   {%- endif %}
 
   # Application services (conditional)
-  {% if chatbot_enabled -%}
+  {% if chat_app_enabled -%}
   chatbot:
-    image: {{ chatbot_image }}:{{ chatbot_tag }}
+    image: {{ chat_app_image }}:{{ chat_app_tag }}
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if gpu_ids else '' }}
-    container_name: {{ chatbot_container_name }}
+    container_name: {{ chat_app_container_name }}
     depends_on:
       {% if chromadb_enabled -%}
       chromadb:
@@ -94,7 +95,7 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - {{ chatbot_volume_name }}:/root/data/
+      - {{ chat_app_volume_name }}:/root/data/
       - ./config.yaml:/root/A2rchi/config.yaml
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
@@ -106,7 +107,7 @@ services:
       options:
         max-size: 10m
     ports:
-      - {{ chatbot_port_host }}:{{ chatbot_port_container }}
+      - {{ chat_app_port_host }}:{{ chat_app_port_container }}
     restart: always
     {% if host_mode -%}
     network_mode: host
@@ -490,7 +491,7 @@ services:
     {%- endif %}
   {%- endif %}
 
-  {% if benchmarking -%}
+  {% if benchmarking_enabled -%}
   benchmark:
     image: {{ benchmarking_image }}:{{ benchmarking_tag }}
     build:

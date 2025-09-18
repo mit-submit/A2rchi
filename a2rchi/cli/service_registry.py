@@ -84,7 +84,7 @@ class ServiceRegistry:
         
         # Application services
         self.register(ServiceDefinition(
-            name='chatbot',
+            name='chat_app',
             description='Interactive chat interface for users to communicate with the AI agent',
             category='application',
             requires_volume=True,

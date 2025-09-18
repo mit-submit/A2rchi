@@ -58,7 +58,7 @@ class ComposeConfig:
         self.services = {
             'chromadb': ServiceConfig(),
             'postgres': ServiceConfig(),
-            'chatbot': ServiceConfig(),
+            'chat_app': ServiceConfig(),
             'grafana': ServiceConfig(),
             'uploader': ServiceConfig(),
             'grader': ServiceConfig(),
@@ -131,9 +131,11 @@ class ComposeConfig:
             'benchmarking_dest': self.benchmarking_dest
         }
         
+        print(f'CURRENT COMPOSE CONFIG VARS: {vars_dict}')
         # Add service configurations
         for name, service in self.services.items():
             vars_dict[name] = service.to_dict()
+            print(f'\n\n\n\n\n SERVICE: {name} ENABLED: {service.enabled}, \n DICTIONARY VALUES: {service.to_dict()}\n\n\n\n\n')
             
             # Add individual service template vars for backward compatibility
             if service.enabled:

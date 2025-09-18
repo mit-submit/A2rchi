@@ -74,40 +74,40 @@ class MultiTemplateManager:
     def prepare_deployment_files(self, compose_config, secrets_manager, **kwargs) -> None:
         """Prepare all necessary files for deployment"""
         base_dir = compose_config.base_dir
+        benchmarking = kwargs.pop('benchmarking', False)
 
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
 
-
-        pipelines_and_info = self.config_manager.get_pipelines()
-        prompt_mappings = self._prepare_prompts(base_dir, pipelines_and_info, enabled_services)
+        prompt_mappings = self._prepare_prompts(base_dir, self.config_manager)
         
         # Prepare main configuration file
-        self._prepare_config_files(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity, **kwargs)
+        self._prepare_config_files(base_dir, self.config_manager, prompt_mappings, compose_config.verbosity, **kwargs)
         
         # Prepare service-specific files
         if compose_config.get_service('grafana').enabled:
             # DEAL WITH THESE FUNCTIONS LAST
-            self._prepare_grafana_files(base_dir, a2rchi_config, compose_config.name, secrets_manager, **kwargs)
+            self._prepare_grafana_files(base_dir, self.config_manager, compose_config.name, secrets_manager, **kwargs)
         
         if compose_config.get_service('grader').enabled:
             # DEAL WITH THESE FUNCTIONS LAST
-            self._prepare_grader_files(base_dir, a2rchi_config)
+            self._prepare_grader_files(base_dir, self.config_manager)
         
         # Prepare PostgreSQL initialization
         self._prepare_postgres_init(base_dir, compose_config, secrets_manager)
         
         # Prepare Compose file
-        self._prepare_compose_file(base_dir, compose_config, a2rchi_config, **kwargs)
+        self._prepare_compose_file(base_dir, compose_config, self.config_manager, **kwargs)
         
         # Copy web input lists if they exist
-        self.config_manager.get_input_lists()
+        input_lists = self.config_manager.get_input_lists()
         self._copy_web_input_lists(base_dir, input_lists)
         
         # Copy source code
         self._copy_source_code(base_dir)
         
         if benchmarking:
+            query_file = kwargs.pop('query_file')
             query_file_dest = base_dir / "queries.txt"
             shutil.copyfile(query_file, query_file_dest)
 
@@ -122,6 +122,7 @@ class MultiTemplateManager:
         
         # Get template variables from compose config
         template_vars = compose_config.to_template_vars()
+        logger.info(f"\n\n\n\n\n IS THIS POS EVEN WORKING : {template_vars}  \n\n\n\n\n")
         
         # Add port configuration from registry
         service_configs = config_manager.get_service_configs()
@@ -186,8 +187,18 @@ class MultiTemplateManager:
         
         logger.debug(f"Received prompt_mappings: {prompt_mappings}")
         
-        # Update prompt paths with mappings
-        
+        # First write the base config over to the config.yaml
+        config_dir = base_dir / "configs"
+        config_dir.mkdir(parents=True, exist_ok=True)
+
+        config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
+        templated_base_config = config_template.render(verbosity=verbosity, **config_manager.base_config)
+
+        base_config_path = base_dir / "config.yaml" 
+        with open(base_config_path, "w") as f:
+            f.write(templated_base_config)
+
+        # Update prompt paths with mappings and copy configs to their folder
         import copy
         for file_path, config in config_manager.get_raw_configs():
             updated_config = copy.deepcopy(config)
@@ -197,16 +208,13 @@ class MultiTemplateManager:
                     pipeline_config = updated_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
                     prompts_config = pipeline_config.get("prompts", {})
                                     
-                    # TODO: FIX THIS
-                    # Update prompt paths in all sections
                     for section_name, section_prompts in prompts_config.items():
                         if not isinstance(section_prompts, dict):
                             continue
-                        for prompt_key in section_prompts.keys():
-                            if prompt_key in prompt_mappings:
-                                old_value = section_prompts[prompt_key]
-                                section_prompts[prompt_key] = prompt_mappings[prompt_key]
-                                logger.debug(f"Updated {prompt_key}: '{old_value}' -> '{prompt_mappings[prompt_key]}'")
+                        for prompt_key, raw_file_path in section_prompts.items():
+                            if raw_file_path in prompt_mappings:
+                                section_prompts[prompt_key]= f"prompts/{prompt_mappings[raw_file_path]}"
+                                logger.debug(f"Updated {prompt_key}: `{raw_file_path}` -> `{f'prompts/{prompt_mappings[raw_file_path]}'}`")
                             else:
                                 logger.error(f"Prompt_key '{prompt_key}' NOT found in mappings")
         
@@ -215,71 +223,53 @@ class MultiTemplateManager:
                 if config.get("services", {}).get("chromadb", {}).get("chromadb_external_port", None):
                     updated_config["services"]["chromadb"]["chromadb_port"] = config["services"]["chromadb"]["chromadb_external_port"]
 
-            config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             templated_config = config_template.render(verbosity=verbosity, **updated_config)
-                
-            config_path = base_dir / f"configs/{file_path.name}" 
+            config_path = config_dir / file_path.name
             with open(config_path, 'w') as f:
                 f.write(templated_config)
     
-    # TODO: FIX for multiple 
-    def _prepare_prompts(self, base_dir: Path, config_manager: MultiConfigManager ) -> Dict[str, str]:
-        """Prepare prompt files dynamically from pipeline configuration and return mappings"""
-        pipeline_names = a2rchi_config.get("a2rchi", {}).get("pipelines")
-        if not pipeline_names:
-            return {}
-        
+    def _prepare_prompts(self, base_dir: Path, config_manager: MultiConfigManager) -> Dict[str, str]:
+        """Create a prompt mapping and copy them all into the prompts folder"""
         # to implement this, I want prompt mappings to go Unique filepath -> uuid that it turns into later,
         # store each mapping
-        self._copy_pipeline_prompts(base_dir, prompts_config)
-
-        return prompt_mappings
-    
-    # TODO: ultimately the unique filepaths to a prompt file should be mapped to uuid and sent to the appropriate folder in the context config
-    # then have the docker files copy them into the container 
-    def _copy_pipeline_prompts(self, base_dir: Path, prompts_config: Dict[str, Any]) -> Dict[str, str]:
-        """Copy all prompt files defined in pipeline configuration and return mappings"""
+        
+        unique_file_paths = config_manager.get_unique_prompt_file_paths()
+        
         prompt_mappings = {}
 
-        # Process all sections (required, optional, etc.)
-        for _, section_prompts in prompts_config.items():            
-            if not isinstance(section_prompts, dict):
-                continue
-                
-            for prompt_key, prompt_path in section_prompts.items():
-                
-                if not prompt_path or prompt_path == 'null':
-                    continue
-                    
-                source_path = Path(prompt_path).expanduser()
-                if not source_path.exists():
-                    logger.warning(f"Prompt file not found: {prompt_path}")
-                    continue
-                
-                try:
-                    target_path = base_dir / "prompts" / source_path.name
-                    
-                    # Create directory if it doesn't exist
-                    target_path.parent.mkdir(parents=True, exist_ok=True)
+        for path in unique_file_paths:
+            prompt_mappings[path] = self._generate_random_string()
 
-                    shutil.copyfile(source_path, target_path)
-                    
-                    # Verify the file was actually copied
-                    if target_path.exists():
-                        logger.debug(f"Copied prompt: {source_path} -> {target_path}")
-                    else:
-                        logger.error(f"Copy failed - file does not exist: {target_path}")
-                        
-                except Exception as e:
-                    logger.error(f"Error copying {source_path} to {target_path}: {e}")
+        self._copy_pipeline_prompts(base_dir, prompt_mappings)
 
-                # Store mappings for config update
-                container_path = f"/root/A2rchi/prompts/{source_path.name}"
-                prompt_mappings[prompt_key] = container_path
-        
         return prompt_mappings
     
-    # TODO: the only thing that needs to be done here is we need to make the config manager pass the first model that it finds (maybe this gets fixed later)
+    def _copy_pipeline_prompts(self, base_dir: Path, prompt_mappings: Dict[str, str]):
+        """Copy all prompt files defined in pipeline configuration"""
+                
+        for prompt_path, mapping in prompt_mappings.items():
+            source_path = Path(prompt_path).expanduser()
+            if not source_path.exists():
+                logger.warning(f"Prompt file not found: {prompt_path}")
+                continue
+            
+            try:
+                target_path = base_dir / "prompts" / mapping
+                
+                # Create directory if it doesn't exist
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                shutil.copyfile(source_path, target_path)
+                
+                # Verify the file was actually copied
+                if target_path.exists():
+                    logger.debug(f"Copied prompt: {source_path} -> {target_path}")
+                else:
+                    logger.error(f"Copy failed - file does not exist: {target_path}")
+                    
+            except Exception as e:
+                logger.error(f"Error copying {source_path} to {target_path}: {e}")
+    
     def _prepare_grafana_files(self, base_dir: Path, config_manager: MultiConfigManager, deployment_name: str, secrets, **kwargs) -> None:
         """Prepare Grafana configuration files"""
         grafana_dir = base_dir / "grafana"
@@ -318,10 +308,10 @@ class MultiTemplateManager:
         with open(grafana_dir / "grafana.ini", 'w') as f:
             f.write(config)
     
-    # TODO: dont pass in a2rchi config, just have the config manager handle getting the appropriate info
-    def _prepare_grader_files(self, base_dir: Path, a2rchi_config: Dict[str, Any]) -> None:
+    def _prepare_grader_files(self, base_dir: Path, config_manager: MultiConfigManager) -> None:
         """Prepare grader-specific files"""
-        grader_config = a2rchi_config.get('services', {}).get('grader_app', {})
+        services_config = config_manager.get_service_configs()
+        grader_config = services_config.get('grader_app', {})
         
         # Prepare users.csv
         users_csv_dir = grader_config.get('local_users_csv_dir')
@@ -354,14 +344,6 @@ class MultiTemplateManager:
         
         with open(base_dir / "init.sql", 'w') as f:
             f.write(init_sql)
-    
-    # TODO: again, make the config manager handle this, luckily this should all be static so the config manager can 
-    # just easily hand back the info we need here
-    def _get_grader_rubrics(self, a2rchi_config: Dict[str, Any]) -> List[str]:
-        """Get list of rubric files for grader service"""
-        grader_config = a2rchi_config.get('interfaces', {}).get('grader_app', {})
-        num_problems = grader_config.get('num_problems', 1)
-        return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
     
     def _copy_web_input_lists(self, base_dir: Path, input_lists: List | None ) -> None:
         """Copy web input lists if they exist"""

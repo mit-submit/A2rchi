@@ -53,7 +53,7 @@ class ServiceBuilder:
             raise ValueError(
                 f"No services selected. Please select at least one service:\n\n"
                 f"Available services:\n{available_list}\n\n"
-                f"Example: a2rchi create --name mybot --config config.yaml --env-file .env --chatbot --grafana"
+                f"Example: a2rchi create --name mybot --config config.yaml --env-file .env --chat_app --grafana"
             )
         
         return enabled_services

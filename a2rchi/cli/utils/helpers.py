@@ -63,11 +63,11 @@ def validate_services_selection(services: List[str]) -> None:
         raise click.ClickException(
             f"No services selected. Please specify at least one service using --services.\n"
             f"Available services:\n{service_list}\n"
-            f"Example: --services chatbot,grafana"
+            f"Example: --services chat_app,grafana"
         )
 
 
-def log_dependency_resolution(services: List[str], enabled_services: List[str]) -> None:
+def log_dependency_resolution(services: List[str], enabled_services: List[str]) -> Set[str]:
     """Log which dependencies were auto-enabled"""
     resolved_services = service_registry.resolve_dependencies(enabled_services)
     service_only_resolved = [s for s in resolved_services if s in service_registry.get_all_services()]
@@ -76,6 +76,8 @@ def log_dependency_resolution(services: List[str], enabled_services: List[str]) 
         added_services = set(service_only_resolved) - set(services)
         if added_services:
             logger.info(f"Auto-enabling dependencies: {', '.join(added_services)}")
+        return added_services
+    return set("")
 
 
 def handle_existing_deployment(base_dir: Path, name: str, force: bool, dry: bool, 
@@ -128,7 +130,7 @@ def print_dry_run_summary(name: str, services: List[str], service_only_resolved:
     logger.info(f"[DRY RUN] Configuration and secrets are valid. Run without --dry to deploy.\n")
 
 
-def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any]) -> None:
+def show_service_urls(services: List[str], config_manager) -> None:
     """Show service URLs using registry configuration"""
     for service_name in services:
         if service_name not in service_registry.get_all_services():
@@ -140,7 +142,7 @@ def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any]) -> Non
             
         try:
             # Navigate config path to get port
-            config_value = a2rchi_config
+            config_value = config_manager.base_config
             for key in service_def.port_config_path.split('.'):
                 config_value = config_value[key]
                 
@@ -166,8 +168,8 @@ def log_deployment_start(name: str, services: List[str], sources: List[str], dry
 
 
 def log_deployment_success(name: str, service_only_resolved: List[str], services: List[str], 
-                          a2rchi_config: Dict[str, Any]) -> None:
+                          config_manager) -> None:
     """Log successful deployment and show service URLs"""
     print(f"A2RCHI deployment '{name}' created successfully!")
     print(f"Services running: {', '.join(service_only_resolved)}")
-    show_service_urls(services, a2rchi_config)
+    show_service_urls(services, config_manager)
