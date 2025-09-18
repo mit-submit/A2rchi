@@ -27,7 +27,7 @@ class Mailbox:
         self.mailbox = None
         self.user = user
         self.password = password
-        self.config = load_services_config()["mailbox"]
+        self.config = load_services_config()["redmine_mailbox"]
 
         # make sure to open the mailbox
         if self._verify():

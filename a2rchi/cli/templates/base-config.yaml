@@ -23,12 +23,11 @@ services:
     update_time: {{ services.piazza.update_time | default(60, true) }}
   mattermost:
     update_time: {{ services.mattermost.update_time | default(60, true) }}
-  redmine: 
-    redmine_update_time: {{ services.redmine.redmine_update_time | default(10, true) }}
-    answer_tag: {{ services.redmine.answer_tag | default('-- A2rchi -- Resolving email was sent', true) }}
-  mailbox: 
-    imap4_port: {{ services.mailbox.imap4_port | default(143, true) }}
-    mailbox_update_time: {{ services.mailbox.mailbox_update_time | default(10, true) }}
+  redmine_mailbox: 
+    redmine_update_time: {{ services.redmine_mailbox.redmine_update_time | default(10, true) }}
+    answer_tag: {{ services.redmine_mailbox.answer_tag | default('-- A2rchi -- Resolving email was sent', true) }}
+    imap4_port: {{ services.redmine_mailbox.imap4_port | default(143, true) }}
+    mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
   postgres:
     port: {{ services.postgres.port | default(5432, true) }}
     user: {{ services.postgres.user | default('a2rchi', true) }}
@@ -243,6 +242,8 @@ a2rchi:
   chain_update_time: {{ a2rchi.chain_update_time | default(10, true) }}
 
 utils:
+  redmine_mailbox: 
+    enabled: {{ utils.redmine_mailbox.enabled | default(false, true) }}
   sso:
     enabled: {{ utils.sso.enabled | default(false, true) }}
     sso_class: {{ utils.sso.sso_class | default('CERNSSOScraper', true) }}
@@ -259,6 +260,7 @@ utils:
     verify_urls: {{ utils.scraper.verify_urls | default(false, true) }}
     enable_warnings: {{ utils.scraper.enable_warnings | default(false, true) }}
   jira:
+    enabled: {{ utils.jira.enabled | default(false, true) }}
     url: {{ utils.jira.JIRA_URL }}
     projects: 
       {%- for project in utils.jira.JIRA_PROJECTS %}

@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 class RedmineClient():
     def __init__(self) -> None:
-            self.ANSWER_TAG = load_services_config()["redmine"]["answer_tag"]
+            self.ANSWER_TAG = load_services_config()["redmine_mailbox"]["answer_tag"]
             self.redmine_url = read_secret("REDMINE_URL")
             self.redmine_user = read_secret("REDMINE_USER")
             self.redmine_pw = read_secret("REDMINE_PW")

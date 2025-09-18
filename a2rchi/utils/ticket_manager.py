@@ -21,9 +21,11 @@ class TicketManager():
         self.jira_client = JiraClient()
         self.redmine_client = RedmineClient()
 
-    def run(self):
+    def run(self, redmine: bool, jira: bool):
         """
         Main function to run the TicketManager.
         """
-        self.jira_client.run(tickets_dir=self.tickets_dir)
-        self.redmine_client.run(tickets_dir=self.tickets_dir)
+        if jira: 
+            self.jira_client.run(tickets_dir=self.tickets_dir)
+        if redmine: 
+            self.redmine_client.run(tickets_dir=self.tickets_dir)

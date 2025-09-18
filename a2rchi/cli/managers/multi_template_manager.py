@@ -122,7 +122,6 @@ class MultiTemplateManager:
         
         # Get template variables from compose config
         template_vars = compose_config.to_template_vars()
-        logger.info(f"\n\n\n\n\n IS THIS POS EVEN WORKING : {template_vars}  \n\n\n\n\n")
         
         # Add port configuration from registry
         service_configs = config_manager.get_service_configs()
@@ -192,11 +191,6 @@ class MultiTemplateManager:
         config_dir.mkdir(parents=True, exist_ok=True)
 
         config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
-        templated_base_config = config_template.render(verbosity=verbosity, **config_manager.base_config)
-
-        base_config_path = base_dir / "config.yaml" 
-        with open(base_config_path, "w") as f:
-            f.write(templated_base_config)
 
         # Update prompt paths with mappings and copy configs to their folder
         import copy
@@ -223,10 +217,20 @@ class MultiTemplateManager:
                 if config.get("services", {}).get("chromadb", {}).get("chromadb_external_port", None):
                     updated_config["services"]["chromadb"]["chromadb_port"] = config["services"]["chromadb"]["chromadb_external_port"]
 
+
             templated_config = config_template.render(verbosity=verbosity, **updated_config)
             config_path = config_dir / file_path.name
             with open(config_path, 'w') as f:
                 f.write(templated_config)
+
+            # deal with the base config file we want it to still exist in the regular configs as well
+            if file_path == config_manager.base_file:
+                templated_base_config = config_template.render(verbosity=verbosity, **updated_config)
+
+                base_config_path = base_dir / "config.yaml" 
+                with open(base_config_path, "w") as f:
+                    f.write(templated_base_config)
+
     
     def _prepare_prompts(self, base_dir: Path, config_manager: MultiConfigManager) -> Dict[str, str]:
         """Create a prompt mapping and copy them all into the prompts folder"""

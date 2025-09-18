@@ -53,7 +53,7 @@ class A2rchi():
             **embedding_class_map[embedding_name]["kwargs"]
         )
         self.collection_name = dm_config["collection_name"] + "_with_" + embedding_name
-        self.use_HTTP_chromadb_client = dm_config["use_HTTP_chromadb_client"]
+        self.use_HTTP_chromadb_client = chroma_config["use_HTTP_chromadb_client"]
         self.chromadb_host = chroma_config["chromadb_host"]
         self.chromadb_port = chroma_config["chromadb_port"]
         self.local_vstore_path = chroma_config["local_vstore_path"]

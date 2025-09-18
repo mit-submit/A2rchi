@@ -31,6 +31,7 @@ class DataManager():
     def __init__(self):
 
         self.config = load_config(map=True)
+        
         self.global_config = load_config(map=True)["global"]
         self.data_path = self.global_config["DATA_PATH"]
         self.chroma_config = self.config['services']['chromadb']
@@ -47,7 +48,10 @@ class DataManager():
         # Fetch ticket data via APIs and copy onto the filesystem
         logger.info("Fetching ticket data onto filesystem")
         ticket_manager = TicketManager()
-        ticket_manager.run()
+        redmine = self.config['utils']['redmine_mailbox']['enabled']
+        jira = self.config['utils']['jira']['enabled']
+
+        ticket_manager.run(redmine, jira)
 
         # scrape data onto the filesystem
         logger.info("Scraping git documentation onto filesystem")

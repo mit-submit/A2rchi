@@ -23,7 +23,7 @@ password = read_secret('IMAP_PW')
 time.sleep(60)
 
 print("Starting Mailbox Service")
-mailbox_config = load_config()["services"]["mailbox"]
+mailbox_config = load_config()["services"]["redmine_mailbox"]
 redmine = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize A2rchi() class
 
 while True:

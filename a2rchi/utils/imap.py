@@ -6,7 +6,7 @@ from a2rchi.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-mailbox_config = load_services_config()["mailbox"]
+mailbox_config = load_services_config()["redmine_mailbox"]
 
 def get_charsets(msg):
     charsets = set({})
