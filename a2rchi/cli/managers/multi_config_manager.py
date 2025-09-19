@@ -15,6 +15,7 @@ I was originally trying to write with all class internals being functional, (not
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 from functools import reduce
+from pprint import pprint
 
 import yaml
 from a2rchi.utils.logging import get_logger
@@ -56,31 +57,35 @@ class MultiConfigManager:
         logger.debug(f'the following unique models were found: {self.unique_models_used}')
 
         # if the set made out of all these values is not 1, we have a mistmatch handle by raising an error
-        if len(set(static_config_values)) != 1: 
+        if len(set(map(tuple, static_config_values))) != 1:
+            baseline = static_config_values[0]
+
             mismatch = next(
                 (
                     (file_index, req_index)
                     for file_index, req_list in enumerate(static_config_values)
-                    for req_index, values in enumerate(req_list)
-                    if len(set(values)) != 1
+                    for req_index, (req_key, req_val) in enumerate(req_list)
+                    if req_val != baseline[req_index][1]
                 ),
                 None
             )
-            assert(mismatch is not None) # should not be possible if were in this if statement
+
+            assert mismatch is not None  # should not be possible if we're in this if
+
             failure_file = raw_configs[mismatch[0]][0]
-            failure_requirement = static_requirements[mismatch[1]] 
-            raise EnvironmentError(f"Necessarily Static values do not match across all files,\
-                    Failing in file {failure_file} on requirement: {failure_requirement}")
+            failure_requirement = static_requirements[mismatch[1]]
+
+            raise EnvironmentError(
+                f"Necessarily Static values do not match across all files, "
+                f"Failing in file {failure_file} on requirement: {failure_requirement}"
+            )
 
         # use the first raw config as the base for grabbing of static info
         self.base_file = self.raw_configs[0][0]
         self.base_config = self.raw_configs[0][1]
 
-        if 'benchmarking' not in enabled_services: 
-            enabled_set = set(enabled_services)
-        else: 
-            enabled_set = {'postgres', 'chromadb'}
-        self.service_configs = dict(filter(lambda kv: kv[0] in enabled_set, self.base_config.items()))
+        enabled_set = set(enabled_services)
+        self.service_configs = dict(filter(lambda kv: kv[0] in enabled_set, self.base_config.get('services', {}).items()))
 
         # handle the combination of input lists across all files to get copied in
         input_lists = [conf.get('data_manager', {}).get('input_lists', []) for _, conf in raw_configs]
@@ -145,13 +150,10 @@ class MultiConfigManager:
         global_static_requirements = [".".join(l) for l in global_configs_list]
 
         enabled_set = set(enabled_services)
-        if "benchmarking" not in enabled_set: 
-            service_configs = default_full_config.get('services', {})
-            enabled_service_configs = dict(filter(lambda kv: kv[0] in enabled_set, service_configs.items()))
-            enabled_services_list = self.get_all_keys(enabled_service_configs, path=('services',))
-            service_static_requirements = [".".join(l) for l in enabled_services_list] 
-        else:
-            service_static_requirements = []
+        service_configs = default_full_config.get('services', {})
+        enabled_service_configs = dict(filter(lambda kv: kv[0] in enabled_set, service_configs.items()))
+        enabled_services_list = self.get_all_keys(enabled_service_configs, path=('services',))
+        service_static_requirements = [".".join(l) for l in enabled_services_list] 
 
         return global_static_requirements + service_static_requirements
             

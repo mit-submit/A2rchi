@@ -43,7 +43,7 @@ class ComposeConfig:
     """Docker Compose configuration for template rendering"""
     
     def __init__(self, name: str, base_dir: Path, tag: str, use_podman: bool, 
-                 gpu_ids: Any, host_mode: bool, verbosity: int, benchmarking: bool = False, bench_out: str | None = None):
+                 gpu_ids: Any, host_mode: bool, verbosity: int, benchmarking: bool = False, bench_out: str | None = None, benchmarking_mode = "LINKS"):
         self.name = name
         self.base_dir = base_dir
         self.tag = tag
@@ -53,6 +53,7 @@ class ComposeConfig:
         self.verbosity = verbosity
         self.benchmarking = benchmarking
         self.benchmarking_dest = bench_out
+        self.benchmarking_mode = benchmarking_mode
         
         # Initialize all services as disabled
         self.services = {
@@ -127,11 +128,9 @@ class ComposeConfig:
             'use_jira': self.use_jira,
             'required_volumes': self.get_required_volumes(),
             'required_secrets': list(self._required_secrets),  # Use simplified secrets from CLI
-            'benchmarking': self.benchmarking,
-            'benchmarking_dest': self.benchmarking_dest
+            'benchmarking_mode': self.benchmarking_mode
         }
         
-        print(f'CURRENT COMPOSE CONFIG VARS: {vars_dict}')
         # Add service configurations
         for name, service in self.services.items():
             vars_dict[name] = service.to_dict()

@@ -507,6 +507,7 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
       container_name: {{ benchmarking_container_name }}
+      mode: {{ benchmarking_mode }}
     {% if gpu_ids and not use_podman -%}
     deploy:
       resources:
@@ -522,7 +523,6 @@ services:
       {% endfor %}
     volumes:
       - {{ benchmarker_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
       - ./queries.txt:/root/A2rchi/QandA.txt
       - {{ benchmarking_dest }}:/root/A2rchi/benchmarks
       {% for prompt_file in prompt_files | default([]) -%}

@@ -18,6 +18,10 @@ global:
 # global ROLES -> deleted 
 #
 services:
+  benchmarking: 
+    out_dir: {{ services.benchmarking.out_dir | default(".", true) }}
+    queries_path: {{ services.benchmarking.queries_path | default("queries", true) }}
+    mode: {{ services.benchmarking.mode | default("LINKS", true) }}
   piazza:
     network_id: {{ services.piazza.network_id }}
     update_time: {{ services.piazza.update_time | default(60, true) }}

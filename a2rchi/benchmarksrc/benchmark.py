@@ -10,7 +10,6 @@ from datasets import Dataset
 from pathlib import Path
 from datetime import datetime
 from pprint import pprint
-from jinja2 import Environment, PackageLoader, select_autoescape, ChainableUndefined
 
 import pandas as pd
 import os
@@ -19,16 +18,10 @@ import yaml
 import json
 import time
 
-env = Environment(
-    loader=PackageLoader("a2rchi.cli"),
-    autoescape=select_autoescape(),
-    undefined=ChainableUndefined,
-)
 
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 OUTPUT_PATH = "/root/A2rchi/benchmarks"
 EXTRA_METADATA_PATH = "/root/A2rchi/git_info.yaml"
-BASE_CONFIG_TEMPLATE = "base-config.yaml"
 OUTPUT_DIR = Path(OUTPUT_PATH)
 
 logger = get_logger(__name__)
@@ -43,7 +36,8 @@ class ResultHandler:
     @staticmethod
     def process_link_results(benchmark_name: str, config_path: Path, results: dict, accuracy: float):
         config_name = config_path.name
-        config = yaml.load(str(config_path), Loader=yaml.FullLoader)
+        with open(config_path, "r") as f: 
+            config = yaml.load(f, Loader=yaml.FullLoader)
 
         current_results = { f"{benchmark_name} - {config_name}" : { 
                        "results": results, 
@@ -57,21 +51,8 @@ class ResultHandler:
     @staticmethod
     def process_ragas_results(benchmark_name: str, config_path: Path, results: dict, ragas_results: pd.DataFrame):
         config_name = config_path.name
-        config = yaml.load(str(config_path), Loader=yaml.FullLoader)
-
-        current_results = { f"{benchmark_name} - {config_name}" : { 
-                       "results": results, 
-                       "accuracy": accuracy,
-                       "configuration used": config, 
-                       }
-                }
-
-        ResultHandler.results.update(current_results)
-
-    @staticmethod
-    def process_link_results(benchmark_name: str, config_path: Path, results: dict, accuracy: float):
-        config_name = config_path.name
-        config = yaml.load(str(config_path), Loader=yaml.FullLoader)
+        with open(config_path, "r") as f: 
+            config = yaml.load(f, Loader=yaml.FullLoader)
 
         current_results = { f"{benchmark_name} - {config_name}" : { 
                        "results": results, 
@@ -111,14 +92,14 @@ class Benchmarker:
         self.queries_to_answers = q_to_a 
         self.benchmark_name = os.environ['container_name']
         self.all_config_files = self.get_all_configs(configs)
+        self.all_config_files.append('FINISHED')
         self.previous_input_list = None
         self.chain = None 
         self.config = None 
         self.data_manager = None 
-        self.current_config = self.all_config_files[0]
+        self.current_config = None 
 
         self.load_new_configuration()
-
         self.data_path = self.config["global"]["DATA_PATH"]
 
         # self.config = load_config()
@@ -133,15 +114,14 @@ class Benchmarker:
         return all_paths
 
     def load_new_configuration(self):
-        with open(self.current_config, "r") as f:
-            small_config = yaml.load(f, Loader=yaml.FullLoader)
-            current_input_list = small_config['data_manager']['input_lists']
-            config_template = env.get_template(BASE_CONFIG_TEMPLATE)
-            config = config_template.render(**small_config)
-
         self.current_config = self.all_config_files.pop(0)
+        if self.current_config == 'FINISHED': return
+        with open(self.current_config, "r") as f:
+            config = yaml.safe_load(f)
+        current_input_list = config.get('data_manager', {}).get('input_lists', [])
+
         with open(CONFIG_PATH, 'w') as f: 
-            f.write(config)
+            yaml.dump(config, stream=f)
 
         if current_input_list != self.previous_input_list:
             del self.data_manager
@@ -154,7 +134,7 @@ class Benchmarker:
 
         # for now it only uses one pipeline (the first one) but maybe later we make this work for mulitple
         print(f"loaded new configuration: {self.current_config}")
-        pipeline = small_config.get('a2rchi').get('pipelines')[0]
+        pipeline = config.get('a2rchi').get('pipelines')[0]
 
         self.chain = A2rchi(pipeline) 
 
@@ -163,6 +143,7 @@ class Benchmarker:
         all_results = {}
         
         while self.all_config_files:
+            accuracy = 0.0
             for question, (link, _) in self.queries_to_answers.items(): 
                 question_id +=1
 
@@ -170,10 +151,10 @@ class Benchmarker:
 
                 formatted_question = [("User", question)]
                 start = time.perf_counter()
-                result = self.chain(formatted_question)
+                result = self.chain(history=formatted_question)
                 end = time.perf_counter()
 
-                sources =  result['source_documents']
+                sources =  result['documents']
 
                 chat_history = result.get('chat_history', "None")
                 if chat_history != "None": chat_history = stringify_history(chat_history)
@@ -207,10 +188,10 @@ class Benchmarker:
                     
                 dict_to_add["question"] = question
                 dict_to_add["correct_answer"] = link
-                dict_to_add["sources"] = [str(source) for source in sources] 
+                dict_to_add["documents"] = [str(source) for source in sources] 
                 dict_to_add["chat_history"] = chat_history
                 dict_to_add["chat_answer"] = result['answer']
-                # dict_to_add['document_scores'] = result['document_scores']
+                dict_to_add['document_scores'] = result['documents_scores']
                 dict_to_add["time_elapsed"] =  end - start
 
                 dict_to_add['links_returned'] = links_generated
@@ -220,9 +201,10 @@ class Benchmarker:
 
             accuracy = accuracy / question_id 
 
-            print("Results found: ")
-            pprint(all_results, indent = 4)
-            ResultHandler.process_link_results(self.benchmark_name, Path(CONFIG_PATH), all_results, accuracy)
+            #print("Results found: ")
+            #pprint(all_results, indent = 4)
+            print(f"current configs: {self.all_config_files}")
+            ResultHandler.process_link_results(self.benchmark_name, Path(self.current_config), all_results, accuracy)
             
             self.load_new_configuration()
         ResultHandler.add_metadata()
@@ -230,38 +212,43 @@ class Benchmarker:
     
     def run_with_ragas(self):
         all_results = []
+        to_add = {}
         
         while self.all_config_files:
             index = 0
             for question, (_, reference_answer) in self.queries_to_answers.items(): 
+                index +=1
                 formatted_question = [("User", question)]
-                result = self.chain(formatted_question)
+                start = time.perf_counter()
+                result = self.chain(history=formatted_question)
+                end = time.perf_counter()
 
-                sources =  result['source_documents']
+                sources =  result['documents']
                 contexts = [source.page_content for source in sources]
 
                 result = {
-                        "question": question,
-                        "contexts": contexts,
-                        "answer": result['answer'],
-                        "ground_truth": reference_answer,
+                        "question": [question],
+                        "contexts": [contexts],
+                        "answer": [result['answer']],
+                        "ground_truth": [reference_answer],
                         }
                 all_results.append(result)
+                result["time_elapsed"] = end - start
+                to_add[f"question_{index}"] = result
 
             data = Dataset.from_list(all_results)
             evaluation_results = evaluate(data)
             res = evaluation_results.to_pandas()
-            print("Results found: ")
+            print("Results found")
             res.to_csv(f"benchmarks/ragas_res{index}.csv", index=False)
             self.load_new_configuration
-            # ResultHandler.process_ragas_results(self.benchmark_name, Path(CONFIG_PATH), all_results, accuracy)
+            # ResultHandler.process_ragas_results(self.benchmark_name, Path(self.current_config), all_results, accuracy)
         # ResultHandler.dump(self.benchmark_name)
 
 if __name__ == "__main__":
-    assert(len(sys.argv) > 1) 
-    query_file = sys.argv[1]
-    configs_folder = Path(sys.argv[2])
-    
+    query_file = Path("QandA.txt") 
+    configs_folder = Path('configs')
+    mode = os.environ['mode']
 
     queries = []
     sep = " : "
@@ -274,7 +261,10 @@ if __name__ == "__main__":
 
             assert(len(working_list) == 3)
 
-            # map the question to the proposed      link          &  answer 
+            # map the question to the proposed      link          &  relevant answer 
             question_to_answer[working_list[0]] = (working_list[1],  working_list[2])
     benchmarker = Benchmarker(configs_folder, question_to_answer)
-    benchmarker.run_with_links() 
+    if mode == 'RAGAS':
+        benchmarker.run_with_ragas() 
+    else: 
+        benchmarker.run_with_links() 

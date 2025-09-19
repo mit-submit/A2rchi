@@ -23,6 +23,7 @@ RUN wget -q "https://github.com/mozilla/geckodriver/releases/download/v0.36.0/ge
 
 COPY a2rchi_code a2rchi
 COPY prompts prompts
+COPY configs configs
 COPY pyproject.toml pyproject.toml
 COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
