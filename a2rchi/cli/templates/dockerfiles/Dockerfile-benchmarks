@@ -33,4 +33,4 @@ RUN pip install --upgrade ragas langchain_openai
 
 RUN chmod g+rx /root; chmod -R g+w /root/A2rchi/a2rchi/interfaces
 
-CMD ["python", "-u", "a2rchi/benchmarksrc/keep_alive.py"] 
+CMD ["python", "-u", "a2rchi/benchmarksrc/benchmark.py"] 

@@ -128,6 +128,7 @@ class ComposeConfig:
             'use_jira': self.use_jira,
             'required_volumes': self.get_required_volumes(),
             'required_secrets': list(self._required_secrets),  # Use simplified secrets from CLI
+            'benchmarking_dest': self.benchmarking_dest,
             'benchmarking_mode': self.benchmarking_mode
         }
         

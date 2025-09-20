@@ -6,6 +6,7 @@ from a2rchi.utils.env import read_secret
 from a2rchi.chains.utils.history_utils import stringify_history
 
 from ragas import evaluate 
+from ragas.metrics import answer_relevancy, faithfulness, context_precision, context_recall
 from datasets import Dataset
 from pathlib import Path
 from datetime import datetime
@@ -13,7 +14,6 @@ from pprint import pprint
 
 import pandas as pd
 import os
-import sys
 import yaml
 import json
 import time
@@ -53,10 +53,18 @@ class ResultHandler:
         config_name = config_path.name
         with open(config_path, "r") as f: 
             config = yaml.load(f, Loader=yaml.FullLoader)
+        
+        answer_relevancy = ragas_results['answer_relevancy'].mean()
+        faithfulness = ragas_results['faithfulness'].mean()
+        context_precision = ragas_results['context_precision'].mean()
+        context_recall = ragas_results['context_recall'].mean()
 
         current_results = { f"{benchmark_name} - {config_name}" : { 
                        "results": results, 
-                       "accuracy": accuracy,
+                       "aggregate_answer_relevancy": answer_relevancy,
+                       "aggregate_faithfulness": faithfulness,
+                       "aggregate_context_precision": context_precision,
+                       "aggregate_context_recall": context_recall,
                        "configuration used": config, 
                        }
                 }
@@ -88,7 +96,6 @@ class ResultHandler:
 
 class Benchmarker: 
     def __init__(self, configs: Path, q_to_a: dict[str, str]):
-
         self.queries_to_answers = q_to_a 
         self.benchmark_name = os.environ['container_name']
         self.all_config_files = self.get_all_configs(configs)
@@ -101,9 +108,6 @@ class Benchmarker:
 
         self.load_new_configuration()
         self.data_path = self.config["global"]["DATA_PATH"]
-
-        # self.config = load_config()
-        # self.temp_init_function()
 
     def get_all_configs(self, configs_dir):
         all_paths = []
@@ -139,11 +143,11 @@ class Benchmarker:
         self.chain = A2rchi(pipeline) 
 
     def run_with_links(self):
-        question_id = 0
         all_results = {}
         
         while self.all_config_files:
             accuracy = 0.0
+            question_id = 0
             for question, (link, _) in self.queries_to_answers.items(): 
                 question_id +=1
 
@@ -209,15 +213,22 @@ class Benchmarker:
             self.load_new_configuration()
         ResultHandler.add_metadata()
         ResultHandler.dump(self.benchmark_name)
-    
+
+
+
     def run_with_ragas(self):
-        all_results = []
-        to_add = {}
-        
+        metrics_dict = {'answer_relevancy': answer_relevancy, 
+                        'faithfulness': faithfulness, 
+                        'context_precision': context_precision, 
+                        'context_recall': context_recall
+                        }
         while self.all_config_files:
-            index = 0
+            question_id = 0
+            all_results = []
+            to_add = {}
+
             for question, (_, reference_answer) in self.queries_to_answers.items(): 
-                index +=1
+                question_id +=1
                 formatted_question = [("User", question)]
                 start = time.perf_counter()
                 result = self.chain(history=formatted_question)
@@ -226,24 +237,36 @@ class Benchmarker:
                 sources =  result['documents']
                 contexts = [source.page_content for source in sources]
 
+
                 result = {
-                        "question": [question],
-                        "contexts": [contexts],
-                        "answer": [result['answer']],
-                        "ground_truth": [reference_answer],
+                        "question": question,
+                        "contexts": contexts,
+                        "answer": result['answer'],
+                        "ground_truth": reference_answer,
                         }
                 all_results.append(result)
                 result["time_elapsed"] = end - start
-                to_add[f"question_{index}"] = result
+                to_add[f"question_{question_id}"] = result
 
             data = Dataset.from_list(all_results)
-            evaluation_results = evaluate(data)
-            res = evaluation_results.to_pandas()
-            print("Results found")
-            res.to_csv(f"benchmarks/ragas_res{index}.csv", index=False)
-            self.load_new_configuration
-            # ResultHandler.process_ragas_results(self.benchmark_name, Path(self.current_config), all_results, accuracy)
-        # ResultHandler.dump(self.benchmark_name)
+
+            res = pd.DataFrame()
+
+            # going one metric at a time prevents errors 
+            for metric_name, metric in metrics_dict.items():
+                evaluation_results = evaluate(data, metrics=[metric])
+                metric_results = evaluation_results.to_pandas()
+                res[metric_name] = metric_results[metric_name]
+
+            for question_idx, question in enumerate(to_add.values()):
+                for metric in metrics_dict.keys():
+                    question[metric] = res.at[question_idx, metric]
+
+            ResultHandler.process_ragas_results(self.benchmark_name, Path(self.current_config), to_add, res)
+            del data
+            del res
+            self.load_new_configuration()
+        ResultHandler.dump(self.benchmark_name)
 
 if __name__ == "__main__":
     query_file = Path("QandA.txt") 
