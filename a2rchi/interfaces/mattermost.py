@@ -53,7 +53,7 @@ class Mattermost:
 
         logger.info('Mattermost::INIT')
 
-        self.mattermost_config = load_config()["utils"].get("mattermost", None)
+        self.mattermost_config = load_config()["services"].get("mattermost", None)
         
         # mattermost webhook for reading questions/sending responses
         self.mattermost_url = 'https://mattermost.web.cern.ch/'

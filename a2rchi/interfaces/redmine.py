@@ -44,7 +44,7 @@ class RedmineAIWrapper:
         # postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.config["services"]["postgres"],
         }
         self.conn = None
         self.cursor = None

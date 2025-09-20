@@ -252,7 +252,8 @@ class TokenLimiter:
         )
 
         if orig_history_str:
-            pruned_inputs['history'] = history_utils.stringify_history(pruned_inputs['history'])
+
+            pruned_inputs['history'] = history_utils.stringify_history(pruned_inputs['history'], )
 
         return pruned_inputs
     

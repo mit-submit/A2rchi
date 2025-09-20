@@ -53,7 +53,7 @@ class ServiceBuilder:
             raise ValueError(
                 f"No services selected. Please select at least one service:\n\n"
                 f"Available services:\n{available_list}\n\n"
-                f"Example: a2rchi create --name mybot --config config.yaml --env-file .env --chatbot --grafana"
+                f"Example: a2rchi create --name mybot --config config.yaml --env-file .env --chat_app --grafana"
             )
         
         return enabled_services
@@ -70,13 +70,18 @@ class ServiceBuilder:
         podman = other_flags.get('podman', False)
         gpu_ids = other_flags.get('gpu_ids', None)
         host_mode = other_flags.get('hostmode', other_flags.get('host_mode', False))
+        benchmarking = other_flags.get('benchmarking', False)
+        benchmarking_dest = other_flags.get('benchmarking_dest', ".")
+        benchmarking_mode = other_flags.get('benchmarking_mode', "LINKS")
+
         
         # Resolve all dependencies using registry
         all_services = service_registry.resolve_dependencies(enabled_services)
         
         config = ComposeConfig(
             name=name, base_dir=base_dir, tag=tag, use_podman=podman,
-            gpu_ids=gpu_ids, host_mode=host_mode, verbosity=verbosity
+            gpu_ids=gpu_ids, host_mode=host_mode, verbosity=verbosity, benchmarking=benchmarking,
+            bench_out=benchmarking_dest, benchmarking_mode = benchmarking_mode
         )
         
         # Store required secrets
@@ -108,6 +113,7 @@ class ServiceBuilder:
             volume_name = service_def.get_volume_name(name)
             if volume_name:
                 service_config['volume_name'] = volume_name
+            
             
             # Add port configuration
             if service_def.default_host_port:

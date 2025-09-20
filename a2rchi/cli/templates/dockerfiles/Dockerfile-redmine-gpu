@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY a2rchi_code a2rchi
 COPY prompts prompts
+COPY configs configs
 COPY pyproject.toml pyproject.toml
 COPY weblists weblists
 RUN pip install --upgrade pip && pip install .

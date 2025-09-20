@@ -70,7 +70,7 @@ class ServiceRegistry:
             requires_volume=True,
             auto_enable=True,
             default_host_port=8000,
-            port_config_path='data_manager.chromadb_external_port'
+            port_config_path='chromadb'
         ))
         
         self.register(ServiceDefinition(
@@ -84,7 +84,7 @@ class ServiceRegistry:
         
         # Application services
         self.register(ServiceDefinition(
-            name='chatbot',
+            name='chat_app',
             description='Interactive chat interface for users to communicate with the AI agent',
             category='application',
             requires_volume=True,
@@ -92,7 +92,7 @@ class ServiceRegistry:
             required_secrets=[],
             default_host_port=7861,
             default_container_port=7861,
-            port_config_path='interfaces.chat_app'
+            port_config_path='chat_app'
         ))
         
         self.register(ServiceDefinition(
@@ -103,7 +103,7 @@ class ServiceRegistry:
             depends_on=['postgres'],
             required_secrets=['GRAFANA_PG_PASSWORD'],
             default_host_port=3000,
-            port_config_path='interfaces.grafana.external_port',
+            port_config_path='grafana.external_port',
             volume_name_pattern="a2rchi-grafana-{name}"
         ))
         
@@ -115,7 +115,7 @@ class ServiceRegistry:
             required_secrets=['FLASK_UPLOADER_APP_SECRET_KEY', 'UPLOADER_SALT'],
             default_host_port=5003,
             default_container_port=5001,
-            port_config_path='interfaces.uploader_app'
+            port_config_path='uploader_app'
         ))
         
         self.register(ServiceDefinition(
@@ -127,7 +127,7 @@ class ServiceRegistry:
             required_secrets=['ADMIN_PASSWORD'],
             default_host_port=7862,
             default_container_port=7861,
-            port_config_path='interfaces.grader_app'
+            port_config_path='grader_app'
         ))
         
         # Integration services
@@ -156,6 +156,14 @@ class ServiceRegistry:
                             'REDMINE_PW', 'REDMINE_PROJECT', 'SENDER_SERVER', 'SENDER_PORT', 
                             'SENDER_REPLYTO', 'SENDER_USER', 'SENDER_PW']
         ))
+
+        self.register(ServiceDefinition(
+            name='benchmarking',
+            depends_on=['chromadb', 'postgres'],
+            requires_volume=True, 
+            description='Benchmarking runtime, its not really a service but under the hood it will be',
+            category='benchmarking runtime', # not technically a service
+        ))
     
     def register(self, service_def: ServiceDefinition):
         """Register a new service definition"""
@@ -163,7 +171,7 @@ class ServiceRegistry:
     
     def get_service(self, name: str) -> ServiceDefinition:
         """Get service definition by name"""
-        if name not in self._services:
+        if name not in self._services.keys():
             raise ValueError(f"Unknown service: {name}")
         return self._services[name]
     
