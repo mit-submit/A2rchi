@@ -1,5 +1,5 @@
 from a2rchi.chains.a2rchi import A2rchi
-from a2rchi.utils.config_loader import load_config, CONFIG_PATH, get_config_names
+from a2rchi.utils.config_loader import load_config, CONFIGS_PATH, get_config_names
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
@@ -86,7 +86,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
         code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
 
-        if self.config["interfaces"]["chat_app"]["include_copy_button"]:
+        if self.config["services"]["chat_app"]["include_copy_button"]:
             button = """<button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>"""
         else: button = ""
         
@@ -112,6 +112,7 @@ class ChatWrapper:
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # initialize data manager
@@ -123,7 +124,7 @@ class ChatWrapper:
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -495,13 +496,14 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
-        self.chat_app_config = self.config["interfaces"]["chat_app"]
+        self.services_config = self.config["services"]
+        self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -580,9 +582,10 @@ class FlaskAppWrapper(object):
         is parsed and inserted into the `configs` table. Finally, the chat wrapper's
         config_id is updated.
         """
-        # parse config and write it out to CONFIG_PATH
+        # parse config and write it out to CONFIGS_PATH
         config_str = request.json.get('config')
-        with open(CONFIG_PATH, 'w') as f:
+        config_name = config_str['name']
+        with open(CONFIGS_PATH+f'{config_name}.yaml', 'w') as f:
             f.write(config_str)
 
         # parse prompts and write them to their respective locations
@@ -603,13 +606,14 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
-        self.chat_app_config = self.config["interfaces"]["chat_app"]
+        self.services_config = self.config["services"]
+        self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None

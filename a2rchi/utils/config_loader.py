@@ -2,25 +2,21 @@ import os
 import yaml
 
 # DEFINITIONS
-CONFIG_PATH = "/root/A2rchi/config.yaml"
+CONFIGS_PATH = "/root/A2rchi/configs/"
 
 def load_config(map: bool = False, name: str = None):
     """
-    Load the config.yaml file.
+    Load the configuration specified by name, or the first one by default.
     Optionally maps models to the corresponding class.
     """
 
-    with open(CONFIG_PATH, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-    
-    if name is not None:
-        extra_config = config['extra_configs'][name]
-        for pipeline_name in extra_config['pipelines']:
-            if pipeline_name in config['a2rchi']['pipelines']:
-                config['a2rchi']['pipeline_map'][pipeline_name].update(extra_config['pipeline_map'][pipeline_name])
-            else:
-                config['a2rchi']['pipelines'].append(pipeline_name)
-                config['a2rchi']['pipeline_map'].update({pipeline_name:extra_config['pipeline_map'][pipeline_name]})
+    if name is None:
+        default_path = CONFIGS_PATH + os.listdir(CONFIGS_PATH)[0]
+        with open(default_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+    else:
+        with open(CONFIGS_PATH+f"{name}.yaml", "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
 
     # change the model class parameter from a string to an actual class
     if map:
@@ -67,8 +63,13 @@ def load_global_config(name: str = None):
     This is assumed to be static.
     """
 
-    with open(CONFIG_PATH, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+    if name is None:
+        default_path = CONFIGS_PATH + os.listdir(CONFIGS_PATH)[0]
+        with open(default_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+    else:
+        with open(CONFIGS_PATH+f"{name}.yaml", "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["global"]
 
@@ -78,8 +79,13 @@ def load_utils_config(name: str = None):
     This is assumed to be static.
     """
 
-    with open(CONFIG_PATH, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+    if name is None:
+        default_path = CONFIGS_PATH + os.listdir(CONFIGS_PATH)[0]
+        with open(default_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+    else:
+        with open(CONFIGS_PATH+f"{name}.yaml", "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["utils"]
 
@@ -89,19 +95,39 @@ def load_data_manager_config(name: str = None):
     This is assumed to be static.
     """
 
-    with open(CONFIG_PATH, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+    if name is None:
+        default_path = CONFIGS_PATH + os.listdir(CONFIGS_PATH)[0]
+        with open(default_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+    else:
+        with open(CONFIGS_PATH+f"{name}.yaml", "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
 
     return config["data_manager"]
+
+def load_services_config(name: str = None):
+    """
+    Load the services part of the config.yaml file.
+    This is assumed to be static.
+    """
+
+    if name is None:
+        default_path = CONFIGS_PATH + os.listdir(CONFIGS_PATH)[0]
+        with open(default_path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+    else:
+        with open(CONFIGS_PATH+f"{name}.yaml", "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+
+    return config["services"]
 
 def get_config_names():
     """
     Gets the available configurations names.
     """
 
-    with open(CONFIG_PATH, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-    return list(config['extra_configs'].keys())
+    names = [n.replace('.yaml','') for n in os.listdir(CONFIGS_PATH)]
+    return names
 
 
 

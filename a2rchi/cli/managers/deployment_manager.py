@@ -3,6 +3,7 @@ from a2rchi.utils.logging import get_logger
 
 from pathlib import Path
 from typing import Tuple
+import os
 
 import shlex
 import subprocess

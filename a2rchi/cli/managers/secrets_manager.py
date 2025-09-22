@@ -1,5 +1,4 @@
 from a2rchi.cli.service_registry import service_registry
-from a2rchi.cli.managers.config_manager import ConfigurationManager
 from a2rchi.utils.logging import get_logger
 
 from dotenv import dotenv_values
@@ -45,8 +44,6 @@ class SecretsManager:
         """Determine required secrets based on configuration and enabled services"""
         required_secrets = set()
 
-        config = self.config_manager.get_config()
-
         # always required
         required_secrets.add("PG_PASSWORD")
 
@@ -58,9 +55,8 @@ class SecretsManager:
         embedding_secrets = self._extract_embedding_secrets()
         required_secrets.update(embedding_secrets)
 
-        config = self.config_manager.get_config()
         # SSO
-        if config.get("utils", {}).get("sso", {}).get("enabled", False):
+        if self.config_manager.get_sso():
             required_secrets.update(["SSO_USERNAME", "SSO_PASSWORD"])
 
         # jira
@@ -102,13 +98,14 @@ class SecretsManager:
     def _extract_embedding_secrets(self) -> Set[str]:
         """Extract required secrets for embedding models"""
         embedding_secrets = set()
-        config = self.config_manager.get_config()
-        embedding_name = config.get("data_manager", {}).get("embedding_name", "")
+        configs = self.config_manager.get_configs()
         
-        if "OpenAI" in embedding_name:
-            embedding_secrets.add("OPENAI_API_KEY")
-        elif "HuggingFace" in embedding_name:
-            logger.warning("You are using an embedding model from HuggingFace; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
+        for config in configs:
+            embedding_name = config.get("data_manager", {}).get("embedding_name", "")
+            if "OpenAI" in embedding_name:
+                embedding_secrets.add("OPENAI_API_KEY")
+            elif "HuggingFace" in embedding_name:
+                logger.warning("You are using an embedding model from HuggingFace; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
         
         return embedding_secrets
     
