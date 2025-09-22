@@ -127,7 +127,7 @@ class Benchmarker:
         with open(CONFIG_PATH, 'w') as f: 
             yaml.dump(config, stream=f)
 
-        if current_input_list != self.previous_input_list:
+        if ".".join(current_input_list) != ".".join(self.previous_input_list):
             del self.data_manager
             self.data_manager = DataManager()
             self.data_manager.update_vectorstore()
