@@ -497,6 +497,7 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-benchmarks{{ '-gpu' if gpu_ids else '' }}
+      restart: "no"
     container_name: {{ benchmarking_container_name }}
     environment:
       {% for secret in required_secrets | default([]) -%}

@@ -106,10 +106,13 @@ class Benchmarker:
         with open(CONFIG_PATH, 'w') as f: 
             yaml.dump(config, stream=f)
 
-        if ".".join(current_input_list) != ".".join(self.previous_input_list):
+        # for now we just reset the datamanager entirely every time,
+        # in the future we should add support for hot config swapping so 
+        # documents dont need to be reinputted unnecessarily
+        if self.data_manager:
             del self.data_manager
-            self.data_manager = DataManager()
-            self.data_manager.update_vectorstore()
+        self.data_manager = DataManager()
+        self.data_manager.update_vectorstore()
         self.previous_input_list = current_input_list
 
         del self.chain
