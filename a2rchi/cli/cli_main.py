@@ -54,8 +54,6 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         config_path = Path(config_dir)
         config_files = [item for item in config_path.iterdir() if item.is_file()]
 
-    print(config_files)
-
     print("Starting A2RCHI deployment process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)

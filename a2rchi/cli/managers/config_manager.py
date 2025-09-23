@@ -8,7 +8,6 @@ import yaml
 
 logger = get_logger(__name__)
 
-#TODO: this might change based on the base-config, hardcoding it for now
 static_fields = ['global','services']
 
 class ConfigurationManager:
@@ -49,10 +48,15 @@ class ConfigurationManager:
         else:
             previous_config = self.configs[-1]
 
+            #This does not assume the static_fields to be required 
             for static_field in static_fields:
-                if previous_config[static_field] != config[static_field]:
-                    raise ValueError(f"The field {static_field} must be consistent across all configurations.")
-                
+                if static_field in previous_config.keys():
+                    if not static_field in config.keys():
+                        raise ValueError(f"The field {static_field} must be present in all configurations.")
+                    
+                    if previous_config[static_field] != config[static_field]:
+                        raise ValueError(f"The field {static_field} must be consistent across all configurations.")
+
             self.configs.append(config)
     
     def _get_static_required_fields_for_services(self, services: List[str]) -> List[str]:
