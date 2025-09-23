@@ -507,7 +507,6 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
       container_name: {{ benchmarking_container_name }}
-      mode: {{ benchmarking_mode }}
     {% if gpu_ids and not use_podman -%}
     deploy:
       resources:

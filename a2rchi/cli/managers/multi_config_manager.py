@@ -176,7 +176,7 @@ class MultiConfigManager:
     
     def _get_values(self, config, static_requirements):
         """ get a list of the static requirements """
-        return tuple([(req, self._get_value(req, config)) for req in static_requirements])
+        return tuple((req, self._get_value(req, config)) for req in static_requirements)
 
     def _get_value(self, req, config):
         keys = req.split(".")
@@ -185,6 +185,8 @@ class MultiConfigManager:
             return obj.get(field) if isinstance(obj, dict) else None
 
         res = reduce(reducer, keys, config)
+        if isinstance(res, list): 
+            res = tuple(res)
         return res
 
     def _load_raw_config(self, file_path):

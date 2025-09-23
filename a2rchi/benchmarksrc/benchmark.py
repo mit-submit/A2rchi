@@ -11,6 +11,7 @@ from datasets import Dataset
 from pathlib import Path
 from datetime import datetime
 from pprint import pprint
+from typing import Dict, List, Any
 
 import pandas as pd
 import os
@@ -33,38 +34,16 @@ os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 class ResultHandler:
     results = {} 
 
+
     @staticmethod
-    def process_link_results(benchmark_name: str, config_path: Path, results: dict, accuracy: float):
+    def handle_results(benchmark_name: str, config_path: Path, results: Dict, total_results: Dict):
         config_name = config_path.name
         with open(config_path, "r") as f: 
             config = yaml.load(f, Loader=yaml.FullLoader)
 
         current_results = { f"{benchmark_name} - {config_name}" : { 
-                       "results": results, 
-                       "accuracy": accuracy,
-                       "configuration used": config, 
-                       }
-                }
-
-        ResultHandler.results.update(current_results)
-
-    @staticmethod
-    def process_ragas_results(benchmark_name: str, config_path: Path, results: dict, ragas_results: pd.DataFrame):
-        config_name = config_path.name
-        with open(config_path, "r") as f: 
-            config = yaml.load(f, Loader=yaml.FullLoader)
-        
-        answer_relevancy = ragas_results['answer_relevancy'].mean()
-        faithfulness = ragas_results['faithfulness'].mean()
-        context_precision = ragas_results['context_precision'].mean()
-        context_recall = ragas_results['context_recall'].mean()
-
-        current_results = { f"{benchmark_name} - {config_name}" : { 
-                       "results": results, 
-                       "aggregate_answer_relevancy": answer_relevancy,
-                       "aggregate_faithfulness": faithfulness,
-                       "aggregate_context_precision": context_precision,
-                       "aggregate_context_recall": context_recall,
+                       "single question results": results, 
+                       "total_results": total_results, 
                        "configuration used": config, 
                        }
                 }
@@ -100,7 +79,7 @@ class Benchmarker:
         self.benchmark_name = os.environ['container_name']
         self.all_config_files = self.get_all_configs(configs)
         self.all_config_files.append('FINISHED')
-        self.previous_input_list = None
+        self.previous_input_list = []
         self.chain = None 
         self.config = None 
         self.data_manager = None 
@@ -134,7 +113,8 @@ class Benchmarker:
         self.previous_input_list = current_input_list
 
         del self.chain
-        self.config = load_config()
+        self.config = config 
+        self.benchmarking_configs = config['services']['benchmarking']
 
         # for now it only uses one pipeline (the first one) but maybe later we make this work for mulitple
         print(f"loaded new configuration: {self.current_config}")
@@ -142,152 +122,161 @@ class Benchmarker:
 
         self.chain = A2rchi(pipeline) 
 
-    def run_with_links(self):
-        all_results = {}
+    def get_link_results(self, result: Dict, link):
+        res = {}
+        sources = result['documents']
+
+
+        with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
+            sources_to_links = yaml.load(file, Loader=yaml.FullLoader)
         
-        while self.all_config_files:
-            accuracy = 0.0
-            question_id = 0
-            for question, (link, _) in self.queries_to_answers.items(): 
-                question_id +=1
+        num_sources = len(sources)
 
-                dict_to_add = {}
+        match = False 
+        links_generated = []
+        for k in range(num_sources): 
+            document = sources[k]
+            document_source_hash = document.metadata['source']
+            if '/' in document_source_hash and '.' in document_source_hash:
+                document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
+            link_k = sources_to_links.get(document_source_hash, "NO LINK FOUND")
 
-                formatted_question = [("User", question)]
-                start = time.perf_counter()
-                result = self.chain(history=formatted_question)
-                end = time.perf_counter()
+            if link_k not in links_generated: 
+                links_generated += [link_k]
 
-                sources =  result['documents']
+            if link == link_k: 
+                match = True
 
-                chat_history = result.get('chat_history', "None")
-                if chat_history != "None": chat_history = stringify_history(chat_history)
-
-                with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
-                    sources_to_links = yaml.load(file, Loader=yaml.FullLoader)
-                
-                num_sources = len(sources)
-
-                match = False 
-                links_generated = []
-                for k in range(num_sources): 
-                    document = sources[k]
-                    document_source_hash = document.metadata['source']
-                    if '/' in document_source_hash and '.' in document_source_hash:
-                        document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
-                    link_k = sources_to_links.get(document_source_hash, "NO LINK FOUND")
-
-                    pass_flag = False
-                    if link_k not in links_generated: 
-                        links_generated += [link_k]
-                    else: 
-                        pass_flag = True
-                    if link == link_k: 
-                        match = True
-                        if not pass_flag: accuracy += 1
-
-                result_dict = {True: "LINK FOUND",
-                               False: "NOT FOUND"
-                               }
-                    
-                dict_to_add["question"] = question
-                dict_to_add["correct_answer"] = link
-                dict_to_add["documents"] = [str(source) for source in sources] 
-                dict_to_add["chat_history"] = chat_history
-                dict_to_add["chat_answer"] = result['answer']
-                dict_to_add['document_scores'] = result['documents_scores']
-                dict_to_add["time_elapsed"] =  end - start
-
-                dict_to_add['links_returned'] = links_generated
-                dict_to_add['result'] = result_dict[match]
-                all_results[f"question_{question_id}"] = dict_to_add
-
-
-            accuracy = accuracy / question_id 
-
-            #print("Results found: ")
-            #pprint(all_results, indent = 4)
-            print(f"current configs: {self.all_config_files}")
-            ResultHandler.process_link_results(self.benchmark_name, Path(self.current_config), all_results, accuracy)
+        result_dict = {True: "LINK FOUND",
+                       False: "NOT FOUND"
+                       }
             
-            self.load_new_configuration()
-        ResultHandler.add_metadata()
-        ResultHandler.dump(self.benchmark_name)
+        res["correct_link"] = link
+        res['links_returned'] = links_generated
+        res['link_result'] = result_dict[match]
 
+        return res, match
+         
+    def get_ragas_results(self, data, to_add):
+        """WARNING: this method modifies the to_add dictionary to add the relevant scores to the relevant questions"""
+        
+        all_metrics_dict = {
+                'answer_relevancy': answer_relevancy, 
+                'faithfulness': faithfulness, 
+                'context_precision': context_precision, 
+                'context_recall': context_recall
+                }
 
+        enabled_metrics = self.benchmarking_configs['mode_settings']['ragas_settings']['enabled_metrics']
 
-    def run_with_ragas(self):
-        metrics_dict = {'answer_relevancy': answer_relevancy, 
-                        'faithfulness': faithfulness, 
-                        'context_precision': context_precision, 
-                        'context_recall': context_recall
-                        }
-        while self.all_config_files:
+        metrics_dict = {k: v for k, v in all_metrics_dict.items() if k in enabled_metrics}
+                       
+        res = pd.DataFrame()
+
+        # going one metric at a time prevents errors 
+        for metric_name, metric in metrics_dict.items():
+            evaluation_results = evaluate(data, metrics=[metric])
+            metric_results = evaluation_results.to_pandas()
+            res[metric_name] = metric_results[metric_name]
+
+        for question_idx, question in enumerate(to_add.values()):
+            for metric in metrics_dict.keys():
+                question[metric] = res.at[question_idx, metric]
+
+        return res
+
+    def run(self):
+        modes_being_run = set(self.benchmarking_configs['modes'])
+
+        while self.all_config_files: 
             question_id = 0
-            all_results = []
-            to_add = {}
 
-            for question, (_, reference_answer) in self.queries_to_answers.items(): 
+            all_results = []
+
+            link_accuracy = 0.0 
+
+            # results for each questions
+            question_wise_results = {}
+
+            #results for all of the questions in this config
+            total_results = {}
+
+            for question, (link, reference_answer) in self.queries_to_answers.items(): 
                 question_id +=1
                 formatted_question = [("User", question)]
                 start = time.perf_counter()
                 result = self.chain(history=formatted_question)
                 end = time.perf_counter()
+                to_add = {}
 
                 sources =  result['documents']
                 contexts = [source.page_content for source in sources]
 
 
-                result = {
-                        "question": question,
-                        "contexts": contexts,
-                        "answer": result['answer'],
-                        "ground_truth": reference_answer,
-                        }
-                all_results.append(result)
-                result["time_elapsed"] = end - start
-                to_add[f"question_{question_id}"] = result
+                if "RAGAS" in modes_being_run:
+                    dataset_result = {
+                            "question": question,
+                            "contexts": contexts,
+                            "answer": result['answer'],
+                            "ground_truth": reference_answer,
+                            }
+                    all_results.append(dataset_result)
 
-            data = Dataset.from_list(all_results)
+                to_add["question"] = question
+                to_add["contexts"] = [str(source) for source in sources]
+                to_add["chat_answer"] = result['answer']
+                to_add["time_elapsed"] = end - start
+                to_add['document_scores'] = result['documents_scores']
+                to_add['ground_truth'] = reference_answer
 
-            res = pd.DataFrame()
+                if "LINKS" in modes_being_run: 
+                    link_info, match = self.get_link_results(result, link)
+                    to_add.update(link_info)
+                    if match: 
+                        link_accuracy += 1.0
 
-            # going one metric at a time prevents errors 
-            for metric_name, metric in metrics_dict.items():
-                evaluation_results = evaluate(data, metrics=[metric])
-                metric_results = evaluation_results.to_pandas()
-                res[metric_name] = metric_results[metric_name]
+                question_wise_results[f"question_{question_id}"] = to_add
 
-            for question_idx, question in enumerate(to_add.values()):
-                for metric in metrics_dict.keys():
-                    question[metric] = res.at[question_idx, metric]
+            if "RAGAS" in modes_being_run:
+                data = Dataset.from_list(all_results)
+                # were modifying final_addition here to add ragas results by question
+                ragas_results = self.get_ragas_results(data, question_wise_results)
 
-            ResultHandler.process_ragas_results(self.benchmark_name, Path(self.current_config), to_add, res)
-            del data
-            del res
+                answer_relevancy = ragas_results['answer_relevancy'].mean()
+                faithfulness = ragas_results['faithfulness'].mean()
+                context_precision = ragas_results['context_precision'].mean()
+                context_recall = ragas_results['context_recall'].mean()
+
+                
+                total_results['aggregate_answer_relevancy'] = answer_relevancy
+                total_results['aggregate_faithfulness'] = faithfulness
+                total_results['aggregate_context_precision'] = context_precision
+                total_results['aggregate_context_recall'] = context_recall
+
+            if "LINKS" in modes_being_run:
+                total_results['link_accuracy'] = link_accuracy / len(self.queries_to_answers)
+
+
+            ResultHandler.handle_results(self.benchmark_name, Path(self.current_config), question_wise_results, total_results)
             self.load_new_configuration()
+
+        ResultHandler.add_metadata()
         ResultHandler.dump(self.benchmark_name)
+        return
 
 if __name__ == "__main__":
+
     query_file = Path("QandA.txt") 
     configs_folder = Path('configs')
-    mode = os.environ['mode']
 
-    queries = []
-    sep = " : "
     question_to_answer = {}
 
-    with open(query_file, "r") as f:
-        for line in f:
-            l = line.strip()
-            working_list = l.split(sep)
+    with open(Path(query_file), "r") as f:
+        obj = json.load(f)
 
-            assert(len(working_list) == 3)
+    for d in obj: 
+        question_to_answer[d['question']] = (d['link'], d['answer']) 
 
-            # map the question to the proposed      link          &  relevant answer 
-            question_to_answer[working_list[0]] = (working_list[1],  working_list[2])
     benchmarker = Benchmarker(configs_folder, question_to_answer)
-    if mode == 'RAGAS':
-        benchmarker.run_with_ragas() 
-    else: 
-        benchmarker.run_with_links() 
+    benchmarker.run()
+    print("\n\nFINISHED RUNNING\n\n")

@@ -347,7 +347,6 @@ def evaluate(name: str, config_files: str, config_dir: str, env_file: str, sourc
         print(f"current service configs: {service_configs}")
         other_flags['query_file'] = service_configs['benchmarking'].get('queries_path', ".")
         other_flags['benchmarking_dest'] = os.path.abspath(service_configs['benchmarking'].get('out_dir', '.'))
-        other_flags['benchmarking_mode'] = service_configs['benchmarking'].get('mode', 'LINKS')
         other_flags['host_mode'] = False
 
         compose_config = ServiceBuilder.build_compose_config(
