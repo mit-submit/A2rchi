@@ -49,9 +49,6 @@ Here is an example configuration file which configures some specific settings fo
 ```yaml
 name: my_a2rchi
 
-global:
-  TRAINED_ON: "My data"  
-
 data_manager:
   input_lists:  
     - configs/miscellanea.list
@@ -76,8 +73,9 @@ a2rchi:
       kwargs:
         base_model: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
 
-interfaces:
+services:
   chat_app:
+    trained_on: "My data"
     HOSTNAME: "<your-hostname>" 
 ```
 
@@ -88,7 +86,6 @@ Here is a brief explanation of the parameters in the example configuration file:
 
 <ul>
   <li><code>name</code>: The name of your A2rchi deployment.</li>
-  <li><code>global:TRAINED_ON</code>: A brief description of the documents you are uploading to A2rchi.</li>
   <li><code>data_manager</code>: Settings related to data management, including:
     <ul>
       <li><code>input_lists</code>: A list of files containing links to be ingested.</li>
@@ -103,9 +100,13 @@ Here is a brief explanation of the parameters in the example configuration file:
       <li><code>model_class_map</code>: Mapping of model names to their classes and parameters.</li>
     </ul>
   </li>
-  <li><code>interfaces</code>: Settings for the services/interfaces, including:
+  <li><code>services</code>: Settings for the services/interfaces, including:
     <ul>
-      <li><code>chat_app</code>: Configuration for the chat application, including the hostname.</li>
+      <li><code>chat_app</code>: Configuration for the chat application, including the hostname.
+      <ul>
+      <li><code>trained_on</code>: A brief description of the documents you are uploading to A2rchi.</li>
+      </ul>
+      </li>
     </ul>
   </li>
 </ul>
@@ -147,10 +148,15 @@ a2rchi create --name my-a2rchi --config configs/my_config.yaml --podman -e .secr
 Here we specify:
 
 - `--name`: the name of your deployment
-- `--config`: the path to your configuration file
+- `--config`: the path to your configuration file OR
+- `--config-dir`: the path to the folder containing your configuration files
 - `--podman`: use `podman` for container management (`docker` is default)
 - `-e`: the path to your secrets
 - `--services`: the services to deploy (here we only deploy the `chatbot` service)
+
+#### A note about multiple configurations
+
+When multiple configurations are passed, it is expected that their `services` portion remains consistent, otherwise the deployment will fail. For now, the use case for multiple configurations is having different pipelines/prompts that can be changed dynamically via the chat app as well as having different benchmarking configurations.
 
 <details>
 <summary> Output Example</summary>
