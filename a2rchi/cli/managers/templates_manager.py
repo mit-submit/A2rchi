@@ -314,7 +314,7 @@ class TemplateManager:
             
         weblists_path = base_dir / "weblists"
         weblists_path.mkdir(exist_ok=True)
-        
+
         for input_list in input_lists:
             if os.path.exists(input_list):
                 shutil.copyfile(input_list, weblists_path / os.path.basename(input_list))

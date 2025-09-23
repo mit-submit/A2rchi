@@ -161,7 +161,7 @@ a2rchi:
       class: DumbLLM
       kwargs:
         sleep_time_mean: {{ a2rchi.model_class_map.DumbLLM.kwargs.sleep_time_mean | default(3, true) }}
-        filler: {{ a2rchi.model_class_map.DumbLLM.kwargs.filler | default('null', true) }}
+        filler: {{ a2rchi.model_class_map.DumbLLM.kwargs.filler | default('I am a dummy LLM response.', true) }}
     LlamaLLM:
       class: LlamaLLM
       kwargs:
