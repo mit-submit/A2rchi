@@ -1,7 +1,8 @@
 name: pr_preview_config
 
-global:
-  TRAINED_ON: "Dummy data for preview"
+services:
+  chat_app:
+    trained_on: "Dummy data for preview"
 
 data_manager:
   embedding_name: HuggingFaceEmbeddings
