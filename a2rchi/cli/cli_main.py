@@ -297,7 +297,6 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, source
     if config_dir: 
         config_path = Path(config_dir)
         config_files = [str(item) for item in config_path.iterdir() if item.is_file()]
-        print(f"THIS ARE THE CONFIGS YOU SPECIFIED: {config_files}")
     else: 
         config_files = [item for item in config_file.split(",")]
 
