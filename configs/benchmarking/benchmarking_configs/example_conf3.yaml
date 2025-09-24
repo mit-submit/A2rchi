@@ -30,7 +30,7 @@ a2rchi:
 
 services:
   benchmarking: 
-    queries_path: configs/benchmarking_configs/queries.json
+    queries_path: configs/benchmarking/queries.json
     out_dir: bench_out
     modes: 
       - "RAGAS"
