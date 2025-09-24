@@ -136,7 +136,8 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
 @click.option('--keep-files', is_flag=True, help="Keep deployment files (don't remove directory)")
 @click.option('--list', 'list_deployments', is_flag=True, help="List all available deployments")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
-def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int):
+@click.option('--podman', '-p', is_flag=True, default=False, help="specify if podman is being used")
+def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int, podman: bool):
     """
     Delete an A2RCHI deployment with the specified name.
     
@@ -165,7 +166,7 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
 
     try:
         # We don't know which tool was used to create it, so try to detect from files
-        deployment_manager = DeploymentManager(use_podman=False)  # Will try both tools
+        deployment_manager = DeploymentManager(use_podman=podman)  # Will try both tools
         
         # Handle list option
         if list_deployments:
