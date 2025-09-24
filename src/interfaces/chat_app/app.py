@@ -1,0 +1,978 @@
+import json
+import os
+import re
+import time
+from datetime import datetime
+from threading import Lock
+from typing import List
+from urllib.parse import urlparse
+
+import chromadb
+import mistune as mt
+import numpy as np
+import psycopg2
+import psycopg2.extras
+import yaml
+from chromadb.config import Settings
+from flask import jsonify, render_template, request
+from flask_cors import CORS
+from langchain_chroma.vectorstores import Chroma
+from pygments import highlight
+from pygments.formatters import HtmlFormatter
+from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
+                             HtmlLexer, JavaLexer, JavascriptLexer, JuliaLexer,
+                             MathematicaLexer, MatlabLexer, PythonLexer,
+                             TypeScriptLexer)
+
+from src.a2rchi.a2rchi import A2rchi
+from src.data_manager.data_manager import DataManager
+from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
+from src.utils.env import read_secret
+from src.utils.logging import get_logger
+from src.utils.sql import (SQL_INSERT_CONFIG, SQL_INSERT_CONVO,
+                           SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING,
+                           SQL_QUERY_CONVO)
+
+logger = get_logger(__name__)
+
+# DEFINITIONS
+QUERY_LIMIT = 10000 # max queries per conversation
+MAIN_PROMPT_FILE = "/root/A2rchi/main.prompt"
+CONDENSE_PROMPT_FILE = "/root/A2rchi/condense.prompt"
+SUMMARY_PROMPT_FILE = "/root/A2rchi/summary.prompt"
+
+
+class AnswerRenderer(mt.HTMLRenderer):
+    """
+    Class for custom rendering of A2rchi output. Child of mistune's HTMLRenderer, with custom overrides.
+    Code blocks are structured and colored according to pygment lexers
+    """
+    RENDERING_LEXER_MAPPING = {
+            "python": PythonLexer,
+            "java": JavaLexer,
+            "javascript": JavascriptLexer,
+            "bash": BashLexer,
+            "c++": CppLexer,
+            "cpp": CppLexer,
+            "c": CLexer,
+            "typescript": TypeScriptLexer,
+            "html": HtmlLexer,
+            "fortran" : FortranLexer,
+            "julia" : JuliaLexer,
+            "mathematica" : MathematicaLexer,
+            "matlab": MatlabLexer
+        }
+    
+    def __init__(self):
+        self.config = load_config()
+        super().__init__()
+
+    def block_text(self,text):
+         #Handle blocks of text (the negatives of blocks of code) and sets them in paragraphs
+         return f"""<p>{text}</p>"""
+
+    def block_code(self, code, info=None):
+        # Handle code blocks (triple backticks)
+        if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
+        code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
+
+        if self.config["services"]["chat_app"]["include_copy_button"]:
+            button = """<button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>"""
+        else: button = ""
+        
+        return f"""<div class="code-box">
+                <div class="code-box-header"> 
+                <span>{info}</span>{button}
+                </div>
+                <div class="code-box-body">{code_block_highlighted}
+                </div>
+                </div>"""
+        
+    def codespan(self, text):
+        # Handle inline code snippets (single backticks)
+        return f"""<code class="code-snippet">{text}</code>"""
+
+
+class ChatWrapper:
+    """
+    Wrapper which holds functionality for the chatbot
+    """
+    def __init__(self):
+        # load configs
+        self.config = load_config()
+        self.global_config = self.config["global"]
+        self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
+        self.data_path = self.global_config["DATA_PATH"]
+
+        # initialize data manager
+        self.data_manager = DataManager()
+        self.data_manager.update_vectorstore()
+        embedding_name = self.config["data_manager"]["embedding_name"]
+        self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
+
+        # store postgres connection info
+        self.pg_config = {
+            "password": read_secret("PG_PASSWORD"),
+            **self.services_config["postgres"],
+        }
+        self.conn = None
+        self.cursor = None
+
+        # initialize lock and chain
+        self.lock = Lock()
+        self.a2rchi = A2rchi(pipeline="QAPipeline")
+        self.number_of_queries = 0
+
+        # initialize config_id to be None
+        self.config_id = None
+
+    def update_config(self, config_id, config_name=None):
+        self.config_id = config_id
+        self.a2rchi.update(pipeline="QAPipeline",config_name=config_name)
+
+    @staticmethod
+    def convert_to_app_history(history):
+        """
+        Input: the history in the form of a list of tuples, where the first entry of each tuple is 
+        the author of the text and the second entry is the text itself (native A2rchi history format)
+
+        Output: the history in the form of a list of lists, where the first entry of each tuple is 
+        the author of the text and the second entry is the text itself 
+        """
+        return [list(entry) for entry in history]
+
+
+    @staticmethod
+    def format_code_in_text(text):
+        """
+        Takes in input plain text (the output from A2rchi); 
+        Recognizes structures in canonical Markdown format, and processes according to the custom renderer; 
+        Returns it formatted in HTML 
+        """
+        markdown = mt.create_markdown(renderer=AnswerRenderer())
+        try:
+            return markdown(text)
+        except: 
+             logger.info("Rendering error: markdown formatting failed")
+             return text
+        
+    def get_top_links(self, documents, scores):
+        """
+        Get the top links from the documents based on their scores.
+        """
+
+        # re-load the present list of sources
+        self.reload_links_db()
+
+        # don't assume the documents given by the pipeline are sorted
+        if scores:
+            sorted_indices = np.argsort(scores)
+            scores = [scores[i] for i in sorted_indices]
+            documents = [documents[i] for i in sorted_indices]
+
+        # prepare to show the best sources, if they have links
+        top_links, top_link_names, top_scores = [], [], []
+        if len(documents) > 0:
+            for i in range(5):
+                score = scores[i]
+                if score > self.similarity_score_reference: break # only show sources below a certain distance metric
+                source_hash = documents[i].metadata['source'] # only links have metadata['hash'] (?)
+                if '/' in source_hash and '.' in source_hash:
+                    source_hash = source_hash.split('/')[-1].split('.')[0]
+                    if source_hash in self.links_db: # only links have hashes in the sources.yaml (?)
+                        link = self.links_db[source_hash]
+                        parsed_link = urlparse(link)
+                        display_name = parsed_link.hostname
+                        if parsed_link.path and parsed_link.path != '/':
+                            first_path = parsed_link.path.strip('/').split('/')[0]
+                            display_name += f"/{first_path}"
+                        if link in top_links:
+                            continue # don't show the same link twice
+                        top_link_names.append(display_name)
+                        top_scores.append(score)
+                        top_links.append(link)
+
+        return top_links, top_link_names, top_scores
+        
+    @staticmethod
+    def format_links(top_links, top_link_names, top_scores):
+
+        _output = ""
+            
+        # Only show "Sources:" if there are any valid sources
+        if top_links:
+            _output += '<div style="margin-left: 2em;"><b>Sources:</b><br>'
+            _output += "<ul style='margin-left: 1em; padding-left: 0; list-style-type: disc;'>"
+            for score, link, display_name in zip(top_scores, top_links, top_link_names):
+                _output += (
+                    "<li style='margin-bottom: 0.2em; padding-bottom: 0; line-height: 1.2;'>"
+                    "<small>"
+                    f'<a href="{link}" target="_blank" rel="noopener noreferrer">{display_name}</a>'
+                    f" (score: {score:.2f})"
+                    "</small>"
+                    "</li>"
+                )
+            _output += "</ul>"
+            _output += "</div>"
+
+        return _output
+
+    def insert_feedback(self, feedback):
+        """
+        Insert feedback from user for specific message into feedback table.
+        """
+        # construct insert_tup (mid, feedback_ts, feedback, feedback_msg, incorrect, unhelpful, inappropriate)
+        insert_tup = (
+            feedback['message_id'],
+            feedback['feedback_ts'],
+            feedback['feedback'],
+            feedback['feedback_msg'],
+            feedback['incorrect'],
+            feedback['unhelpful'],
+            feedback['inappropriate'],
+        )
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_INSERT_FEEDBACK, insert_tup)
+        self.conn.commit()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+
+    def query_conversation_history(self, conversation_id):
+        """
+        Return the conversation history as an ordered list of tuples. The order
+        is determined by ascending message_id. Each tuple contains the sender and
+        the message content
+        """
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+
+        # query conversation history
+        self.cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
+        history = self.cursor.fetchall()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+        return history
+
+    def prepare_context_for_storage(self, source_documents, sources, scores):
+
+        num_retrieved_docs = len(source_documents)
+        context = ""
+        if num_retrieved_docs > 0:
+            for k in range(num_retrieved_docs):
+                document = source_documents[k]
+                document_source_hash = document.metadata['source']
+                if '/' in document_source_hash and '.' in document_source_hash:
+                    document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
+                link_k = "link not available"
+                if document_source_hash in sources:
+                    link_k = sources[document_source_hash]
+                multiple_newlines = r'\n{2,}'
+                content = re.sub(multiple_newlines, '\n', document.page_content)
+                # Safely get the score, use "N/A" if index is out of range
+                score_display = scores[k] if k < len(scores) else "N/A"
+                context += f"SOURCE {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {score_display}\n\n{content}\n\n\n\n"
+
+        return context
+
+    def insert_conversation(self, conversation_id, user_message, a2rchi_message, link, a2rchi_context, is_refresh=False) -> List[int]:
+        """
+        """
+        logger.debug("Entered insert_conversation.")
+
+        service = "Chatbot"
+        # parse user message / a2rchi message
+        user_sender, user_content, user_msg_ts = user_message
+        a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
+
+        # construct insert_tups
+        insert_tups = (
+            [
+                # (service, conversation_id, sender, content, context, ts)
+                (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, self.config_id),
+                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.config_id),
+            ]
+            if not is_refresh
+            else [
+                (service, conversation_id, a2rchi_sender, a2rchi_content, link, a2rchi_context, a2rchi_msg_ts, self.config_id),
+            ]
+        )
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONVO, insert_tups)
+        self.conn.commit()
+        message_ids = list(map(lambda tup: tup[0], self.cursor.fetchall()))
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+        return message_ids
+    
+    def insert_timing(self, message_id, timestamps):
+        """
+        Store timing info to understand response profile.
+        """
+        logger.debug("Entered insert_timing.")
+
+        # construct insert_tup
+        insert_tup = (
+            message_id, 
+            timestamps['client_sent_msg_ts'],
+            timestamps['server_received_msg_ts'],
+            timestamps['lock_acquisition_ts'],
+            timestamps['vectorstore_update_ts'],
+            timestamps['query_convo_history_ts'],
+            timestamps['chain_finished_ts'],
+            timestamps['a2rchi_message_ts'],
+            timestamps['insert_convo_ts'],
+            timestamps['finish_call_ts'],
+            timestamps['server_response_msg_ts'],
+            timestamps['server_response_msg_ts'] - timestamps['server_received_msg_ts']
+        )
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_INSERT_TIMING, insert_tup)
+        self.conn.commit()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+    def reload_links_db(self):
+        """
+        Load the sources.yaml file which contains the mapping from file hashes to links.
+        """
+        try:
+            with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
+                self.links_db = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            self.links_db = dict()
+
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
+        """
+        Execute the chat functionality.
+        """
+        # store timestamps for code profiling information
+        start_time = time.time()
+
+        timestamps = {}
+
+        self.lock.acquire()
+        timestamps['lock_acquisition_ts'] = datetime.now()
+        try:
+            # update vector store through data manager; will only do something if newwhere files have been added
+            logger.info("Acquired lock file update vectorstore")
+
+            self.data_manager.update_vectorstore()
+            timestamps['vectorstore_update_ts'] = datetime.now()
+
+        except Exception as e:
+            # NOTE: we log the error message but do not return here, as a failure
+            # to update the data manager does not necessarily mean A2rchi cannot
+            # process and respond to the message
+            logger.error(f"Failed to update vectorstore - {str(e)}")
+
+        finally:
+            self.lock.release()
+            logger.info("Released lock file update vectorstore")
+
+        try:
+            # convert the message to native A2rchi form (because javascript does not have tuples)
+            sender, content = tuple(message[0])
+
+            # TODO: incr. from 0?
+            # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
+            conversation_id = conversation_id or np.random.randint(100000, 999999)
+
+            # fetch history given conversation_id
+            history = self.query_conversation_history(conversation_id)
+            timestamps['query_convo_history_ts'] = datetime.now()
+
+            # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
+            if is_refresh:
+                while history[-1][0] == "A2rchi":
+                    _ = history.pop(-1)
+
+            # guard call to LLM; if timestamp from message is more than timeout secs in the past;
+            # return error=True and do not generate response as the client will have timed out
+            if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
+                return None, None, None, timestamps, 408
+
+            # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
+            if len(history) < QUERY_LIMIT:
+                history = history + [(sender, content)] if not is_refresh else history
+                self.update_config(config_id=self.config_id,config_name=config_name)
+                result = self.a2rchi(history=history, conversation_id=conversation_id)
+                timestamps['chain_finished_ts'] = datetime.now()
+            else:
+                # for now let's return a timeout error, as returning a different
+                # error message would require handling new message_ids param. properly
+                return None, None, None, timestamps, 500
+
+            # keep track of total number of queries and log this amount
+            self.number_of_queries += 1
+            logger.info(f"Number of queries is: {self.number_of_queries}")
+
+            # display answer
+            output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
+
+
+            # display sources that have links
+            documents = result.get("documents", [])
+            scores = result.get("documents_scores", [])
+            top_links, top_link_names, top_scores = self.get_top_links(documents, scores)
+            output += self.format_links(top_links, top_link_names, top_scores)
+
+            # message is constructed!
+            timestamps['a2rchi_message_ts'] = datetime.now()
+            
+            # write stuff to database
+            context = self.prepare_context_for_storage(documents, self.links_db, scores)
+
+            # and now finally insert the conversation
+            user_message = (sender, content, server_received_msg_ts)
+            a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
+            message_ids = self.insert_conversation(
+                conversation_id,
+                user_message,
+                a2rchi_message,
+                top_links[0] if top_links else "Link unavailable",
+                context,
+                is_refresh
+            )
+            timestamps['insert_convo_ts'] = datetime.now()
+
+        except Exception as e:
+            # NOTE: we log the error message and return here
+            logger.error(f"Failed to produce response: {e}", exc_info=True)
+            return None, None, None, timestamps, 500
+
+        finally:
+            if self.cursor is not None:
+                self.cursor.close()
+            if self.conn is not None:
+                self.conn.close()
+        
+        timestamps['finish_call_ts'] = datetime.now()
+
+        return output, conversation_id, message_ids, timestamps, None
+
+
+class FlaskAppWrapper(object):
+
+    def __init__(self, app, **configs):
+        logger.info("Entering FlaskAppWrapper")
+        self.app = app
+        self.configs(**configs)
+        self.config = load_config()
+        self.global_config = self.config["global"]
+        self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
+        self.chat_app_config = self.config["services"]["chat_app"]
+        self.data_path = self.global_config["DATA_PATH"]
+
+        # store postgres connection info
+        self.pg_config = {
+            "password": read_secret("PG_PASSWORD"),
+            **self.services_config["postgres"],
+        }
+        self.conn = None
+        self.cursor = None
+
+        # insert config
+        self.config_id = self.insert_config(self.config)
+
+        # create the chat from the wrapper
+        self.chat = ChatWrapper()
+        self.chat.update_config(self.config_id)
+
+        # enable CORS:
+        CORS(self.app)
+
+        # add endpoints for flask app
+        self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
+        self.add_endpoint('/', '', self.index)
+        self.add_endpoint('/terms', 'terms', self.terms)
+        self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
+        self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
+        self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
+        self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
+        self.add_endpoint('/api/get_configs', 'get_configs', self.get_configs, methods=["GET"])
+        
+        # conditionally add ChromaDB endpoints based on config
+        if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+            logger.info("Adding ChromaDB API endpoints (list_docs, search_docs)")
+            self.add_endpoint('/api/list_docs', 'list_docs', self.list_docs, methods=["GET"])
+            self.add_endpoint('/api/search_docs', 'search_docs', self.search_docs, methods=["POST"])
+        else:
+            logger.info("ChromaDB API endpoints disabled by config")
+
+    def health(self):
+        return jsonify({"status": "OK"}, 200)
+      
+    def configs(self, **configs):
+        for config, value in configs:
+            self.app.config[config.upper()] = value
+
+    def add_endpoint(self, endpoint = None, endpoint_name = None, handler = None, methods = ['GET'], *args, **kwargs):
+        self.app.add_url_rule(endpoint, endpoint_name, handler, methods = methods, *args, **kwargs)
+
+    def run(self, **kwargs):
+        self.app.run(**kwargs)
+
+    def insert_config(self, config):
+        # TODO: use config_name (and then hash of config string) to determine
+        #       if config already exists; if so, don't push new config
+
+        # parse config and config_name
+        config_name = self.config["name"]
+        config = yaml.dump(self.config)
+
+        # construct insert_tup
+        insert_tup = [
+            (config, config_name),
+        ]
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_CONFIG, insert_tup)
+        self.conn.commit()
+        config_id = list(map(lambda tup: tup[0], self.cursor.fetchall()))[0]
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+        return config_id
+
+    def update_config(self):
+        """
+        Updates the config used by A2rchi for responding to messages. The config
+        is parsed and inserted into the `configs` table. Finally, the chat wrapper's
+        config_id is updated.
+        """
+        # parse config and write it out to CONFIGS_PATH
+        config_str = request.json.get('config')
+        config_name = config_str['name']
+        with open(CONFIGS_PATH+f'{config_name}.yaml', 'w') as f:
+            f.write(config_str)
+
+        # parse prompts and write them to their respective locations
+        # TODO fix
+        main_prompt = request.json.get('main_prompt')
+        with open(MAIN_PROMPT_FILE, 'w') as f:
+            f.write(main_prompt)
+
+        condense_prompt = request.json.get('condense_prompt')
+        with open(CONDENSE_PROMPT_FILE, 'w') as f:
+            f.write(condense_prompt)
+
+        summary_prompt = request.json.get('summary_prompt')
+        with open(SUMMARY_PROMPT_FILE, 'w') as f:
+            f.write(summary_prompt)
+
+        # re-read config using load_config and update dependent variables
+        self.config = load_config()
+        self.global_config = self.config["global"]
+        self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
+        self.chat_app_config = self.config["services"]["chat_app"]
+        self.data_path = self.global_config["DATA_PATH"]
+
+        # store postgres connection info
+        self.pg_config = {
+            "password": read_secret("PG_PASSWORD"),
+            **self.services_config["postgres"],
+        }
+        self.conn = None
+        self.cursor = None
+
+        # insert config
+        self.config_id = self.insert_config(self.config)
+
+        # create the chat from the wrapper
+        self.chat = ChatWrapper()
+        self.chat.update_config(self.config_id)
+
+        return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
+    
+    def get_configs(self):
+        """
+        Gets the names of configs loaded in A2rchi.
+
+
+        Returns:
+            A json with a response list of the configs names
+        """
+
+        config_names = get_config_names()
+        return jsonify({'options':config_names}), 200
+
+
+    def get_chat_response(self):
+        """
+        Gets a response when prompted. Asks as an API to the main app, who's
+        functionality is carried through by javascript and html. Input is a 
+        requestion with
+
+            conversation_id: Either None or an integer
+            last_message:    list of length 2, where the first element is "User"
+                             and the second element contains their message.
+
+        Returns:
+            A json with a response (html formatted plain text string) and a
+            discussion ID (either None or an integer)
+        """
+        # compute timestamp at which message was received by server
+        start_time = time.time()
+        server_received_msg_ts = datetime.now()
+
+        # get user input and conversation_id from the request
+        message = request.json.get('last_message')
+        conversation_id = request.json.get('conversation_id')
+        config_name = request.json.get('config_name')
+        is_refresh = request.json.get('is_refresh')
+        client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
+        client_timeout = request.json.get('client_timeout') / 1000
+
+        # query the chat and return the results.
+        logger.debug("Calling the ChatWrapper()")
+        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout,config_name)
+
+        # handle errors
+        if error_code is not None:
+            output = (
+                jsonify({'error': 'client timeout'})
+                if error_code == 408
+                else jsonify({'error': 'server error; see chat logs for message'})
+            )
+            return output, error_code
+
+        # compute timestamp at which message was returned to client
+        timestamps['server_response_msg_ts'] = datetime.now()
+
+        # store timing info for this message
+        timestamps['server_received_msg_ts'] = server_received_msg_ts
+        timestamps['client_sent_msg_ts'] = datetime.fromtimestamp(client_sent_msg_ts)
+        self.chat.insert_timing(message_ids[-1], timestamps)
+
+        # otherwise return A2rchi's response to client
+        try:
+            response_size = len(response) if isinstance(response, str) else 0
+            logger.info(f"Generated Response Length: {response_size} characters")
+            json.dumps({'response': response})  # Validate JSON formatting
+        except Exception as e:
+            logger.error(f"JSON Encoding Error: {e}")
+            response = "Error processing response"
+
+        response_data = {
+            'response': response,
+            'conversation_id': conversation_id,
+            'a2rchi_msg_id': message_ids[-1],
+            'server_response_msg_ts': timestamps['server_response_msg_ts'].timestamp(),
+            'final_response_msg_ts': datetime.now().timestamp(),
+        }
+
+        end_time = time.time()
+        logger.info(f"API Response Time: {end_time - start_time:.2f} seconds")
+
+        return jsonify(response_data)
+
+    def index(self):
+        return render_template('index.html')
+
+    def terms(self):
+        return render_template('terms.html')
+
+    def like(self):
+        self.chat.lock.acquire()
+        logger.info("Acquired lock file")
+        try:
+            # Get the JSON data from the request body
+            data = request.json
+
+            # Extract the HTML content and any other data you need
+            message_id = data.get('message_id')
+
+            feedback = {
+                "message_id"   : message_id,
+                "feedback"     : "like",
+                "feedback_ts"  : datetime.now(),
+                "feedback_msg" : None,
+                "incorrect"    : None,
+                "unhelpful"    : None,
+                "inappropriate": None,
+            }
+            self.chat.insert_feedback(feedback)
+
+            response = {'message': 'Liked'}
+            return jsonify(response), 200
+
+        except Exception as e:
+            logger.error(f"Request failed: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
+        # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()
+            logger.info("Released lock file")
+
+            if self.chat.cursor is not None:
+                self.chat.cursor.close()
+            if self.chat.conn is not None:
+                self.chat.conn.close()
+
+    def dislike(self):
+        self.chat.lock.acquire()
+        logger.info("Acquired lock file")
+        try:
+            # Get the JSON data from the request body
+            data = request.json
+
+            # Extract the HTML content and any other data you need
+            message_id = data.get('message_id')
+            feedback_msg = data.get('feedback_msg')
+            incorrect = data.get('incorrect')
+            unhelpful = data.get('unhelpful')
+            inappropriate = data.get('inappropriate')
+
+            feedback = {
+                "message_id"   : message_id,
+                "feedback"     : "dislike",
+                "feedback_ts"  : datetime.now(),
+                "feedback_msg" : feedback_msg,
+                "incorrect"    : incorrect,
+                "unhelpful"    : unhelpful,
+                "inappropriate": inappropriate,
+            }
+            self.chat.insert_feedback(feedback)
+
+            response = {'message': 'Disliked'}
+            return jsonify(response), 200
+
+        except Exception as e:
+            logger.error(f"Request failed: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+        # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
+        # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()
+            logger.info("Released lock file")
+
+            if self.chat.cursor is not None:
+                self.chat.cursor.close()
+            if self.chat.conn is not None:
+                self.chat.conn.close()
+
+    def list_docs(self):
+        """
+        API endpoint to list all documents indexed in ChromaDB with pagination.
+        Query parameters:
+        - page: Page number (1-based, default: 1)
+        - per_page: Documents per page (default: 50, max: 500)
+        - content_length: Max content preview length (default: -1 for full content)
+        Returns a JSON with paginated list of documents and their metadata.
+        """
+        # Check if ChromaDB endpoints are enabled
+        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+            
+        try:
+            # Get pagination parameters from query string
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 50)), 500)  # Cap at 500
+            content_length = int(request.args.get('content_length', -1))  # Default -1 for full content
+            
+            # Validate parameters
+            if page < 1:
+                return jsonify({'error': 'Page must be >= 1'}), 400
+            if per_page < 1:
+                return jsonify({'error': 'per_page must be >= 1'}), 400
+            if content_length < -1 or content_length == 0:
+                return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
+            
+            # Get the collection from ChromaDB
+            collection = self.chat.data_manager.fetch_collection()
+            
+            # Get total count first
+            total_documents = collection.count()
+            
+            # Calculate pagination
+            offset = (page - 1) * per_page
+            total_pages = (total_documents + per_page - 1) // per_page  # Ceiling division
+            
+            # Check if page is valid
+            if page > total_pages and total_documents > 0:
+                return jsonify({'error': f'Page {page} does not exist. Total pages: {total_pages}'}), 400
+            
+            # Get paginated documents from the collection
+            result = collection.get(
+                include=['documents', 'metadatas'],
+                limit=per_page,
+                offset=offset
+            )
+            
+            # Format the response
+            documents = []
+            for i, doc in enumerate(result['documents']):
+                # Truncate content based on content_length parameter (-1 means full content)
+                if content_length == -1:
+                    content = doc  # Return full content
+                else:
+                    content = doc[:content_length] + '...' if len(doc) > content_length else doc
+                
+                doc_info = {
+                    'id': result['ids'][i],
+                    'content': content,
+                    'content_length': len(doc),  # Original content length
+                    'metadata': result['metadatas'][i] if i < len(result['metadatas']) else {}
+                }
+                documents.append(doc_info)
+            
+            response_data = {
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total_documents': total_documents,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1,
+                    'next_page': page + 1 if page < total_pages else None,
+                    'prev_page': page - 1 if page > 1 else None
+                },
+                'documents': documents
+            }
+            
+            return jsonify(response_data), 200
+            
+        except ValueError as e:
+            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+        except Exception as e:
+            print(f"ERROR in list_docs: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    # TODO should this call a2rchi rather than connect to db directly?
+    # in any case, code-duplication should be elminated here
+    def search_docs(self):
+        """
+        API endpoint to search for the nearest documents to a given query with pagination.
+        Expects JSON input with:
+        - query (required): Search query string
+        - n_results (optional): Number of results to return (default: 5, max: 100)
+        - content_length (optional): Max content length in response (default: -1 for full content, max: 5000)
+        - include_full_content (optional): Whether to include full content (default: false)
+        Returns the most similar documents with their similarity scores.
+        """
+        # Check if ChromaDB endpoints are enabled
+        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+            
+        try:
+            # Get the query from request
+            data = request.json
+            query = data.get('query')
+            n_results = min(int(data.get('n_results', 5)), 100)  # Cap at 100
+            content_length = min(int(data.get('content_length', -1)), 5000) if data.get('content_length', -1) != -1 else -1  # Default -1 for full content
+            include_full_content = data.get('include_full_content', False)
+            
+            if not query:
+                return jsonify({'error': 'Query parameter is required'}), 400
+            
+            if n_results < 1:
+                return jsonify({'error': 'n_results must be >= 1'}), 400
+            
+            if content_length < -1 or content_length == 0:
+                return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
+            
+            # Connect to ChromaDB and create vectorstore
+            client = None
+            if self.utils_config["data_manager"]["use_HTTP_chromadb_client"]:
+                client = chromadb.HttpClient(
+                    host=self.utils_config["data_manager"]["chromadb_host"],
+                    port=self.utils_config["data_manager"]["chromadb_port"],
+                    settings=Settings(allow_reset=True, anonymized_telemetry=False),
+                )
+            else:
+                client = chromadb.PersistentClient(
+                    path=self.global_config["LOCAL_VSTORE_PATH"],
+                    settings=Settings(allow_reset=True, anonymized_telemetry=False),
+                )
+            
+            # Get the collection name and embedding model from chat
+            collection_name = self.chat.chain.collection_name
+            embedding_model = self.chat.chain.embedding_model
+            
+            # Create vectorstore
+            vectorstore = Chroma(
+                client=client,
+                collection_name=collection_name,
+                embedding_function=embedding_model,
+            )
+            
+            # Perform similarity search with scores
+            results = vectorstore.similarity_search_with_score(query, k=n_results)
+            
+            # Format the response
+            documents = []
+            for doc, score in results:
+                # Handle content length based on parameters
+                if include_full_content or content_length == -1:
+                    content = doc.page_content
+                else:
+                    content = (doc.page_content[:content_length] + '...' 
+                             if len(doc.page_content) > content_length 
+                             else doc.page_content)
+                
+                doc_info = {
+                    'content': content,
+                    'content_length': len(doc.page_content),  # Original content length
+                    'metadata': doc.metadata,
+                    'similarity_score': float(score)
+                }
+                documents.append(doc_info)
+            
+            response_data = {
+                'query': query,
+                'search_params': {
+                    'n_results_requested': n_results,
+                    'n_results_returned': len(documents),
+                    'content_length': content_length,
+                    'include_full_content': include_full_content
+                },
+                'documents': documents
+            }
+            
+            # Clean up
+            del vectorstore
+            del client
+            
+            return jsonify(response_data), 200
+            
+        except ValueError as e:
+            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+        except Exception as e:
+            print(f"ERROR in search_docs: {str(e)}")
+            return jsonify({'error': str(e)}), 500
