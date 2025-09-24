@@ -11,6 +11,7 @@ const closeButton = document.getElementById("dislike-close-button");
 const correct_checkbox= document.getElementById("correct_checkbox");
 const helpful_checkbox = document.getElementById("helpful_checkbox");
 const appropriate_checkbox = document.getElementById("appropriate_checkbox");
+const configDropdown = document.getElementById("config-dropdown");
 popupForm.style.display = "none";
 
 // DEFINITIONS
@@ -43,6 +44,34 @@ async function fetchWithTimeout(resource, options = {}) {
     } finally {
         clearTimeout(id);
     }
+}
+
+async function populateDropdown() {
+
+    const API_URL = "/api/get_configs"
+
+    try {
+        const response = await (await fetch(API_URL)).json();
+
+        if (response.error) {
+            console.error("API Error fetching configs",response.error);
+            return;
+        }
+
+        // Clear any existing options
+        configDropdown.innerHTML = '';
+
+        // Populate the dropdown with options from the API response
+        response.options.forEach(optionText => {
+            const option = document.createElement("option");
+            option.textContent = optionText;
+            option.value = optionText;
+            configDropdown.appendChild(option);
+        });
+    }catch (error) {
+        console.error("Failed to fetch dropdown options:", error);
+    }
+
 }
 
 const loadDataFromLocalstorage = () => {
@@ -96,6 +125,7 @@ const refreshChat = async () => {
 const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     const API_URL = "/api/get_chat_response";
     const pElement = document.createElement("div");
+    const configName = configDropdown.value;
 
      // Define the properties and data for the API request
      const requestOptions = {
@@ -106,6 +136,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
         body: JSON.stringify({
             last_message: conversation.slice(-1),
             conversation_id: conversation_id,
+            config_name: configName,
             is_refresh: isRefresh,
             client_sent_msg_ts: Date.now(),
             client_timeout: DEFAULT_TIMEOUT_SECS * 1000
@@ -394,4 +425,5 @@ chatInput.addEventListener("keydown", (e) => {
 });
 
 loadDataFromLocalstorage();
+populateDropdown(); 
 sendButton.addEventListener("click", handleOutgoingChat);

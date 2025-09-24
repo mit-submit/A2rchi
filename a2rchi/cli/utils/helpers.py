@@ -166,8 +166,10 @@ def log_deployment_start(name: str, services: List[str], sources: List[str], dry
 
 
 def log_deployment_success(name: str, service_only_resolved: List[str], services: List[str], 
-                          a2rchi_config: Dict[str, Any]) -> None:
+                          config_manager) -> None:
     """Log successful deployment and show service URLs"""
     print(f"A2RCHI deployment '{name}' created successfully!")
     print(f"Services running: {', '.join(service_only_resolved)}")
+    #All services are part of static configuration and equal for all configs
+    a2rchi_config = config_manager.get_configs()[0]
     show_service_urls(services, a2rchi_config)

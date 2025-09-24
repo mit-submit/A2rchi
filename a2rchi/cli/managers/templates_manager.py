@@ -7,6 +7,7 @@ from typing import Dict, List, Any
 
 import os
 import shutil
+import copy
 
 logger = get_logger(__name__)
 
@@ -19,7 +20,6 @@ BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
-
 class TemplateManager:
     """Manages template rendering and file preparation using service registry"""
     
@@ -27,44 +27,44 @@ class TemplateManager:
         self.env = jinja_env
         self.registry = service_registry
     
-    def prepare_deployment_files(self, compose_config, a2rchi_config: Dict[str, Any], secrets_manager, **kwargs) -> None:
+    def prepare_deployment_files(self, compose_config, config_manager, secrets_manager, **kwargs) -> None:
         """Prepare all necessary files for deployment"""
         base_dir = compose_config.base_dir
 
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
-        prompt_mappings = self._prepare_prompts(base_dir, a2rchi_config, enabled_services)
+        prompt_mappings = self._prepare_prompts(base_dir, config_manager, enabled_services)
         
         # Prepare main configuration file
-        self._prepare_config_file(base_dir, a2rchi_config, prompt_mappings, compose_config.verbosity, **kwargs)
+        self._prepare_config_file(base_dir, config_manager, prompt_mappings, compose_config.verbosity, **kwargs)
         
         # Prepare service-specific files
         if compose_config.get_service('grafana').enabled:
-            self._prepare_grafana_files(base_dir, a2rchi_config, compose_config.name, secrets_manager, **kwargs)
+            self._prepare_grafana_files(base_dir, config_manager, compose_config.name, secrets_manager, **kwargs)
         
         if compose_config.get_service('grader').enabled:
-            self._prepare_grader_files(base_dir, a2rchi_config)
+            self._prepare_grader_files(base_dir, config_manager)
         
         # Prepare PostgreSQL initialization
         self._prepare_postgres_init(base_dir, compose_config, secrets_manager)
         
         # Prepare Compose file
-        self._prepare_compose_file(base_dir, compose_config, a2rchi_config, **kwargs)
+        self._prepare_compose_file(base_dir, compose_config, config_manager, **kwargs)
         
         # Copy web input lists if they exist
-        self._copy_web_input_lists(base_dir, a2rchi_config)
+        self._copy_web_input_lists(base_dir, config_manager)
         
         # Copy source code
         self._copy_source_code(base_dir)
-    
-    def _prepare_compose_file(self, base_dir: Path, compose_config, a2rchi_config: Dict[str, Any], **kwargs) -> None:
+        
+    def _prepare_compose_file(self, base_dir: Path, compose_config, config_manager, **kwargs) -> None:
         """Prepare the Compose file - pure rendering with all data from compose_config"""
         
         # Get template variables from compose config
         template_vars = compose_config.to_template_vars()
         
         # Add port configuration from registry
-        template_vars.update(self._extract_port_config(a2rchi_config, **kwargs))
+        template_vars.update(self._extract_port_config(config_manager, **kwargs))
         
         # Add optional template variables
         template_vars.setdefault('prompt_files', [])
@@ -72,7 +72,7 @@ class TemplateManager:
         
         # Add grader rubrics if grader is enabled
         if compose_config.get_service('grader').enabled:
-            template_vars['rubrics'] = self._get_grader_rubrics(a2rchi_config)
+            template_vars['rubrics'] = self._get_grader_rubrics(config_manager)
         
         # Render compose template
         compose_template = self.env.get_template(BASE_COMPOSE_TEMPLATE)
@@ -81,7 +81,7 @@ class TemplateManager:
         with open(base_dir / "compose.yaml", 'w') as f:
             f.write(compose)
     
-    def _extract_port_config(self, a2rchi_config: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    def _extract_port_config(self, config_manager, **kwargs) -> Dict[str, Any]:
         """Extract port configurations using service registry"""
         port_config = {}
         
@@ -95,7 +95,8 @@ class TemplateManager:
             # Try to override with config values if path is specified
             if service_def.port_config_path:
                 try:
-                    config_value = a2rchi_config
+                    #This assumes all ports to be equal in the static configuration
+                    config_value = config_manager.get_configs()[0]
                     for key in service_def.port_config_path.split('.'):
                         config_value = config_value[key]
                     
@@ -117,62 +118,68 @@ class TemplateManager:
 
         return port_config
     
-    def _prepare_config_file(self, base_dir: Path, a2rchi_config: Dict[str, Any], 
+    def _prepare_config_file(self, base_dir: Path, config_manager, 
                         prompt_mappings: Dict[str, str], verbosity: int, **kwargs) -> None:
         """Prepare the main A2RCHI configuration file with updated prompt paths"""
-        import copy
-        updated_config = copy.deepcopy(a2rchi_config)
-        
-        logger.debug(f"Received prompt_mappings: {prompt_mappings}")
-        
-        # Update prompt paths with mappings
-        pipeline_names = updated_config.get("a2rchi", {}).get("pipelines")
-        
-        for pipeline_name in pipeline_names:
-            if pipeline_name:
-                pipeline_config = updated_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
-                prompts_config = pipeline_config.get("prompts", {})
-                                
-                # Update prompt paths in all sections
-                for section_name, section_prompts in prompts_config.items():
-                    if not isinstance(section_prompts, dict):
-                        continue
-                    for prompt_key in section_prompts.keys():
-                        if prompt_key in prompt_mappings:
-                            old_value = section_prompts[prompt_key]
-                            section_prompts[prompt_key] = prompt_mappings[prompt_key]
-                            logger.debug(f"Updated {prompt_key}: '{old_value}' -> '{prompt_mappings[prompt_key]}'")
-                        else:
-                            logger.error(f"Prompt_key '{prompt_key}' NOT found in mappings")
-        
-        if kwargs['host_mode']:
-            updated_config["host_mode"] = kwargs["host_mode"]
-            if a2rchi_config.get("data_manager", {}).get("chromadb_external_port", None):
-                updated_config["data_manager"]["chromadb_port"] = a2rchi_config["data_manager"]["chromadb_external_port"]
 
-        config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
-        config = config_template.render(verbosity=verbosity, **updated_config)
+        configs_path = base_dir / "configs"
+        configs_path.mkdir(exist_ok=True)
+        
+        a2rchi_configs = config_manager.get_configs()
+        for a2rchi_config in a2rchi_configs:
+            name = a2rchi_config['name']
+            updated_config = copy.deepcopy(a2rchi_config)
             
-        with open(base_dir / "config.yaml", 'w') as f:
-            f.write(config)
+            logger.debug(f"Received prompt_mappings: {prompt_mappings[name]}")
+            
+            # Update prompt paths with mappings
+            pipeline_names = updated_config.get("a2rchi", {}).get("pipelines")
+            
+            for pipeline_name in pipeline_names:
+                if pipeline_name:
+                    pipeline_config = updated_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+                    prompts_config = pipeline_config.get("prompts", {})
+                                    
+                    # Update prompt paths in all sections
+                    for section_name, section_prompts in prompts_config.items():
+                        if not isinstance(section_prompts, dict):
+                            continue
+                        for prompt_key in section_prompts.keys():
+                            if prompt_key in prompt_mappings[name]:
+                                old_value = section_prompts[prompt_key]
+                                section_prompts[prompt_key] = prompt_mappings[name][prompt_key]
+                                logger.debug(f"Updated {prompt_key}: '{old_value}' -> '{prompt_mappings[name][prompt_key]}'")
+                            else:
+                                logger.error(f"Prompt_key '{prompt_key}' NOT found in mappings {name}")
+            
+            if kwargs['host_mode']:
+                updated_config["host_mode"] = kwargs["host_mode"]
+                if a2rchi_config.get("data_manager", {}).get("chromadb_external_port", None):
+                    updated_config["data_manager"]["chromadb_port"] = a2rchi_config["data_manager"]["chromadb_external_port"]
+
+            config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
+            config = config_template.render(verbosity=verbosity, **updated_config)
+            with open(configs_path / f"{name}.yaml", 'w') as f:
+                f.write(config)
     
-    def _prepare_prompts(self, base_dir: Path, a2rchi_config: Dict[str, Any], enabled_services: List[str]) -> Dict[str, str]:
-        """Prepare prompt files dynamically from pipeline configuration and return mappings"""
-        # Always create prompts directory for Docker build compatibility
+    def _prepare_prompts(self, base_dir: Path, config_manager, enabled_services: List[str]) -> Dict[str, str]:
+        """Prepare prompt files dynamically from all pipeline configurations and return mappings"""
+
         prompts_path = base_dir / "prompts"
         prompts_path.mkdir(exist_ok=True)
-        
-        pipeline_names = a2rchi_config.get("a2rchi", {}).get("pipelines")
-        if not pipeline_names:
-            return {}
-        
+
+        configs = config_manager.get_configs()
         prompt_mappings = {}
-        for pipeline_name in pipeline_names:
-            pipeline_config = a2rchi_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
-            prompts_config = pipeline_config.get("prompts", {})
-            prompt_mappings.update(self._copy_pipeline_prompts(base_dir, prompts_config))
+        for config in configs:
+            name = config['name']
+            pipeline_names = config.get("a2rchi", {}).get("pipelines")
+            for pipeline_name in pipeline_names:
+                pipeline_config = config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {})
+                prompts_config = pipeline_config.get("prompts", {})
+                prompt_mappings[name] = self._copy_pipeline_prompts(base_dir, prompts_config)
 
         return prompt_mappings
+        
     
     def _copy_pipeline_prompts(self, base_dir: Path, prompts_config: Dict[str, Any]) -> Dict[str, str]:
         """Copy all prompt files defined in pipeline configuration and return mappings"""
@@ -216,7 +223,7 @@ class TemplateManager:
         
         return prompt_mappings
     
-    def _prepare_grafana_files(self, base_dir: Path, a2rchi_config: Dict[str, Any], deployment_name: str, secrets, **kwargs) -> None:
+    def _prepare_grafana_files(self, base_dir: Path, config_manager, deployment_name: str, secrets, **kwargs) -> None:
         """Prepare Grafana configuration files"""
         grafana_dir = base_dir / "grafana"
         grafana_dir.mkdir(exist_ok=True)
@@ -236,6 +243,7 @@ class TemplateManager:
             f.write(dashboards)
         
         # Prepare default dashboard
+        a2rchi_config = config_manager.get_configs()[0]
         pipeline_name = a2rchi_config.get("a2rchi", {}).get("pipeline")
         pipeline_config = a2rchi_config.get("a2rchi", {}).get("pipeline_map", {}).get(pipeline_name, {}) if pipeline_name else {}
         models_config = pipeline_config.get("models", {})
@@ -255,9 +263,10 @@ class TemplateManager:
         with open(grafana_dir / "grafana.ini", 'w') as f:
             f.write(config)
     
-    def _prepare_grader_files(self, base_dir: Path, a2rchi_config: Dict[str, Any]) -> None:
+    def _prepare_grader_files(self, base_dir: Path, config_manager) -> None:
         """Prepare grader-specific files"""
-        grader_config = a2rchi_config.get('interfaces', {}).get('grader_app', {})
+        a2rchi_config = config_manager.get_configs()[0]
+        grader_config = a2rchi_config.get('services', {}).get('grader_app', {})
         
         # Prepare users.csv
         users_csv_dir = grader_config.get('local_users_csv_dir')
@@ -291,22 +300,21 @@ class TemplateManager:
         with open(base_dir / "init.sql", 'w') as f:
             f.write(init_sql)
     
-    def _get_grader_rubrics(self, a2rchi_config: Dict[str, Any]) -> List[str]:
+    def _get_grader_rubrics(self, config_manager) -> List[str]:
         """Get list of rubric files for grader service"""
-        grader_config = a2rchi_config.get('interfaces', {}).get('grader_app', {})
+        a2rchi_config = config_manager.get_configs()[0]
+        grader_config = a2rchi_config.get('services', {}).get('grader_app', {})
         num_problems = grader_config.get('num_problems', 1)
         return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
     
-    def _copy_web_input_lists(self, base_dir: Path, a2rchi_config: Dict[str, Any]) -> None:
+    def _copy_web_input_lists(self, base_dir: Path, config_manager) -> None:
         """Copy web input lists if they exist"""
-        # Always create weblists directory for Docker build compatibility
+
+        input_lists = config_manager.get_input_lists()
+            
         weblists_path = base_dir / "weblists"
         weblists_path.mkdir(exist_ok=True)
-        
-        input_lists = a2rchi_config.get("data_manager", {}).get("input_lists", [])
-        if not input_lists:
-            return
-        
+
         for input_list in input_lists:
             if os.path.exists(input_list):
                 shutil.copyfile(input_list, weblists_path / os.path.basename(input_list))

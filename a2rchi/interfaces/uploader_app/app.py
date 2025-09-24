@@ -195,7 +195,7 @@ class FlaskAppWrapper(object):
     def __init__(self, app, **configs):
         # load global config
         self.global_config = load_config()["global"]
-        self.config = load_config()["interfaces"]["uploader_app"]
+        self.config = load_config()["services"]["uploader_app"]
         self.data_path = self.global_config["DATA_PATH"]
         self.salt = read_secret("UPLOADER_SALT")
 

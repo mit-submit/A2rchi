@@ -43,7 +43,7 @@ See the `Vector Store` section below for more details.
 
 These are the different ways to ingest data into the vector store used for document retrieval.
 
-### WEb Link Lists
+### Web Link Lists
 
 A web link list is a simple text file containing a list of URLs, one per line.
 A2rchi will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
@@ -264,9 +264,6 @@ Example minimal config for the Piazza interface:
 ```
 name: bare_minimum_configuration #REQUIRED
 
-global:
-  TRAINED_ON: "Your class materials" #REQUIRED
-
 chains:
   input_lists: #REQUIRED
     - configs/class_info.list # list of websites with class info
@@ -274,9 +271,11 @@ chains:
 a2rchi:
   [... a2rchi config ...]
 
-utils:
+services:
   piazza:
     network_id: <your Piazza network ID here> # REQUIRED
+  chat_app:
+    trained_on: "Your class materials" #REQUIRED
 ```
 
 #### Secrets
@@ -373,7 +372,7 @@ Monitor the performance of your A2rchi instance with the Grafana interface. This
 
 ```yaml
 grafana:
-  external_port: {{ interfaces.grafana.external_port | default(3000, true) }}
+  external_port: {{ services.grafana.external_port | default(3000, true) }}
 ```
 
 #### Secrets
@@ -453,9 +452,6 @@ The required fields in the configuration file are different from the rest of the
 ```
 name: grading_test # REQUIRED
 
-global:
-  TRAINED_ON: "rubrics, class info, etc." # REQUIRED
-
 a2rchi:
   pipelines:
     - GradingPipeline 
@@ -475,7 +471,9 @@ a2rchi:
         required:
           image_processing_model: OllamaInterface
 
-interfaces:
+services:
+  chat_app:
+    trained_on: "rubrics, class info, etc." # REQUIRED
   grader_app:
     num_problems: 1 # REQUIRED
     local_rubric_dir: ~/grading/my_rubrics # REQUIRED
@@ -486,16 +484,16 @@ data_manager:
 ```
 
 1. `name` -- The name of your configuration (required).
-2. `global.TRAINED_ON` -- A brief description of the data or materials A2rchi is trained on (required).
-3. `a2rchi.pipelines` -- List of pipelines to use (e.g., `GradingPipeline`, `ImageProcessingPipeline`).
-4. `a2rchi.pipeline_map` -- Mapping of pipelines to their required prompts and models.
-6. `a2rchi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt` -- Path to the grading prompt file for evaluating student solutions.
-7. `a2rchi.pipeline_map.GradingPipeline.models.required.final_grade_model` -- Model class for grading (e.g., `OllamaInterface`, `HuggingFaceOpenLLM`).
-8. `a2rchi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt` -- Path to the prompt file for image processing.
-9. `a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model` -- Model class for image processing (e.g., `OllamaInterface`, `HuggingFaceImageLLM`).
-10. `interfaces.grader_app.num_problems` -- Number of problems the grading service should expect (must match the number of rubric files).
-11. `interfaces.grader_app.local_rubric_dir` -- Directory containing the `solution_with_rubric_*.txt` files.
-12. `interfaces.grader_app.local_users_csv_dir` -- Directory containing the `users.csv` file.
+2. `a2rchi.pipelines` -- List of pipelines to use (e.g., `GradingPipeline`, `ImageProcessingPipeline`).
+3. `a2rchi.pipeline_map` -- Mapping of pipelines to their required prompts and models.
+4. `a2rchi.pipeline_map.GradingPipeline.prompts.required.final_grade_prompt` -- Path to the grading prompt file for evaluating student solutions.
+5. `a2rchi.pipeline_map.GradingPipeline.models.required.final_grade_model` -- Model class for grading (e.g., `OllamaInterface`, `HuggingFaceOpenLLM`).
+6. `a2rchi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt` -- Path to the prompt file for image processing.
+7. `a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model` -- Model class for image processing (e.g., `OllamaInterface`, `HuggingFaceImageLLM`).
+8. `services.chat_app.trained_on` -- A brief description of the data or materials A2rchi is trained on (required).
+9. `services.grader_app.num_problems` -- Number of problems the grading service should expect (must match the number of rubric files).
+10. `services.grader_app.local_rubric_dir` -- Directory containing the `solution_with_rubric_*.txt` files.
+11. `services.grader_app.local_users_csv_dir` -- Directory containing the `users.csv` file.
 
 #### Running
 
@@ -556,10 +554,10 @@ Some useful additional features supported by the framework.
 
 ##### Debugging ChromaDB endpoints
 Debugging REST API endpoints to the A2rchi chat application for programmatic access to the ChromaDB vector database can be exposed with the following configuration change.
-To enable the ChromaDB endpoints, add the following to your config file under `interfaces.chat_app`:
+To enable the ChromaDB endpoints, add the following to your config file under `services.chat_app`:
 
 ```yaml
-interfaces:
+services:
   chat_app:
     # ... other config options ...
     enable_debug_chroma_endpoints: true  # Default: false

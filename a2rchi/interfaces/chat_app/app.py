@@ -1,5 +1,5 @@
 from a2rchi.chains.a2rchi import A2rchi
-from a2rchi.utils.config_loader import load_config, CONFIG_PATH
+from a2rchi.utils.config_loader import load_config, CONFIGS_PATH, get_config_names
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.utils.logging import get_logger
@@ -86,7 +86,7 @@ class AnswerRenderer(mt.HTMLRenderer):
         if info not in self.RENDERING_LEXER_MAPPING.keys(): info = 'bash' #defaults in bash
         code_block_highlighted = highlight(code.strip(), self.RENDERING_LEXER_MAPPING[info](stripall=True), HtmlFormatter())
 
-        if self.config["interfaces"]["chat_app"]["include_copy_button"]:
+        if self.config["services"]["chat_app"]["include_copy_button"]:
             button = """<button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>"""
         else: button = ""
         
@@ -112,6 +112,7 @@ class ChatWrapper:
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # initialize data manager
@@ -123,7 +124,7 @@ class ChatWrapper:
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -136,9 +137,9 @@ class ChatWrapper:
         # initialize config_id to be None
         self.config_id = None
 
-    def update_config(self, config_id):
+    def update_config(self, config_id, config_name=None):
         self.config_id = config_id
-        self.a2rchi.update()
+        self.a2rchi.update(pipeline="QAPipeline",config_name=config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -376,7 +377,7 @@ class ChatWrapper:
         except FileNotFoundError:
             self.links_db = dict()
 
-    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float):
+    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
         """
@@ -429,6 +430,7 @@ class ChatWrapper:
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 history = history + [(sender, content)] if not is_refresh else history
+                self.update_config(config_id=self.config_id,config_name=config_name)
                 result = self.a2rchi(history=history, conversation_id=conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
@@ -494,13 +496,14 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
-        self.chat_app_config = self.config["interfaces"]["chat_app"]
+        self.services_config = self.config["services"]
+        self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -523,6 +526,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
+        self.add_endpoint('/api/get_configs', 'get_configs', self.get_configs, methods=["GET"])
         
         # conditionally add ChromaDB endpoints based on config
         if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
@@ -578,9 +582,10 @@ class FlaskAppWrapper(object):
         is parsed and inserted into the `configs` table. Finally, the chat wrapper's
         config_id is updated.
         """
-        # parse config and write it out to CONFIG_PATH
+        # parse config and write it out to CONFIGS_PATH
         config_str = request.json.get('config')
-        with open(CONFIG_PATH, 'w') as f:
+        config_name = config_str['name']
+        with open(CONFIGS_PATH+f'{config_name}.yaml', 'w') as f:
             f.write(config_str)
 
         # parse prompts and write them to their respective locations
@@ -601,13 +606,14 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
-        self.chat_app_config = self.config["interfaces"]["chat_app"]
+        self.services_config = self.config["services"]
+        self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -620,6 +626,18 @@ class FlaskAppWrapper(object):
         self.chat.update_config(self.config_id)
 
         return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
+    
+    def get_configs(self):
+        """
+        Gets the names of configs loaded in A2rchi.
+
+
+        Returns:
+            A json with a response list of the configs names
+        """
+
+        config_names = get_config_names()
+        return jsonify({'options':config_names}), 200
 
 
     def get_chat_response(self):
@@ -643,13 +661,14 @@ class FlaskAppWrapper(object):
         # get user input and conversation_id from the request
         message = request.json.get('last_message')
         conversation_id = request.json.get('conversation_id')
+        config_name = request.json.get('config_name')
         is_refresh = request.json.get('is_refresh')
         client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
         client_timeout = request.json.get('client_timeout') / 1000
 
         # query the chat and return the results.
         logger.debug("Calling the ChatWrapper()")
-        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout)
+        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout,config_name)
 
         # handle errors
         if error_code is not None:

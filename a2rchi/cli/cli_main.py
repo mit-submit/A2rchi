@@ -30,7 +30,8 @@ def cli():
 
 @click.command()
 @click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
-@click.option('--config', '-c', 'config_file', type=str, required=True, help="Path to .yaml a2rchi configuration")
+@click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml a2rchi configuration")
+@click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with secrets")
 @click.option('--services', '-s', callback=parse_services_option, 
               help="Comma-separated list of services")
@@ -43,9 +44,15 @@ def cli():
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
-def create(name: str, config_file: str, env_file: str, services: list, sources: list, 
+def create(name: str, config_files: list, config_dir: str, env_file: str, services: list, sources: list, 
            force: bool, dry: bool, verbosity: int, **other_flags):
     """Create an A2RCHI deployment with selected services and data sources."""
+
+    if not (bool(config_files) ^ bool(config_dir)): 
+        raise click.ClickException(f"Must specify only one of config files or config dir")
+    if config_dir: 
+        config_path = Path(config_dir)
+        config_files = [item for item in config_path.iterdir() if item.is_file()]
 
     print("Starting A2RCHI deployment process...")
     setup_cli_logging(verbosity=verbosity)
@@ -68,15 +75,12 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         handle_existing_deployment(base_dir, name, force, dry, other_flags.get('podman', False))
         
         # Initialize managers
-        config_manager = ConfigurationManager(config_file)
+        config_manager = ConfigurationManager(config_files,env)
         secrets_manager = SecretsManager(env_file, config_manager)
         
         # Validate configuration and secrets
-        a2rchi_config = config_manager.get_config()
-        required_fields = config_manager.get_required_fields_for_services(enabled_services)
-        if required_fields:
-            config_manager.validate_config(required_fields)
-        logger.info("Configuration validated successfully")
+        config_manager.validate_configs(enabled_services)
+        logger.info("Configurations validated successfully")
 
         required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services))
         secrets_manager.validate_secrets(required_secrets)
@@ -108,8 +112,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config)
-        
-        template_manager.prepare_deployment_files(compose_config, a2rchi_config, secrets_manager, **other_flags)
+        template_manager.prepare_deployment_files(compose_config, config_manager, secrets_manager, **other_flags)
         
         deployment_manager = DeploymentManager(compose_config.use_podman)
         deployment_manager.start_deployment(base_dir)
@@ -117,7 +120,7 @@ def create(name: str, config_file: str, env_file: str, services: list, sources: 
         # Log success
         service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
                                if s in service_registry.get_all_services()]
-        log_deployment_success(name, service_only_resolved, services, a2rchi_config)
+        log_deployment_success(name, service_only_resolved, services, config_manager)
         
     except Exception as e:
         if verbosity >= 4:

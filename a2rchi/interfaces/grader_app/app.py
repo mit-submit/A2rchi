@@ -48,10 +48,11 @@ class ImageToTextWrapper:
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -94,12 +95,13 @@ class GradingWrapper:
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -150,6 +152,7 @@ class FlaskAppWrapper(object):
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
         
@@ -175,7 +178,7 @@ class FlaskAppWrapper(object):
         # store postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None
@@ -757,7 +760,7 @@ class FlaskAppWrapper(object):
 
 
     def get_total_problems(self):
-        return self.config['interfaces']['grader_app'].get('num_problems')
+        return self.config["services"]['grader_app'].get('num_problems')
 
     def count_attempts(self, user_email, problem_number):
         count = 0
