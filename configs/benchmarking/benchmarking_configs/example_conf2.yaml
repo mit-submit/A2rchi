@@ -1,14 +1,14 @@
-name: HuggingfaceEmbedding
+name: OpenAIEmbedding
 
 global:
   TRAINED_ON: "the SubMIT Cluster"  
 
 data_manager:
   input_lists:  
-    - configs/ppc.list
+    - configs/benchmarking/ppc.list
   chromadb_port: 8000
   chromadb_external_port: 8001
-  embedding_name: HuggingFaceEmbeddings
+  embedding_name: OpenAIEmbeddings
 
 a2rchi:
   pipelines: 
@@ -27,8 +27,8 @@ a2rchi:
 
 services:
   benchmarking: 
-    queries_path: "queries.json"
-    out_dir: "bench_out"
+    queries_path: configs/benchmarking_configs/queries.json
+    out_dir: bench_out
     modes: 
       - "RAGAS"
       - "LINKS"
