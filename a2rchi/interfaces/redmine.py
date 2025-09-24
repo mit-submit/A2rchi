@@ -39,12 +39,13 @@ class RedmineAIWrapper:
         self.config = load_config()
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
+        self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
         # postgres connection info
         self.pg_config = {
             "password": read_secret("PG_PASSWORD"),
-            **self.utils_config["postgres"],
+            **self.services_config["postgres"],
         }
         self.conn = None
         self.cursor = None

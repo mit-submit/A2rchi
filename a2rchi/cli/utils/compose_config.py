@@ -43,7 +43,7 @@ class ComposeConfig:
     """Docker Compose configuration for template rendering"""
     
     def __init__(self, name: str, base_dir: Path, tag: str, use_podman: bool, 
-                 gpu_ids: Any, host_mode: bool, verbosity: int):
+                 gpu_ids: Any, host_mode: bool, verbosity: int, bench_out: str | None = None ):
         self.name = name
         self.base_dir = base_dir
         self.tag = tag
@@ -51,6 +51,7 @@ class ComposeConfig:
         self.gpu_ids = gpu_ids
         self.host_mode = host_mode
         self.verbosity = verbosity
+        self.benchmarking_dest = bench_out
         
         # Initialize all services as disabled
         self.services = {
@@ -63,6 +64,7 @@ class ComposeConfig:
             'piazza': ServiceConfig(),
             'mattermost': ServiceConfig(),
             'redmine-mailer': ServiceConfig(),
+            'benchmarking': ServiceConfig(),
         }
         
         # Data sources
@@ -124,6 +126,7 @@ class ComposeConfig:
             'use_jira': self.use_jira,
             'required_volumes': self.get_required_volumes(),
             'required_secrets': list(self._required_secrets),  # Use simplified secrets from CLI
+            'benchmarking_dest': self.benchmarking_dest,
         }
         
         # Add service configurations

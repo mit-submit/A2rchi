@@ -70,13 +70,15 @@ class ServiceBuilder:
         podman = other_flags.get('podman', False)
         gpu_ids = other_flags.get('gpu_ids', None)
         host_mode = other_flags.get('hostmode', other_flags.get('host_mode', False))
+        benchmarking_dest = other_flags.get('benchmarking_dest', "")
         
         # Resolve all dependencies using registry
         all_services = service_registry.resolve_dependencies(enabled_services)
         
         config = ComposeConfig(
             name=name, base_dir=base_dir, tag=tag, use_podman=podman,
-            gpu_ids=gpu_ids, host_mode=host_mode, verbosity=verbosity
+            gpu_ids=gpu_ids, host_mode=host_mode, verbosity=verbosity,
+            bench_out=benchmarking_dest,
         )
         
         # Store required secrets

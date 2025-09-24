@@ -20,6 +20,35 @@ BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
+def get_git_information():
+    import subprocess
+    meta_data = {}
+    wd = Path(__file__).parent 
+
+    if (
+        subprocess.call(
+            ["git", "branch"],
+            cwd=wd,
+            stderr=subprocess.STDOUT,
+            stdout=open(os.devnull, "w"),
+        )
+        != 0
+    ):
+        meta_data["git_info"] = {
+            "hash": "Not a git repository!",
+            "diff": "Not a git repository",
+        }
+    else:
+        meta_data["last_commit"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=wd, encoding="UTF-8"
+        )
+        diff_comm = ["git", "diff"]
+        meta_data["git_diff"] = subprocess.check_output(
+            diff_comm, encoding="UTF-8", cwd=wd
+        )
+    return meta_data
+
+
 class TemplateManager:
     """Manages template rendering and file preparation using service registry"""
     
@@ -30,6 +59,7 @@ class TemplateManager:
     def prepare_deployment_files(self, compose_config, config_manager, secrets_manager, **kwargs) -> None:
         """Prepare all necessary files for deployment"""
         base_dir = compose_config.base_dir
+        benchmarking = kwargs.pop('benchmarking', False)
 
         # Prepare prompts based on enabled services
         enabled_services = compose_config.get_enabled_services()
@@ -56,6 +86,17 @@ class TemplateManager:
         
         # Copy source code
         self._copy_source_code(base_dir)
+
+        if benchmarking:
+            query_file = kwargs.pop('query_file')
+            query_file_dest = base_dir / "queries.txt"
+            shutil.copyfile(query_file, query_file_dest)
+
+            import yaml
+            git_info = get_git_information()
+            git_info_path = base_dir / "git_info.yaml"
+            with open(git_info_path, "w") as f:
+                yaml.dump(git_info, f)
         
     def _prepare_compose_file(self, base_dir: Path, compose_config, config_manager, **kwargs) -> None:
         """Prepare the Compose file - pure rendering with all data from compose_config"""
@@ -80,6 +121,7 @@ class TemplateManager:
         
         with open(base_dir / "compose.yaml", 'w') as f:
             f.write(compose)
+
     
     def _extract_port_config(self, config_manager, **kwargs) -> Dict[str, Any]:
         """Extract port configurations using service registry"""
@@ -154,8 +196,8 @@ class TemplateManager:
             
             if kwargs['host_mode']:
                 updated_config["host_mode"] = kwargs["host_mode"]
-                if a2rchi_config.get("data_manager", {}).get("chromadb_external_port", None):
-                    updated_config["data_manager"]["chromadb_port"] = a2rchi_config["data_manager"]["chromadb_external_port"]
+                if a2rchi_config.get("services", {}).get("chromadb").get("chromadb_external_port", None):
+                    updated_config["services"]["chromadb"]["chromadb_port"] = a2rchi_config["services"]["chromadb"]["chromadb_external_port"]
 
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             config = config_template.render(verbosity=verbosity, **updated_config)

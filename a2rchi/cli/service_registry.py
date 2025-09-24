@@ -92,7 +92,7 @@ class ServiceRegistry:
             required_secrets=[],
             default_host_port=7861,
             default_container_port=7861,
-            port_config_path='interfaces.chat_app'
+            port_config_path='services.chat_app'
         ))
         
         self.register(ServiceDefinition(
@@ -103,7 +103,7 @@ class ServiceRegistry:
             depends_on=['postgres'],
             required_secrets=['GRAFANA_PG_PASSWORD'],
             default_host_port=3000,
-            port_config_path='interfaces.grafana.external_port',
+            port_config_path='services.grafana.external_port',
             volume_name_pattern="a2rchi-grafana-{name}"
         ))
         
@@ -115,7 +115,7 @@ class ServiceRegistry:
             required_secrets=['FLASK_UPLOADER_APP_SECRET_KEY', 'UPLOADER_SALT'],
             default_host_port=5003,
             default_container_port=5001,
-            port_config_path='interfaces.uploader_app'
+            port_config_path='services.uploader_app'
         ))
         
         self.register(ServiceDefinition(
@@ -127,7 +127,7 @@ class ServiceRegistry:
             required_secrets=['ADMIN_PASSWORD'],
             default_host_port=7862,
             default_container_port=7861,
-            port_config_path='interfaces.grader_app'
+            port_config_path='services.grader_app'
         ))
         
         # Integration services
@@ -155,6 +155,14 @@ class ServiceRegistry:
             required_secrets=['IMAP_USER', 'IMAP_PW', 'REDMINE_URL', 'REDMINE_USER', 
                             'REDMINE_PW', 'REDMINE_PROJECT', 'SENDER_SERVER', 'SENDER_PORT', 
                             'SENDER_REPLYTO', 'SENDER_USER', 'SENDER_PW']
+        ))
+
+        self.register(ServiceDefinition(
+            name='benchmarking',
+            depends_on=['chromadb', 'postgres'],
+            requires_volume=True, 
+            description='Benchmarking runtime, its not really a service but under the hood it will be',
+            category='benchmarking runtime', # not technically a service
         ))
     
     def register(self, service_def: ServiceDefinition):
