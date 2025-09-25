@@ -1,11 +1,15 @@
 from a2rchi.chains.a2rchi import A2rchi
-from a2rchi.utils.config_loader import load_config
 from a2rchi.utils.logging import get_logger
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.chains.utils.history_utils import stringify_history
 
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_huggingface import HuggingFaceHub
+from langchain_community.chat_models import ChatOllama
 from ragas import evaluate 
+from ragas.llms import LangchainLLMWrapper
 from ragas.metrics import answer_relevancy, faithfulness, context_precision, context_recall
 from datasets import Dataset
 from pathlib import Path
@@ -30,7 +34,10 @@ logger.setLevel(0)
 
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
-os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
+os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
+
+
+
 
 class ResultHandler:
     results = {} 
@@ -103,7 +110,7 @@ class Benchmarker:
 
         self.load_new_configuration()
         self.data_path = self.config["global"]["DATA_PATH"]
-
+    
     def get_all_configs(self, configs_dir):
         all_paths = []
         for root, _, filenames in os.walk(configs_dir):
@@ -140,6 +147,27 @@ class Benchmarker:
         pipeline = config.get('a2rchi').get('pipelines')[0]
 
         self.chain = A2rchi(pipeline) 
+
+
+    def get_ragas_llm_evaluator(self):
+        ragas_configs = self.config['services']['benchmarking']['mode_settings']['ragas_settings']
+        provider = ragas_configs['evaluation_model']
+        provider_settings = ragas_configs['evaluation_model_settings']
+
+        model_name = provider_settings['model_name']
+
+        match provider.lower():
+            case "OpenAI":
+                return ChatOpenAI(model=model_name)
+            case "Ollama":
+                base_url = provider_settings['base_url']
+                return ChatOllama(model=model_name, base_url=base_url)
+            case "HuggingFace":
+                return HuggingFaceHub(repo_id=model_name)
+            case "Anthropic":
+                return ChatAnthropic(model=model_name)
+            case _:
+                return ChatOpenAI(model=model_name)
 
     def get_link_results(self, result: Dict, link):
         res = {}
@@ -194,7 +222,12 @@ class Benchmarker:
 
         # going one metric at a time prevents errors 
         for metric_name, metric in metrics_dict.items():
-            evaluation_results = evaluate(data, metrics=[metric])
+
+            evaluation_results = evaluate(data, 
+                                          metrics=[metric],
+                                          llm=LangchainLLMWrapper(self.get_ragas_llm_evaluator())
+                                          )
+
             metric_results = evaluation_results.to_pandas()
             res[metric_name] = metric_results[metric_name]
 

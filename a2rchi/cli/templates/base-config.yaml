@@ -25,8 +25,11 @@ services:
           {%- for metric in services.benchmarking.ragas_settings.enabled_metrics | default(["answer_relevancy", "faithfulness", "context_precision", "context_recall"]) %}
           - {{ metric }}
           {%- endfor %}
-      link_settings: 
-        allow_for_link_in_top_k: {{ services.benchmarking.mode_settings.link_settings.allow_for_link_in_top_k | default(true, true) }} # if enabled, then will check for link in top k, else just checks the best doc 
+        evaluation_model: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model | default("OpenAI", True)}} # supports OpenAI, Ollama, HuggingFace, and Anthropic
+        evaluation_model_settings:
+          model_name: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.model_name | default("gpt-4", True) }} 
+          base_url: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.base_url | default("", True) }} # for Ollama support
+
   piazza:
     network_id: {{ services.piazza.network_id }}
     update_time: {{ services.piazza.update_time | default(60, true) }}
