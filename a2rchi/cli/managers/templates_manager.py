@@ -196,7 +196,7 @@ class TemplateManager:
             
             if kwargs['host_mode']:
                 updated_config["host_mode"] = kwargs["host_mode"]
-                if a2rchi_config.get("services", {}).get("chromadb").get("chromadb_external_port", None):
+                if a2rchi_config.get("services", {}).get("chromadb", {}).get("chromadb_external_port", None):
                     updated_config["services"]["chromadb"]["chromadb_port"] = a2rchi_config["services"]["chromadb"]["chromadb_external_port"]
 
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)

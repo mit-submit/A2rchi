@@ -281,6 +281,7 @@ def list_deployments():
 @click.option('--config', '-c', 'config_file', type=str, help="Path to .yaml a2rchi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
 @click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with 'secrets")
+@click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
 @click.option('--sources', '-src', callback=parse_sources_option,
               help="Comma-separated list of data sources: jira,redmine")
 @click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
@@ -288,7 +289,7 @@ def list_deployments():
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
-def evaluate(name: str, config_file: str, config_dir: str, env_file: str, sources: list, 
+def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_mode: bool, sources: list, 
              force: bool, verbosity: int, **other_flags):
     """Create an A2RCHI deployment with selected services and data sources."""
     # note this has not yet been made to work with the sources, i need to get on that
@@ -330,7 +331,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, source
         other_flags['benchmarking'] = True
         other_flags['query_file'] = benchmarking_configs.get('queries_path', ".")
         other_flags['benchmarking_dest'] = os.path.abspath(benchmarking_configs.get('out_dir', '.'))
-        other_flags['host_mode'] = False
+        other_flags['host_mode'] = host_mode
 
         compose_config = ServiceBuilder.build_compose_config(
                 name=name, verbosity=verbosity, base_dir=base_dir, 

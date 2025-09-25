@@ -3,10 +3,10 @@ from a2rchi.utils.logging import get_logger
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.chains.utils.history_utils import stringify_history
+from a2rchi.chains.models import HuggingFaceOpenLLM
 
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain_huggingface import HuggingFaceHub
 from langchain_community.chat_models import ChatOllama
 from ragas import evaluate 
 from ragas.llms import LangchainLLMWrapper
@@ -151,20 +151,21 @@ class Benchmarker:
 
     def get_ragas_llm_evaluator(self):
         ragas_configs = self.config['services']['benchmarking']['mode_settings']['ragas_settings']
-        provider = ragas_configs['evaluation_model']
+        provider = ragas_configs['provider']
         provider_settings = ragas_configs['evaluation_model_settings']
 
         model_name = provider_settings['model_name']
 
+
         match provider.lower():
-            case "OpenAI":
+            case "openai":
                 return ChatOpenAI(model=model_name)
-            case "Ollama":
+            case "ollama":
                 base_url = provider_settings['base_url']
                 return ChatOllama(model=model_name, base_url=base_url)
-            case "HuggingFace":
-                return HuggingFaceHub(repo_id=model_name)
-            case "Anthropic":
+            case "huggingface":
+                return HuggingFaceOpenLLM(base_model=model_name)
+            case "anthropic":
                 return ChatAnthropic(model=model_name)
             case _:
                 return ChatOpenAI(model=model_name)
