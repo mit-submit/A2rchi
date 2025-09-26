@@ -1,5 +1,5 @@
 from a2rchi.chains.a2rchi import A2rchi
-from a2rchi.utils.logging import get_logger
+from a2rchi.utils.logging import get_logger, setup_logging
 from a2rchi.utils.data_manager import DataManager
 from a2rchi.utils.env import read_secret
 from a2rchi.chains.utils.history_utils import stringify_history
@@ -17,7 +17,7 @@ from ragas.metrics import answer_relevancy, faithfulness, context_precision, con
 from datasets import Dataset
 from pathlib import Path
 from datetime import datetime
-from pprint import pprint
+from plogger.info import pprint
 from typing import Dict, List, Any
 
 import pandas as pd
@@ -32,8 +32,8 @@ OUTPUT_PATH = "/root/A2rchi/benchmarks"
 EXTRA_METADATA_PATH = "/root/A2rchi/git_info.yaml"
 OUTPUT_DIR = Path(OUTPUT_PATH)
 
+setup_logging()
 logger = get_logger(__name__)
-logger.setLevel(0)
 
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
@@ -146,7 +146,7 @@ class Benchmarker:
         self.benchmarking_configs = config['services']['benchmarking']
 
         # for now it only uses one pipeline (the first one) but maybe later we make this work for mulitple
-        print(f"loaded new configuration: {self.current_config}")
+        logger.info(f"loaded new configuration: {self.current_config}")
         pipeline = config.get('a2rchi').get('pipelines')[0]
 
         self.chain = A2rchi(pipeline) 
@@ -236,14 +236,13 @@ class Benchmarker:
                        
         res = pd.DataFrame()
 
-        ragas_settings = self.config['services']['benchmarking_configs']['mode_settings']['ragas_settings']
-        log_tenacity = self.config['globals']['verbosity'] >= 4
+        ragas_settings = self.config['services']['benchmarking']['mode_settings']['ragas_settings']
+        log_tenacity = self.config['global']['verbosity'] >= 4
         timeout = ragas_settings['timeout']
         batch_settings = ragas_settings['batch_size']
         if not batch_settings: 
             batch_settings = None
         
-
         runconfig = RunConfig(timeout=timeout, log_tenacity=log_tenacity)
         # going one metric at a time prevents errors 
         for metric_name, metric in metrics_dict.items():
@@ -315,10 +314,10 @@ class Benchmarker:
                         link_accuracy += 1.0
 
                 question_wise_results[f"question_{question_id}"] = to_add
-                print(f"Finished answering question: {question_id}")
+                logger.info(f"Finished answering question: {question_id}")
 
             if "RAGAS" in modes_being_run:
-                print(f"Starting to collect RAGAS results")
+                logger.info(f"Starting to collect RAGAS results")
                 data = Dataset.from_list(all_results)
                 # were modifying final_addition here to add ragas results by question
                 ragas_results = self.get_ragas_results(data, question_wise_results)
@@ -360,4 +359,4 @@ if __name__ == "__main__":
 
     benchmarker = Benchmarker(configs_folder, question_to_answer)
     benchmarker.run()
-    print("\n\nFINISHED RUNNING\n\n")
+    logger.info("\n\nFINISHED RUNNING\n\n")

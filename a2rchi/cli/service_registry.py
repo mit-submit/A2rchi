@@ -70,7 +70,7 @@ class ServiceRegistry:
             requires_volume=True,
             auto_enable=True,
             default_host_port=8000,
-            port_config_path='data_manager.chromadb_external_port'
+            port_config_path='services.chromadb.chromadb_external_port'
         ))
         
         self.register(ServiceDefinition(

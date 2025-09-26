@@ -43,7 +43,7 @@ class ComposeConfig:
     """Docker Compose configuration for template rendering"""
     
     def __init__(self, name: str, base_dir: Path, tag: str, use_podman: bool, 
-                 gpu_ids: Any, host_mode: bool, verbosity: int, bench_out: str | None = None ):
+                 gpu_ids: Any, host_mode: bool, verbosity: int, bench_out: str):
         self.name = name
         self.base_dir = base_dir
         self.tag = tag
