@@ -5,11 +5,14 @@ from a2rchi.utils.env import read_secret
 from a2rchi.chains.utils.history_utils import stringify_history
 from a2rchi.chains.models import HuggingFaceOpenLLM
 
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI    
+from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
-from ragas import evaluate 
+from ragas import evaluate, RunConfig
 from ragas.llms import LangchainLLMWrapper
+from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.metrics import answer_relevancy, faithfulness, context_precision, context_recall
 from datasets import Dataset
 from pathlib import Path
@@ -170,6 +173,18 @@ class Benchmarker:
             case _:
                 return ChatOpenAI(model=model_name)
 
+    def get_ragas_embedding_model(self):
+        ragas_configs = self.config['services']['benchmarking']['mode_settings']['ragas_settings']
+        embedding_model = ragas_configs['embedding_model']
+
+        match embedding_model.lower():
+            case "openai":
+                return OpenAIEmbeddings()
+            case "huggingface":
+                return HuggingFaceEmbeddings()
+            case _:
+                return OpenAIEmbeddings()
+
     def get_link_results(self, result: Dict, link):
         res = {}
         sources = result['documents']
@@ -221,12 +236,23 @@ class Benchmarker:
                        
         res = pd.DataFrame()
 
+        ragas_settings = self.config['services']['benchmarking_configs']['mode_settings']['ragas_settings']
+        log_tenacity = self.config['globals']['verbosity'] >= 4
+        timeout = ragas_settings['timeout']
+        batch_settings = ragas_settings['batch_size']
+        if not batch_settings: 
+            batch_settings = None
+        
+
+        runconfig = RunConfig(timeout=timeout, log_tenacity=log_tenacity)
         # going one metric at a time prevents errors 
         for metric_name, metric in metrics_dict.items():
-
             evaluation_results = evaluate(data, 
                                           metrics=[metric],
-                                          llm=LangchainLLMWrapper(self.get_ragas_llm_evaluator())
+                                          llm=LangchainLLMWrapper(self.get_ragas_llm_evaluator()),
+                                          embeddings=LangchainEmbeddingsWrapper(self.get_ragas_embedding_model()),
+                                          run_config=runconfig,
+                                          batch_size=batch_settings
                                           )
 
             metric_results = evaluation_results.to_pandas()
