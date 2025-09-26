@@ -694,3 +694,5 @@ services:
         evaluation_model_settings:
           model_name: <model name> # ensure this lines up with the langchain API name for your chosen model and provider
 ```
+
+To later examine your data, there is a folder called plots in the base directory which contains some plotting functions and an ipynotebook with some basic usage examples.
