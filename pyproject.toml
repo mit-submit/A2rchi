@@ -17,7 +17,11 @@ dependencies = [
     "requests==2.31.0",
     "podman-compose==1.4.0",
     "python-dotenv>=0.19.0",
-    "mkdocs"
+    "mkdocs",
+    "Ipykernel",
+    "ipython",
+    "matplotlib",
+    "pandas"
 ]
 
 [project.scripts]
@@ -43,6 +47,7 @@ packages = [
     "a2rchi.interfaces.grader_app",
     "a2rchi.utils",
 ]
+include-package-data = true 
 
 [build-system]
 requires = ["setuptools>=61.0.0"]
