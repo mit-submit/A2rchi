@@ -27,7 +27,18 @@ services:
           {%- endfor %}
         provider: {{ services.benchmarking.mode_settings.ragas_settings.provider | default("OpenAI", True)}} # supports OpenAI, Ollama, HuggingFace, and Anthropic
         evaluation_model_settings:
-          model_name: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.model_name | default("gpt-4", True) }} 
+          {%- set provider = services.benchmarking.mode_settings.ragas_settings.provider | default("OpenAI") %}
+          {%- set default_models = {
+              "OpenAI": "gpt-4",
+              "Ollama": "gemma3",
+              "HuggingFace": "Qwen/Qwen2.5-7B-Instruct-1M",
+              "Anthropic": "claude-3-sonnet-20240229"
+          } %}
+          {%- if services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.model_name %}
+          model_name: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.model_name }}
+          {%- else %}
+          model_name: {{ default_models.get(provider, "gpt-4") }}
+          {%- endif %}
           base_url: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.base_url | default("", True) }} # for Ollama support
   piazza:
     network_id: {{ services.piazza.network_id }}

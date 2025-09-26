@@ -633,7 +633,8 @@ utils:
 
 # Benchmarking 
 
-A2rchi has benchmarking functionality provided by the evaluate cli command. Before beggining, provide your list of questions in JSON format as follows: 
+A2rchi has benchmarking functionality provided by the evaluate cli command. Before beginning, provide your list of questions in JSON format as follows: 
+
 
 ```json
 
@@ -667,7 +668,11 @@ services:
 
 ```
 
-Finally, before you run the command ensure that out_dir, the output directory, both exists on your system and that the path is correctly specified so that results can show up inside of it.
+Finally, before you run the command ensure that out_dir, the output directory, both exists on your system and that the path is correctly specified so that results can show up inside of it. To run the benchmarking script simply run the following: 
+
+``` bash
+a2rchi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...>
+```
 
 Currently, Benchmarking supports both a RAGAS runtime and a LINKS runtime, Users can specify which modes they want to run by using the modes section. By default, both are enabled. 
 
@@ -685,7 +690,7 @@ services:
       - "LINKS"
     mode_settings: 
       ragas_settings: 
-        provivider: <provider name> # can be one of OpenAI, HuggingFace, Ollama, and Anthropic
+        provider: <provider name> # can be one of OpenAI, HuggingFace, Ollama, and Anthropic
         evaluation_model_settings:
           model_name: <model name> # ensure this lines up with the langchain API name for your chosen model and provider
 ```

@@ -19,6 +19,7 @@ BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/a2rchi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
+BASE_CODE_DIRECTORY =  Path(__file__).parent.parent.parent.parent
 
 def get_git_information():
     import subprocess
@@ -371,7 +372,7 @@ class TemplateManager:
         ]
         
         for src, dst in source_files:
-            src_path = Path(src)
+            src_path = BASE_CODE_DIRECTORY / Path(src)
             dst_path = base_dir / dst
             
             if src_path.is_dir():
