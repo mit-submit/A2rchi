@@ -919,10 +919,10 @@ class FlaskAppWrapper(object):
             
             # Connect to ChromaDB and create vectorstore
             client = None
-            if self.utils_config["data_manager"]["use_HTTP_chromadb_client"]:
+            if self.services_config["chromadb"]["use_HTTP_chromadb_client"]:
                 client = chromadb.HttpClient(
-                    host=self.utils_config["data_manager"]["chromadb_host"],
-                    port=self.utils_config["data_manager"]["chromadb_port"],
+                    host=self.services_config["chromadb"]["chromadb_host"],
+                    port=self.services_config["chromadb"]["chromadb_port"],
                     settings=Settings(allow_reset=True, anonymized_telemetry=False),
                 )
             else:

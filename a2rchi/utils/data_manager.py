@@ -46,6 +46,7 @@ class DataManager():
         # Fetch ticket data via APIs and copy onto the filesystem
         logger.info("Fetching ticket data onto filesystem")
         ticket_manager = TicketManager()
+
         ticket_manager.run()
 
         # scrape data onto the filesystem
@@ -93,10 +94,10 @@ class DataManager():
 
         # connect to chromadb server
         client = None
-        if self.config["data_manager"]["use_HTTP_chromadb_client"]:
+        if self.config['services']["chromadb"]["use_HTTP_chromadb_client"]:
             client = chromadb.HttpClient(
-                host=self.config["data_manager"]["chromadb_host"],
-                port=self.config["data_manager"]["chromadb_port"],
+                host=self.config['services']["chromadb"]["chromadb_host"],
+                port=self.config['services']["chromadb"]["chromadb_port"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         else:
@@ -115,15 +116,15 @@ class DataManager():
         """
         # connect to chromadb server
         client = None
-        if self.config["data_manager"]["use_HTTP_chromadb_client"]:
+        if self.config['services']["chromadb"]["use_HTTP_chromadb_client"]:
             client = chromadb.HttpClient(
-                host=self.config["data_manager"]["chromadb_host"],
-                port=self.config["data_manager"]["chromadb_port"],
+                host=self.config['services']["chromadb"]["chromadb_host"],
+                port=self.config['services']["chromadb"]["chromadb_port"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         else:
             client = chromadb.PersistentClient(
-                path=self.config["data_manager"]["local_vstore_path"],
+                path=self.config['services']["chromadb"]["local_vstore_path"],
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
             )
         collection = client.get_or_create_collection(

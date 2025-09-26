@@ -6,6 +6,7 @@ key.py
 !templates/dockerfiles/base-pytorch-image/*
 !templates/dockerfiles/base-python-image/*
 *.ipynb
+!plots/*.ipynb
 __pycache__
 venv
 *.DS_Store
