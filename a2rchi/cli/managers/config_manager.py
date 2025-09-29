@@ -24,6 +24,7 @@ class ConfigurationManager:
                 logger.info(f'Config {config_filepath} could not be loaded due to {str(e)}')
 
         assert(len(self.configs)>0)        
+        self.config = self.configs[0]
 
         self.env = env
     
@@ -67,7 +68,6 @@ class ConfigurationManager:
         # Base fields always required
         requirements = [
             'name', 
-            'services.chat_app.trained_on',
             'a2rchi.pipelines'
         ]
 
@@ -95,23 +95,6 @@ class ConfigurationManager:
             service_fields[service_name] = [f'services.{service_name}.{key}' for key in blank_configs]
 
         return service_fields
-    
-    def _get_all_keys(self, d: Dict[str, Dict | str] | Any, path: Tuple= ()) -> List[Tuple[str]]:
-        def get_key_paths(d: dict | Any, path=()):
-            # walk all the nested directories recursively and add each key path 
-            # to a tuple that gets accumulated into a set 
-            # (also dont listen to the lsp this reduce is right, lsp doesnt know anything)
-            return reduce(
-                    lambda accumulator, kv: accumulator | (
-                        get_key_paths(kv[1], path + (kv[0],))
-                        if isinstance(kv[1],dict)
-                        else {path + (kv[0],)}),
-                      d.items(),
-                      set() # type: Set[Tuple[str]]
-                  )
-
-        set_of_keys = get_key_paths(d, path=path)
-        return list(set_of_keys)
     
     def _get_active_pipeline_requirements(self,config) -> List[str]:
         """Get required prompt and/or model fields for the active pipeline"""
