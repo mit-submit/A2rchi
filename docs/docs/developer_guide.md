@@ -32,7 +32,7 @@ cat requirements/cpu-requirementsHEADER.txt requirements/requirements-base.txt >
 ```
 for the pytorch image:
 ```
-cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt > a2rchi/templates/dockerfiles/base-python-image/requirements.txt
+cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt > a2rchi/templates/dockerfiles/base-pytorch-image/requirements.txt
 ```
 
 Then while inside of the `templates/dockerfiles/base-xxx-image` directory, simply run the following command to build the image.  

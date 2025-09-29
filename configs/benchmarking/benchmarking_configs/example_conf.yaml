@@ -1,0 +1,43 @@
+name: HuggingfaceEmbedding
+
+global:
+  TRAINED_ON: "the SubMIT Cluster"  
+
+
+data_manager:
+  input_lists:  
+    - configs/benchmarking/ppc.list 
+  embedding_name: HuggingFaceEmbeddings
+
+a2rchi:
+  pipelines: 
+   - QAPipeline
+  pipeline_map:
+    QAPipeline:
+      prompts:
+        required:
+          condense_prompt: configs/prompts/condense.prompt  
+          chat_prompt: configs/prompts/submit.prompt  
+      models:
+        required:
+          chat_model: HuggingFaceOpenLLM
+          condense_model: HuggingFaceOpenLLM
+
+services:
+  benchmarking: 
+    queries_path: configs/benchmarking/simple_queries.json
+    out_dir: bench_out
+    modes: 
+      - "RAGAS"
+      - "LINKS"
+    mode_settings:
+      ragas_settings: 
+        provider: "HuggingFace"
+        evaluation_model_settings: 
+          model_name:  "Qwen/Qwen2.5-7B-Instruct-1M"
+        embedding_model: "HuggingFace"
+        timeout: 200
+        batch_size: 5
+  chromadb:
+    chromadb_port: 8000
+    chromadb_external_port: 8004

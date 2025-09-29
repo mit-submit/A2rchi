@@ -629,3 +629,81 @@ utils:
     stemming:
       ENABLED: true
 ```
+---
+
+# Benchmarking 
+
+A2rchi has benchmarking functionality provided by the `evaluate` CLI command. Before beginning, provide your list of questions in JSON format as follows: 
+
+
+```json
+
+[
+
+    {
+        "question": "",
+        "link": "",
+        "answer": ""
+    },
+
+ ...
+     {
+        "question": "",
+        "link": "",
+        "answer": ""
+     }
+]
+```
+
+Then within all of the yaml configuration files that you wish to test, add a configuration for your benchmarking script, which looks like the following:
+
+```yaml
+services:
+  benchmarking: 
+    queries_path: configs/benchmarking/queries.json
+    out_dir: bench_out
+    modes: 
+      - "RAGAS"
+      - "LINKS"
+
+```
+
+Finally, before you run the command ensure `out_dir`, the output directory, both exists on your system and that the path is correctly specified so that results can show up inside of it. To run the benchmarking script simply run the following: 
+
+``` bash
+a2rchi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...> <OPTIONS>
+```
+
+Currently, the benchmarking supports both a RAGAS runtime and a LINKS runtime, users can specify which modes they want to run by using the modes section. By default, both are enabled.
+
+The LINKS mode will generate outputs from your A2rchi instance as specified in your other configurations and evaluate it based on if the top k documents retrieved include information from the provided link answer. Note however that this still might mean that the chunks provided as context might still be incorrect, even if they are from the same source link.
+
+The RAGAS mode will use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics: `answer_relevancy`, `faithfulness`, `context precision`, and `context relevancy`. More information about these metrics can be found on their website at: https://docs.ragas.io/en/stable/concepts/metrics/. Note that ragas will by default use OpenAI to evaluate your llm responses and ragging pipeline contexts. To change this, it is possible to specify using other providers such as Anthropic, Ollama, and HuggingFace for your LLM evaluator, as well as HuggingFace for the embeddings. To do so simply specify in the configuration as follows: 
+
+```yaml
+services:
+  benchmarking: 
+    queries_path: configs/benchmarking/queries.json
+    out_dir: bench_out
+    modes: 
+      - "RAGAS"
+      - "LINKS"
+    mode_settings: 
+      ragas_settings: 
+        provider: <provider name> # can be one of OpenAI, HuggingFace, Ollama, and Anthropic
+        evaluation_model_settings:
+          model_name: <model name> # ensure this lines up with the langchain API name for your chosen model and provider
+          base_url: <url> # address to your running Ollama server should you have chosen the Ollama provider
+        embedding_model: <embedding provider> # OpenAI or HuggingFace
+```
+
+You might also want to adjust the `timeout` setting, which is the upper limit on how long the Ragas evaluation takes on a single QA pair, or the `batch_size`, which determines how many QA pairs to evaluate at once, which you might want to adjust, e.g., based on hardware constraints, as Ragas doesn't pay great attention to that. The corresponding configuration options are similarly set for the benchmarking services, as follows:
+
+```yaml
+services:
+  benchmarking:
+    timeout: <time in seconds> # default is 180
+    batch_size: <desired batch size> # no default setting, set by Ragas...
+```
+
+To later examine your data, there is a folder called plots in the base directory which contains some plotting functions and an ipynotebook with some basic usage examples. This is useful to play around with the results of the benchmarking, we will soon also have instead dedicated scripts to produce the plots of interest.

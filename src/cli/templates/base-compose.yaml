@@ -6,13 +6,13 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-chroma
+      args:
+        CHROMA_PORT: {{ chromadb_port_host if host_mode else 8000 }}
     container_name: {{ chromadb_container_name }}
     ports:
       - {{ chromadb_port_host }}:8000
     volumes:
       - {{ chromadb_volume_name }}:/chroma/chroma/
-    environment:
-      - CHROMA_PORT={{ chromadb_port_host if host_mode else 8000 }}
     logging:
       options:
         max-size: 10m
@@ -490,6 +490,63 @@ services:
     {%- endif %}
     {%- endif %}
   {%- endif %}
+
+  {% if benchmarking_enabled -%}
+  benchmark:
+    image: {{ benchmarking_image }}:{{ benchmarking_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-benchmarks{{ '-gpu' if gpu_ids else '' }}
+    container_name: {{ benchmarking_container_name }}
+    environment:
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
+      {% if gpu_ids -%}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
+      {% endif %}
+      container_name: {{ benchmarking_container_name }}
+    {% if gpu_ids and not use_podman -%}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    {% endif %}
+    secrets:
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
+      {% endfor %}
+    volumes:
+      - {{ benchmarker_volume_name }}:/root/data/
+      - ./queries.txt:/root/A2rchi/QandA.txt
+      - {{ benchmarking_dest }}:/root/A2rchi/benchmarks
+      {% for prompt_file in prompt_files | default([]) -%}
+      - ./{{ prompt_file }}:/root/A2rchi/{{ prompt_file }}
+      {% endfor %}
+      {% if gpu_ids -%}
+      - a2rchi-models:/root/models/
+      {%- endif %}
+    logging:
+      options:
+        max-size: 10m
+    {% if gpu_ids and use_podman -%}
+    security_opt:
+      - label:disable
+    devices:
+    {%- if gpu_ids == "all" %}
+      - "nvidia.com/gpu=all"
+    {%- else %}
+      {%- for gpu_id in gpu_ids %}
+      - "nvidia.com/gpu={{ gpu_id }}"
+      {%- endfor %}
+    {%- endif %}
+    {%- endif %}
+  {%- endif %}
+
 
 volumes:
   {% for volume in required_volumes -%}

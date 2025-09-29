@@ -1,13 +1,9 @@
 # syntax=docker/dockerfile:1
-FROM docker.io/ipausuchicago/a2rchi-python-base:latest 
+FROM docker.io/a2rchi/a2rchi-python-base:latest 
 RUN mkdir -p /root/A2rchi
 WORKDIR /root/A2rchi
 
 COPY LICENSE LICENSE
-#EXPOSE 7861
-
-# ensure this directory is present for prod-801 deployment
-# RUN if [ "$BUILD_ENV" = "prod-801" ] ; then mkdir /root/data/801-content ; fi
 
 # Install Firefox and Geckodriver for Selenium 
 RUN apt-get update && apt-get install -y \
@@ -27,10 +23,17 @@ RUN wget -q "https://github.com/mozilla/geckodriver/releases/download/v0.36.0/ge
 
 COPY a2rchi_code a2rchi
 COPY prompts prompts
+COPY configs configs
 COPY pyproject.toml pyproject.toml
+COPY git_info.yaml git_info.yaml
 COPY weblists weblists
+
+# run all the pip installs, including for ragas and all of this
 RUN pip install --upgrade pip && pip install .
+RUN pip install pandas
+RUN pip install ragas==0.3.5
+RUN pip install langchain-openai==0.3.32
 
 RUN chmod g+rx /root; chmod -R g+w /root/A2rchi/a2rchi/interfaces
 
-CMD ["python", "-u", "a2rchi/benchmarking/bin/service_chat.py"]
+CMD ["python", "-u", "a2rchi/bin/service_benchmark.py"] 

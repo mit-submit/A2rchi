@@ -137,7 +137,8 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
 @click.option('--keep-files', is_flag=True, help="Keep deployment files (don't remove directory)")
 @click.option('--list', 'list_deployments', is_flag=True, help="List all available deployments")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
-def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int):
+@click.option('--podman', '-p', is_flag=True, default=False, help="specify if podman is being used")
+def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int, podman: bool):
     """
     Delete an A2RCHI deployment with the specified name.
     
@@ -166,7 +167,7 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
 
     try:
         # We don't know which tool was used to create it, so try to detect from files
-        deployment_manager = DeploymentManager(use_podman=False)  # Will try both tools
+        deployment_manager = DeploymentManager(use_podman=podman)  # Will try both tools
         
         # Handle list option
         if list_deployments:
@@ -276,6 +277,87 @@ def list_deployments():
         except Exception:
             click.echo(f"  {name} (status unknown)")
 
+@click.command()
+@click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
+@click.option('--config', '-c', 'config_file', type=str, help="Path to .yaml a2rchi configuration")
+@click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
+@click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with 'secrets")
+@click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
+@click.option('--sources', '-src', callback=parse_sources_option,
+              help="Comma-separated list of data sources: jira,redmine")
+@click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
+@click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
+@click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
+@click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
+@click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
+def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_mode: bool, sources: list, 
+             force: bool, verbosity: int, **other_flags):
+    """Create an A2RCHI deployment with selected services and data sources."""
+    # note this has not yet been made to work with the sources, i need to get on that
+
+    if not (bool(config_file) ^ bool(config_dir)): 
+        raise click.ClickException(f"Must specify only one of config files or config dir")
+    if config_dir: 
+        config_path = Path(config_dir)
+        config_files = [str(item) for item in config_path.iterdir() if item.is_file()]
+    else: 
+        config_files = [item for item in config_file.split(",")]
+
+    print("Starting A2RCHI benchmarking process...")
+    setup_cli_logging(verbosity=verbosity)
+    logger = get_logger(__name__)
+
+    gpu = other_flags.get("gpu-ids") != None
+
+    try: 
+        base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
+        handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
+
+        enabled_services = ["chromadb", "postgres", "benchmarking"] 
+
+        if base_dir.exists():
+            raise click.ClickException(
+                    f"Benchmarking runtime '{name}' already exists at {base_dir}"
+                    )
+
+        config_manager = ConfigurationManager(config_files,env)
+        
+        secrets_manager = SecretsManager(env_file, config_manager)
+        config_manager.validate_configs(enabled_services)
+
+        _, all_secrets = secrets_manager.get_secrets(set())
+
+        benchmarking_configs = config_manager.get_interface_config("benchmarking")
+
+        other_flags['benchmarking'] = True
+        other_flags['query_file'] = benchmarking_configs.get('queries_path', ".")
+        other_flags['benchmarking_dest'] = os.path.abspath(benchmarking_configs.get('out_dir', '.'))
+        other_flags['host_mode'] = host_mode
+
+        compose_config = ServiceBuilder.build_compose_config(
+                name=name, verbosity=verbosity, base_dir=base_dir, 
+                enabled_services=enabled_services, secrets=all_secrets,
+                **other_flags
+                )
+
+
+        template_manager = TemplateManager(env)
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
+        secrets_manager.write_secrets_to_files(base_dir, all_secrets)
+
+        volume_manager = VolumeManager(compose_config.use_podman)
+        volume_manager.create_required_volumes(compose_config)
+        
+        template_manager.prepare_deployment_files(compose_config, config_manager, secrets_manager, **other_flags)
+
+        deployment_manager = DeploymentManager(compose_config.use_podman)
+        deployment_manager.start_deployment(base_dir)
+    except Exception as e:
+        if verbosity >=4: 
+            traceback.print_exc()
+        else: 
+            raise click.ClickException(f"Failed due to the following exception: {e}")
 
 def main():
     """
@@ -286,4 +368,5 @@ def main():
     cli.add_command(delete)
     cli.add_command(list_services)
     cli.add_command(list_deployments)
+    cli.add_command(evaluate)
     cli()
