@@ -17,7 +17,6 @@ from ragas.metrics import answer_relevancy, faithfulness, context_precision, con
 from datasets import Dataset
 from pathlib import Path
 from datetime import datetime
-from plogger.info import pprint
 from typing import Dict, List, Any
 
 import pandas as pd

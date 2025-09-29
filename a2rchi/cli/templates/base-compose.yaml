@@ -6,13 +6,13 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-chroma
-    container_name: {{ chromadb_container_name }}base-com
+      args:
+        CHROMA_PORT: {{ chromadb_port_host if host_mode else 8000 }}
+    container_name: {{ chromadb_container_name }}
     ports:
       - {{ chromadb_port_host }}:8000
     volumes:
       - {{ chromadb_volume_name }}:/chroma/chroma/
-    environment:
-      - CHROMA_PORT={{ chromadb_port_host if host_mode else 8000 }}
     logging:
       options:
         max-size: 10m
