@@ -21,7 +21,7 @@ class ConfigurationManager:
                 config = self._load_config(config_filepath)
                 self._append(config)
             except Exception as e:
-                logger.info(f'Config {config_filepath} could not be loaded due to {str(e)}')
+                logger.error(f'Config {config_filepath} could not be loaded due to {str(e)}')
 
         assert(len(self.configs)>0)        
         self.config = self.configs[0]
