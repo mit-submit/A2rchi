@@ -96,7 +96,7 @@ class SSOScraper(ABC):
         """Extract all links from the current page that have the same hostname as base_url."""
         base_hostname = urllib.parse.urlparse(base_url).netloc
         links = []
-        
+
         # Find all anchor tags
         if self.site_type == "mkdocs":
             # For MkDocs, prioritize navigation links
@@ -130,6 +130,21 @@ class SSOScraper(ABC):
                 logger.error(f"Error extracting link: {e}")
                 
         return list(set(links))  # Remove duplicates
+
+    def extract_page_data(self, current_url):
+        """Return the raw HTML payload for the current page."""
+        if not self.driver:
+            raise RuntimeError("WebDriver not initialized. Call setup_driver() first.")
+
+        title = self.driver.title or ""
+        content = self.driver.page_source or ""
+
+        return {
+            "url": current_url,
+            "title": title,
+            "content": content,
+            "suffix": "html",
+        }
     
     def crawl(self, start_url):
         """Crawl pages starting from the given URL, storing title and content of each page.
@@ -210,6 +225,17 @@ class SSOScraper(ABC):
             
         logger.info(f"Crawling complete. Visited {pages_visited} pages.")
         return sources
+
+    def _clear_url(self, url: str) -> bool:
+        """Basic filtering for duplicate or fragment-only URLs."""
+        if not url:
+            return False
+
+        # Ignore pure fragments or JavaScript links
+        if url.startswith("javascript:"):
+            return False
+
+        return True
     
     def close(self):
         """Close the browser and clean up resources."""

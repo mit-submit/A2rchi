@@ -194,6 +194,7 @@ class TemplateManager:
                             else:
                                 logger.error(f"Prompt_key '{prompt_key}' NOT found in mappings {name}")
             
+            logger.debug(f"Adjusting config ports based on host mode status: {kwargs['host_mode']}")
             if kwargs['host_mode']:
                 updated_config["host_mode"] = kwargs["host_mode"]
                 if a2rchi_config.get("services", {}).get("chromadb", {}).get("chromadb_external_port", None):
@@ -366,7 +367,6 @@ class TemplateManager:
         source_files = [
             ("src", "a2rchi_code"),
             ("pyproject.toml", "pyproject.toml"),
-            ("requirements.txt", "requirements.txt"),
             ("LICENSE", "LICENSE")
         ]
         

@@ -8,7 +8,6 @@ from flask import Flask
 from piazza_api import Piazza as PiazzaAPI
 
 from src.a2rchi.a2rchi import A2rchi
-from src.data_manager.collectors.scrapers.scraper import Scraper
 from src.data_manager.data_manager import DataManager
 from src.interfaces.uploader_app.app import FlaskAppWrapper
 from src.utils.config_loader import load_config

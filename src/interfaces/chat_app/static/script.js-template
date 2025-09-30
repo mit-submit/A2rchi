@@ -314,7 +314,7 @@ const showTypingAnimation = (isRefresh = false) => {
     const loadingTextElement = document.getElementById("loading-text");
 
     const statusMessages = [
-        "<em style='color: gray;'>Searching through subMIT info...</em>",
+        "<em style='color: gray;'>Searching through relevant documents...</em>",
         "<em style='color: gray;'>Almost there... fetching more details.</em>",
         "<em style='color: gray;'>Still processing... please wait a moment, open-source magic happening.</em>"
     ];

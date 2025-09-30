@@ -1,11 +1,12 @@
 import hashlib
 import os
 import urllib
+from pathlib import Path
 
 import yaml
 from flask import flash, redirect, render_template, request, session, url_for
 
-from src.data_manager.collectors.scrapers.scraper import Scraper
+from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -217,6 +218,7 @@ class FlaskAppWrapper(object):
 
         # create path specifying URL sources for scraping
         self.sources_path = os.path.join(self.data_path, 'sources.yml')
+        self.scraper_manager = ScraperManager()
 
         # add endpoints for flask app
         self.add_endpoint('/', '', self.index)
@@ -380,14 +382,11 @@ class FlaskAppWrapper(object):
         if url:
             logger.info(f"Uploading the following URL: {url}")
             try:
-                # same as the scraper, though it doesn't need to be
-                Scraper.scrape_urls(
-                    urls=[url],
-                    upload_dir=self.app.config['WEBSITE_FOLDER'],
-                    sources_path=self.sources_path,
-                    verify_urls=self.config["verify_urls"],
-                    enable_warnings=True,
-                )
+                target_dir = Path(self.app.config['WEBSITE_FOLDER'])
+                resources = self.scraper_manager.web_scraper.scrape(url)
+                for resource in resources:
+                    self.scraper_manager.register_resource(target_dir, resource)
+                self.scraper_manager.persist_sources()
                 added_to_urls = True
 
             except Exception as e:

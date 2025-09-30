@@ -27,7 +27,7 @@ class ServiceDefinition:
     default_container_port: Optional[int] = None
     port_config_path: Optional[str] = None
     
-    # NEW: Volume naming strategy
+    # Volume naming strategy
     volume_name_pattern: Optional[str] = None  # e.g., "a2rchi-{name}", "a2rchi-pg-{name}"
     
     def get_volume_name(self, deployment_name: str) -> Optional[str]:

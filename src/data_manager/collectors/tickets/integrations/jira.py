@@ -1,8 +1,8 @@
-import os
 from typing import Iterator, Optional
 
 import jira
 
+from src.data_manager.collectors.tickets.ticket_resource import TicketResource
 from src.data_manager.collectors.utils.anonymizer import Anonymizer
 from src.utils.config_loader import load_utils_config
 from src.utils.env import read_secret
@@ -10,7 +10,8 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-class JiraClient():
+
+class JiraClient:
     def __init__(self) -> None:
         try:
             self.jira_config = load_utils_config()["jira"]
@@ -18,15 +19,23 @@ class JiraClient():
             self.jira_projects = self.jira_config["projects"]
 
             if not self.jira_url or not self.jira_projects:
-                logger.info("JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA")
+                logger.info(
+                    "JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA"
+                )
+                self.client = None
                 return
-        except KeyError as e:
-            raise KeyError(f"JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA: {str(e)}")
-        
+        except KeyError as error:
+            raise KeyError(
+                "JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA: "
+                f"{str(error)}"
+            )
+
         try:
             self.pat = read_secret("JIRA_PAT")
-        except FileNotFoundError:
-            raise FileNotFoundError("JIRA Personal Access Token (PAT) not found. Please set it up in your environment.")
+        except FileNotFoundError as error:
+            raise FileNotFoundError(
+                "JIRA Personal Access Token (PAT) not found. Please set it up in your environment."
+            ) from error
 
         try:
             self.anonymize_data = self.jira_config.get("anonymize_data", True)
@@ -35,85 +44,85 @@ class JiraClient():
             self.anonymizer = Anonymizer()
 
             if not self.client:
-                raise Exception("No JIRA Connection!")
+                raise RuntimeError("No JIRA connection")
         except Exception as error:
-            raise Exception(f"Error initializing JiraReader\n{str(error)}")
-
-    def read_pat(self, pat_path: str) -> str:
-        with open(pat_path, 'r') as f:
-            pat = f.read().strip()
-        return pat
+            raise Exception(f"Error initializing JiraReader\n{str(error)}") from error
 
     def log_in(self, pat: str) -> Optional[jira.JIRA]:
         try:
             return jira.JIRA(self.jira_url, token_auth=pat, timeout=30)
-        except Exception as e:
-            logger.error(f"Failed to log in to JIRA: {e}")
+        except Exception as error:
+            logger.error(f"Failed to log in to JIRA: {error}")
+            return None
 
-    def run(self, tickets_dir: str) -> None:   
-        """
-        Main function to run the JIRA reader.
-        """
-        if self.jira_url and self.jira_projects:
-            jira_data = self.fetch_jira_data()
-            self.write_jira_data(tickets_dir, jira_data)
-        
+    def collect(self) -> Iterator[TicketResource]:
+        """Return an iterator of tickets pulled from JIRA."""
+        if not self.client or not self.jira_projects:
+            return iter(())
+
+        return self._fetch_ticket_resources()
+
+    def _fetch_ticket_resources(self) -> Iterator[TicketResource]:
+        for issue in self.get_all_issues():
+            issue_key = getattr(issue, "key", str(issue))
+            created_at = getattr(issue.fields, "created", "")
+            issue_text = self._build_issue_text(issue)
+
+            content_parts = []
+            if created_at:
+                content_parts.append(created_at)
+            content_parts.append(issue_text)
+            content = "\n".join(part for part in content_parts if part)
+
+            metadata = {
+                "project": getattr(getattr(issue.fields, "project", None), "key", None),
+                "url": f"{self.jira_url}/browse/{issue_key}" if self.jira_url else None,
+            }
+
+            record = TicketResource(
+                ticket_id=str(issue_key),
+                content=content,
+                source="jira",
+                created_at=created_at or None,
+                metadata={k: v for k, v in metadata.items() if v},
+            )
+
+            logger.debug(f"Collected JIRA ticket {issue_key}")
+            yield record
+
     def get_all_issues(self) -> Iterator[jira.Issue]:
-        """
-        Function to fetch all issues from the specified JIRA projects.
-        """
+        """Fetch all issues from the configured JIRA projects."""
         max_results = 100  # You can adjust this up to 1000 for JIRA Cloud
         for project in self.jira_projects:
             logger.debug(f"Fetching issues for project: {project}")
-            query = f'project={project}'
+            query = f"project={project}"
             start_at = 0
             while True:
                 batch = self.client.search_issues(
                     query,
                     startAt=start_at,
-                    maxResults=max_results
+                    maxResults=max_results,
                 )
                 if not batch:
                     break
-                yield from (issue for issue in batch)
+                yield from batch
                 if len(batch) < max_results:
                     break
                 start_at += max_results
 
-    def fetch_jira_data(self) -> Iterator[dict[str, str]]:
-        """
-        Fetches issues from JIRA and yields anonymized data dictionaries.
-        """
-        for issue in self.get_all_issues():
-            issue_data = {
-                'issue_id': str(issue),
-                'created_at': getattr(issue.fields, "created", ""),
-            }
-            issue_text = (
-                f"Title: {issue}\n"
-                f"Summary: {getattr(issue.fields, 'summary', '')}\n"
-                f"Description: {getattr(issue.fields, 'description', '')}\n"
-            )
+    def _build_issue_text(self, issue: jira.Issue) -> str:
+        """Return a formatted representation of a JIRA issue body."""
+        summary = getattr(issue.fields, "summary", "")
+        description = getattr(issue.fields, "description", "")
 
-            comments = self.client.comments(issue)
-            for comment in comments:
-                issue_text += f"Comment: {getattr(comment, 'body', '')}\n"
+        issue_text = f"Title: {issue}\nSummary: {summary}\nDescription: {description}\n"
 
-            if self.anonymize_data:
-                issue_text = self.anonymizer.anonymize(issue_text)
-            issue_data['issue_text'] = issue_text
-            yield issue_data
+        comments = self.client.comments(issue)
+        for comment in comments:
+            body = getattr(comment, "body", "")
+            issue_text += f"Comment: {body}\n"
 
-            logger.debug(f"Issue data: {issue_data}")
+        if self.anonymize_data:
+            issue_text = self.anonymizer.anonymize(issue_text)
 
-    def write_jira_data(self,
-                        tickets_dir: Optional[str],
-                        jira_data: Iterator[dict[str, str]]) -> None:
-        """
-        Writes each JIRA ticket into separate text files in the ticket tickets_dir
-        """
-        logger.debug(f"Saving the ticket data into {tickets_dir}")
-        for issue in jira_data:
-            with open(os.path.join(tickets_dir, f"jira_{issue['issue_id']}.txt"), "w", encoding="utf-8") as f:
-                f.write(issue['created_at'] + "\n")
-                f.write(issue['issue_text'])
+        return issue_text

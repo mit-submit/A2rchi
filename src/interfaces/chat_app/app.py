@@ -157,66 +157,189 @@ class ChatWrapper:
              logger.info("Rendering error: markdown formatting failed")
              return text
         
-    def get_top_links(self, documents, scores):
+    def get_top_sources(self, documents, scores):
         """
-        Get the top links from the documents based on their scores.
+        Build a list of top reference entries (link or ticket id).
         """
-
-        # re-load the present list of sources
         self.reload_links_db()
 
-        # don't assume the documents given by the pipeline are sorted
         if scores:
             sorted_indices = np.argsort(scores)
             scores = [scores[i] for i in sorted_indices]
             documents = [documents[i] for i in sorted_indices]
 
-        # prepare to show the best sources, if they have links
-        top_links, top_link_names, top_scores = [], [], []
-        if len(documents) > 0:
-            for i in range(5):
-                score = scores[i]
-                if score > self.similarity_score_reference: break # only show sources below a certain distance metric
-                source_hash = documents[i].metadata['source'] # only links have metadata['hash'] (?)
-                if '/' in source_hash and '.' in source_hash:
-                    source_hash = source_hash.split('/')[-1].split('.')[0]
-                    if source_hash in self.links_db: # only links have hashes in the sources.yaml (?)
-                        link = self.links_db[source_hash]
-                        parsed_link = urlparse(link)
-                        display_name = parsed_link.hostname
-                        if parsed_link.path and parsed_link.path != '/':
-                            first_path = parsed_link.path.strip('/').split('/')[0]
-                            display_name += f"/{first_path}"
-                        if link in top_links:
-                            continue # don't show the same link twice
-                        top_link_names.append(display_name)
-                        top_scores.append(score)
-                        top_links.append(link)
+        top_sources = []
+        seen_refs = set()
+        pairs = zip(scores, documents) if scores else ((None, doc) for doc in documents)
 
-        return top_links, top_link_names, top_scores
+        for score, document in pairs:
+            if score is not None and score > self.similarity_score_reference:
+                break
+
+            metadata = document.metadata
+            source_hash = self._extract_source_hash(metadata)
+
+            link = None
+            if source_hash and source_hash in self.links_db:
+                link = self.links_db[source_hash]
+                display_name = self._format_link_display(link)
+                ref_key = ("link", link)
+            else:
+                display_name = self._format_reference_label(metadata)
+                if not display_name:
+                    continue
+                ref_key = ("display", display_name)
+
+            if ref_key in seen_refs:
+                continue
+            seen_refs.add(ref_key)
+
+            top_sources.append(
+                {
+                    "link": link,
+                    "display": display_name,
+                    "score": score if score is not None else "N/A",
+                }
+            )
+
+            if len(top_sources) >= 5:
+                break
+
+        return top_sources
         
     @staticmethod
-    def format_links(top_links, top_link_names, top_scores):
-
+    def format_links(top_sources):
         _output = ""
-            
-        # Only show "Sources:" if there are any valid sources
-        if top_links:
-            _output += '<div style="margin-left: 2em;"><b>Sources:</b><br>'
-            _output += "<ul style='margin-left: 1em; padding-left: 0; list-style-type: disc;'>"
-            for score, link, display_name in zip(top_scores, top_links, top_link_names):
-                _output += (
-                    "<li style='margin-bottom: 0.2em; padding-bottom: 0; line-height: 1.2;'>"
-                    "<small>"
-                    f'<a href="{link}" target="_blank" rel="noopener noreferrer">{display_name}</a>'
-                    f" (score: {score:.2f})"
-                    "</small>"
-                    "</li>"
-                )
-            _output += "</ul>"
-            _output += "</div>"
+
+        if top_sources:
+            _output += '''
+            <div style="
+                margin: 1em 0 0.5em 0; 
+                padding: 0.8em; 
+                background: rgba(0, 0, 0, 0.1); 
+                border-left: 3px solid #007bff; 
+                border-radius: 6px;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+            ">
+                <div style="
+                    color: #e9ecef; 
+                    font-weight: 600; 
+                    font-size: 0.85em; 
+                    margin-bottom: 0.5em;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                ">
+                    <div style="display: flex; align-items: center;">
+                        <svg style="width: 16px; height: 16px; margin-right: 6px; fill: #007bff;" viewBox="0 0 24 24">
+                            <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/>
+                        </svg>
+                        Sources
+                    </div>
+                    <div style="
+                        color: #adb5bd; 
+                        font-size: 0.75em; 
+                        font-weight: 400;
+                        font-style: italic;
+                    ">
+                        Distance score • Lower is better
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.4em;">
+            '''
+
+            for entry in top_sources:
+                score = entry["score"]
+                link = entry["link"]
+                display_name = entry["display"]
+                score_str = score if isinstance(score, str) else f"{score:.2f}"
+                if link:
+                    reference_html = f"<a href=\"{link}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #66b3ff; text-decoration: none; font-weight: 500; font-size: 0.85em; line-height: 1.2;\" onmouseover=\"this.style.textDecoration='underline'; this.style.color='#80c7ff'\" onmouseout=\"this.style.textDecoration='none'; this.style.color='#66b3ff'\">{display_name}</a>"
+                else:
+                    reference_html = f"<span style=\"color: #e9ecef; font-weight: 500; font-size: 0.85em; line-height: 1.2;\">{display_name}</span>"
+
+                _output += f'''
+                    <div style="
+                        display: flex; 
+                        align-items: center; 
+                        padding: 0.4em 0.6em; 
+                        background: rgba(0, 0, 0, 0.15); 
+                        border-radius: 4px; 
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                        transition: all 0.2s ease;
+                    " 
+                    onmouseover="this.style.background='rgba(0, 0, 0, 0.2)'; this.style.borderColor='rgba(0, 123, 255, 0.4)'" 
+                    onmouseout="this.style.background='rgba(0, 0, 0, 0.15)'; this.style.borderColor='rgba(255, 255, 255, 0.1)'">
+                        <div style="flex: 1;">
+                            {reference_html}
+                        </div>
+                        <div style="
+                            background: rgba(0, 123, 255, 0.2); 
+                            color: #b3d9ff; 
+                            padding: 0.15em 0.4em; 
+                            border-radius: 10px; 
+                            font-size: 0.7em; 
+                            font-weight: 600;
+                            margin-left: 0.6em;
+                            min-width: 50px;
+                            text-align: center;
+                            border: 1px solid rgba(0, 123, 255, 0.3);
+                        ">
+                            {score_str}
+                        </div>
+                    </div>
+                '''
+
+            _output += '''
+                </div>
+            </div>
+            '''
 
         return _output
+
+    @staticmethod
+    def _format_link_display(link: str) -> str:
+        parsed_link = urlparse(link)
+        display_name = parsed_link.hostname or link
+        if parsed_link.path and parsed_link.path != '/':
+            first_path = parsed_link.path.strip('/').split('/')[0]
+            display_name += f"/{first_path}"
+        return display_name
+
+    @staticmethod
+    def _extract_source_hash(metadata: dict) -> str | None:
+        source = metadata.get("source")
+        candidate = None
+        if isinstance(source, str) and source:
+            candidate = os.path.basename(source)
+        if not candidate:
+            filename = metadata.get("filename")
+            if isinstance(filename, str) and filename:
+                candidate = os.path.basename(filename)
+        if not candidate:
+            return None
+        if "." in candidate:
+            candidate = candidate.split(".")[0]
+        return candidate or None
+
+    @staticmethod
+    def _format_reference_label(metadata: dict) -> str | None:
+        source = metadata.get("source")
+        filename = metadata.get("filename")
+        candidate = None
+        if isinstance(filename, str) and filename:
+            candidate = os.path.basename(filename)
+        elif isinstance(source, str) and source:
+            candidate = os.path.basename(source)
+        if not candidate:
+            return None
+        base = candidate.split(".")[0]
+        lower_base = base.lower()
+        if lower_base.startswith("jira_"):
+            return f"JIRA {base[5:]}"
+        if lower_base.startswith("redmine_"):
+            return f"Redmine {base[len('redmine_'):]}"
+        return base
 
     def insert_feedback(self, feedback):
         """
@@ -268,22 +391,24 @@ class ChatWrapper:
 
     def prepare_context_for_storage(self, source_documents, sources, scores):
 
+        scores = scores or []
         num_retrieved_docs = len(source_documents)
         context = ""
         if num_retrieved_docs > 0:
             for k in range(num_retrieved_docs):
                 document = source_documents[k]
-                document_source_hash = document.metadata['source']
-                if '/' in document_source_hash and '.' in document_source_hash:
-                    document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
-                link_k = "link not available"
-                if document_source_hash in sources:
+                metadata = document.metadata
+                document_source_hash = self._extract_source_hash(metadata)
+                link_k = None
+                if document_source_hash and document_source_hash in sources:
                     link_k = sources[document_source_hash]
+                if not link_k:
+                    link_k = self._format_reference_label(metadata) or "link not available"
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
                 # Safely get the score, use "N/A" if index is out of range
                 score_display = scores[k] if k < len(scores) else "N/A"
-                context += f"SOURCE {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {score_display}\n\n{content}\n\n\n\n"
+                context += f"SOURCE {k+1}: {metadata.get('title', 'No Title')} ({link_k})\nSIMILARITY SCORE: {score_display}\n\n{content}\n\n\n\n"
 
         return context
 
@@ -436,17 +561,22 @@ class ChatWrapper:
             output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
 
-            # display sources that have links
+            # display sources (links or ticket references)
             documents = result.get("documents", [])
             scores = result.get("documents_scores", [])
-            top_links, top_link_names, top_scores = self.get_top_links(documents, scores)
-            output += self.format_links(top_links, top_link_names, top_scores)
+            top_sources = self.get_top_sources(documents, scores)
+            output += self.format_links(top_sources)
 
             # message is constructed!
             timestamps['a2rchi_message_ts'] = datetime.now()
             
             # write stuff to database
             context = self.prepare_context_for_storage(documents, self.links_db, scores)
+
+            best_reference = "Link unavailable"
+            if top_sources:
+                primary_source = top_sources[0]
+                best_reference = primary_source["link"] or primary_source["display"]
 
             # and now finally insert the conversation
             user_message = (sender, content, server_received_msg_ts)
@@ -455,7 +585,7 @@ class ChatWrapper:
                 conversation_id,
                 user_message,
                 a2rchi_message,
-                top_links[0] if top_links else "Link unavailable",
+                best_reference,
                 context,
                 is_refresh
             )

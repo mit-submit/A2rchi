@@ -48,6 +48,7 @@ packages = [
     "src.data_manager.collectors.tickets",
     "src.data_manager.collectors.tickets.integrations",
     "src.data_manager.collectors.utils",
+    "src.data_manager.vectorstore",
     "src.interfaces",
     "src.interfaces.chat_app",
     "src.interfaces.uploader_app",

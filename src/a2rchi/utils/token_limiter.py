@@ -141,6 +141,7 @@ class TokenLimiter:
         # Validate and collect docs, extras
         docs_lists, docs_vars = [], []
         extras = {}
+        extra_tokens = {}
         for k, v in kwargs.items():
             # check if the variable is a list/tuple of Documents
             if (isinstance(v, tuple) or isinstance(v, list)) and len(v) > 0:
@@ -151,7 +152,7 @@ class TokenLimiter:
             elif not isinstance(v, str):
                 raise ValueError(f"Extra variable '{k}' must be a string, got {type(v)}")
             extras[k] = v
-        extra_tokens = [self.safe_token_count(v) for v in extras.values()]
+            extra_tokens[k] = self.safe_token_count(v)
         
         # if history is passed as a string, make a tuple so we can easily remove old messages
         # but remember at the end to return it as a string
@@ -181,7 +182,7 @@ class TokenLimiter:
                     pruned_inputs[k] = v
 
         def total_tokens():
-            return question_tokens + sum(history_tokens) + sum(sum(x) for x in doc_tokens) + sum(extra_tokens)
+            return question_tokens + sum(history_tokens) + sum(sum(x) for x in doc_tokens) + sum(extra_tokens.values())
         
         # --- Step 0: Leave question ---
         pruned_inputs['question'] = question
