@@ -1,10 +1,12 @@
 import hashlib
+import importlib
 import json
 import os
 import re
 import time
 import urllib.parse
 from abc import ABC, abstractmethod
+from typing import Dict, List
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -12,6 +14,8 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from src.data_manager.collectors.scrapers.scraped_resource import \
+    ScrapedResource
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
@@ -213,11 +217,10 @@ class SSOScraper(ABC):
                         level_links.append(link)
 
                 # Scan next level if to_visit is empty
-                if len(to_visit) == 0:
-                    for link in new_links:
-                        to_visit.append(link)
-                    depth += 1
+                if not to_visit:
+                    to_visit.extend(level_links)
                     level_links = []
+                    depth += 1
                         
             except Exception as e:
                 logger.info(f"Error crawling {current_url}: {e}")
@@ -310,3 +313,106 @@ class CERNSSOScraper(SSOScraper):
         except Exception as e:
             logger.error(f"Error during login: {e}")
             return False
+
+
+class SSOCollector:
+    """Collects resources behind SSO-protected URLs using configured scrapers."""
+
+    def __init__(self, sso_config: Dict[str, Dict]) -> None:
+        self._config = sso_config or {}
+        self._enabled = self._config.get("enabled", False)
+        self._class_name = self._config.get("sso_class", "")
+        self._class_map = self._config.get("sso_class_map", {})
+
+    def collect(self, url: str) -> List[ScrapedResource]:
+        if not self._enabled:
+            logger.error("SSO is disabled or not configured")
+            return []
+
+        scraper_class, scraper_kwargs = self._resolve_scraper()
+        if scraper_class is None:
+            return []
+
+        try:
+            with scraper_class(**scraper_kwargs) as scraper:
+                payload = scraper.crawl(url)
+                resources = self._extract_resources(scraper, payload)
+                if not resources:
+                    logger.warning(f"No content extracted from SSO crawl for {url}")
+                return resources
+        except Exception as exc:  # pragma: no cover - defensive catch
+            logger.error(f"SSO scraping failed for {url}: {exc}")
+            return []
+
+    def _resolve_scraper(self):
+        entry = self._class_map.get(self._class_name)
+        if not entry:
+            logger.error(f"SSO class {self._class_name} not configured")
+            return None, {}
+
+        scraper_class = entry.get("class")
+        if isinstance(scraper_class, str):
+            module_name = entry.get(
+                "module",
+                "src.data_manager.collectors.scrapers.integrations.sso_scraper",
+            )
+            module = importlib.import_module(module_name)
+            scraper_class = getattr(module, scraper_class)
+
+        scraper_kwargs = entry.get("kwargs", {})
+        return scraper_class, scraper_kwargs
+
+    def _extract_resources(self, scraper, payload) -> List[ScrapedResource]:
+        resources: List[ScrapedResource] = []
+
+        page_data = getattr(scraper, "page_data", None)
+        if isinstance(page_data, list):
+            for page in page_data:
+                if not isinstance(page, dict):
+                    continue
+                page_url = page.get("url")
+                content = page.get("content")
+                if not page_url or content is None:
+                    continue
+
+                resources.append(
+                    ScrapedResource(
+                        url=page_url,
+                        content=content,
+                        suffix=page.get("suffix", "html"),
+                        metadata={
+                            "title": page.get("title"),
+                            "source": "sso",
+                        },
+                    )
+                )
+
+        elif isinstance(payload, list):
+            for item in payload:
+                if not isinstance(item, dict):
+                    continue
+                page_url = item.get("url")
+                content = item.get("content")
+                if not page_url or content is None:
+                    continue
+                resources.append(
+                    ScrapedResource(
+                        url=page_url,
+                        content=content,
+                        suffix=item.get("suffix", "html"),
+                        metadata={"source": "sso"},
+                    )
+                )
+
+        elif isinstance(payload, dict):
+            for page_url in payload.values():
+                logger.warning(
+                    f"SSO scraper returned mapping without page content; skipping {page_url}"
+                )
+
+        elif payload is not None:
+            logger.warning(
+                f"Unsupported SSO payload type {type(payload).__name__}"
+            )
+
+        return resources

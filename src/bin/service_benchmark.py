@@ -1,30 +1,29 @@
-from a2rchi.chains.a2rchi import A2rchi
-from a2rchi.utils.logging import get_logger, setup_logging
-from a2rchi.utils.data_manager import DataManager
-from a2rchi.utils.env import read_secret
-from a2rchi.chains.utils.history_utils import stringify_history
-from a2rchi.chains.models import HuggingFaceOpenLLM
-
-from langchain_openai import ChatOpenAI    
-from langchain_openai import OpenAIEmbeddings
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatOllama
-from ragas import evaluate, RunConfig
-from ragas.llms import LangchainLLMWrapper
-from ragas.embeddings import LangchainEmbeddingsWrapper
-from ragas.metrics import answer_relevancy, faithfulness, context_precision, context_recall
-from datasets import Dataset
-from pathlib import Path
+import json
+import os
+import time
 from datetime import datetime
-from typing import Dict, List, Any
+from pathlib import Path
+from typing import Any, Dict, List
 
 import pandas as pd
-import os
 import yaml
-import json
-import time
+from datasets import Dataset
+from langchain_anthropic import ChatAnthropic
+from langchain_community.chat_models import ChatOllama
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from ragas import RunConfig, evaluate
+from ragas.embeddings import LangchainEmbeddingsWrapper
+from ragas.llms import LangchainLLMWrapper
+from ragas.metrics import (answer_relevancy, context_precision, context_recall,
+                           faithfulness)
 
+from a2rchi.chains.a2rchi import A2rchi
+from a2rchi.chains.models import HuggingFaceOpenLLM
+from a2rchi.chains.utils.history_utils import stringify_history
+from a2rchi.utils.data_manager import DataManager
+from a2rchi.utils.env import read_secret
+from a2rchi.utils.logging import get_logger, setup_logging
 
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 OUTPUT_PATH = "/root/A2rchi/benchmarks"

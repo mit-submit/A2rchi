@@ -10,12 +10,9 @@ import chromadb
 import nltk
 import yaml
 from chromadb.config import Settings
-from langchain_community.document_loaders import (
-    BSHTMLLoader,
-    PyPDFLoader,
-    PythonLoader,
-    UnstructuredMarkdownLoader,
-)
+from langchain_community.document_loaders import (BSHTMLLoader, PyPDFLoader,
+                                                  PythonLoader,
+                                                  UnstructuredMarkdownLoader)
 from langchain_community.document_loaders.text import TextLoader
 from langchain_text_splitters.character import CharacterTextSplitter
 

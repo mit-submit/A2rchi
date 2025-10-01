@@ -1,7 +1,7 @@
 import re
 import shutil
 from pathlib import Path
-from typing import List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple
 
 import yaml
 from git import Repo
@@ -14,7 +14,8 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
+    from src.data_manager.collectors.scrapers.scraper_manager import \
+        ScraperManager
 
 
 class GitScraper:

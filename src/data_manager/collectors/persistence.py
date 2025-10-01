@@ -7,7 +7,8 @@ from typing import Dict
 
 import yaml
 
-from src.data_manager.collectors.scrapers.scraped_resource import ScrapedResource
+from src.data_manager.collectors.scrapers.scraped_resource import \
+    ScrapedResource
 from src.data_manager.collectors.tickets.ticket_resource import TicketResource
 from src.utils.logging import get_logger
 
@@ -29,10 +30,10 @@ class PersistenceService:
             directory.mkdir(parents=True, exist_ok=True)
 
         self._sources: Dict[str, str] = self._load_sources()
-        self._sources_dirty = False
+        self._sources_need_flush = False
 
         self._tickets_index: Dict[str, Dict] = self._load_tickets_index()
-        self._tickets_dirty = False
+        self._tickets_need_flush = False
 
     def persist_scraped_resource(self, resource: ScrapedResource, target_dir: Path) -> Path:
         """Persist a scraped web resource and update the sources catalogue."""
@@ -50,7 +51,7 @@ class PersistenceService:
 
         logger.info(f"Stored resource {resource.url} -> {file_path}")
         self._sources[file_id] = resource.url
-        self._sources_dirty = True
+        self._sources_need_flush = True
         return file_path
 
     def persist_ticket(self, resource: TicketResource) -> Path:
@@ -62,7 +63,7 @@ class PersistenceService:
         logger.info(f"Stored ticket {resource.ticket_id} at {file_path}")
 
         self._tickets_index[file_name] = resource.to_index_record()
-        self._tickets_dirty = True
+        self._tickets_need_flush = True
         return file_path
 
     def reset_directory(self, directory: Path) -> None:
@@ -77,20 +78,20 @@ class PersistenceService:
                 self._remove_tree(item)
 
     def flush_sources(self) -> None:
-        if not self._sources_dirty:
+        if not self._sources_need_flush:
             return
 
         with self.sources_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(self._sources, fh)
-        self._sources_dirty = False
+        self._sources_need_flush = False
 
     def flush_tickets(self) -> None:
-        if not self._tickets_dirty:
+        if not self._tickets_need_flush:
             return
 
         with self.tickets_index_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(self._tickets_index, fh)
-        self._tickets_dirty = False
+        self._tickets_need_flush = False
 
     def flush_all(self) -> None:
         self.flush_sources()

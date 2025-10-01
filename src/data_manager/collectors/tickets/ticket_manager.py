@@ -2,9 +2,8 @@ from typing import Iterable, Optional
 
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.tickets.integrations.jira import JiraClient
-from src.data_manager.collectors.tickets.integrations.redmine_tickets import (
-    RedmineClient,
-)
+from src.data_manager.collectors.tickets.integrations.redmine_tickets import \
+    RedmineClient
 from src.data_manager.collectors.tickets.ticket_resource import TicketResource
 from src.utils.config_loader import load_global_config
 from src.utils.logging import get_logger
