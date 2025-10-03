@@ -57,10 +57,11 @@ RUN apt-get update && \
 
 # for some reason this is not working right now
 # Install Firefox ESR
-# RUN wget -O /tmp/firefox-esr.tar.bz2 "https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=linux64&lang=en-US" && \
-#     tar -xjf /tmp/firefox-esr.tar.bz2 -C /opt/ && \
-#     ln -s /opt/firefox/firefox /usr/bin/firefox && \
-#     rm /tmp/firefox-esr.tar.bz2
+RUN wget -O /tmp/firefox-esr.tar.xz \
+    "https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=linux64&lang=en-US" && \
+    tar -xf /tmp/firefox-esr.tar.xz -C /opt/ && \
+    ln -s /opt/firefox/firefox /usr/bin/firefox && \
+    rm /tmp/firefox-esr.tar.xz
 
 # Install Geckodriver
 RUN wget -q "https://github.com/mozilla/geckodriver/releases/download/v0.36.0/geckodriver-v0.36.0-linux64.tar.gz" \

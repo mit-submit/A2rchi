@@ -86,7 +86,7 @@ class SecretsManager:
                     elif "HuggingFace" in model_name or "Llama" in model_name or "VLLM" in model_name:
                         logger.warning("You are using open source models; make sure to include a HuggingFace token if required for usage, it won't be explicitly enforced")
                 
-        logger.debug(f"Required model secrets: {model_secrets}")
+        logger.debug(f"Required model secrets: {model_secrets or 'None'}")
         return model_secrets
 
     def _extract_embedding_secrets(self) -> Set[str]:

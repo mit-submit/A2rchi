@@ -126,7 +126,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         # Log success
         service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
                                if s in service_registry.get_all_services()]
-        log_deployment_success(name, service_only_resolved, services, config_manager)
+        log_deployment_success(name, service_only_resolved, services, config_manager, host_mode=other_flags.get('host_mode', False))
         
     except Exception as e:
         if verbosity >= 4:

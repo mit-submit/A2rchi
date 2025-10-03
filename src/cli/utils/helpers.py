@@ -133,7 +133,7 @@ def print_dry_run_summary(name: str, services: List[str], service_only_resolved:
     logger.info(f"[DRY RUN] Configuration and secrets are valid. Run without --dry to deploy.\n")
 
 
-def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any]) -> None:
+def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any], host_mode: bool) -> None:
     """Show service URLs using registry configuration"""
     for service_name in services:
         if service_name not in service_registry.get_all_services():
@@ -150,7 +150,10 @@ def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any]) -> Non
                 config_value = config_value[key]
                 
             if isinstance(config_value, dict):
-                port = config_value.get('external_port', service_def.default_host_port)
+                if host_mode:
+                    port = config_value.get('port', service_def.default_container_port)
+                else:
+                    port = config_value.get('external_port', service_def.default_host_port)
             else:
                 port = config_value
                 
@@ -159,8 +162,11 @@ def show_service_urls(services: List[str], a2rchi_config: Dict[str, Any]) -> Non
                 
         except (KeyError, TypeError):
             # Use default port if config navigation fails
-            if service_def.default_host_port:
-                logger.info(f"{service_name.title()}: http://localhost:{service_def.default_host_port}")
+            fallback_port = (
+                service_def.default_container_port if host_mode else service_def.default_host_port
+            )
+            if fallback_port:
+                logger.info(f"{service_name.title()}: http://localhost:{fallback_port}")
 
 
 def log_deployment_start(name: str, services: List[str], sources: List[str], dry: bool) -> None:
@@ -171,10 +177,10 @@ def log_deployment_start(name: str, services: List[str], sources: List[str], dry
 
 
 def log_deployment_success(name: str, service_only_resolved: List[str], services: List[str], 
-                          config_manager) -> None:
+                          config_manager, host_mode) -> None:
     """Log successful deployment and show service URLs"""
     print(f"A2RCHI deployment '{name}' created successfully!")
     print(f"Services running: {', '.join(service_only_resolved)}")
     #All services are part of static configuration and equal for all configs
     a2rchi_config = config_manager.get_configs()[0]
-    show_service_urls(services, a2rchi_config)
+    show_service_urls(services, a2rchi_config, host_mode=host_mode)
