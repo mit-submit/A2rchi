@@ -154,5 +154,6 @@ class DeploymentManager:
                     if image_id.strip():
                         remove_cmd = f"{tool} rmi {image_id.strip()}"
                         CommandRunner.run_streaming(remove_cmd, cwd=deployment_dir)
+                        logger.info(f"Removing image with id: {image_id}")
         except Exception as e:
             logger.warning(f"Could not remove images: {e}")

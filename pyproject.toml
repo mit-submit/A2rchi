@@ -1,6 +1,6 @@
 [project]
 name = "a2rchi"
-version = "1.1.0"
+version = "1.2.0"
 description = "An AI Augmented Research Chat Intelligence (A2rchi)"
 requires-python = ">=3.7"
 authors = [
@@ -29,7 +29,7 @@ dependencies = [
 a2rchi = "src.cli.cli_main:main"
 
 [tool.setuptools.package-data]
-a2rchi = ["templates/**/*"]
+"src.cli" = ["templates/**/*"]
 
 [tool.setuptools]
 packages = [

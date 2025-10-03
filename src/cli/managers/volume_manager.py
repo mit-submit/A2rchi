@@ -40,8 +40,8 @@ class VolumeManager:
             raise RuntimeError(f"Failed to create volume '{volume_name}': {stderr}")
         
     def remove_volume(self, volume_name_substr: str, force: bool = False) -> None:
-        """Remove any volume containing the given substring"""
-        logger.info(f"Looking for volumes containing: '{volume_name_substr}'")
+        """Remove any volume that ends with '-<name>'"""
+        logger.info(f"Looking for volumes ending with '-{volume_name_substr}'")
 
         # List existing volumes
         list_cmd = "podman volume ls --format '{{.Name}}'" if self.use_podman else "docker volume ls --format '{{.Name}}'"
@@ -52,7 +52,8 @@ class VolumeManager:
             raise RuntimeError(f"Failed to list volumes: {stderr}")
 
         all_volumes = stdout.strip().splitlines()
-        matching_volumes = [v for v in all_volumes if volume_name_substr in v]
+        suffix = f"-{volume_name_substr}"
+        matching_volumes = [v for v in all_volumes if v.endswith(suffix)]
 
         if not matching_volumes:
             logger.info(f"No volumes matching '{volume_name_substr}' found. Nothing to remove.")
