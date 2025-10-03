@@ -7,10 +7,10 @@ services:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-chroma
       args:
-        CHROMA_PORT: {{ chromadb_port_host if host_mode else 8000 }}
+        CHROMA_PORT: {{ chromadb_port_host }}
     container_name: {{ chromadb_container_name }}
     ports:
-      - {{ chromadb_port_host }}:8000
+      - {{ chromadb_port_host }}:{{ chromadb_port_host }}
     volumes:
       - {{ chromadb_volume_name }}:/chroma/chroma/
     logging:
@@ -21,7 +21,7 @@ services:
     network_mode: host
     {% endif %}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://0.0.0.0:{{ chromadb_port_host if host_mode else 8000 }}/api/v1/heartbeat"]
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:{{ chromadb_port_host }}/api/v1/heartbeat"]
       interval: 15s
       timeout: 10s
       retries: 3
@@ -533,6 +533,9 @@ services:
     logging:
       options:
         max-size: 10m
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
     {% if gpu_ids and use_podman -%}
     security_opt:
       - label:disable

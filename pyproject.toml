@@ -29,7 +29,7 @@ dependencies = [
 a2rchi = "src.cli.cli_main:main"
 
 [tool.setuptools.package-data]
-a2rchi = ["cli/templates/*", "cli/templates/grafana/*"]
+a2rchi = ["templates/**/*"]
 
 [tool.setuptools]
 packages = [
