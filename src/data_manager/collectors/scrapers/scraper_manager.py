@@ -21,15 +21,20 @@ class ScraperManager:
     """Coordinates scraper integrations and centralises persistence logic."""
 
     def __init__(self, dm_config: Optional[Dict[str, Any]] = None) -> None:
-        utils_config = load_utils_config()
         global_config = load_global_config()
-
-        self.config = utils_config.get("scraper", {})
+        utils_config = load_utils_config()
 
         sources_config = (dm_config or {}).get("sources", {}) or {}
         links_config = sources_config.get("links", {}) if isinstance(sources_config, dict) else {}
         git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
         sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
+
+        scraper_config = {}
+        if isinstance(links_config, dict):
+            scraper_config = links_config.get("scraper", {}) or {}
+        if not scraper_config:
+            scraper_config = utils_config.get("scraper", {}) or {}
+        self.config = scraper_config
 
         self.links_enabled = links_config.get("enabled", True)
         self.git_enabled = git_config.get("enabled", False)

@@ -7,7 +7,6 @@ import re
 from bs4 import BeautifulSoup
 
 from src.utils.config_loader import load_utils_config
-from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

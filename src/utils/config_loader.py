@@ -102,7 +102,7 @@ def load_utils_config(name: str = None):
         with open(CONFIGS_PATH+f"{name}.yaml", "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
 
-    return config["utils"]
+    return config.get("utils", {}) or {}
 
 def load_data_manager_config(name: str = None):
     """
@@ -143,6 +143,5 @@ def get_config_names():
 
     names = [n.replace('.yaml','') for n in os.listdir(CONFIGS_PATH)]
     return names
-
 
 

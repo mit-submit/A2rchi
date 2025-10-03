@@ -10,7 +10,7 @@ from redminelib import Redmine as RedmineClient
 from src.a2rchi.a2rchi import A2rchi
 from src.data_manager.data_manager import DataManager
 from src.interfaces.redmine_mailer_integration.utils import sender
-from src.utils.config_loader import CONFIG_PATH, load_config
+from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import SQL_INSERT_CONVO
@@ -166,11 +166,29 @@ class Redmine:
             logger.info("Loading AI wrapper for Redmine service")
             self.ai_wrapper = RedmineAIWrapper()
 
-        # read environment variables from secrets
-        self.redmine_project = read_secret("REDMINE_PROJECT")
-        self.redmine_url = read_secret("REDMINE_URL")
-        self.redmine_user = read_secret("REDMINE_USER")
-        self.redmine_pw = read_secret("REDMINE_PW")
+        # read configuration for Redmine mailbox service
+        config = load_config()
+        services_config = config.get("services", {}) if isinstance(config, dict) else {}
+        redmine_mailbox_config = services_config.get("redmine_mailbox", {})
+
+        self.redmine_url = redmine_mailbox_config.get("url")
+        self.redmine_project = redmine_mailbox_config.get("project")
+
+        if not self.redmine_url or not self.redmine_project:
+            logger.warning(
+                "Redmine mailer configuration missing services.redmine_mailbox.url/project; skipping initialisation."
+            )
+            return
+
+        try:
+            self.redmine_user = read_secret("REDMINE_USER")
+            self.redmine_pw = read_secret("REDMINE_PW")
+        except FileNotFoundError as error:
+            logger.warning(
+                "Redmine credentials not found in secrets; skipping Redmine mailer initialisation.",
+                exc_info=error,
+            )
+            return
 
         # make sure to open redmine access
         if self._verify():
