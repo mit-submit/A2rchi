@@ -1,6 +1,6 @@
 [project]
 name = "a2rchi"
-version = "1.1.0"
+version = "1.2.0"
 description = "An AI Augmented Research Chat Intelligence (A2rchi)"
 requires-python = ">=3.7"
 authors = [
@@ -17,35 +17,46 @@ dependencies = [
     "requests==2.31.0",
     "podman-compose==1.4.0",
     "python-dotenv>=0.19.0",
-    "mkdocs",
+    "mkdocs==1.6.1",
     "ipykernel==6.30.1",
     "ipython==8.18.0",
     "matplotlib==3.9.4",
-    "pandas==2.3.2"
+    "pandas==2.3.2",
+    "isort==6.0.1"
 ]
 
 [project.scripts]
-a2rchi = "a2rchi.cli.cli_main:main"
+a2rchi = "src.cli.cli_main:main"
 
 [tool.setuptools.package-data]
-a2rchi = ["cli/templates/*", "cli/templates/grafana/*"]
+"src.cli" = ["templates/**/*"]
 
 [tool.setuptools]
 packages = [
-    "a2rchi",
-    "a2rchi.bin",
-    "a2rchi.cli",
-    "a2rchi.cli.utils",
-    "a2rchi.cli.managers",
-    "a2rchi.cli.templates",
-    "a2rchi.cli.templates.grafana",
-    "a2rchi.chains",
-    "a2rchi.chains.utils",
-    "a2rchi.interfaces",
-    "a2rchi.interfaces.chat_app",
-    "a2rchi.interfaces.uploader_app",
-    "a2rchi.interfaces.grader_app",
-    "a2rchi.utils",
+    "src",
+    "src.a2rchi",
+    "src.a2rchi.utils",
+    "src.bin",
+    "src.cli",
+    "src.cli.utils",
+    "src.cli.managers",
+    "src.cli.templates",
+    "src.cli.templates.grafana",
+    "src.data_manager",
+    "src.data_manager.collectors",
+    "src.data_manager.collectors.scrapers",
+    "src.data_manager.collectors.scrapers.integrations",
+    "src.data_manager.collectors.tickets",
+    "src.data_manager.collectors.tickets.integrations",
+    "src.data_manager.collectors.utils",
+    "src.data_manager.vectorstore",
+    "src.interfaces",
+    "src.interfaces.chat_app",
+    "src.interfaces.uploader_app",
+    "src.interfaces.grader_app",
+    "src.interfaces.redmine_mailer_integration",
+    "src.interfaces.redmine_mailer_integration.utils",
+    "src.utils",
 ]
 include-package-data = true 
 

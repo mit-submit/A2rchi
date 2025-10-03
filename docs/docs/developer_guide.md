@@ -1,56 +1,67 @@
 # Developers Guide
 
-Below is all the information which developers may need in order to get started contributing to the A2rchi project.
+Below is all the information developers may need to get started contributing to the A2rchi project.
 
-## Editing Documentation.
+## Editing Documentation
 
-Editing documentation requires you to install the mkdocs python packge:
-```
+Editing documentation requires the `mkdocs` Python package:
+
+```bash
 pip install mkdocs
 ```
-To edit documentation, simply make changes to the `.md` and `.yml` files in the `./docs` folder. To view your changes without pushing them, `cd` into the `./docs` folder and then run `mkdocs serve`. Add the `-a IP:HOST` argument (default is localhost:8000) to specify where to host the docs so you can easily view your changes on the web.
 
-To publish your changes, run `mkdocs gh-deploy`. Please make sure to also open a PR to merge the documentation changes into main.
+To edit documentation, update the `.md` and `.yml` files in the `./docs` folder. To preview changes locally, run:
 
-Note, please do NOT edit files in the gh-pages branch by hand, again, make a PR to main from a separate branch, and then you can deploy from main with the new changes.
+```bash
+cd docs
+mkdocs serve
+```
+
+Add the `-a IP:HOST` argument (default is `localhost:8000`) to specify the host and port.
+
+Publish your changes with:
+
+```bash
+mkdocs gh-deploy
+```
+
+Always open a PR to merge documentation changes into `main`. Do not edit files directly in the `gh-pages` branch.
 
 ## DockerHub Images
 
-A2rchi will load from different base images hosted on dockerhub. If you do not need to use GPUs the python base image will be installed. Alternatively, the pytorch base image will be installed. 
-The base Docker file used to make these base images from which the chat interface inherits its changes from can be found in `a2rchi/cli/templates/dockerfiles/base-X-image` directories.
-They are currently hosted on dockerhub at the following links: 
-pytorch: https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base
-python: https://hub.docker.com/r/a2rchi/a2rchi-python-base
+A2rchi loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in `src/cli/templates/dockerfiles/base-X-image`.
 
-In order to rebuild the base images from which the dockerfiles inherit, go to the `base-xxx-image` directory found in `templates/dockerfiles/`.
-In these directories, there is a different set of requirements for each along with their license and respective dockerfiles.
-To regenerate the requirements if they have been changed run the following commands to ensure that the right header is used for each: 
+Images are hosted at:
 
-for the python image:
-```
-cat requirements/cpu-requirementsHEADER.txt requirements/requirements-base.txt > a2rchi/templates/dockerfiles/base-python-image/requirements.txt
-```
-for the pytorch image:
-```
-cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt > a2rchi/templates/dockerfiles/base-pytorch-image/requirements.txt
-```
+- Python: <https://hub.docker.com/r/a2rchi/a2rchi-python-base>
+- PyTorch: <https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base>
 
-Then while inside of the `templates/dockerfiles/base-xxx-image` directory, simply run the following command to build the image.  
+To rebuild a base image, navigate to the relevant `base-xxx-image` directory under `src/cli/templates/dockerfiles/`. Each directory contains the Dockerfile, requirements, and license information.
 
-```
-podman build -t a2rchi/<image-name>:<tag> . 
+Regenerate the requirements files with:
+
+```bash
+# Python image
+cat requirements/cpu-requirementsHEADER.txt requirements/requirements-base.txt > src/cli/templates/dockerfiles/base-python-image/requirements.txt
+
+# PyTorch image
+cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt > src/cli/templates/dockerfiles/base-pytorch-image/requirements.txt
 ```
 
-after having checked that the newly built image is working, to update it on dockerhub, login to dockerhub using (ask for a senior developer for the password/master token),
+Build the image:
 
-```
-podman login docker.io 
-```
-
-and finally push the image to the repository as such: 
-
-```
-podman push a2rchi/<image-name>:<tag> 
+```bash
+podman build -t a2rchi/<image-name>:<tag> .
 ```
 
+After verifying the image, log in to Docker Hub (ask a senior developer for credentials):
 
+```bash
+podman login docker.io
+```
+
+Push the image:
+
+```bash
+podman push a2rchi/<image-name>:<tag>
+```

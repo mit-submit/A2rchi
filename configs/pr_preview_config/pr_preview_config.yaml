@@ -18,8 +18,10 @@ data_manager:
       similarity_score_reference: 10
   chromadb_host: localhost  
   use_hybrid_search: true
-  input_lists:
-    - configs/pr_preview_config/test_links.list
+  sources:
+    links:
+      input_lists:
+        - configs/pr_preview_config/test_links.list
 
 a2rchi:
   pipelines: ['QAPipeline']
