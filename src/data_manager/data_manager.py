@@ -22,7 +22,7 @@ class DataManager():
         self.persistence = PersistenceService(self.data_path)
 
         scraper_manager = ScraperManager(dm_config=self.config["data_manager"])
-        ticket_manager = TicketManager()
+        ticket_manager = TicketManager(dm_config=self.config["data_manager"])
 
         source_aggregation = [
             (

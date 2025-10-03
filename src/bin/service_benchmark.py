@@ -125,7 +125,7 @@ class Benchmarker:
         if self.current_config == 'FINISHED': return
         with open(self.current_config, "r") as f:
             config = yaml.safe_load(f)
-        current_input_list = config.get('data_manager', {}).get('input_lists', [])
+        current_input_list = config.get('data_manager', {}).get('sources', {}).get('links', {}).get('input_lists', [])
 
         with open(CONFIG_PATH, 'w') as f: 
             yaml.dump(config, stream=f)

@@ -152,13 +152,12 @@ class SSOScraper(ABC):
     
     def crawl(self, start_url):
         """Crawl pages starting from the given URL, storing title and content of each page.
-        
+
         Args:
             start_url (str): The URL to start crawling from
-            upload_dir (str): The directory where the URL content is to be stored
-            
+
         Returns:
-            dictionary of source urls addressed via their internal file identifiers
+            List[Dict]: A list of dictionaries describing each visited page.
         """
         max_depth = self.max_depth
         depth = 0
@@ -182,7 +181,6 @@ class SSOScraper(ABC):
         # History record   
         pages_visited = 0
         self.visited_urls = set()
-        sources = {}
         
         while to_visit and depth < max_depth:
             current_url = to_visit.pop(0)
@@ -227,7 +225,7 @@ class SSOScraper(ABC):
                 self.visited_urls.add(current_url)  # Mark as visited to avoid retrying           
             
         logger.info(f"Crawling complete. Visited {pages_visited} pages.")
-        return sources
+        return list(self.page_data)
 
     def _clear_url(self, url: str) -> bool:
         """Basic filtering for duplicate or fragment-only URLs."""

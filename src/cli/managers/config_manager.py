@@ -1,11 +1,12 @@
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional
 
 import yaml
 
 from src.cli.managers.templates_manager import BASE_CONFIG_TEMPLATE
+from src.cli.source_registry import source_registry
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -121,26 +122,71 @@ class ConfigurationManager:
                     raise ValueError(f"Missing required field: '{field}' in the configuration")
                 value = value[key]
 
-    def validate_configs(self, services: List[str]):
+    def validate_configs(self, services: List[str], sources: Optional[List[str]] = None):
         """Validate that all required fields are present in each config"""
-        
+
+        sources = sources or []
         static_requirements = self._get_static_required_fields_for_services(services)
 
         for config in self.configs:
             pipeline_requirements = self._get_active_pipeline_requirements(config)
-            required_fields = static_requirements+pipeline_requirements
-            self._validate_config(required_fields,config)
+            required_fields = static_requirements + pipeline_requirements
+            self._validate_config(required_fields, config)
+            self._validate_source_fields(config, sources)
 
-        # get embeddings being used
-        embedding_models_used = list(set([conf.get("data_manager", {}).get("embedding_name", "") 
-                                          for conf in self.configs]))
+        self._collect_embedding_metadata()
+        self._collect_input_lists()
 
-        self.embedding_models_used = " ".join(embedding_models_used)
+    def _validate_source_fields(self, config: Dict[str, Any], sources: List[str]) -> None:
+        if not sources:
+            return
 
-        # handle the combination of input lists across all files to get copied in
-        input_lists = [conf.get('data_manager', {}).get('input_lists', []) for conf in self.configs]
-        input_list = list(set(reduce(lambda a,b: a + b, input_lists)))
-        self.input_list = input_list
+        for field in source_registry.required_config_fields(sources):
+            value = self._get_value_from_path(config, field)
+            if value in (None, ''):
+                raise ValueError(f"Missing required field: '{field}' in the configuration")
+            if isinstance(value, list) and not value and not field.endswith('input_lists'):
+                raise ValueError(f"Missing required field: '{field}' in the configuration")
+
+    def _get_value_from_path(self, config: Dict[str, Any], path: str) -> Any:
+        value: Any = config
+        for key in path.split('.'):
+            if isinstance(value, dict) and key in value:
+                value = value[key]
+            else:
+                raise ValueError(f"Missing required field: '{path}' in the configuration")
+        return value
+
+    def _collect_embedding_metadata(self) -> None:
+        embedding_models_used = list({conf.get('data_manager', {}).get('embedding_name', '') for conf in self.configs})
+        self.embedding_models_used = ' '.join([model for model in embedding_models_used if model])
+
+    def _collect_input_lists(self) -> None:
+        collected: List[str] = []
+        for conf in self.configs:
+            data_manager = conf.get('data_manager', {})
+            sources_section = data_manager.get('sources', {}) or {}
+            links_section = sources_section.get('links', {}) if isinstance(sources_section, dict) else {}
+            lists = links_section.get('input_lists') or []
+            if isinstance(lists, list):
+                collected.extend(lists)
+        self.input_list = sorted(set(collected)) if collected else []
+
+    def set_sources_enabled(self, enabled_sources: List[str]) -> None:
+        enabled_set = set(enabled_sources or [])
+        managed_sources = [name for name in source_registry.names() if name != 'links']
+
+        for conf in self.configs:
+            data_manager = conf.setdefault('data_manager', {})
+            sources_section = data_manager.setdefault('sources', {})
+
+            for name in managed_sources:
+                entry = sources_section.setdefault(name, {})
+                entry['enabled'] = name in enabled_set
+
+            links_entry = sources_section.setdefault('links', {})
+            links_entry.setdefault('enabled', True)
+            links_entry.setdefault('input_lists', links_entry.get('input_lists', []))
 
     
     def get_configs(self) -> Dict[str, Any]:
@@ -183,21 +229,11 @@ class ConfigurationManager:
         """Get configuration for a specific interface"""
         return self.config.get("services", {}).get(interface_name, {})
     
-    def get_service_config(self, service_name: str) -> Dict[str, Any]:
-        """Get configuration for a specific service"""
-        return self.config.get("utils", {}).get(service_name, {})
-    
     def get_embedding_name(self):
         return self.embedding_models_used
     
     def get_input_lists(self):
         return self.input_list
-    
-    def get_sso(self):
-        # get using sso 
-        sso_configuration = [conf.get('utils', {}).get('sso', {}).get("enabled", False) for conf in self.configs]
-        using_sso = any(sso_configuration)
-        return using_sso
     
     def _get_all_models(self, config): 
         pipelines = config.get('a2rchi', {}).get('pipelines', [])

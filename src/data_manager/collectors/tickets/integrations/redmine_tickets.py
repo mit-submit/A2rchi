@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, Optional
 
 from redminelib import Redmine
 
@@ -15,24 +15,69 @@ ANSWER_TAG = load_services_config()["redmine_mailbox"]["answer_tag"]
 
 
 class RedmineClient:
-    def __init__(self) -> None:
-        self.redmine_url = read_secret("REDMINE_URL")
-        self.redmine_user = read_secret("REDMINE_USER")
-        self.redmine_pw = read_secret("REDMINE_PW")
-        self.redmine_project = read_secret("REDMINE_PROJECT")
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+        self.redmine = None
+        self.project = None
+        self.redmine_url: Optional[str] = None
+        self.redmine_user: Optional[str] = None
+        self.redmine_pw: Optional[str] = None
+        self.redmine_project: Optional[str] = None
+        self.anonymizer: Optional[Anonymizer] = None
 
-        self.anonymizer = Anonymizer()
+        redmine_config = dict(config or {})
+        if not redmine_config.get("enabled", False):
+            logger.debug("Redmine source disabled; skipping ticket collection")
+            return
 
-        if self._verify():
+        self.redmine_url = redmine_config.get("url")
+        self.redmine_project = redmine_config.get("project")
+        if not self.redmine_url or not self.redmine_project:
+            logger.warning("Redmine config missing url/project; skipping Redmine collection")
+            return
+
+        try:
+            self.redmine_user = read_secret("REDMINE_USER")
+            self.redmine_pw = read_secret("REDMINE_PW")
+        except FileNotFoundError as error:
+            logger.warning(
+                "Redmine secrets couldn't be found. A2rchi will skip data fetching from Redmine.",
+                exc_info=error,
+            )
+            return
+
+        anonymize_data = redmine_config.get("anonymize_data", True)
+        if anonymize_data:
+            try:
+                self.anonymizer = Anonymizer()
+            except Exception as error:
+                logger.warning(
+                    "Failed to initialise Redmine anonymizer; continuing without anonymization.",
+                    exc_info=error,
+                )
+                self.anonymizer = None
+
+        if not self._verify():
+            self.redmine = None
+            self.project = None
+            return
+
+        try:
             self._connect()
             self._load()
-        else:
+        except Exception as error:
+            logger.warning(
+                "Failed to initialise Redmine client; skipping Redmine collection.",
+                exc_info=error,
+            )
             self.redmine = None
             self.project = None
 
     def collect(self) -> Iterator[TicketResource]:
         """Return an iterator of Redmine tickets."""
         if not self._verify() or not self.redmine or not self.project:
+            logger.debug(
+                "Skipping Redmine collection; client not initialised or credentials missing."
+            )
             return iter(())
 
         return self._prepare_ticket_resources()
@@ -46,10 +91,18 @@ class RedmineClient:
             try:
                 full_issue = self.redmine.issue.get(issue.id)
 
-                subject = self.anonymizer.anonymize(full_issue.subject)
+                subject = (
+                    self.anonymizer.anonymize(full_issue.subject)
+                    if self.anonymizer
+                    else full_issue.subject
+                )
 
                 description = (full_issue.description or "").replace("\n", " ")
-                question = self.anonymizer.anonymize(description)
+                question = (
+                    self.anonymizer.anonymize(description)
+                    if self.anonymizer
+                    else description
+                )
 
                 answer = self._extract_answer_from_journals(full_issue.journals)
 
@@ -96,19 +149,13 @@ class RedmineClient:
 
     def _verify(self) -> bool:
         """Check if necessary secrets are provided to access Redmine."""
-        try:
-            if not all(
-                [self.redmine_url, self.redmine_user, self.redmine_pw, self.redmine_project]
-            ):
-                logger.debug(
-                    "Redmine secrets couldn't be found. A2rchi will skip data fetching from Redmine"
-                )
-                return False
-        except FileNotFoundError as error:
-            raise FileNotFoundError(
-                "Redmine secrets couldn't be found. A2rchi will skip data fetching from Redmine: "
-                f"{str(error)}"
-            ) from error
+        if not all(
+            [self.redmine_url, self.redmine_user, self.redmine_pw, self.redmine_project]
+        ):
+            logger.debug(
+                "Redmine configuration or credentials missing; skipping Redmine collection"
+            )
+            return False
 
         return True
 
@@ -143,7 +190,8 @@ class RedmineClient:
                 answer = note.replace(ANSWER_TAG, "")
                 answer = "\n".join(line for line in answer.splitlines() if "ISSUE_ID" not in line)
                 answer = answer.replace("\n", " ")
-                answer = self.anonymizer.anonymize(answer)
+                if self.anonymizer:
+                    answer = self.anonymizer.anonymize(answer)
                 answers.append(answer)
 
         return answers[-1] if answers else ""

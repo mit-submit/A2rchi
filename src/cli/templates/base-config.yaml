@@ -99,11 +99,38 @@ services:
     external_port: {{ services.grafana.external_port | default(3000, true) }}
 
 data_manager:
+  sources:
+    links:
+      enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
+      input_lists:
+        {%- set link_lists = data_manager.sources.links.input_lists | default([], true) %}
+        {%- for input_list in link_lists %}
+        - {{ input_list }}
+        {%- endfor %}
+    git:
+      enabled: {{ data_manager.sources.git.enabled | default(false, true) }}
+    sso:
+      enabled: {{ data_manager.sources.sso.enabled | default(false, true) }}
+      sso_class: {{ data_manager.sources.sso.sso_class | default('CERNSSOScraper', true) }}
+      sso_class_map:
+        CERNSSOScraper:
+          class: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.class | default('CERNSSOScraper', true) }}
+          kwargs:
+            headless: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.kwargs.headless | default(true, true) }}
+            max_depth: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
+    jira:
+      enabled: {{ data_manager.sources.jira.enabled | default(false, true) }}
+      url: {{ data_manager.sources.jira.url | default('', true) }}
+      projects:
+        {%- for project in data_manager.sources.jira.projects | default([], true) %}
+        - {{ project }}
+        {%- endfor %}
+      anonymize_data: {{ data_manager.sources.jira.anonymize_data | default(true, true) }}
+    redmine:
+      enabled: {{ data_manager.sources.redmine.enabled | default(false, true) }}
+      url: {{ data_manager.sources.redmine.url | default('', true) }}
+      project: {{ data_manager.sources.redmine.project | default('', true) }}
   collection_name: {{ collection_name | default("default_collection", true) }}
-  input_lists:
-    {%- for input_list in data_manager.input_lists | default([]) %}
-    - {{ input_list }}
-    {%- endfor %}
   embedding_name: {{ data_manager.embedding_name | default('OpenAIEmbeddings', true) }}
   embedding_class_map:
     OpenAIEmbeddings:

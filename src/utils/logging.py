@@ -41,7 +41,7 @@ def setup_cli_logging(verbosity):
     if verbosity > 3: # high verbose mode
         format_str = '[%(name)s] %(levelname)s: %(message)s'
     else: # low verbose mode
-        format_str = '[a2rchi] %(message)s'
+        format_str = '[A2RCHI] %(message)s'
     level = logging_verboseLevel[max(0, min(4, verbosity))]
     logging.basicConfig(
         level=level,

@@ -214,38 +214,14 @@ class ChatWrapper:
         if top_sources:
             _output += '''
             <div style="
-                margin: 1em 0 0.5em 0; 
-                padding: 0.8em; 
-                background: rgba(0, 0, 0, 0.1); 
-                border-left: 3px solid #007bff; 
-                border-radius: 6px;
-                box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+                margin-top: 1.5em;
+                padding-top: 0.5em;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+                font-size: 0.75em;
+                color: #adb5bd;
+                line-height: 1.3;
             ">
-                <div style="
-                    color: #e9ecef; 
-                    font-weight: 600; 
-                    font-size: 0.85em; 
-                    margin-bottom: 0.5em;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                ">
-                    <div style="display: flex; align-items: center;">
-                        <svg style="width: 16px; height: 16px; margin-right: 6px; fill: #007bff;" viewBox="0 0 24 24">
-                            <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/>
-                        </svg>
-                        Sources
-                    </div>
-                    <div style="
-                        color: #adb5bd; 
-                        font-size: 0.75em; 
-                        font-weight: 400;
-                        font-style: italic;
-                    ">
-                        Distance score • Lower is better
-                    </div>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 0.4em;">
+                <div style="margin-bottom: 0.3em; font-weight: 500;">Sources:</div>
             '''
 
             for entry in top_sources:
@@ -253,47 +229,21 @@ class ChatWrapper:
                 link = entry["link"]
                 display_name = entry["display"]
                 score_str = score if isinstance(score, str) else f"{score:.2f}"
+                
                 if link:
-                    reference_html = f"<a href=\"{link}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #66b3ff; text-decoration: none; font-weight: 500; font-size: 0.85em; line-height: 1.2;\" onmouseover=\"this.style.textDecoration='underline'; this.style.color='#80c7ff'\" onmouseout=\"this.style.textDecoration='none'; this.style.color='#66b3ff'\">{display_name}</a>"
+                    reference_html = f"<a href=\"{link}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #66b3ff; text-decoration: none;\" onmouseover=\"this.style.textDecoration='underline'\" onmouseout=\"this.style.textDecoration='none'\">{display_name}</a>"
                 else:
-                    reference_html = f"<span style=\"color: #e9ecef; font-weight: 500; font-size: 0.85em; line-height: 1.2;\">{display_name}</span>"
+                    reference_html = f"<span>{display_name}</span>"
 
                 _output += f'''
-                    <div style="
-                        display: flex; 
-                        align-items: center; 
-                        padding: 0.4em 0.6em; 
-                        background: rgba(0, 0, 0, 0.15); 
-                        border-radius: 4px; 
-                        border: 1px solid rgba(255, 255, 255, 0.1);
-                        transition: all 0.2s ease;
-                    " 
-                    onmouseover="this.style.background='rgba(0, 0, 0, 0.2)'; this.style.borderColor='rgba(0, 123, 255, 0.4)'" 
-                    onmouseout="this.style.background='rgba(0, 0, 0, 0.15)'; this.style.borderColor='rgba(255, 255, 255, 0.1)'">
-                        <div style="flex: 1;">
-                            {reference_html}
-                        </div>
-                        <div style="
-                            background: rgba(0, 123, 255, 0.2); 
-                            color: #b3d9ff; 
-                            padding: 0.15em 0.4em; 
-                            border-radius: 10px; 
-                            font-size: 0.7em; 
-                            font-weight: 600;
-                            margin-left: 0.6em;
-                            min-width: 50px;
-                            text-align: center;
-                            border: 1px solid rgba(0, 123, 255, 0.3);
-                        ">
-                            {score_str}
-                        </div>
+                    <div style="margin: 0.15em 0; display: flex; align-items: center; gap: 0.4em;">
+                        <span>•</span>
+                        {reference_html}
+                        <span style="color: #6c757d; font-size: 0.9em;">({score_str})</span>
                     </div>
                 '''
 
-            _output += '''
-                </div>
-            </div>
-            '''
+            _output += '</div>'
 
         return _output
 
@@ -570,7 +520,7 @@ class ChatWrapper:
             # message is constructed!
             timestamps['a2rchi_message_ts'] = datetime.now()
             
-            # write stuff to database
+            # formatting context
             context = self.prepare_context_for_storage(documents, self.links_db, scores)
 
             best_reference = "Link unavailable"

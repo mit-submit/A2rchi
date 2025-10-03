@@ -25,9 +25,18 @@ class ScraperManager:
         global_config = load_global_config()
 
         self.config = utils_config.get("scraper", {})
-        self.sso_config = utils_config.get("sso", {})
+
+        sources_config = (dm_config or {}).get("sources", {}) or {}
+        links_config = sources_config.get("links", {}) if isinstance(sources_config, dict) else {}
+        git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
+        sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
+
+        self.links_enabled = links_config.get("enabled", True)
+        self.git_enabled = git_config.get("enabled", False)
+        self.sso_config = sso_config or {}
+        self.sso_enabled = self.sso_config.get("enabled", False)
         self.data_path = Path(global_config["DATA_PATH"])
-        self.input_lists = (dm_config or {}).get("input_lists") or []
+        self.input_lists = links_config.get("input_lists", [])
 
         self.data_path.mkdir(parents=True, exist_ok=True)
 
@@ -58,24 +67,29 @@ class ScraperManager:
                 sso_urls.append(raw_url.split("sso-", 1)[1])
                 continue
 
-            self._handle_standard_url(raw_url, persistence)
+            if self.links_enabled:
+                self._handle_standard_url(raw_url, persistence)
 
-        if sso_urls:
+        if self.sso_enabled and sso_urls:
             sso_resources = self._collect_sso_resources(sso_urls)
             for resource in sso_resources:
                 persistence.persist_scraped_resource(
                     resource, persistence.websites_dir
                 )
+        elif sso_urls:
+            logger.warning("SSO URLs detected but SSO source is disabled; skipping SSO scraping")
 
-        if git_urls:
+        if self.git_enabled and git_urls:
             if self.config.get("reset_data", False):
                 persistence.reset_directory(persistence.git_dir)
             git_resources = self._collect_git_resources(
                 git_urls, persistence
             )
             logger.debug(f"Git scraping produced {len(git_resources)} resources")
+        elif git_urls:
+            logger.warning("Git URLs detected but git source is disabled; skipping git scraping")
 
-        logger.debug("Web scraping was completed successfully")
+        logger.info("Web scraping was completed successfully")
 
     def collect_urls_from_lists(self) -> List[str]:
         """Collect URLs from the configured weblists."""

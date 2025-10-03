@@ -1,10 +1,9 @@
-from typing import Iterator, Optional
+from typing import Any, Dict, Iterator, Optional
 
 import jira
 
 from src.data_manager.collectors.tickets.ticket_resource import TicketResource
 from src.data_manager.collectors.utils.anonymizer import Anonymizer
-from src.utils.config_loader import load_utils_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
@@ -12,41 +11,53 @@ logger = get_logger(__name__)
 
 
 class JiraClient:
-    def __init__(self) -> None:
-        try:
-            self.jira_config = load_utils_config()["jira"]
-            self.jira_url = self.jira_config["url"]
-            self.jira_projects = self.jira_config["projects"]
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+        self.client: Optional[jira.JIRA] = None
+        self.jira_url: Optional[str] = None
+        self.jira_projects: list = []
+        self.anonymize_data = True
+        self.anonymizer: Optional[Anonymizer] = None
 
-            if not self.jira_url or not self.jira_projects:
-                logger.info(
-                    "JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA"
-                )
-                self.client = None
-                return
-        except KeyError as error:
-            raise KeyError(
-                "JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA: "
-                f"{str(error)}"
+        jira_config: Dict[str, Any] = dict(config or {})
+
+        if not jira_config.get('enabled', False):
+            logger.debug('JIRA source disabled; skipping data fetching from JIRA')
+            return
+
+        self.jira_config = jira_config
+        self.jira_url = jira_config.get('url') or jira_config.get('JIRA_URL')
+        projects = jira_config.get('projects') or jira_config.get('JIRA_PROJECTS')
+        self.jira_projects = projects or []
+
+        if not self.jira_url or not self.jira_projects:
+            logger.info(
+                "JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA"
             )
+            return
 
         try:
-            self.pat = read_secret("JIRA_PAT")
+            pat = read_secret('JIRA_PAT')
         except FileNotFoundError as error:
-            raise FileNotFoundError(
-                "JIRA Personal Access Token (PAT) not found. Please set it up in your environment."
-            ) from error
+            logger.warning(
+                'JIRA Personal Access Token (PAT) not found. Skipping JIRA collection.',
+                exc_info=error,
+            )
+            return
 
-        try:
-            self.anonymize_data = self.jira_config.get("anonymize_data", True)
+        self.anonymize_data = jira_config.get('anonymize_data', True)
 
-            self.client = self.log_in(self.pat)
-            self.anonymizer = Anonymizer()
+        client = self.log_in(pat)
+        if not client:
+            logger.warning('Could not establish JIRA connection; skipping JIRA collection.')
+            return
 
-            if not self.client:
-                raise RuntimeError("No JIRA connection")
-        except Exception as error:
-            raise Exception(f"Error initializing JiraReader\n{str(error)}") from error
+        self.client = client
+        if self.anonymize_data:
+            try:
+                self.anonymizer = Anonymizer()
+            except Exception as error:
+                logger.warning('Failed to initialise JIRA anonymizer; continuing without anonymization.', exc_info=error)
+                self.anonymize_data = False
 
     def log_in(self, pat: str) -> Optional[jira.JIRA]:
         try:
@@ -58,6 +69,7 @@ class JiraClient:
     def collect(self) -> Iterator[TicketResource]:
         """Return an iterator of tickets pulled from JIRA."""
         if not self.client or not self.jira_projects:
+            logger.warning("Skipping JIRA collection; client not initialized or projects missing.")
             return iter(())
 
         return self._fetch_ticket_resources()
@@ -122,7 +134,7 @@ class JiraClient:
             body = getattr(comment, "body", "")
             issue_text += f"Comment: {body}\n"
 
-        if self.anonymize_data:
+        if self.anonymize_data and self.anonymizer:
             issue_text = self.anonymizer.anonymize(issue_text)
 
         return issue_text

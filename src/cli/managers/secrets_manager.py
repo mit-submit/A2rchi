@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import List, Set, Tuple
 
 from dotenv import dotenv_values
 
 from src.cli.service_registry import service_registry
+from src.cli.source_registry import source_registry
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,12 +36,12 @@ class SecretsManager:
         except Exception as e:
             raise ValueError(f"Error parsing .env file {self.env_file_path}: {e}")
         
-    def get_secrets(self, services: Set[str]) -> Set[str]:
-        """Return both secrets required by services and full list"""
-        required = self.get_required_secrets_for_services(services)
-        all = set(self.secrets.keys())
-        return required, all
-        
+    def get_secrets(self, services: Set[str], sources: Set[str]) -> Tuple[Set[str], Set[str]]:
+        """Return both secrets required by services/sources and the full list"""
+        required = self.get_required_secrets_for_services(services) | self.get_required_secrets_for_sources(sources)
+        all_secrets = set(self.secrets.keys())
+        return required, all_secrets
+
     def get_required_secrets_for_services(self, services: Set[str]) -> Set[str]:
         """Determine required secrets based on configuration and enabled services"""
         required_secrets = set()
@@ -56,24 +57,16 @@ class SecretsManager:
         embedding_secrets = self._extract_embedding_secrets()
         required_secrets.update(embedding_secrets)
 
-        # SSO
-        if self.config_manager.get_sso():
-            required_secrets.update(["SSO_USERNAME", "SSO_PASSWORD"])
-
-        # jira
-        # TODO: this needs to be changed,
-        #       sources handled differently from services sure
-        #       but not handled consistently and generalized throughout CLI
-        if 'jira' in list(services):
-            required_secrets.update(["JIRA_PAT"])
-        if 'redmine' in list(services):
-            required_secrets.update(['REDMINE_URL', 'REDMINE_USER', 'REDMINE_PW', 'REDMINE_PROJECT'])
-
         # registry (service) secrets
         registry_secrets = self.registry.get_required_secrets(list(services))
         required_secrets.update(registry_secrets)
 
         return required_secrets
+
+    def get_required_secrets_for_sources(self, sources: Set[str]) -> Set[str]:
+        if not sources:
+            return set()
+        return set(source_registry.required_secrets(list(sources)))
 
     def _get_model_based_secrets(self) -> Set[str]:
         """Extract required secrets based on models being used for selected pipeline"""

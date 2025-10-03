@@ -13,6 +13,7 @@ from src.cli.managers.secrets_manager import SecretsManager
 from src.cli.managers.templates_manager import TemplateManager
 from src.cli.managers.volume_manager import VolumeManager
 from src.cli.service_registry import service_registry
+from src.cli.source_registry import source_registry
 from src.cli.utils.helpers import *
 from src.cli.utils.service_builder import ServiceBuilder
 from src.utils.logging import get_logger, setup_cli_logging
@@ -37,7 +38,7 @@ def cli():
 @click.option('--services', '-s', callback=parse_services_option, 
               help="Comma-separated list of services")
 @click.option('--sources', '-src', callback=parse_sources_option,
-              help="Comma-separated list of data sources: jira,redmine")
+              help="Comma-separated list of data sources: git,sso,jira,redmine")
 @click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
 @click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
@@ -65,10 +66,12 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         
         # Combine services and data sources for processing
         enabled_services = services.copy()
-        enabled_services.extend(sources)
+        enabled_sources = ['links']
+        enabled_sources.extend([src for src in sources if src != 'links'])
+        enabled_sources = list(dict.fromkeys(enabled_sources))
         
         # Log deployment info and dependency resolution
-        log_deployment_start(name, services, sources, dry)
+        log_deployment_start(name, services, enabled_sources, dry)
         log_dependency_resolution(services, enabled_services)
         
         # Handle existing deployment
@@ -80,20 +83,22 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         secrets_manager = SecretsManager(env_file, config_manager)
         
         # Validate configuration and secrets
-        config_manager.validate_configs(enabled_services)
+        config_manager.validate_configs(enabled_services, enabled_sources)
         logger.info("Configurations validated successfully")
 
-        required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services))
+        required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services), set(enabled_sources))
         secrets_manager.validate_secrets(required_secrets)
         logger.info(f"Required secrets validated: {', '.join(sorted(required_secrets))}")
         extra = all_secrets - required_secrets
         if extra:
             logger.info(f"Also passing additional secrets found: {', '.join(sorted(extra))}")
+
+        config_manager.set_sources_enabled(enabled_sources)
         
         # Build compose configuration
         compose_config = ServiceBuilder.build_compose_config(
             name=name, verbosity=verbosity, base_dir=base_dir,
-            enabled_services=enabled_services, secrets=all_secrets,
+            enabled_services=enabled_services, enabled_sources=enabled_sources, secrets=all_secrets,
             **other_flags
         )
         
@@ -101,7 +106,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         if dry:
             service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
                                    if s in service_registry.get_all_services()]
-            print_dry_run_summary(name, services, service_only_resolved, sources, 
+            print_dry_run_summary(name, services, service_only_resolved, enabled_sources, 
                                  required_secrets, compose_config, other_flags, base_dir)
             return
         
@@ -242,8 +247,11 @@ def list_services():
     
     # Data sources
     click.echo("Data Sources:")
-    click.echo("  redmine              Redmine issue tracking integration")
-    click.echo("  jira                 Jira issue tracking integration")
+    for name in source_registry.names():
+        if name == 'links':
+            continue
+        definition = source_registry.get(name)
+        click.echo(f"  {name:20}{definition.description}")
 
 
 @click.command()
@@ -284,7 +292,7 @@ def list_deployments():
 @click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with 'secrets")
 @click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
 @click.option('--sources', '-src', callback=parse_sources_option,
-              help="Comma-separated list of data sources: jira,redmine")
+              help="Comma-separated list of data sources: git,sso,jira,redmine")
 @click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
 @click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
@@ -293,8 +301,6 @@ def list_deployments():
 def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_mode: bool, sources: list, 
              force: bool, verbosity: int, **other_flags):
     """Create an A2RCHI deployment with selected services and data sources."""
-    # note this has not yet been made to work with the sources, i need to get on that
-
     if not (bool(config_file) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
     if config_dir: 
@@ -314,6 +320,9 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
 
         enabled_services = ["chromadb", "postgres", "benchmarking"] 
+        enabled_sources = ['links']
+        enabled_sources.extend([src for src in sources if src != 'links'])
+        enabled_sources = list(dict.fromkeys(enabled_sources))
 
         if base_dir.exists():
             raise click.ClickException(
@@ -323,9 +332,11 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         config_manager = ConfigurationManager(config_files,env)
         
         secrets_manager = SecretsManager(env_file, config_manager)
-        config_manager.validate_configs(enabled_services)
+        config_manager.validate_configs(enabled_services, enabled_sources)
 
-        _, all_secrets = secrets_manager.get_secrets(set())
+        required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services), set(enabled_sources))
+        secrets_manager.validate_secrets(required_secrets)
+        config_manager.set_sources_enabled(enabled_sources)
 
         benchmarking_configs = config_manager.get_interface_config("benchmarking")
 
@@ -336,7 +347,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
 
         compose_config = ServiceBuilder.build_compose_config(
                 name=name, verbosity=verbosity, base_dir=base_dir, 
-                enabled_services=enabled_services, secrets=all_secrets,
+                enabled_services=enabled_services, enabled_sources=enabled_sources, secrets=all_secrets,
                 **other_flags
                 )
 

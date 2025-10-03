@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Set
 import click
 
 from src.cli.service_registry import service_registry
+from src.cli.source_registry import source_registry
 from src.cli.utils.service_builder import ServiceBuilder
 from src.utils.logging import get_logger
 
@@ -43,7 +44,9 @@ def parse_sources_option(ctx, param, value):
     if not value:
         return []
     
-    available_sources = ['jira', 'redmine']
+    available_sources = [
+        name for name in source_registry.names() if name != 'links'
+    ]
     sources = [s.strip() for s in value.split(',')]
     
     invalid_sources = [s for s in sources if s not in available_sources]
