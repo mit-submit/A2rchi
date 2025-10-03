@@ -602,6 +602,241 @@ In this case, the `gemma3` model is hosted on the Ollama server at `url-for-serv
 
 ---
 
+## Vector Store
+
+The vector store is a database that stores document embeddings, enabling semantic and/or lexical search over your knowledge base. A2rchi uses ChromaDB as the vector store backend to index and retrieve relevant documents based on similarity to user queries.
+
+### Configuration
+
+Vector store settings are configured under the `data_manager` section:
+
+```yaml
+data_manager:
+  collection_name: default_collection
+  embedding_name: OpenAIEmbeddings
+  chunk_size: 1000
+  chunk_overlap: 0
+  reset_collection: true
+  num_documents_to_retrieve: 5
+  distance_metric: cosine
+```
+
+#### Core Settings
+
+- **`collection_name`**: Name of the ChromaDB collection. Default: `default_collection`
+- **`chunk_size`**: Maximum size of text chunks (in characters) when splitting documents. Default: `1000`
+- **`chunk_overlap`**: Number of overlapping characters between consecutive chunks. Default: `0`
+- **`reset_collection`**: If `true`, deletes and recreates the collection on startup. Default: `true`
+- **`num_documents_to_retrieve`**: Number of relevant document chunks to retrieve for each query. Default: `5`
+
+#### Distance Metrics
+
+The `distance_metric` determines how similarity is calculated between embeddings:
+
+- **`cosine`**: Cosine similarity (default) - measures the angle between vectors
+- **`l2`**: Euclidean distance - measures straight-line distance
+- **`ip`**: Inner product - measures dot product similarity
+
+```yaml
+data_manager:
+  distance_metric: cosine  # Options: cosine, l2, ip
+```
+
+### Embedding Models
+
+Embeddings convert text into numerical vectors. A2rchi supports multiple embedding providers:
+
+#### OpenAI Embeddings
+
+```yaml
+data_manager:
+  embedding_name: OpenAIEmbeddings
+  embedding_class_map:
+    OpenAIEmbeddings:
+      class: OpenAIEmbeddings
+      kwargs:
+        model: text-embedding-3-small
+      similarity_score_reference: 10
+```
+
+#### HuggingFace Embeddings
+
+```yaml
+data_manager:
+  embedding_name: HuggingFaceEmbeddings
+  embedding_class_map:
+    HuggingFaceEmbeddings:
+      class: HuggingFaceEmbeddings
+      kwargs:
+        model_name: sentence-transformers/all-MiniLM-L6-v2
+        model_kwargs:
+          device: cpu
+        encode_kwargs:
+          normalize_embeddings: true
+      similarity_score_reference: 10
+      query_embedding_instructions: null
+```
+
+### Supported Document Formats
+
+The vector store can process the following file types:
+
+- **Text files**: `.txt`, `.C`
+- **Markdown**: `.md`
+- **Python**: `.py`
+- **HTML**: `.html`
+- **PDF**: `.pdf`
+
+Documents are automatically loaded with the appropriate parser based on file extension.
+
+### Document Synchronization
+
+A2rchi automatically synchronizes your data directory with the vector store:
+
+1. **Adding documents**: New files in the data directory are automatically chunked, embedded, and added to the collection
+2. **Removing documents**: Files deleted from the data directory are removed from the collection
+3. **URL tracking**: Document source URLs can be tracked via a `sources.yml` file in the data directory
+
+### Hybrid Search
+
+Combine semantic search with keyword-based BM25 search for improved retrieval:
+
+```yaml
+data_manager:
+  use_hybrid_search: true
+  bm25_weight: 0.6
+  semantic_weight: 0.4
+  bm25:
+    k1: 0.5
+    b: 0.75
+```
+
+- **`use_hybrid_search`**: Enable hybrid search combining BM25 and semantic similarity. Default: `false`
+- **`bm25_weight`**: Weight for BM25 keyword scores. Default: `0.6`
+- **`semantic_weight`**: Weight for semantic similarity scores. Default: `0.4`
+- **`bm25.k1`**: BM25 term frequency saturation parameter. Default: `0.5`
+- **`bm25.b`**: BM25 document length normalization parameter. Default: `0.75`
+
+### Stemming
+
+By specifying the stemming option within your configuration, stemming functionality for the documents in A2rchi will be enabled. By doing so, documents inserted into the retrieval pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup.
+
+```yaml
+data_manager:
+  stemming:
+    enabled: true
+```
+
+When enabled, both documents and queries are processed using the Porter Stemmer algorithm to reduce words to their root forms (e.g., "running" → "run"), improving matching accuracy.
+
+### ChromaDB Backend
+
+A2rchi supports both local and remote ChromaDB instances:
+
+#### Local (Persistent)
+
+```yaml
+services:
+  chromadb:
+    local_vstore_path: /path/to/vectorstore
+```
+
+#### Remote (HTTP Client)
+
+```yaml
+services:
+  chromadb:
+    use_HTTP_chromadb_client: true
+    chromadb_host: localhost
+    chromadb_port: 8000
+```
+
+---
+
+## Benchmarking
+
+### Required inputs and configuration
+
+A2rchi has benchmarking functionality provided by the `evaluate` CLI command. Before beginning, provide your list of questions in JSON format as follows:
+
+```json
+
+[
+
+    {
+        "question": "",
+        "link": "",
+        "answer": ""
+    },
+
+ ...
+     {
+        "question": "",
+        "link": "",
+        "answer": ""
+     }
+]
+```
+
+Then within all of the yaml configuration files that you wish to test, add a configuration for your benchmarking script, which looks like the following:
+
+```yaml
+services:
+  benchmarking:
+    queries_path: configs/benchmarking/queries.json
+    out_dir: bench_out
+    modes:
+      - "RAGAS"
+      - "LINKS"
+
+```
+
+Finally, before you run the command ensure `out_dir`, the output directory, both exists on your system and that the path is correctly specified so that results can show up inside of it. To run the benchmarking script simply run the following:
+
+### Running
+
+``` bash
+a2rchi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...> <OPTIONS>
+```
+
+Currently, the benchmarking supports both a RAGAS runtime and a LINKS runtime, users can specify which modes they want to run by using the modes section. By default, both are enabled.
+
+The LINKS mode will generate outputs from your A2rchi instance as specified in your other configurations and evaluate it based on if the top k documents retrieved include information from the provided link answer. Note however that this still might mean that the chunks provided as context might still be incorrect, even if they are from the same source link.
+
+### Additional options
+
+The RAGAS mode will use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics: `answer_relevancy`, `faithfulness`, `context precision`, and `context relevancy`. More information about these metrics can be found on their website at: https://docs.ragas.io/en/stable/concepts/metrics/. Note that ragas will by default use OpenAI to evaluate your llm responses and ragging pipeline contexts. To change this, it is possible to specify using other providers such as Anthropic, Ollama, and HuggingFace for your LLM evaluator, as well as HuggingFace for the embeddings. To do so simply specify in the configuration as follows:
+
+```yaml
+services:
+  benchmarking:
+    queries_path: configs/benchmarking/queries.json
+    out_dir: bench_out
+    modes:
+      - "RAGAS"
+      - "LINKS"
+    mode_settings:
+      ragas_settings:
+        provider: <provider name> # can be one of OpenAI, HuggingFace, Ollama, and Anthropic
+        evaluation_model_settings:
+          model_name: <model name> # ensure this lines up with the langchain API name for your chosen model and provider
+          base_url: <url> # address to your running Ollama server should you have chosen the Ollama provider
+        embedding_model: <embedding provider> # OpenAI or HuggingFace
+```
+
+You might also want to adjust the `timeout` setting, which is the upper limit on how long the Ragas evaluation takes on a single QA pair, or the `batch_size`, which determines how many QA pairs to evaluate at once, which you might want to adjust, e.g., based on hardware constraints, as Ragas doesn't pay great attention to that. The corresponding configuration options are similarly set for the benchmarking services, as follows:
+
+```yaml
+services:
+  benchmarking:
+    timeout: <time in seconds> # default is 180
+    batch_size: <desired batch size> # no default setting, set by Ragas...
+```
+
+To later examine your data, there is a folder called plots in the base directory which contains some plotting functions and an ipynotebook with some basic usage examples. This is useful to play around with the results of the benchmarking, we will soon also have instead dedicated scripts to produce the plots of interest.
+
+---
+
 ## Other
 
 Some useful additional features supported by the framework.
@@ -673,94 +908,3 @@ Performs semantic search on the document collection using vector similarity.
 ```
 
 ---
-
-# Vector Store
-
-TODO: explain vector store, retrievers, and related techniques
-
-### Stemming
-
-By specifying the option stemming within ones configuration, stemming functionality for the documents in A2rchi will be enabled. By doing so, documents inserted into the ragging pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup.
-
-```yaml
-data_manager:
-  stemming:
-    enabled: true
-```
----
-
-# Benchmarking
-
-A2rchi has benchmarking functionality provided by the `evaluate` CLI command. Before beginning, provide your list of questions in JSON format as follows:
-
-```json
-
-[
-
-    {
-        "question": "",
-        "link": "",
-        "answer": ""
-    },
-
- ...
-     {
-        "question": "",
-        "link": "",
-        "answer": ""
-     }
-]
-```
-
-Then within all of the yaml configuration files that you wish to test, add a configuration for your benchmarking script, which looks like the following:
-
-```yaml
-services:
-  benchmarking:
-    queries_path: configs/benchmarking/queries.json
-    out_dir: bench_out
-    modes:
-      - "RAGAS"
-      - "LINKS"
-
-```
-
-Finally, before you run the command ensure `out_dir`, the output directory, both exists on your system and that the path is correctly specified so that results can show up inside of it. To run the benchmarking script simply run the following:
-
-``` bash
-a2rchi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use  -c <file1>,<file2>, ...> <OPTIONS>
-```
-
-Currently, the benchmarking supports both a RAGAS runtime and a LINKS runtime, users can specify which modes they want to run by using the modes section. By default, both are enabled.
-
-The LINKS mode will generate outputs from your A2rchi instance as specified in your other configurations and evaluate it based on if the top k documents retrieved include information from the provided link answer. Note however that this still might mean that the chunks provided as context might still be incorrect, even if they are from the same source link.
-
-The RAGAS mode will use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics: `answer_relevancy`, `faithfulness`, `context precision`, and `context relevancy`. More information about these metrics can be found on their website at: https://docs.ragas.io/en/stable/concepts/metrics/. Note that ragas will by default use OpenAI to evaluate your llm responses and ragging pipeline contexts. To change this, it is possible to specify using other providers such as Anthropic, Ollama, and HuggingFace for your LLM evaluator, as well as HuggingFace for the embeddings. To do so simply specify in the configuration as follows:
-
-```yaml
-services:
-  benchmarking:
-    queries_path: configs/benchmarking/queries.json
-    out_dir: bench_out
-    modes:
-      - "RAGAS"
-      - "LINKS"
-    mode_settings:
-      ragas_settings:
-        provider: <provider name> # can be one of OpenAI, HuggingFace, Ollama, and Anthropic
-        evaluation_model_settings:
-          model_name: <model name> # ensure this lines up with the langchain API name for your chosen model and provider
-          base_url: <url> # address to your running Ollama server should you have chosen the Ollama provider
-        embedding_model: <embedding provider> # OpenAI or HuggingFace
-```
-
-You might also want to adjust the `timeout` setting, which is the upper limit on how long the Ragas evaluation takes on a single QA pair, or the `batch_size`, which determines how many QA pairs to evaluate at once, which you might want to adjust, e.g., based on hardware constraints, as Ragas doesn't pay great attention to that. The corresponding configuration options are similarly set for the benchmarking services, as follows:
-
-```yaml
-services:
-  benchmarking:
-    timeout: <time in seconds> # default is 180
-    batch_size: <desired batch size> # no default setting, set by Ragas...
-```
-
-To later examine your data, there is a folder called plots in the base directory which contains some plotting functions and an ipynotebook with some basic usage examples. This is useful to play around with the results of the benchmarking, we will soon also have instead dedicated scripts to produce the plots of interest.
