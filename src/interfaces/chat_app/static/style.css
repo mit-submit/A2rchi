@@ -202,9 +202,10 @@ span.material-symbols-rounded {
 
 /* Typing container styling */
 .typing-container {
-  position: fixed;
+  position: absolute;
   bottom: 0;
-  width: 100%;
+  left: 0;
+  right: 0;
   display: flex;
   padding: 20px 10px;
   justify-content: center;
@@ -213,9 +214,10 @@ span.material-symbols-rounded {
 }
 .typing-container .typing-content {
   display: flex;
-  max-width: 950px;
+  max-width: 1200px;
   width: 100%;
   align-items: flex-end;
+  gap: 8px;
 }
 .typing-container .typing-textarea {
   width: 100%;
@@ -648,6 +650,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  min-width: 0; /* Prevent flex item from overflowing */
 }
 
 /* Responsive design */
