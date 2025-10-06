@@ -358,6 +358,7 @@ class ChatWrapper:
         self.conn = psycopg2.connect(**self.pg_config)
         self.cursor = self.conn.cursor()
         self.cursor.execute(SQL_CREATE_CONVERSATION, insert_tup)
+        conversation_id = self.cursor.fetchone()[0]
         self.conn.commit()
 
         # clean up database connection state
@@ -365,8 +366,8 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
         
-        logger.info(f"New conversation created with ID: {self.cursor.fetchone()[0]}")
-        return self.cursor.fetchone()[0]
+        logger.info(f"Created new conversation with ID: {conversation_id}")
+        return conversation_id
 
     def update_conversation_timestamp(self, conversation_id: int):
         """
