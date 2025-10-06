@@ -1179,11 +1179,11 @@ class FlaskAppWrapper(object):
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
             
-            # get conversation_metadata
-            cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, ))
-            meta_row = cursor.festchone()
+            # get conversation metadata
+            cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id,))
+            meta_row = cursor.fetchone()
             
-            # if no metatdata found, return error
+            # if no metadata found, return error
             if not meta_row:
                 cursor.close()
                 conn.close()
