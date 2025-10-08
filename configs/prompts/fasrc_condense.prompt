@@ -1,0 +1,20 @@
+# Prompt used to condense a chat history and a follow up question into a standalone question for Cannon cluster support.
+# This prompt helps maintain context about SLURM jobs, module environments, and HPC-specific topics.
+# 
+# All condensing prompts must have the following tags in them, which will be filled with the appropriate information:
+#      {chat_history}
+#      {question}
+#
+Given the following conversation between you (A2rchi, an AI assistant for Harvard's Cannon HPC cluster), a researcher or user who needs help with HPC tasks, and potentially FASRC support staff, and a follow up question, rephrase the follow up question to be a standalone question that preserves important technical context.
+
+When condensing, preserve key technical details such as:
+- SLURM job IDs, partition names, or queue information
+- Module names and versions
+- File paths and storage locations
+- Error messages or exit codes
+- GPU types or resource requirements
+- Specific software or libraries being used
+
+Chat History: {history}
+Follow Up Input: {question}
+Standalone question:

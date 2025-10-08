@@ -1,0 +1,62 @@
+
+# bare minimum configuration needed for a2rchi
+name: dsrf-test-gpu #REQUIRED
+
+global:
+  TRAINED_ON: "FASRC User Docs" #REQUIRED
+
+interfaces:
+  uploader_app:
+    verify_urls: False
+
+chains:
+  base:  # ADD THIS SECTION - REQUIRED
+    ROLES:
+      - User
+      - A2rchi
+      - Expert
+    logging:
+      input_output_filename: "chain_input_output.log"
+  prompts:
+    CONDENSING_PROMPT: configs/prompts/fasrc_condense.prompt #REQUIRED - FASRC-specific condensing
+    MAIN_PROMPT: configs/prompts/fasrc_main.prompt #REQUIRED - FASRC GPU/SLURM assistant
+    SUMMARY_PROMPT: configs/prompts/summary.prompt
+  input_lists: #REQUIRED
+   - configs/dsrf_user_docs.list
+
+  chain:
+    MODEL_NAME: VLLM
+    CONDENSE_MODEL_NAME: VLLM
+    SUMMARY_MODEL_NAME: VLLM
+    MODEL_CLASS_MAP:
+      VLLM:
+        kwargs:
+          base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
+          quantization: True
+          max_model_len: 32768
+          tensor_parallel_size: 1
+          repetition_penalty: 1.0
+          gpu_memory_utilization: 0.8
+        env:
+          NCCL_P2P_DISABLE: "1"
+          NCCL_IB_DISABLE: "1"
+          NCCL_DEBUG: "INFO"
+      HuggingFaceOpenLLM:
+        kwargs:
+          base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
+          quantization: True
+  utils:
+    embeddings:
+      EMBEDDING_NAME: HuggingFaceEmbeddings
+    data_manager:
+      CHUNK_SIZE: 15000
+      CHUNK_OVERLAP: 0
+    embeddings:
+      EMBEaDDING_NAME: HuggingFaceEmbeddings
+      EMBEDDING_CLASS_MAP:
+        HuggingFaceEmbeddings:
+          similarity_score_reference: 10
+
+locations_of_secrets:
+  - ~/.a2rchi/base
+
