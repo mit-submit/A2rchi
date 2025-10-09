@@ -29,8 +29,8 @@ a2rchi:
     QAPipeline:
       prompts:
         required:
-          condense_prompt: configs/prompts/condense.prompt
-          chat_prompt: configs/prompts/submit.prompt
+          condense_prompt: tests/pr_preview_config/condense.prompt
+          chat_prompt: tests/pr_preview_config/qa.prompt
       models:
         required:
           condense_model: DumbLLM
