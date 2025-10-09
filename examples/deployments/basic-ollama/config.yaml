@@ -14,7 +14,9 @@ services:
     port: 7867
     external_port: 7867
   chromadb:
-    chromadb_external_port: 8010 # running in hostmode, want to avoid taking the default chromadb port (8000) since it's usually taken by host already
+    # running in hostmode, want to avoid taking the default chromadb port (8000) since it's usually taken by host already
+    chromadb_port: 8010
+    chromadb_external_port: 8010 
 
 data_manager:
   sources:
