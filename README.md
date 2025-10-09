@@ -1,58 +1,43 @@
-# A2rchi 🌟  
-**AI Augmented Research Chat Intelligence**
+<p float="center">
+  <img src="https://raw.githubusercontent.com/scikit-hep/mplhep/master/docs/source/_static/a2rchi_logo.png" width="200"/>
+</p>
 
+# A2RCHI - AI Augmented Research Chat Intelligence
 
-Welcome to **A2rchi**, the cutting-edge Research and Education Assistant! Originally developed for the subMIT project at MIT, A2rchi is your go-to RAG-based chat model tailored for research, teaching, and beyond. 🎓💻
+[![Actions Status][actions-badge]][actions-link]
+[![Docs](https://mit-submit.github.io/a2rchi/)]
 
----
+A2RCHI is a retrieval-augmented generation framework for research and education teams who need a low-barrier to entry, private, and extensible assistant. The system was first developed at MIT for the SubMIT computing project, and now powers chat, ticketing, and course-support workflows across academia and research organizations.
 
-## 🚀 Features  
+## Key Capabilities
 
-- **Multi-Interface Support:**  
-  From chat to student help forums and tech support, A2rchi seamlessly integrates with your workflow.
+A2RCHI provides:
+- Several data ingestion connectors: Piazza, Slack, Discourse, email, web links, files, JIRA, and Redmine.
+- Several interfaces: a chat app, ticketing assistant, email bot, and more.
+- Customizable AI pipelines that combine retrieval, LLMs, and tools.
+- Support for running or interacting with local and API-based LLMs.
+- Modular design that allows custom data sources, LLM backends, and deployment targets.
+- Containerized services and CLI utilities for repeatable deployments.
 
-- **Fully Customizable:**  
-  Tweak prompts, context lengths, and data sources with ease.
+## Documentation
 
-- **Easy Deployment:**  
-  Containerized and CLI-driven for fast setup and scalability.
+The [docs](https://mit-submit.github.io/a2rchi/) are organized as follows:
 
----
+- [Install](https://mit-submit.github.io/a2rchi/install/) — system requirements and environment preparation.
+- [Quickstart](https://mit-submit.github.io/a2rchi/quickstart/) — after installation, learn how to deploy your first A2RCHI instance.
+- [User Guide](https://mit-submit.github.io/a2rchi/user_guide/) — framework concepts for users and administrators.
+- [Advanced Setup & Deployment](https://mit-submit.github.io/a2rchi/advanced_setup_deploy/) — configuring A2RCHI for GPU use, custom models, and advanced workflows.
+- [API Reference](https://mit-submit.github.io/a2rchi/api_reference/) — programmatic interfaces and integration points.
+- [Developer Guide](https://mit-submit.github.io/a2rchi/developer_guide/) — codebase layout, contribution workflow, and extension patterns.
 
-## 🔗 Quick Links  
+## Getting Started
 
-- 📖 **[Getting Started](https://mit-submit.github.io/A2rchi/)**  
-  Start your A2rchi journey here! Learn about system requirements, installation, and configuration.
+Follow the [Install](https://mit-submit.github.io/a2rchi/install/) and [Quickstart](https://mit-submit.github.io/a2rchi/quickstart/) guide to set up prerequisites, configure data sources, and launch an instance.
 
-- 🛠️ **[User's Guide](https://mit-submit.github.io/A2rchi/user_guide/)**  
-  Explore detailed instructions for using A2rchi’s features and interfaces.
+## Contributing
 
-- 🐙 **[GitHub Repository](https://github.com/mit-submit/A2rchi)**  
-  Fork, star, and contribute to the A2rchi project!
+We welcome fixes and new integrations—see the [Developer Guide](https://mit-submit.github.io/a2rchi/developer_guide/) for coding standards, testing instructions, and contribution tips. Please open issues or pull requests on the [GitHub repository](https://github.com/mit-submit/A2rchi).
 
----
+## License and Support
 
-## 📦 Installation  
-
-Install the CLI and start deploying your own A2rchi instances in no time!  
-For detailed steps, check out our [Getting Started](#) guide.  
-
----
-
-## 💡 Why A2rchi?  
-
-1. Built for researchers and educators.  
-2. Supports flexible deployment and integration.  
-3. Open-source and extendable!  
-
----
-
-## ✨ Contributors  
-
-A2rchi is made possible thanks to collaborators at MIT and an open-source community.  
-Your contributions are always welcome! 🎉  
-
----
-
-📜 Licensed under [MIT License](#).  
-For inquiries and support, contact **paus@mit.edu**.
+A2RCHI is released under the [MIT License](LICENSE). For project inquiries, contact paus@mit.edu.

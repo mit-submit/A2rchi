@@ -1,6 +1,6 @@
 # Developers Guide
 
-Below is all the information developers may need to get started contributing to the A2rchi project.
+Below is all the information developers may need to get started contributing to the A2RCHI project.
 
 ## Editing Documentation
 
@@ -29,7 +29,7 @@ Always open a PR to merge documentation changes into `main`. Do not edit files d
 
 ## DockerHub Images
 
-A2rchi loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in `src/cli/templates/dockerfiles/base-X-image`.
+A2RCHI loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in `src/cli/templates/dockerfiles/base-X-image`.
 
 Images are hosted at:
 

@@ -3,13 +3,9 @@ name: grading_test
 global:
   TRAINED_ON: "rubrics, class info, etc."
 
-locations_of_secrets:
-  - /home/submit/lavezzo/a2rchi/A2rchi/secrets/
-  - /home/submit/lavezzo/a2rchi/A2rchi/secrets/grader/
-
 data_manager:
   input_lists:
-    - configs/miscellanea.list
+    - examples/deployments/grading/course_materials.list
   chromadb_port: 8000
   chromadb_external_port: 8001
   embedding_name: HuggingFaceEmbeddings
@@ -20,14 +16,14 @@ a2rchi:
     GradingPipeline:
       prompts:
         required:
-          final_grade_prompt: configs/prompts/final_grade.prompt
+          final_grade_prompt: examples/deployments/grading/grading_final_grade.prompt
       models:
         required:
           final_grade_model: HuggingFaceOpenLLM
     ImageProcessingPipeline:
       prompts:
         required:
-          image_processing_prompt: configs/prompts/image_processing.prompt
+          image_processing_prompt: examples/deployments/grading/image_processing.prompt
       models:
         required:
           image_processing_model: HuggingFaceImageLLM
@@ -35,5 +31,5 @@ a2rchi:
 interfaces:
   grader_app:
     num_problems: 1
-    local_rubric_dir: /home/submit/lavezzo/a2rchi/grading/my_rubrics
-    local_users_csv_dir: /home/submit/lavezzo/a2rchi/grading/logins
+    local_rubric_dir: examples/deployments/grading/rubrics/
+    local_users_csv_dir: examples/deployments/grading/logins/

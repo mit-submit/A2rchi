@@ -2,7 +2,7 @@
 
 ## System Requirements
 
-A2rchi is deployed using a Python-based CLI onto containers. It requires:
+A2RCHI is deployed using a Python-based CLI onto containers. It requires:
 
 - `docker` version 24+ or `podman` version 5.4.0+ (for containers)
 - `python 3.10.0+` (for the CLI)
@@ -11,19 +11,19 @@ A2rchi is deployed using a Python-based CLI onto containers. It requires:
 
 ## Installation
 
-Clone the A2rchi repository:
+Clone the A2RCHI repository:
 
 ```bash
 git clone https://github.com/mit-submit/A2rchi.git
 ```
 
-Install A2rchi (from inside the repository):
+Install A2RCHI (from inside the repository):
 
 ```bash
 pip install -e .
 ```
 
-This installs A2rchi's dependencies and the CLI tool. Verify the installation with:
+This installs A2RCHI's dependencies and the CLI tool. Verify the installation with:
 
 ```bash
 which a2rchi

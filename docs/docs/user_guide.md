@@ -2,14 +2,14 @@
 
 ## Overview
 
-A2rchi supports various **data sources** as easy ways to ingest your data into the vector store databased used for document retrieval. These include:
+A2RCHI supports various **data sources** as easy ways to ingest your data into the vector store databased used for document retrieval. These include:
 
 - **Links lists (even behind SSO)**: automatically scrape and ingest documents from a list of URLs
 - **Git scraping**: git mkdocs repositories
 - **Ticketing systems**: JIRA, Redmine, Piazza
 - **Local documents**
 
-Additionally, A2rchi supports various **interfaces/services**, which are applications that interact with the RAG system. These include:
+Additionally, A2RCHI supports various **interfaces/services**, which are applications that interact with the RAG system. These include:
 
 - **Chat interface**: a web-based chat application
 - **Piazza integration**: read posts from Piazza and post draft responses to a Slack channel
@@ -64,11 +64,11 @@ These are the different ways to ingest data into the vector store used for docum
 ### Web Link Lists
 
 A web link list is a simple text file containing a list of URLs, one per line.
-A2rchi will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
+A2RCHI will fetch the content from each URL and add it to the vector store, using the `Scraper` class.
 
 #### Configuration
 
-You can define which lists of links A2rchi will ingest in the configuration file as follows:
+You can define which lists of links A2RCHI will ingest in the configuration file as follows:
 ```yaml
 data_manager:
   sources:
@@ -125,7 +125,7 @@ sso-https://example.com/protected/page
 
 #### Running
 
-Link scraping is automatically enabled in A2rchi, you don't need to add any arguments to the `create` command.
+Link scraping is automatically enabled in A2RCHI, you don't need to add any arguments to the `create` command.
 
 ---
 
@@ -164,7 +164,7 @@ Enable the git source during deployment with `--sources git`.
 
 ### JIRA
 
-The JIRA integration allows A2rchi to fetch issues and comments from specified JIRA projects and add them to the vector store, using the `JiraClient` class.
+The JIRA integration allows A2RCHI to fetch issues and comments from specified JIRA projects and add them to the vector store, using the `JiraClient` class.
 
 #### Configuration
 
@@ -216,7 +216,7 @@ a2rchi create [...] --services=chatbot --sources jira
 
 #### Adding Documents
 
-There are two main ways to add documents to A2rchi's vector database. They are:
+There are two main ways to add documents to A2RCHI's vector database. They are:
 
 - Manually adding files while the service is running via the uploader GUI
 - Directly copying files into the container
@@ -225,7 +225,7 @@ These methods are outlined below.
 
 #### Manual Uploader
 
-In order to upload documents while A2rchi is running via an easily accessible GUI, enable the uploader service when creating the deployment:
+In order to upload documents while A2RCHI is running via an easily accessible GUI, enable the uploader service when creating the deployment:
 ```bash
 a2rchi create [...] --services=chatbot,uploader
 ```
@@ -240,10 +240,10 @@ Run the bundled helper:
 ```
 python -u src/bin/service_create_account.py
 ```
-from the `/root/A2rchi` directory inside the container. This script will guide you through creating an account; never reuse sensitive passwords here.
+from the `/root/A2RCHI` directory inside the container. This script will guide you through creating an account; never reuse sensitive passwords here.
 
 Once you have created an account, visit the outgoing port of the data manager docker service and then log in.
-The GUI will then allow you to upload documents while A2rchi is still running. Note that it may take a few minutes for all the documents to upload.
+The GUI will then allow you to upload documents while A2RCHI is still running. Note that it may take a few minutes for all the documents to upload.
 
 #### Directly copying files to the container
 
@@ -287,17 +287,17 @@ a2rchi create [...] --services=chatbot --sources redmine
 
 ## Interfaces/Services
 
-These are the different apps that A2rchi supports, which allow you to interact with the AI pipelines.
+These are the different apps that A2RCHI supports, which allow you to interact with the AI pipelines.
 
 ### Piazza Interface
 
-Set up A2rchi to read posts from your Piazza forum and post draft responses to a specified Slack channel. To do this, a Piazza login (email and password) is required, plus the network ID of your Piazza channel, and lastly, a Webhook for the slack channel A2rchi will post to. See below for a step-by-step description of this.
+Set up A2RCHI to read posts from your Piazza forum and post draft responses to a specified Slack channel. To do this, a Piazza login (email and password) is required, plus the network ID of your Piazza channel, and lastly, a Webhook for the slack channel A2RCHI will post to. See below for a step-by-step description of this.
 
-1. Go to [https://api.slack.com/apps](https://api.slack.com/apps) and sign in to workspace where you will eventually want A2rchi to post to (note doing this in a business workspace like the MIT one will require approval of the app/bot).
+1. Go to [https://api.slack.com/apps](https://api.slack.com/apps) and sign in to workspace where you will eventually want A2RCHI to post to (note doing this in a business workspace like the MIT one will require approval of the app/bot).
 2. Click 'Create New App', and then 'From scratch'. Name your app and again select the correct workspace. Then hit 'Create App'
-3. Now you have your app, and there are a few things to configure before you can launch A2rchi:
+3. Now you have your app, and there are a few things to configure before you can launch A2RCHI:
 4. Go to Incoming Webhooks under Features, and toggle it on.
-5. Click 'Add New Webhook', and select the channel you want A2rchi to post to.
+5. Click 'Add New Webhook', and select the channel you want A2RCHI to post to.
 6. Now, copy the 'Webhook URL' and paste it into the secrets file, and handle it like any other secret!
 
 #### Configuration
@@ -349,9 +349,9 @@ a2rchi create [...] --services=chatbot,piazza
 
 ### Redmine/Mailbox Interface
 
-A2rchi will read all new tickets in a Redmine project, and draft a response as a comment to the ticket.
-Once the ticket is updated to the "Resolved" status by an admin, A2rchi will send the response as an email to the user who opened the ticket.
-The admin can modify A2rchi's response before sending it out.
+A2RCHI will read all new tickets in a Redmine project, and draft a response as a comment to the ticket.
+Once the ticket is updated to the "Resolved" status by an admin, A2RCHI will send the response as an email to the user who opened the ticket.
+The admin can modify A2RCHI's response before sending it out.
 
 #### Configuration
 
@@ -362,7 +362,7 @@ services:
     project: my-project
     redmine_update_time: 10
     mailbox_update_time: 10
-    answer_tag: "-- A2rchi -- Resolving email was sent"
+    answer_tag: "-- A2RCHI -- Resolving email was sent"
 ```
 
 #### Secrets
@@ -390,7 +390,7 @@ a2rchi create [...] --services=chatbot,redmine-mailer
 
 ### Mattermost Interface
 
-Set up A2rchi to read posts from your Mattermost forum and post draft responses to a specified Mattermost channel.
+Set up A2RCHI to read posts from your Mattermost forum and post draft responses to a specified Mattermost channel.
 
 #### Configuration
 
@@ -421,9 +421,9 @@ a2rchi create [...] --services=chatbot,mattermost
 
 ### Grafana Interface
 
-Monitor the performance of your A2rchi instance with the Grafana interface. This service provides a web-based dashboard to visualize various metrics related to system performance, LLM usage, and more.
+Monitor the performance of your A2RCHI instance with the Grafana interface. This service provides a web-based dashboard to visualize various metrics related to system performance, LLM usage, and more.
 
-> Note, if you are deploying a version of A2rchi you have already used (i.e., you haven't removed the images/volumes for a given `--name`), the postgres will have already been created without the Grafana user created, and it will not work, so make sure to deploy a fresh instance.
+> Note, if you are deploying a version of A2RCHI you have already used (i.e., you haven't removed the images/volumes for a given `--name`), the postgres will have already been created without the Grafana user created, and it will not work, so make sure to deploy a fresh instance.
 
 #### Configuration
 
@@ -455,7 +455,7 @@ d27482864238  localhost/chromadb-gtesting2:2000         uvicorn chromadb....  9 
 40130e8e23de  docker.io/library/grafana-gtesting2:2000                        9 minutes ago  Up 9 minutes            0.0.0.0:3000->3000/tcp, 3000/tcp  grafana-gtesting2
 d6ce8a149439  localhost/chat-gtesting2:2000             python -u a2rchi/...  9 minutes ago  Up 9 minutes            0.0.0.0:7861->7861/tcp            chat-gtesting2
 ```
-where the grafana interface is accessible at `your-hostname:3000`. To change the external port from `3000`, you can do this in the config at `services.grafana.external_port`. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2rchi dashboard from the home page by going to the menu > Dashboards > A2rchi > A2rchi Usage. Note, `your-hostname` here is the just name of the machine. Grafana uses its default configuration which is `localhost` but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.
+where the grafana interface is accessible at `your-hostname:3000`. To change the external port from `3000`, you can do this in the config at `services.grafana.external_port`. The default login and password are both "admin", which you will be prompted to change should you want to after first logging in. Navigate to the A2RCHI dashboard from the home page by going to the menu > Dashboards > A2RCHI > A2RCHI Usage. Note, `your-hostname` here is the just name of the machine. Grafana uses its default configuration which is `localhost` but unlike the chat interface, there are no APIs where we template with a selected hostname, so the container networking handles this nicely.
 
 > Pro tip: once at the web interface, for the "Recent Conversation Messages (Clean Text + Link)" panel, click the three little dots in the top right hand corner of the panel, click "Edit", and on the right, go to e.g., "Override 4" (should have Fields with name: clean text, also Override 7 for context column) and override property "Cell options > Cell value inspect". This will allow you to expand the text boxes with messages longer than can fit. Make sure you click apply to keep the changes.
 
@@ -489,7 +489,7 @@ Anti-Helmholtz Coils
 ---------------------------------------------------
 ```
 
-These files should live in a directory which you will pass to the config, and A2rchi will handle the rest.
+These files should live in a directory which you will pass to the config, and A2RCHI will handle the rest.
 
 - `admin_password.txt`. This file will be passed as a secret and be the admin code to login in to the page where you can reset attempts for students.
 
@@ -505,7 +505,7 @@ Then it behaves like any other secret.
 
 #### Configuration
 
-The required fields in the configuration file are different from the rest of the A2rchi services. Below is an example:
+The required fields in the configuration file are different from the rest of the A2RCHI services. Below is an example:
 
 ```yaml
 name: grading_test # REQUIRED
@@ -548,7 +548,7 @@ data_manager:
 5. `a2rchi.pipeline_map.GradingPipeline.models.required.final_grade_model` -- Model class for grading (e.g., `OllamaInterface`, `HuggingFaceOpenLLM`).
 6. `a2rchi.pipeline_map.ImageProcessingPipeline.prompts.required.image_processing_prompt` -- Path to the prompt file for image processing.
 7. `a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model` -- Model class for image processing (e.g., `OllamaInterface`, `HuggingFaceImageLLM`).
-8. `services.chat_app.trained_on` -- A brief description of the data or materials A2rchi is trained on (required).
+8. `services.chat_app.trained_on` -- A brief description of the data or materials A2RCHI is trained on (required).
 9. `services.grader_app.num_problems` -- Number of problems the grading service should expect (must match the number of rubric files).
 10. `services.grader_app.local_rubric_dir` -- Directory containing the `solution_with_rubric_*.txt` files.
 11. `services.grader_app.local_users_csv_dir` -- Directory containing the `users.csv` file.
@@ -604,7 +604,7 @@ In this case, the `gemma3` model is hosted on the Ollama server at `url-for-serv
 
 ## Vector Store
 
-The vector store is a database that stores document embeddings, enabling semantic and/or lexical search over your knowledge base. A2rchi uses ChromaDB as the vector store backend to index and retrieve relevant documents based on similarity to user queries.
+The vector store is a database that stores document embeddings, enabling semantic and/or lexical search over your knowledge base. A2RCHI uses ChromaDB as the vector store backend to index and retrieve relevant documents based on similarity to user queries.
 
 ### Configuration
 
@@ -644,7 +644,7 @@ data_manager:
 
 ### Embedding Models
 
-Embeddings convert text into numerical vectors. A2rchi supports multiple embedding providers:
+Embeddings convert text into numerical vectors. A2RCHI supports multiple embedding providers:
 
 #### OpenAI Embeddings
 
@@ -691,7 +691,7 @@ Documents are automatically loaded with the appropriate parser based on file ext
 
 ### Document Synchronization
 
-A2rchi automatically synchronizes your data directory with the vector store:
+A2RCHI automatically synchronizes your data directory with the vector store:
 
 1. **Adding documents**: New files in the data directory are automatically chunked, embedded, and added to the collection
 2. **Removing documents**: Files deleted from the data directory are removed from the collection
@@ -719,7 +719,7 @@ data_manager:
 
 ### Stemming
 
-By specifying the stemming option within your configuration, stemming functionality for the documents in A2rchi will be enabled. By doing so, documents inserted into the retrieval pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup.
+By specifying the stemming option within your configuration, stemming functionality for the documents in A2RCHI will be enabled. By doing so, documents inserted into the retrieval pipeline, as well as the query that is matched with them, will be stemmed and simplified for faster and more accurate lookup.
 
 ```yaml
 data_manager:
@@ -731,7 +731,7 @@ When enabled, both documents and queries are processed using the Porter Stemmer 
 
 ### ChromaDB Backend
 
-A2rchi supports both local and remote ChromaDB instances:
+A2RCHI supports both local and remote ChromaDB instances:
 
 #### Local (Persistent)
 
@@ -757,7 +757,7 @@ services:
 
 ### Required inputs and configuration
 
-A2rchi has benchmarking functionality provided by the `evaluate` CLI command. Before beginning, provide your list of questions in JSON format as follows:
+A2RCHI has benchmarking functionality provided by the `evaluate` CLI command. Before beginning, provide your list of questions in JSON format as follows:
 
 ```json
 
@@ -801,7 +801,7 @@ a2rchi evaluate -n <name> -e <env_file> -cd <configs_directory> <optionally use 
 
 Currently, the benchmarking supports both a RAGAS runtime and a LINKS runtime, users can specify which modes they want to run by using the modes section. By default, both are enabled.
 
-The LINKS mode will generate outputs from your A2rchi instance as specified in your other configurations and evaluate it based on if the top k documents retrieved include information from the provided link answer. Note however that this still might mean that the chunks provided as context might still be incorrect, even if they are from the same source link.
+The LINKS mode will generate outputs from your A2RCHI instance as specified in your other configurations and evaluate it based on if the top k documents retrieved include information from the provided link answer. Note however that this still might mean that the chunks provided as context might still be incorrect, even if they are from the same source link.
 
 ### Additional options
 
@@ -845,7 +845,7 @@ Some useful additional features supported by the framework.
 
 ##### Debugging ChromaDB endpoints
 
-Debugging REST API endpoints to the A2rchi chat application for programmatic access to the ChromaDB vector database can be exposed with the following configuration change.
+Debugging REST API endpoints to the A2RCHI chat application for programmatic access to the ChromaDB vector database can be exposed with the following configuration change.
 To enable the ChromaDB endpoints, add the following to your config file under `services.chat_app`:
 
 ```yaml

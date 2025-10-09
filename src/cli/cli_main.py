@@ -34,7 +34,7 @@ def cli():
 @click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
 @click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml a2rchi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
-@click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with secrets")
+@click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with secrets")
 @click.option('--services', '-s', callback=parse_services_option, 
               help="Comma-separated list of services")
 @click.option('--sources', '-src', callback=parse_sources_option,
@@ -289,7 +289,7 @@ def list_deployments():
 @click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
 @click.option('--config', '-c', 'config_file', type=str, help="Path to .yaml a2rchi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
-@click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with 'secrets")
+@click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with 'secrets")
 @click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
 @click.option('--sources', '-src', callback=parse_sources_option,
               help="Comma-separated list of data sources: git,sso,jira,redmine")

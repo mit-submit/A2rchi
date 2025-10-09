@@ -14,7 +14,8 @@ class SecretsManager:
 
     def __init__(self, env_file_path: str = None, config_manager = None):
         if not env_file_path:
-            raise ValueError("Environment filepath is required")
+            env_file_path = "src/cli/managers/secrets_dummy.env"
+            logger.warning(f"No .env file specified, defaulting to a dummy .env file with only PG_PASSWORD: {env_file_path}.")
         
         self.env_file_path = Path(env_file_path)
         if not self.env_file_path.exists():

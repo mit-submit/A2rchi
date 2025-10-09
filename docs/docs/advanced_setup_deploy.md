@@ -1,6 +1,6 @@
 # Advanced Setup & Deployment
 
-Topics related to advanced setup and deployment of A2rchi.
+Topics related to advanced setup and deployment of A2RCHI.
 
 ## Configuring Podman
 
@@ -23,7 +23,7 @@ See the Red Hat [documentation](https://access.redhat.com/solutions/7054698) for
 There are a few additional system requirements for this to work:
 
 1. Make sure you have NVIDIA drivers installed.
-2. (Optional) For the containers where A2rchi will run to access the GPUs, install the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+2. (Optional) For the containers where A2RCHI will run to access the GPUs, install the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 3. Configure the container runtime to access the GPUs.
 
 <details>
@@ -53,7 +53,7 @@ nvidia.com/gpu=all
 ...
 ```
 
-These listed "CDI devices" will be referenced to run A2rchi on the GPUs, so make sure they are present. To learn more, consult the [Podman GPU documentation](https://podman-desktop.io/docs/podman/gpu).
+These listed "CDI devices" will be referenced to run A2RCHI on the GPUs, so make sure they are present. To learn more, consult the [Podman GPU documentation](https://podman-desktop.io/docs/podman/gpu).
 
 </details>
 
@@ -70,7 +70,7 @@ The remaining steps mirror the Podman flow. NOTE: this has not yet been fully te
 
 </details>
 
-Once these requirements are met, the `a2rchi create [...] --gpu-ids <gpus>` option will deploy A2rchi across your GPUs.
+Once these requirements are met, the `a2rchi create [...] --gpu-ids <gpus>` option will deploy A2RCHI across your GPUs.
 
 ## Helpful Notes for Production Deployments
 

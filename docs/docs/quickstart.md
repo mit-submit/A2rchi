@@ -1,10 +1,10 @@
 # Quickstart
 
-Deploy your first instance of A2rchi and walk through the important concepts.
+Deploy your first instance of A2RCHI and walk through the important concepts.
 
 ## Sources and Services
 
-A2rchi can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command below and decide which ones you want to use so that we can configure them.
+A2RCHI can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command below and decide which ones you want to use so that we can configure them.
 
 ```bash
 a2rchi list-services
@@ -35,7 +35,7 @@ See the [User Guide](user_guide.md) for detailed information about each service 
 
 ## Pipelines
 
-A2rchi supports several pipelines—pre-defined sequences of operations that process user inputs and generate responses. Each service supports a subset of pipelines (see the [User Guide](user_guide.md) for details).
+A2RCHI supports several pipelines—pre-defined sequences of operations that process user inputs and generate responses. Each service supports a subset of pipelines (see the [User Guide](user_guide.md) for details).
 
 An example pipeline is `QAPipeline`, a question-answering pipeline that takes a user's question, retrieves relevant documents from the vector store, and generates an answer using a language model.
 
@@ -89,7 +89,7 @@ services:
 <details>
 <summary>Explanation of configuration parameters</summary>
 
-- `name`: Name of your A2rchi deployment.
+- `name`: Name of your A2RCHI deployment.
 - `data_manager`: Settings related to data ingestion and the vector store.
   - `sources.links.input_lists`: Lists of URLs to seed the deployment.
   - `embedding_name`: Embedding model used for vectorization.
@@ -126,7 +126,7 @@ If you are not using open-source models, supply the relevant API credentials:
 
 Other services may require additional secrets; see the [User Guide](user_guide.md) for details.
 
-## Creating an A2rchi Deployment
+## Creating an A2RCHI Deployment
 
 Create your deployment with the CLI:
 

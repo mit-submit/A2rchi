@@ -309,7 +309,7 @@ a2rchi:
         gpu_memory_utilization: {{ a2rchi.model_class_map.VLLM.kwargs.gpu_memory_utilization | default(0.7, true) }}
         trust_remote_code: {{ a2rchi.model_class_map.VLLM.kwargs.trust_remote_code | default(true, true) }}
         tokenizer_mode: {{ a2rchi.model_class_map.VLLM.kwargs.tokenizer_mode | default("auto", true) }}
-        max_model_len: {{ a2rchi.model_class_map.VLLM.kwargs.max_model_len | default(none, true) }}
+        max_model_len: {{ a2rchi.model_class_map.VLLM.kwargs.max_model_len | default(10000, true) }}
     OllamaInterface:
       class: OllamaInterface
       kwargs:
