@@ -1,11 +1,11 @@
 <p float="center">
-  <img src="https://raw.githubusercontent.com/scikit-hep/mplhep/master/docs/source/_static/a2rchi_logo.png" width="200"/>
+  <img src="https://raw.githubusercontent.com/mit-submit/A2rchi/reorganization_and_sources/docs/source/_static/a2rchi_logo.png" width="200"/>
 </p>
 
 # A2RCHI - AI Augmented Research Chat Intelligence
 
-[![Actions Status][actions-badge]][actions-link]
-[![Docs](https://mit-submit.github.io/a2rchi/)]
+[![CI](https://github.com/mit-submit/A2rchi/actions/workflows/pr-preview.yml/badge.svg)](https://github.com/mit-submit/A2rchi/actions/workflows/pr-preview.yml)
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://mit-submit.github.io/a2rchi/)
 
 A2RCHI is a retrieval-augmented generation framework for research and education teams who need a low-barrier to entry, private, and extensible assistant. The system was first developed at MIT for the SubMIT computing project, and now powers chat, ticketing, and course-support workflows across academia and research organizations.
 
