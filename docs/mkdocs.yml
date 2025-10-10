@@ -1,6 +1,6 @@
 site_name: A2RCHI Docs
 nav:
-  - A2RCHI: overview.md
+  - A2rchi: index.md
   - Install: install.md
   - Quickstart: quickstart.md
   - User Guide: user_guide.md
