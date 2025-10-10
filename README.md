@@ -5,7 +5,7 @@
 # A2RCHI - AI Augmented Research Chat Intelligence
 
 [![CI](https://github.com/mit-submit/A2rchi/actions/workflows/pr-preview.yml/badge.svg)](https://github.com/mit-submit/A2rchi/actions/workflows/pr-preview.yml)
-[![Docs](https://img.shields.io/badge/docs-online-blue)](https://mit-submit.github.io/a2rchi/)
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://mit-submit.github.io/A2rchi/)
 
 A2RCHI is a retrieval-augmented generation framework for research and education teams who need a low-barrier to entry, private, and extensible assistant. The system was first developed at MIT for the SubMIT computing project, and now powers chat, ticketing, and course-support workflows across academia and research organizations.
 
@@ -21,22 +21,22 @@ A2RCHI provides:
 
 ## Documentation
 
-The [docs](https://mit-submit.github.io/a2rchi/) are organized as follows:
+The [docs](https://mit-submit.github.io/A2rchi/) are organized as follows:
 
-- [Install](https://mit-submit.github.io/a2rchi/install/) — system requirements and environment preparation.
-- [Quickstart](https://mit-submit.github.io/a2rchi/quickstart/) — after installation, learn how to deploy your first A2RCHI instance.
-- [User Guide](https://mit-submit.github.io/a2rchi/user_guide/) — framework concepts for users and administrators.
-- [Advanced Setup & Deployment](https://mit-submit.github.io/a2rchi/advanced_setup_deploy/) — configuring A2RCHI for GPU use, custom models, and advanced workflows.
-- [API Reference](https://mit-submit.github.io/a2rchi/api_reference/) — programmatic interfaces and integration points.
-- [Developer Guide](https://mit-submit.github.io/a2rchi/developer_guide/) — codebase layout, contribution workflow, and extension patterns.
+- [Install](https://mit-submit.github.io/A2rchi/install/) — system requirements and environment preparation.
+- [Quickstart](https://mit-submit.github.io/A2rchi/quickstart/) — after installation, learn how to deploy your first A2RCHI instance.
+- [User Guide](https://mit-submit.github.io/A2rchi/user_guide/) — framework concepts for users and administrators.
+- [Advanced Setup & Deployment](https://mit-submit.github.io/A2rchi/advanced_setup_deploy/) — configuring A2RCHI for GPU use, custom models, and advanced workflows.
+- [API Reference](https://mit-submit.github.io/A2rchi/api_reference/) — programmatic interfaces and integration points.
+- [Developer Guide](https://mit-submit.github.io/A2rchi/developer_guide/) — codebase layout, contribution workflow, and extension patterns.
 
 ## Getting Started
 
-Follow the [Install](https://mit-submit.github.io/a2rchi/install/) and [Quickstart](https://mit-submit.github.io/a2rchi/quickstart/) guide to set up prerequisites, configure data sources, and launch an instance.
+Follow the [Install](https://mit-submit.github.io/A2rchi/install/) and [Quickstart](https://mit-submit.github.io/A2rchi/quickstart/) guide to set up prerequisites, configure data sources, and launch an instance.
 
 ## Contributing
 
-We welcome fixes and new integrations—see the [Developer Guide](https://mit-submit.github.io/a2rchi/developer_guide/) for coding standards, testing instructions, and contribution tips. Please open issues or pull requests on the [GitHub repository](https://github.com/mit-submit/A2rchi).
+We welcome fixes and new integrations—see the [Developer Guide](https://mit-submit.github.io/A2rchi/developer_guide/) for coding standards, testing instructions, and contribution tips. Please open issues or pull requests on the [GitHub repository](https://github.com/mit-submit/A2rchi).
 
 ## License and Support
 
