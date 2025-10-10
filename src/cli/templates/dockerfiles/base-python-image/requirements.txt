@@ -26,6 +26,8 @@ loguru==0.7.2
 lz4==4.3.2
 mistune==3.0.2
 monotonic==1.6
+mkdocs==1.6.1
+mkdocs-material==9.6.21
 openai==1.89.0
 overrides==7.4.0
 piazza-api==0.14.0
@@ -83,3 +85,4 @@ anyio==4.8.0
 catalogue==2.0.9
 aiohttp==3.9.5
 nltk==3.9.1
+rank_bm25==0.2.2
