@@ -1,0 +1,35 @@
+name: grading_test
+
+global:
+  TRAINED_ON: "rubrics, class info, etc."
+
+data_manager:
+  input_lists:
+    - examples/deployments/grading/course_materials.list
+  chromadb_port: 8000
+  chromadb_external_port: 8001
+  embedding_name: HuggingFaceEmbeddings
+
+a2rchi:
+  pipeline: GradingPipeline
+  pipeline_map:
+    GradingPipeline:
+      prompts:
+        required:
+          final_grade_prompt: examples/deployments/grading/grading_final_grade.prompt
+      models:
+        required:
+          final_grade_model: HuggingFaceOpenLLM
+    ImageProcessingPipeline:
+      prompts:
+        required:
+          image_processing_prompt: examples/deployments/grading/image_processing.prompt
+      models:
+        required:
+          image_processing_model: HuggingFaceImageLLM
+
+interfaces:
+  grader_app:
+    num_problems: 1
+    local_rubric_dir: examples/deployments/grading/rubrics/
+    local_users_csv_dir: examples/deployments/grading/logins/

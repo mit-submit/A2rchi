@@ -1,34 +1,38 @@
-# Install 
+# Install
 
 ## System Requirements
 
-A2rchi is deployed using a python-based CLI onto containers. It requires:
+A2RCHI is deployed using a Python-based CLI onto containers. It requires:
 
 - `docker` version 24+ or `podman` version 5.4.0+ (for containers)
-- `python 3.10.0+` (for CLI)
+- `python 3.10.0+` (for the CLI)
 
-> Note: We support either running open source models locally, or connecting to existing APIs. If you plan to run open source models on your machine's GPUs, please check out the [Advanced Setup & Deployment](advanced_setup_deploy.md) section for more information.
+> **Note:** We support either running open-source models locally or connecting to existing APIs. If you plan to run open-source models on your machine's GPUs, see the [Advanced Setup & Deployment](advanced_setup_deploy.md) section.
 
-## Install
+## Installation
 
-Clone the a2rchi repo:
-```nohighlight
+Clone the A2RCHI repository:
+
+```bash
 git clone https://github.com/mit-submit/A2rchi.git
 ```
-From the repository run:
-```nohighlight
+
+Install A2RCHI (from inside the repository):
+
+```bash
 pip install -e .
 ```
-This will install A2rchi's dependencies as well as a local CLI tool. You should be able to see that it is installed with
-```nohighlight
+
+This installs A2RCHI's dependencies and the CLI tool. Verify the installation with:
+
+```bash
 which a2rchi
 ```
-which will show the full path of the `a2rchi` executable.
+
+The command prints the path to the `a2rchi` executable.
 
 <details>
 <summary>Show Full Installation Script</summary>
-<br>
-You can use the following script to set up A2rchi from scratch. Copy and paste it into your terminal:
 
 ```bash
 # Clone the repository
@@ -41,7 +45,7 @@ python3 -m venv .a2rchi_venv
 source .a2rchi_venv/bin/activate
 
 # Install dependencies
-cd $A2RCHI_DIR
+cd "$A2RCHI_DIR"
 pip install -e .
 
 # Verify installation
@@ -49,4 +53,3 @@ which a2rchi
 ```
 
 </details>
-<br>

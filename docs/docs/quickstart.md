@@ -1,12 +1,18 @@
-# Quickstart 
+# Quickstart
 
-Deploy your first instance of A2rchi and walk through the important concepts.
+Deploy your first instance of A2RCHI and walk through the important concepts.
 
 ## Sources and Services
 
-A2rchi can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command, and decide which ones you want to use, so that we can configure them.
-```nohighlight
-$ a2rchi list-services
+A2RCHI can ingest data from a variety of **sources** and supports several **services**. List them with the CLI command below and decide which ones you want to use so that we can configure them.
+
+```bash
+a2rchi list-services
+```
+
+Example output:
+
+```
 Available A2RCHI services:
 
 Application Services:
@@ -21,39 +27,40 @@ Integration Services:
   redmine-mailer       Email processing and Cleo/Redmine ticket management
 
 Data Sources:
-  redmine              Redmine issue tracking integration
-  jira                 Jira issue tracking integration
+  git                 Git repository scraping for MkDocs-based documentation
+  jira                Jira issue tracking integration
+  redmine             Redmine ticket integration
+  sso                 SSO-backed web crawling
 ```
 
 See the [User Guide](user_guide.md) for detailed information about each service and source.
 
 ## Pipelines
 
-A2rchi supports several pipelines, which are pre-defined sequences of operations that process user inputs and generate responses. A particular service will support a subset of the pipelines, see the [User Guide](user_guide.md) for more details. 
+A2RCHI supports several pipelines—pre-defined sequences of operations that process user inputs and generate responses. Each service supports a subset of pipelines (see the [User Guide](user_guide.md) for details).
 
-An example pipeline is the `QAPipeline`, which is a question-answering pipeline that takes a user's question, retrieves relevant documents from the vector store, and generates an answer using a language model.
+An example pipeline is `QAPipeline`, a question-answering pipeline that takes a user's question, retrieves relevant documents from the vector store, and generates an answer using a language model.
 
-We will specify which pipelines we are interested in making available to A2rchi in the configuration file.
+You specify which pipelines should be available in the configuration file.
 
 ## Configuration
 
-Once you have chosen the services, sources, and pipelines you want to use, you can create a configuration file which specifies these and their settings.
-You can start from one of the example configuration files in `configs/`, or create your own from scratch.
-The services and sources that A2rchi will use are not determined here, only their parameters are being set.
+Once you have chosen the services, sources, and pipelines you want to use, create a configuration file that specifies their settings. You can start from one of the example configuration files in `configs/`, or create your own from scratch. This file sets parameters; the selected services and sources are determined at deployment time.
 
-> **Important:**  
-> The configuration file follows the format of `a2rchi/templates/base-config.yaml`, and any fields not specified in your configuration file will be filled in with the defaults from this base config.
+> **Important:** The configuration file follows the format of `src/cli/templates/base-config.yaml`. Any fields not specified in your configuration will be populated with the defaults from this template.
 
-Here is an example configuration file which configures some specific settings for the `chatbot` service using the `QAPipeline` pipeline with a local `VLLM` model. Save it as `configs/my_config.yaml`:
+Example configuration (`configs/my_config.yaml`) for the `chatbot` service using `QAPipeline` with a local VLLM model:
 
 ```yaml
 name: my_a2rchi
 
 data_manager:
-  input_lists:  
-    - configs/miscellanea.list
+  sources:
+    links:
+      input_lists:
+        - configs/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
-  chromadb_host: localhost
+  chunk_size: 1000
 
 a2rchi:
   pipelines:
@@ -62,8 +69,8 @@ a2rchi:
     QAPipeline:
       prompts:
         required:
-          condense_prompt: configs/prompts/condense.prompt  
-          chat_prompt: configs/prompts/submit.prompt  
+          condense_prompt: configs/prompts/condense.prompt
+          chat_prompt: configs/prompts/submit.prompt
       models:
         required:
           chat_model: VLLM
@@ -76,95 +83,81 @@ a2rchi:
 services:
   chat_app:
     trained_on: "My data"
-    HOSTNAME: "<your-hostname>" 
+    hostname: "<your-hostname>"
+  chromadb:
+    chromadb_host: localhost
 ```
 
 <details>
-<summary>Explanation of config parameters</summary>
-<br>
-Here is a brief explanation of the parameters in the example configuration file:
+<summary>Explanation of configuration parameters</summary>
 
-<ul>
-  <li><code>name</code>: The name of your A2rchi deployment.</li>
-  <li><code>data_manager</code>: Settings related to data management, including:
-    <ul>
-      <li><code>input_lists</code>: A list of files containing links to be ingested.</li>
-      <li><code>embedding_name</code>: The embedding model to use for vectorization.</li>
-      <li><code>chromadb_host</code>: The host where ChromaDB is running.</li>
-    </ul>
-  </li>
-  <li><code>a2rchi</code>: Settings related to the A2rchi core, including:
-    <ul>
-      <li><code>pipelines</code>: The pipelines to use (e.g., <code>QAPipeline</code>).</li>
-      <li><code>pipeline_map</code>: Configuration for each pipeline, including prompts and models.</li>
-      <li><code>model_class_map</code>: Mapping of model names to their classes and parameters.</li>
-    </ul>
-  </li>
-  <li><code>services</code>: Settings for the services/interfaces, including:
-    <ul>
-      <li><code>chat_app</code>: Configuration for the chat application, including the hostname.
-      <ul>
-      <li><code>trained_on</code>: A brief description of the documents you are uploading to A2rchi.</li>
-      </ul>
-      </li>
-    </ul>
-  </li>
-</ul>
+- `name`: Name of your A2RCHI deployment.
+- `data_manager`: Settings related to data ingestion and the vector store.
+  - `sources.links.input_lists`: Lists of URLs to seed the deployment.
+  - `embedding_name`: Embedding model used for vectorization.
+  - `chunk_size`: Controls how documents are split prior to embedding.
+- `a2rchi`: Core pipeline settings.
+  - `pipelines`: Pipelines to use (e.g., `QAPipeline`).
+  - `pipeline_map`: Configuration for each pipeline, including prompts and models.
+  - `model_class_map`: Mapping of model names to their classes and parameters.
+- `services`: Settings for individual services/interfaces.
+  - `chat_app`: Chat interface configuration, including hostname and descriptive metadata.
+  - `chromadb`: Connection details for the vector store container.
+
 </details>
-<br>
 
 ## Secrets
 
-Secrets are values which are sensitive and therefore should not be directly included in code or configuration files. They typically include passwords, API keys, etc.
+Secrets are sensitive values (passwords, API keys, etc.) that should not be stored directly in code or configuration files. Store them in a single `.env` file on your filesystem.
 
-To manage these secrets, we ask that you write them to a location on your file system in  a single `.env` file.
+Minimal deployments (chatbot with open-source LLM and embeddings) require:
 
-The only secret that is required to launch a minimal version of A2rchi (chatbot with open source LLM and embeddings) is:
+- `PG_PASSWORD`: password used to secure the database.
 
-- `PG_PASSWORD`: some password you pick which encrypts the database.
+Create the secrets file with:
 
-So for a basic deployment, all you need is to create the 'secrets' file is:
 ```bash
 echo "PG_PASSWORD=my_strong_password" > ~/.secrets.env
 ```
 
-If you are not running an open source model, you can use various OpenAI or Anthropic models if you provide the following secrets,
+If you are not using open-source models, supply the relevant API credentials:
 
-- `openai_api_key`: the API key given by OpenAI
-- `anthropic_api_key`: the API key given by Anthropic
+- `OPENAI_API_KEY`: OpenAI API key.
+- `ANTHROPIC_API_KEY`: Anthropic API key.
+- `HUGGINGFACEHUB_API_TOKEN`: HuggingFace access token (for private models or embeddings).
 
-respectively. If you want to access private embedding models or LLMs from HuggingFace, you will need to provide the following:
+Other services may require additional secrets; see the [User Guide](user_guide.md) for details.
 
-- `hf_token`: the API key to your HuggingFace account
-
-For many of the other services provided by A2rchi, additional secrets are required. These are detailed in User's Guide
-
-## Creating an A2rchi Deployment
+## Creating an A2RCHI Deployment
 
 Create your deployment with the CLI:
+
 ```bash
-a2rchi create --name my-a2rchi --config configs/my_config.yaml --podman -e .secrets.env  --services chatbot
+a2rchi create --name my-a2rchi --config configs/my_config.yaml --podman --env-file .secrets.env --services chatbot 
 ```
-Here we specify:
 
-- `--name`: the name of your deployment
-- `--config`: the path to your configuration file OR
-- `--config-dir`: the path to the folder containing your configuration files
-- `--podman`: use `podman` for container management (`docker` is default)
-- `-e`: the path to your secrets
-- `--services`: the services to deploy (here we only deploy the `chatbot` service)
+This command specifies:
 
-#### A note about multiple configurations
+- `--name`: Deployment name.
+- `--config`: Path to the configuration file.
+- `--podman`: Use Podman for container management (`docker` is the default).
+- `--env-file`: Path to the secrets file.
+- `--services`: Services to deploy (only the `chatbot` service in this example but others can be included separated by commas).
 
-When multiple configurations are passed, it is expected that their `services` portion remains consistent, otherwise the deployment will fail. For now, the use case for multiple configurations is having different pipelines/prompts that can be changed dynamically via the chat app as well as having different benchmarking configurations.
+Note that this command will create a deployment using only the link sources specified in the `data_manager.sources.links.input_lists` by default, if other sources (such as git-based documentation or pages under sso) want to be included they must be included using the `--sources` flag and in the configuration file.
+
+### A note about multiple configurations
+
+When multiple configuration files are passed, their `services` sections must remain consistent, otherwise the deployment fails. The current use cases for multiple configurations include swapping pipelines/prompts dynamically via the chat app and maintaining separate benchmarking configurations.
 
 <details>
-<summary> Output Example</summary>
+<summary>Example output</summary>
 
 ```bash
-$ a2rchi create --name my-a2rchi -c test.yaml --podman -e secrets.env  --services chatbot
+a2rchi create --name my-a2rchi -c test.yaml --podman --env-file secrets.env --services chatbot
 ```
-```nohighlight
+
+```
 Starting A2RCHI deployment process...
 [a2rchi] Creating deployment 'my-a2rchi' with services: chatbot
 [a2rchi] Auto-enabling dependencies: postgres, chromadb
@@ -183,41 +176,23 @@ Services running: chatbot, postgres, chromadb
 ```
 
 </details>
-<br>
 
-The first time you run this command it will take longer than usual (order minutes) because `docker`/`podman` will have to build the container images from scratch; subsequent deployments which will re-use the images will be quicker (around a minute).
+The first deployment builds the container images from scratch (which may take a few minutes). Subsequent deployments reuse the images and complete much faster (roughly a minute).
 
-> Note: having issues? Run the command with the `-v 4` flag to enable `DEBUG` level logging.
+> **Tip:** Having issues? Run the command with `-v 4` to enable DEBUG-level logging.
 
 ### Verifying a deployment
 
-Check that a deployment is running with the A2rchi CLI:
+List running deployments with:
+
 ```bash
 a2rchi list-deployments
 ```
-You should see something like:
-```console
+
+You should see output similar to:
+
+```text
 Existing deployments:
-  my-a2rchi
 ```
 
-You can also verify that all your images are up and running properly in containers by executing the command:
-```bash
-podman ps
-```
-You should see something like:
-```console
-CONTAINER ID  IMAGE                              COMMAND               CREATED             STATUS                       PORTS                   NAMES
-7e823e15e8d8  localhost/chromadb-my-a2rchi:2000  uvicorn chromadb....  About a minute ago  Up About a minute (healthy)  0.0.0.0:8010->8000/tcp  chromadb-my-a2rchi
-8d561db18278  docker.io/library/postgres:16      postgres              About a minute ago  Up About a minute (healthy)  5432/tcp                postgres-my-a2rchi
-a1f7f9b44b1d  localhost/chat-my-a2rchi:2000      python -u a2rchi/...  About a minute ago  Up About a minute            0.0.0.0:7868->7868/tcp  chat-my-a2rchi
-```
-
-To access the chat interface, visit its corresponding port (`0.0.0.0:7868` in the above example).
-
-### Removing a deployment
-
-Lastly, to tear down the deployment, simply run:
-```bash
-a2rchi delete --name my-a2rchi
-```
+(Additional details will follow for each deployment.)

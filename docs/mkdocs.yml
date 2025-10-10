@@ -1,6 +1,6 @@
-site_name: A2rchi Docs
+site_name: A2RCHI Docs
 nav:
-  - A2rchi: overview.md
+  - A2RCHI: overview.md
   - Install: install.md
   - Quickstart: quickstart.md
   - User Guide: user_guide.md
@@ -8,7 +8,7 @@ nav:
   - API Reference: api_reference.md
   - Developer Guide: developer_guide.md
 theme: readthedocs
-repo_url: https://github.com/mit-submit/A2rchi
+repo_url: https://github.com/mit-submit/a2rchi
 repo_name: 'GitHub'
 extra:
-  version: 1.1.0
+  version: 1.2.0

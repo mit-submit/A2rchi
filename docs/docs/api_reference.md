@@ -2,7 +2,7 @@
 
 ## CLI
 
-The A2rchi CLI provides commands to create, manage, and delete A2rchi deployments and services.
+The A2RCHI CLI provides commands to create, manage, and delete A2RCHI deployments and services.
 
 ---
 
@@ -10,7 +10,7 @@ The A2rchi CLI provides commands to create, manage, and delete A2rchi deployment
 
 #### 1. `create`
 
-Create a new A2rchi deployment.
+Create a new A2RCHI deployment.
 
 **Usage:**
 ```sh
@@ -20,10 +20,11 @@ a2rchi create --name <deployment_name> --config <config.yaml> --env-file <secret
 **Options:**
 
 - `--name, -n` (str, required): Name of the deployment.
-- `--config, -c` (str, required): Path to the YAML configuration file.
+- `--config, -c` (str): Path to a YAML configuration file (repeat the flag to supply multiple files).
+- `--config-dir, -cd` (str): Directory containing configuration files.
 - `--env-file, -e` (str, required): Path to the secrets `.env` file.
-- `--services, -s` (comma-separated): List of services to enable (e.g., `chat_app,uploader_app`).
-- `--sources, -src` (comma-separated): Data sources to enable (e.g., `jira,redmine`).
+- `--services, -s` (comma-separated, required): List of services to enable (e.g., `chatbot,uploader`).
+- `--sources, -src` (comma-separated): Additional data sources to enable (e.g., `git,jira`). The `links` source is always available.
 - `--podman, -p`: Use Podman instead of Docker.
 - `--gpu-ids`: GPU configuration (`all` or comma-separated IDs).
 - `--tag, -t` (str): Image tag for built containers (default: `2000`).
@@ -36,7 +37,7 @@ a2rchi create --name <deployment_name> --config <config.yaml> --env-file <secret
 
 #### 2. `delete`
 
-Delete an existing A2rchi deployment.
+Delete an existing A2RCHI deployment.
 
 **Usage:**
 ```sh
@@ -53,33 +54,50 @@ a2rchi delete --name <deployment_name> [OPTIONS]
 
 ---
 
-#### 3. `list_services`
+#### 3. `list-services`
 
-List all available A2rchi services and data sources.
+List all available A2RCHI services and data sources.
 
 **Usage:**
 ```sh
-a2rchi list_services
+a2rchi list-services
 ```
 
 ---
 
-#### 4. `list_deployments`
+#### 4. `list-deployments`
 
-List all existing A2rchi deployments.
+List all existing A2RCHI deployments.
 
 **Usage:**
 ```sh
-a2rchi list_deployments
+a2rchi list-deployments
 ```
+
+---
+
+#### 5. `evaluate`
+
+Launch the benchmarking runtime to evaluate one or more configurations against a set of questions/answers.
+
+**Usage:**
+```sh
+a2rchi evaluate --name <run_name> --env-file <secrets.env> --config <file.yaml> [OPTIONS]
+```
+Use `--config-dir` if you want to point to a directory of configs instead.
+
+**Options:**
+
+- Supports the same flags as `create` (`--sources`, `--podman`, `--gpu-ids`, `--tag`, `--hostmode`, `--verbosity`, `--force`).
+- Reads configuration from one or more YAML files that should define the `services.benchmarking` section.
 
 ---
 
 ### Examples
 
-**Create a deployment:**  
+**Create a deployment:**
 ```sh
-a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chat_app,uploader_app
+a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chatbot,uploader
 ```
 
 **Delete a deployment and remove images/volumes:**
@@ -89,322 +107,105 @@ a2rchi delete --name mybot --rmi --rmv
 
 **List all deployments:**
 ```sh
-a2rchi list_deployments
+a2rchi list-deployments
 ```
 
 **List all services:**
 ```sh
-a2rchi list_services
+a2rchi list-services
 ```
 
 ---
 
-
 ## Configuration YAML API Reference
 
-The A2rchi configuration YAML file defines the deployment, services, data sources, pipelines, models, and interface settings for your A2rchi instance.
+The A2RCHI configuration YAML file defines the deployment, services, data sources, pipelines, models, and interface settings for your A2RCHI instance.
 
 ---
 
 ### Top-Level Fields
 
 #### `name`
+
 - **Type:** string
 - **Description:** Name of the deployment.
 
 #### `global`
-- **TRAINED_ON:** string  
-  Description of the data or corpus the system was trained on.
-- **DATA_PATH:** string  
-  Path to data storage.
-- **ACCOUNTS_PATH:** string  
-  Path to user accounts.
-- **ACCEPTED_FILES:** list  
-  Allowed file extensions for uploads.
-- **ROLES:** list  
-  User roles available in the system.
-- **LOGGING.input_output_filename:** string  
-  Log file for input/output.
-- **verbosity:** int  
-  Logging verbosity (0-4).
+
+- **DATA_PATH:** path for persisted data (defaults to `/root/data/`).
+- **ACCOUNTS_PATH:** path for uploader/grader account data.
+- **ACCEPTED_FILES:** list of extensions allowed for manual uploads.
+- **LOGGING.input_output_filename:** log file that stores pipeline inputs/outputs.
+- **verbosity:** default logging level for services (0-4).
 
 ---
 
-### `interfaces`
+### `services`
 
-Settings for each web interface or service.
+Holds configuration for every containerised service. Common keys include:
 
-#### `chat_app`, `uploader_app`, `grader_app`, `grafana`
+- **port / external_port:** internal versus host port mapping for web apps.
+- **host / hostname:** network binding and public hostname for frontends.
+- **volume/paths:** template or static asset paths expected by the service.
 
-- **port:** int  
-  Internal port that the Flask application binds to inside the container. This is the port the Flask server listens on within the container's network namespace. Usually don't need to change this unless you have port conflicts within the container. Default is `7861`.
-- **external_port:** int  
-  External port that maps to the container's internal port, making the chat application accessible from outside the container. This is the port users will connect to in their browser (e.g., `your-hostname:7861`). When running multiple deployments on the same machine, each deployment must use a different external port to avoid conflicts. Default is `7861`.
-- **host:** string  
-  Network interface address that the Flask application binds to inside the container. Setting this to `0.0.0.0` allows the application to accept connections from any network interface, which is necessary for the application to be accessible from outside the container. Shouldn't remain unchanged unless you have specific networking requirements. Default is `0.0.0.0`.
-- **hostname:** string  
-  The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using `localhost` will only work if accessing the application from the same machine. Default is `localhost`.
-- **template_folder:** string  
-  Path to HTML templates.
-- **static_folder:** string  
-  Path to static files (if applicable).
-- **num_responses_until_feedback:** int  
-  Number of responses before the user is encouraged to provide feedback.
-- **include_copy_button:** bool  
-  Show copy-to-clipboard button.
-- **enable_debug_chroma_endpoints:** bool  
-  Enable debug endpoints (chat_app).
-- **flask_debug_mode:** bool  
-  Enable Flask debug mode.
-- **num_problems:** int  
-  Number of problems (grader_app).
-- **local_rubric_dir:** string  
-  Path to rubric files (grader_app).
-- **local_users_csv_dir:** string  
-  Path to users CSV (grader_app).
-- **verify_urls:** bool  
-  Verify URLs on upload (uploader_app).
+Key services:
+
+- **chat_app:** Chat interface options (`trained_on`, ports, UI toggles).
+- **uploader_app:** Document uploader settings (`verify_urls`, ports).
+- **grader_app:** Grader-specific knobs (`num_problems`, rubric paths).
+- **grafana:** Port configuration for the monitoring dashboard.
+- **chromadb:** Connection details for the vector store container (`chromadb_host`, `chromadb_port`, `chromadb_external_port`).
+- **postgres:** Database credentials (`user`, `database`, `port`, `host`).
+- **piazza**, **mattermost**, **redmine_mailbox**, **benchmarking**, ...: Service-specific options (see user guide sections above).
 
 ---
 
 ### `data_manager`
 
-Controls vector store, chunking, and embedding settings.
+Controls ingestion sources and vector store behaviour.
 
-- **collection_name:** string  
-  Name of the vector collection.
-- **input_lists:** list  
-  List of files with initial context URLs.
-- **local_vstore_path:** string  
-  Path to local vector store.
-- **embedding_name:** string  
-  Embedding backend (`OpenAIEmbeddings`, `HuggingFaceEmbeddings`).
-- **embedding_class_map:** dict  
-  Embedding backend configuration (see below).
-- **chunk_size:** int  
-  Number of characters per chunk, i.e., a string that will get embedded and stored in the vector database. Default is `1000`.
-- **chunk_overlap:** int  
-  When splitting documents into chunks, how much should they overlap. Default is `0`.
-- **use_HTTP_chromadb_client:** bool  
-  Use HTTP client for ChromaDB.
-- **chromadb_host:** string  
-  Hostname for ChromaDB.
-- **chromadb_port:** int  
-  Internal port for ChromaDB.
-- **chromadb_external_port:** int  
-  Host port for ChromaDB.
-- **reset_collection:** bool  
-  Reset vector collection on startup.
-- **num_documents_to_retrieve:** int  
-  How many chunks to query in order of decreasing similarity (so 1 would return the most similar only, 2 the next most similar, etc.).
-- **stemming.enabled:** bool  
-  Enable stemming for search.
-- **distance_metric:** string  
-  Distance metric to use for similarity search in ChromaDB. Options are `cosine`, `l2`, and `ip`. Read more (here)[https://docs.trychroma.com/docs/collections/configure]. Default for A2rchi is cosine.
-- **use_hybrid_search:** bool  
-  Enables hybrid search, that is performing lexical search as well as semantic search. Docs retrieved from both searches are combined. The default is `False`
-- **bm25_weight:** float  
-  Weight for BM25 in hybrid search.
-- **semantic_weight:** float  
-  Weight for semantic search in hybrid search.
-- **bm25.k1:** float  
-  BM25 term frequency saturation. Controls how much the score increases with additional occurrences of a term in a document. Range: `[1.2,2.0]`
-- **bm25.b:** float  
-  BM25 length normalization. Controls how much the document length influences the score. BM25 normalizes term frequency by document length compared to the average document length in the corpus. Range: `[0,1]`
-
-#### `embedding_class_map`
-<ul>
-  <li>
-    <strong>OpenAIEmbeddings:</strong>
-    <ul>
-      <li><strong>class:</strong> <code>string</code></li>
-      <li><strong>kwargs.model:</strong> <code>string</code></li>
-      <li><strong>similarity_score_reference:</strong> <code>float</code></li>
-    </ul>
-  </li>
-  <li>
-    <strong>HuggingFaceEmbeddings:</strong>
-    <ul>
-      <li><strong>class:</strong> <code>string</code></li>
-      <li>
-        <strong>kwargs.model_name:</strong> <code>string</code><br>
-        The HuggingFace embedding model you want to use. Default is <code>sentence-transformers/all-MiniLM-L6-v2</code>. TODO: fix logic to require token if private model is requested.
-      </li>
-      <li>
-        <strong>kwargs.model_kwargs.device:</strong> <code>string</code> (<code>cpu</code> or <code>cuda</code>)<br>
-        Argument passed to embedding model initialization, to load onto <code>cpu</code> (default) or <code>cuda</code> (GPU), which you can select if you are deploying a2rchi onto GPU.
-      </li>
-      <li>
-        <strong>kwargs.encode_kwargs.normalize_embeddings:</strong> <code>bool</code><br>
-        Whether to normalize the embedded vectors or not. Default is <code>true</code>. Note, the default distance metric that chromadb uses is l2, which measures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.
-      </li>
-      <li>
-        <strong>similarity_score_reference:</strong> <code>float</code><br>
-        The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more <a href="https://docs.trychroma.com/docs/collections/configure">here</a>), so smaller values represent higher similarity. The link will be included if the score is <em>below</em> the chosen value. Default is <code>10</code> (scores are usually order 1, so default is to always include link).
-      </li>
-      <li>
-        <strong>query_embedding_instructions:</strong> <code>string</code> or <code>null</code><br>
-        Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see <code>INSTRUCTION_AWARE_MODELS</code> in <code>a2rchi/chains/retrievers.py</code> to add models that support this. For example, the <code>Qwen/Qwen3-Embedding-XB</code> embedding models support this and are listed, see more <a href="https://huggingface.co/Qwen/Qwen3-Embedding-0.6B">here</a>. Default is <code>None</code>. You should write the string directly into the config. An example instruction might look like: <code>"Given a query, retrieve relevant information to answer the query"</code>. You might tune it to be more specific to your use case which might improve performance.
-      </li>
-    </ul>
-  </li>
-</ul>
+- **sources.links.input_lists:** `.list` files with seed URLs.
+- **sources.links.scraper:** Behaviour toggles for HTTP scraping (resetting data, URL verification, warning output).
+- **sources.git.enabled / sources.sso.enabled / sources.jira.enabled / sources.redmine.enabled:** Toggle additional collectors when paired with `--sources`.
+- **embedding_name:** Embedding backend (`OpenAIEmbeddings`, `HuggingFaceEmbeddings`, ...).
+- **embedding_class_map:** Backend specific parameters (model name, device, similarity threshold).
+- **chunk_size / chunk_overlap:** Text splitter parameters.
+- **reset_collection:** Whether to wipe the collection before re-populating.
+- **num_documents_to_retrieve:** Top-k documents returned at query time.
+- **distance_metric / use_hybrid_search / bm25_weight / semantic_weight / bm25.{k1,b}:** Retrieval tuning knobs.
+- **utils.anonymizer** (legacy) / **data_manager.utils.anonymizer**: Redaction settings applied when ticket collectors anonymise content.
 
 ---
 
 ### `a2rchi`
 
-Pipeline and model configuration.
-<ul>
-  <li><strong>pipelines:</strong> <code>list</code><br>
-    List of enabled pipelines (e.g., <code>QAPipeline</code>, <code>GradingPipeline</code>).
-  </li>
-  <li><strong>pipeline_map:</strong> <code>dict</code><br>
-    Configuration for each pipeline:
-    <ul>
-      <li><strong>max_tokens:</strong> <code>int</code></li>
-      <li><strong>prompts.required:</strong> <code>dict</code><br>
-        Required prompt files for the pipeline.
-      </li>
-      <li><strong>prompts.optional:</strong> <code>dict</code><br>
-        Optional prompt files.
-      </li>
-      <li><strong>models.required:</strong> <code>dict</code><br>
-        Required models for the pipeline.
-      </li>
-      <li><strong>models.optional:</strong> <code>dict</code><br>
-        Optional models.
-      </li>
-    </ul>
-  </li>
-  <li><strong>model_class_map:</strong> <code>dict</code><br>
-    Model backend configuration (see below).
-  </li>
-  <li><strong>chain_update_time:</strong> <code>int</code><br>
-    Time (seconds) between chain updates.
-  </li>
-</ul>
+Defines pipelines and model routing.
 
-#### `model_class_map`
-
-Each model (e.g., `AnthropicLLM`, `OpenAIGPT4`, `LlamaLLM`, etc.) has:
-
-<ul>
-  <li><strong>class:</strong> <code>string</code></li>
-  <li><strong>kwargs:</strong> <code>dict</code><br>
-    Model-specific parameters (see template for details).
-  </li>
-</ul>
+- **pipelines:** List of pipeline names to load (e.g., `QAPipeline`).
+- **pipeline_map:** Per-pipeline configuration of prompts, models, and token limits.
+- **model_class_map:** Definitions for each model family (base model names, provider-specific kwargs).
+- **chain_update_time:** Polling interval for hot-reloading chains.
 
 ---
 
 ### `utils`
 
-<ul>
-  <li><strong>postgres:</strong>
-    <ul>
-      <li><strong>port:</strong> <code>int</code></li>
-      <li><strong>user:</strong> <code>string</code></li>
-      <li><strong>database:</strong> <code>string</code></li>
-      <li><strong>host:</strong> <code>string</code></li>
-    </ul>
-  </li>
-  <li><strong>sso:</strong>
-    <ul>
-      <li><strong>enabled:</strong> <code>bool</code></li>
-      <li><strong>sso_class:</strong> <code>string</code></li>
-      <li><strong>sso_class_map:</strong> <code>dict</code>
-        <ul>
-          <li><strong>class:</strong> <code>string</code></li>
-          <li><strong>kwargs:</strong> <code>dict</code></li>
-        </ul>
-      </li>
-    </ul>
-  </li>
-  <li><strong>git:</strong>
-    <ul>
-      <li><strong>enabled:</strong> <code>bool</code></li>
-    </ul>
-  </li>
-  <li><strong>scraper:</strong>
-    <ul>
-      <li><strong>reset_data:</strong> <code>bool</code></li>
-      <li><strong>verify_urls:</strong> <code>bool</code></li>
-      <li><strong>enable_warnings:</strong> <code>bool</code></li>
-    </ul>
-  </li>
-  <li><strong>piazza:</strong>
-    <ul>
-      <li><strong>network_id:</strong> <code>string</code></li>
-      <li><strong>update_time:</strong> <code>int</code></li>
-    </ul>
-  </li>
-  <li><strong>mattermost:</strong>
-    <ul>
-      <li><strong>update_time:</strong> <code>int</code></li>
-    </ul>
-  </li>
-  <li><strong>redmine:</strong>
-    <ul>
-      <li><strong>redmine_update_time:</strong> <code>int</code></li>
-      <li><strong>answer_tag:</strong> <code>string</code></li>
-    </ul>
-  </li>
-  <li><strong>mailbox:</strong>
-    <ul>
-      <li><strong>imap4_port:</strong> <code>int</code></li>
-      <li><strong>mailbox_update_time:</strong> <code>int</code></li>
-    </ul>
-  </li>
-<ul>
-  <li><strong>jira:</strong>
-    <ul>
-      <li><strong>url:</strong> <code>string</code><br>
-        The URL of the JIRA instance from which A2rchi will fetch data.
-      </li>
-      <li><strong>projects:</strong> <code>list</code><br>
-        List of JIRA project names that A2rchi will fetch data from.
-      </li>
-      <li><strong>anonymize_data:</strong> <code>bool</code><br>
-        Boolean flag indicating whether the fetched data from JIRA should be anonymized. Default is <code>True</code>.
-      </li>
-    </ul>
-  </li>
-  <li><strong>anonymizer:</strong>
-    <ul>
-      <li><strong>nlp_model:</strong> <code>string</code><br>
-        The NLP model that the <code>spacy</code> library will use to perform Named Entity Recognition (NER).
-      </li>
-      <li><strong>excluded_words:</strong> <code>list</code><br>
-        The list of words that the anonymizer should remove.
-      </li>
-      <li><strong>greeting_patterns:</strong> <code>list</code><br>
-        The regex patterns to match and remove greeting patterns.
-      </li>
-      <li><strong>signoff_patterns:</strong> <code>list</code><br>
-        The regex patterns to match and remove signoff patterns.
-      </li>
-      <li><strong>email_pattern:</strong> <code>string</code><br>
-        The regex pattern to match and remove email addresses.
-      </li>
-      <li><strong>username_pattern:</strong> <code>string</code><br>
-        The regex pattern to match and remove JIRA usernames.
-      </li>
-    </ul>
-  </li>
-</ul>
-</ul>
+Utility configuration for supporting components (mostly legacy fallbacks):
+
+- **sso:** Global SSO defaults used when a source-specific override is not provided.
+- **git:** Legacy toggle for Git scraping.
+- **jira / redmine:** Compatibility settings for ticket integrations; prefer configuring these under `data_manager.sources`.
+
 ---
 
 ### Required Fields
 
-Some fields are required depending on enabled services and pipelines.  
-For example:
+Some fields are required depending on enabled services and pipelines. For example:
 
 - `name`
-- `global.TRAINED_ON`
-- `a2rchi.pipelines`
-- Service-specific fields (e.g., `utils.piazza.network_id`, `interfaces.grader_app.num_problems`)
+- `data_manager.sources.links.input_lists` (or other source-specific configuration)
+- `a2rchi.pipelines` and matching `a2rchi.pipeline_map` entries
+- Service-specific fields (e.g., `services.piazza.network_id`, `services.grader_app.num_problems`)
 
 See the [User Guide](user_guide.md) for more configuration examples and explanations.
 
@@ -415,31 +216,28 @@ See the [User Guide](user_guide.md) for more configuration examples and explanat
 ```yaml
 name: my_deployment
 global:
-  TRAINED_ON: "MIT course data"
   DATA_PATH: "/root/data/"
   ACCOUNTS_PATH: "/root/.accounts/"
   ACCEPTED_FILES: [".txt", ".pdf"]
-  ROLES: ["User", "A2rchi", "Expert"]
   LOGGING:
     input_output_filename: "chain_input_output.log"
   verbosity: 3
 
-interfaces:
-  chat_app:
-    port: 7861
-    external_port: 7861
-    host: "0.0.0.0"
-    hostname: "localhost"
-    num_responses_until_feedback: 3
-    flask_debug_mode: true
-
 data_manager:
-  collection_name: "default_collection"
-  input_lists: ["configs/miscellanea.list"]
+  sources:
+    links:
+      input_lists:
+        - configs/miscellanea.list
+      scraper:
+        reset_data: true
+        verify_urls: false
+        enable_warnings: false
+  utils:
+    anonymizer:
+      nlp_model: en_core_web_sm
   embedding_name: "OpenAIEmbeddings"
   chunk_size: 1000
   chunk_overlap: 0
-  distance_metric: "cosine"
   num_documents_to_retrieve: 5
 
 a2rchi:
@@ -449,28 +247,28 @@ a2rchi:
       max_tokens: 10000
       prompts:
         required:
-          condense_prompt: "condense.prompt"
-          chat_prompt: "chat.prompt"
+          condense_prompt: "configs/prompts/condense.prompt"
+          chat_prompt: "configs/prompts/chat.prompt"
       models:
         required:
-          condense_model: "DumbLLM"
-          chat_model: "DumbLLM"
+          condense_model: "OpenAIGPT4"
+          chat_model: "OpenAIGPT4"
   model_class_map:
-    DumbLLM:
-      class: DumbLLM
+    OpenAIGPT4:
+      class: OpenAIGPT4
       kwargs:
-        sleep_time_mean: 3
-        filler: null
+        model_name: gpt-4
 
-utils:
-  postgres:
-    port: 5432
-    user: "a2rchi"
-    database: "a2rchi-db"
-    host: "postgres"
+services:
+  chat_app:
+    trained_on: "Course documentation"
+    hostname: "example.mit.edu"
+  chromadb:
+    chromadb_host: "chromadb"
 ```
 
 ---
 
-**Tip:**  
-For a full template, see `a2rchi/cli/templates/base-config.yaml` in
+**Tip:**
+For a full template, see `src/cli/templates/base-config.yaml` in
+the repository.
