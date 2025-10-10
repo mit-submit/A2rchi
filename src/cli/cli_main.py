@@ -1,6 +1,4 @@
 import os
-import shutil
-import subprocess
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List
@@ -27,27 +25,6 @@ env = Environment(
     undefined=ChainableUndefined,
 )
 A2RCHI_DIR = os.environ.get('A2RCHI_DIR',os.path.join(os.path.expanduser('~'), ".a2rchi"))
-
-def check_docker_available() -> bool:
-    """Check if Docker is available and not just Podman emulation."""
-    if not shutil.which("docker"):
-        return False
-    
-    try:
-        # Run 'docker --version' to check if it's actually Docker
-        result = subprocess.run(
-            ["docker", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        # If stderr contains podman message, it's actually podman emulation
-        if result.returncode == 0 and "podman" not in result.stderr.lower():
-            return True
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        pass
-    
-    return False
 
 @click.group()
 def cli():
