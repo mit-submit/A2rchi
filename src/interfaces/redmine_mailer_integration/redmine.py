@@ -1,6 +1,7 @@
 import datetime
 import os
 import re
+import traceback
 
 import psycopg2
 import psycopg2.extras
@@ -121,12 +122,12 @@ class RedmineAIWrapper:
         self.data_manager.update_vectorstore()
 
         # execute chain and get answer
-        result = self.a2rchi(reformatted_history)
+        result = self.a2rchi(history=reformatted_history)
         answer = result["answer"]
 
         # prepare other information for storage
         history = "Question: " + reformatted_history[-1][1] + "\n\n\n\nHistory:\n\n" + "\n\n".join(post[0] + ": " + post[1] for post in reversed(reformatted_history[:-1]))
-        link, context = self.prepare_context_for_storage(result['source_documents'])
+        link, context = self.prepare_context_for_storage(result['documents'])
         ts = datetime.datetime.now()
 
         self.insert_conversation(issue_id, history, answer, link, context, ts)
@@ -291,14 +292,15 @@ class Redmine:
                 for record in issue.journals:
                     if record.notes != "":
                         history += f"\n next entry: {record.notes}"                    
-                logger.info("History input: ",history)
+                logger.info(f"History input: {history}")
                 try:
                     answer = self.ai_wrapper(self.get_issue_history(issue.id), issue.id)
                 except Exception as e:
                     logger.error(str(e))
+                    traceback.print_exc()
                     answer = "I am sorry, I am not able to process this request at the moment. Please continue with this ticket manually."
                 self.add_note_to_issue(issue.id,answer)
-                logger.info("A2rchi's response:\n",answer)
+                logger.info(f"A2rchi's response:\n {answer}")
                 self.feedback_issue(issue.id)
         logger.info("redmine.process_new_issues: %d"%(len(issue_ids)))
         return issue_ids
@@ -310,7 +312,7 @@ class Redmine:
         issue_ids = []
         for issue in self.project.issues:
             if issue.status.id == self.status_dict['Resolved']:
-                logger.info("Process_resolved_issues: {issue.id}")
+                logger.info(f"Process_resolved_issues: {issue.id}")
                 issue_ids.append(issue.id)
                 subject = f"Re:{issue.subject}"
                 to = issue.custom_fields[0]['value']
