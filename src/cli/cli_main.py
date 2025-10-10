@@ -66,13 +66,10 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         
         # Combine services and data sources for processing
         enabled_services = services.copy()
-        enabled_sources = ['links']
-        enabled_sources.extend([src for src in sources if src != 'links'])
-        enabled_sources = list(dict.fromkeys(enabled_sources))
+        requested_sources = ['links']
+        requested_sources.extend([src for src in sources if src != 'links'])
+        requested_sources = list(dict.fromkeys(requested_sources))
         
-        # Log deployment info and dependency resolution
-        log_deployment_start(name, services, enabled_sources, dry)
-        log_dependency_resolution(services, enabled_services)
         
         # Handle existing deployment
         base_dir = Path(A2RCHI_DIR) / f"a2rchi-{name}"
@@ -81,7 +78,13 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         # Initialize managers
         config_manager = ConfigurationManager(config_files,env)
         secrets_manager = SecretsManager(env_file, config_manager)
-        
+        config_defined_sources = config_manager.get_enabled_sources()
+        enabled_sources = list(dict.fromkeys(requested_sources + config_defined_sources))
+
+        # Log deployment info and dependency resolution
+        log_deployment_start(name, services, enabled_sources, dry)
+        log_dependency_resolution(services, enabled_services)
+
         # Validate configuration and secrets
         config_manager.validate_configs(enabled_services, enabled_sources)
         logger.info("Configurations validated successfully")
@@ -320,9 +323,9 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
 
         enabled_services = ["chromadb", "postgres", "benchmarking"] 
-        enabled_sources = ['links']
-        enabled_sources.extend([src for src in sources if src != 'links'])
-        enabled_sources = list(dict.fromkeys(enabled_sources))
+        requested_sources = ['links']
+        requested_sources.extend([src for src in sources if src != 'links'])
+        requested_sources = list(dict.fromkeys(requested_sources))
 
         if base_dir.exists():
             raise click.ClickException(
@@ -330,8 +333,10 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
                     )
 
         config_manager = ConfigurationManager(config_files,env)
-        
+
         secrets_manager = SecretsManager(env_file, config_manager)
+        config_defined_sources = config_manager.get_enabled_sources()
+        enabled_sources = list(dict.fromkeys(requested_sources + config_defined_sources))
         config_manager.validate_configs(enabled_services, enabled_sources)
 
         required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services), set(enabled_sources))

@@ -1,7 +1,7 @@
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import yaml
 
@@ -172,6 +172,24 @@ class ConfigurationManager:
                 collected.extend(lists)
         self.input_list = sorted(set(collected)) if collected else []
 
+    def get_enabled_sources(self) -> List[str]:
+        """Return sources marked as enabled across all configs."""
+        valid_names = set(source_registry.names())
+        enabled: Set[str] = set()
+
+        for conf in self.configs:
+            sources_section = conf.get('data_manager', {}).get('sources', {}) or {}
+            for name, entry in sources_section.items():
+                if name not in valid_names:
+                    continue
+                if isinstance(entry, dict):
+                    if entry.get('enabled'):
+                        enabled.add(name)
+                elif isinstance(entry, bool) and entry:
+                    enabled.add(name)
+
+        return sorted(enabled)
+
     def set_sources_enabled(self, enabled_sources: List[str]) -> None:
         enabled_set = set(enabled_sources or [])
         managed_sources = [name for name in source_registry.names() if name != 'links']
@@ -182,7 +200,10 @@ class ConfigurationManager:
 
             for name in managed_sources:
                 entry = sources_section.setdefault(name, {})
-                entry['enabled'] = name in enabled_set
+                if name in enabled_set:
+                    entry['enabled'] = True
+                elif 'enabled' not in entry:
+                    entry['enabled'] = False
 
             links_entry = sources_section.setdefault('links', {})
             links_entry.setdefault('enabled', True)
