@@ -125,7 +125,7 @@ sso-https://example.com/protected/page
 
 #### Running
 
-Link scraping is automatically enabled in A2RCHI, you don't need to add any arguments to the `create` command.
+Link scraping is automatically enabled in A2RCHI, you don't need to add any arguments to the `create` command unless the links are sso protected.
 
 ---
 
@@ -143,9 +143,9 @@ data_manager:
     git:
       enabled: true
 ```
-In the input lists, make sure to prepend `git-` to the URL of the repositories you are interested in scraping.
+In the input lists, make sure to prepend `git-` to the URL of the **repositories** you are interested in scraping.
 ```
-git-https://gitlab.cern.ch/cms-tier0-ops/documentation.git
+git-https://github.com/example/mkdocs/documentation.git
 ```
 
 #### Secrets

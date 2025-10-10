@@ -27,8 +27,10 @@ Integration Services:
   redmine-mailer       Email processing and Cleo/Redmine ticket management
 
 Data Sources:
-  redmine              Redmine issue tracking integration
-  jira                 Jira issue tracking integration
+  git                 Git repository scraping for MkDocs-based documentation
+  jira                Jira issue tracking integration
+  redmine             Redmine ticket integration
+  sso                 SSO-backed web crawling
 ```
 
 See the [User Guide](user_guide.md) for detailed information about each service and source.
@@ -131,7 +133,7 @@ Other services may require additional secrets; see the [User Guide](user_guide.m
 Create your deployment with the CLI:
 
 ```bash
-a2rchi create --name my-a2rchi --config configs/my_config.yaml --podman -e .secrets.env --services chatbot
+a2rchi create --name my-a2rchi --config configs/my_config.yaml --podman --env-file .secrets.env --services chatbot 
 ```
 
 This command specifies:
@@ -139,8 +141,10 @@ This command specifies:
 - `--name`: Deployment name.
 - `--config`: Path to the configuration file.
 - `--podman`: Use Podman for container management (`docker` is the default).
-- `-e`: Path to the secrets file.
-- `--services`: Services to deploy (only the `chatbot` service in this example).
+- `--env-file`: Path to the secrets file.
+- `--services`: Services to deploy (only the `chatbot` service in this example but others can be included separated by commas).
+
+Note that this command will create a deployment using only the link sources specified in the `data_manager.sources.links.input_lists` by default, if other sources (such as git-based documentation or pages under sso) want to be included they must be included using the `--sources` flag and in the configuration file.
 
 ### A note about multiple configurations
 
@@ -150,7 +154,7 @@ When multiple configuration files are passed, their `services` sections must rem
 <summary>Example output</summary>
 
 ```bash
-a2rchi create --name my-a2rchi -c test.yaml --podman -e secrets.env --services chatbot
+a2rchi create --name my-a2rchi -c test.yaml --podman --env-file secrets.env --services chatbot
 ```
 
 ```
