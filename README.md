@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mit-submit/A2rchi/reorganization_and_sources/docs/docs/_static/a2rchi_logo.png" width="200" />
+  <img src="https://raw.githubusercontent.com/mit-submit/A2rchi/main/docs/docs/_static/a2rchi_logo.png" width="200" />
 </p>
 
 # A2RCHI - AI Augmented Research Chat Intelligence
