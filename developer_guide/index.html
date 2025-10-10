@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="shortcut icon" href="../img/favicon.ico" />
-    <title>Developer Guide - A2rchi Docs</title>
+    <title>Developer Guide - A2RCHI Docs</title>
     <link rel="stylesheet" href="../css/theme.css" />
     <link rel="stylesheet" href="../css/theme_extra.css" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
@@ -30,10 +30,10 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
     <div class="wy-side-scroll">
       <div class="wy-side-nav-search">
-          <a href=".." class="icon icon-home"> A2rchi Docs
+          <a href=".." class="icon icon-home"> A2RCHI Docs
         </a>
         <div class="version">
-          1.1.0
+          1.2.0
         </div><div role="search">
   <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
       <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
@@ -43,7 +43,7 @@
 
       <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="..">A2rchi</a>
+                <li class="toctree-l1"><a class="reference internal" href="../overview/">A2RCHI</a>
                 </li>
               </ul>
               <ul>
@@ -59,7 +59,7 @@
                 </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../advanced_setup_deploy/">Advanced Setup and Deployment</a>
+                <li class="toctree-l1"><a class="reference internal" href="../advanced_setup_deploy/">Advanced Setup & Deployment</a>
                 </li>
               </ul>
               <ul>
@@ -69,7 +69,7 @@
               <ul class="current">
                 <li class="toctree-l1 current"><a class="reference internal current" href="#">Developer Guide</a>
     <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#editing-documentation">Editing Documentation.</a>
+    <li class="toctree-l2"><a class="reference internal" href="#editing-documentation">Editing Documentation</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#dockerhub-images">DockerHub Images</a>
     </li>
@@ -83,7 +83,7 @@
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
       <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="..">A2rchi Docs</a>
+          <a href="..">A2RCHI Docs</a>
         
       </nav>
       <div class="wy-nav-content">
@@ -92,7 +92,7 @@
     <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
       <li class="breadcrumb-item active">Developer Guide</li>
     <li class="wy-breadcrumbs-aside">
-          <a href="https://github.com/mit-submit/A2rchi/edit/master/docs/developer_guide.md" class="icon icon-github"> Edit on GitHub</a>
+          <a href="https://github.com/mit-submit/a2rchi/edit/master/docs/developer_guide.md" class="icon icon-github"> Edit on GitHub</a>
     </li>
   </ul>
   <hr/>
@@ -101,37 +101,43 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="developers-guide">Developers Guide</h1>
-<p>Below is all the information which developers may need in order to get started contributing to the A2rchi project.</p>
-<h2 id="editing-documentation">Editing Documentation.</h2>
-<p>Editing documentation requires you to install the mkdocs python packge:</p>
-<pre><code>pip install mkdocs
+<p>Below is all the information developers may need to get started contributing to the A2RCHI project.</p>
+<h2 id="editing-documentation">Editing Documentation</h2>
+<p>Editing documentation requires the <code>mkdocs</code> Python package:</p>
+<pre><code class="language-bash">pip install mkdocs
 </code></pre>
-<p>To edit documentation, simply make changes to the <code>.md</code> and <code>.yml</code> files in the <code>./docs</code> folder. To view your changes without pushing them, <code>cd</code> into the <code>./docs</code> folder and then run <code>mkdocs serve</code>. Add the <code>-a IP:HOST</code> argument (default is localhost:8000) to specify where to host the docs so you can easily view your changes on the web.</p>
-<p>To publish your changes, run <code>mkdocs gh-deploy</code>. Please make sure to also open a PR to merge the documentation changes into main.</p>
-<p>Note, please do NOT edit files in the gh-pages branch by hand, again, make a PR to main from a separate branch, and then you can deploy from main with the new changes.</p>
+<p>To edit documentation, update the <code>.md</code> and <code>.yml</code> files in the <code>./docs</code> folder. To preview changes locally, run:</p>
+<pre><code class="language-bash">cd docs
+mkdocs serve
+</code></pre>
+<p>Add the <code>-a IP:HOST</code> argument (default is <code>localhost:8000</code>) to specify the host and port.</p>
+<p>Publish your changes with:</p>
+<pre><code class="language-bash">mkdocs gh-deploy
+</code></pre>
+<p>Always open a PR to merge documentation changes into <code>main</code>. Do not edit files directly in the <code>gh-pages</code> branch.</p>
 <h2 id="dockerhub-images">DockerHub Images</h2>
-<p>A2rchi will load from different base images hosted on dockerhub. If you do not need to use GPUs the python base image will be installed. Alternatively, the pytorch base image will be installed. 
-The base Docker file used to make these base images from which the chat interface inherits its changes from can be found in <code>a2rchi/cli/templates/dockerfiles/base-X-image</code> directories.
-They are currently hosted on dockerhub at the following links: 
-pytorch: https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base
-python: https://hub.docker.com/r/a2rchi/a2rchi-python-base</p>
-<p>In order to rebuild the base images from which the dockerfiles inherit, go to the <code>base-xxx-image</code> directory found in <code>templates/dockerfiles/</code>.
-In these directories, there is a different set of requirements for each along with their license and respective dockerfiles.
-To regenerate the requirements if they have been changed run the following commands to ensure that the right header is used for each: </p>
-<p>for the python image:</p>
-<pre><code>cat requirements/cpu-requirementsHEADER.txt requirements/requirements-base.txt &gt; a2rchi/templates/dockerfiles/base-python-image/requirements.txt
+<p>A2RCHI loads different base images hosted on Docker Hub. The Python base image is used when GPUs are not required; otherwise the PyTorch base image is used. The Dockerfiles for these base images live in <code>src/cli/templates/dockerfiles/base-X-image</code>.</p>
+<p>Images are hosted at:</p>
+<ul>
+<li>Python: <a href="https://hub.docker.com/r/a2rchi/a2rchi-python-base">https://hub.docker.com/r/a2rchi/a2rchi-python-base</a></li>
+<li>PyTorch: <a href="https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base">https://hub.docker.com/r/a2rchi/a2rchi-pytorch-base</a></li>
+</ul>
+<p>To rebuild a base image, navigate to the relevant <code>base-xxx-image</code> directory under <code>src/cli/templates/dockerfiles/</code>. Each directory contains the Dockerfile, requirements, and license information.</p>
+<p>Regenerate the requirements files with:</p>
+<pre><code class="language-bash"># Python image
+cat requirements/cpu-requirementsHEADER.txt requirements/requirements-base.txt &gt; src/cli/templates/dockerfiles/base-python-image/requirements.txt
+
+# PyTorch image
+cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt &gt; src/cli/templates/dockerfiles/base-pytorch-image/requirements.txt
 </code></pre>
-<p>for the pytorch image:</p>
-<pre><code>cat requirements/gpu-requirementsHEADER.txt requirements/requirements-base.txt &gt; a2rchi/templates/dockerfiles/base-python-image/requirements.txt
+<p>Build the image:</p>
+<pre><code class="language-bash">podman build -t a2rchi/&lt;image-name&gt;:&lt;tag&gt; .
 </code></pre>
-<p>Then while inside of the <code>templates/dockerfiles/base-xxx-image</code> directory, simply run the following command to build the image.  </p>
-<pre><code>podman build -t a2rchi/&lt;image-name&gt;:&lt;tag&gt; . 
+<p>After verifying the image, log in to Docker Hub (ask a senior developer for credentials):</p>
+<pre><code class="language-bash">podman login docker.io
 </code></pre>
-<p>after having checked that the newly built image is working, to update it on dockerhub, login to dockerhub using (ask for a senior developer for the password/master token),</p>
-<pre><code>podman login docker.io 
-</code></pre>
-<p>and finally push the image to the repository as such: </p>
-<pre><code>podman push a2rchi/&lt;image-name&gt;:&lt;tag&gt; 
+<p>Push the image:</p>
+<pre><code class="language-bash">podman push a2rchi/&lt;image-name&gt;:&lt;tag&gt;
 </code></pre>
               
             </div>
@@ -160,7 +166,7 @@ To regenerate the requirements if they have been changed run the following comma
   <span class="rst-current-version" data-toggle="rst-current-version">
     
         <span>
-          <a href="https://github.com/mit-submit/A2rchi" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+          <a href="https://github.com/mit-submit/a2rchi" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
         </span>
     
     

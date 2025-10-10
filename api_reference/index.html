@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="shortcut icon" href="../img/favicon.ico" />
-    <title>API Reference - A2rchi Docs</title>
+    <title>API Reference - A2RCHI Docs</title>
     <link rel="stylesheet" href="../css/theme.css" />
     <link rel="stylesheet" href="../css/theme_extra.css" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
@@ -30,10 +30,10 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
     <div class="wy-side-scroll">
       <div class="wy-side-nav-search">
-          <a href=".." class="icon icon-home"> A2rchi Docs
+          <a href=".." class="icon icon-home"> A2RCHI Docs
         </a>
         <div class="version">
-          1.1.0
+          1.2.0
         </div><div role="search">
   <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
       <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
@@ -43,7 +43,7 @@
 
       <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="..">A2rchi</a>
+                <li class="toctree-l1"><a class="reference internal" href="../overview/">A2RCHI</a>
                 </li>
               </ul>
               <ul>
@@ -59,7 +59,7 @@
                 </li>
               </ul>
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../advanced_setup_deploy/">Advanced Setup and Deployment</a>
+                <li class="toctree-l1"><a class="reference internal" href="../advanced_setup_deploy/">Advanced Setup & Deployment</a>
                 </li>
               </ul>
               <ul class="current">
@@ -73,9 +73,11 @@
     </li>
     <li class="toctree-l4"><a class="reference internal" href="#2-delete">2. delete</a>
     </li>
-    <li class="toctree-l4"><a class="reference internal" href="#3-list_services">3. list_services</a>
+    <li class="toctree-l4"><a class="reference internal" href="#3-list-services">3. list-services</a>
     </li>
-    <li class="toctree-l4"><a class="reference internal" href="#4-list_deployments">4. list_deployments</a>
+    <li class="toctree-l4"><a class="reference internal" href="#4-list-deployments">4. list-deployments</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#5-evaluate">5. evaluate</a>
     </li>
         </ul>
     </li>
@@ -93,23 +95,11 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l3"><a class="reference internal" href="#interfaces">interfaces</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="#chat_app-uploader_app-grader_app-grafana">chat_app, uploader_app, grader_app, grafana</a>
-    </li>
-        </ul>
+    <li class="toctree-l3"><a class="reference internal" href="#services">services</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#data_manager">data_manager</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="#embedding_class_map">embedding_class_map</a>
-    </li>
-        </ul>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#a2rchi">a2rchi</a>
-        <ul>
-    <li class="toctree-l4"><a class="reference internal" href="#model_class_map">model_class_map</a>
-    </li>
-        </ul>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#utils">utils</a>
     </li>
@@ -133,7 +123,7 @@
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
       <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="..">A2rchi Docs</a>
+          <a href="..">A2RCHI Docs</a>
         
       </nav>
       <div class="wy-nav-content">
@@ -142,7 +132,7 @@
     <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
       <li class="breadcrumb-item active">API Reference</li>
     <li class="wy-breadcrumbs-aside">
-          <a href="https://github.com/mit-submit/A2rchi/edit/master/docs/api_reference.md" class="icon icon-github"> Edit on GitHub</a>
+          <a href="https://github.com/mit-submit/a2rchi/edit/master/docs/api_reference.md" class="icon icon-github"> Edit on GitHub</a>
     </li>
   </ul>
   <hr/>
@@ -152,21 +142,22 @@
               
                 <h1 id="api-reference">API Reference</h1>
 <h2 id="cli">CLI</h2>
-<p>The A2rchi CLI provides commands to create, manage, and delete A2rchi deployments and services.</p>
+<p>The A2RCHI CLI provides commands to create, manage, and delete A2RCHI deployments and services.</p>
 <hr />
 <h3 id="commands">Commands</h3>
 <h4 id="1-create">1. <code>create</code></h4>
-<p>Create a new A2rchi deployment.</p>
+<p>Create a new A2RCHI deployment.</p>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-sh">a2rchi create --name &lt;deployment_name&gt; --config &lt;config.yaml&gt; --env-file &lt;secrets.env&gt; [OPTIONS]
 </code></pre>
 <p><strong>Options:</strong></p>
 <ul>
 <li><code>--name, -n</code> (str, required): Name of the deployment.</li>
-<li><code>--config, -c</code> (str, required): Path to the YAML configuration file.</li>
+<li><code>--config, -c</code> (str): Path to a YAML configuration file (repeat the flag to supply multiple files).</li>
+<li><code>--config-dir, -cd</code> (str): Directory containing configuration files.</li>
 <li><code>--env-file, -e</code> (str, required): Path to the secrets <code>.env</code> file.</li>
-<li><code>--services, -s</code> (comma-separated): List of services to enable (e.g., <code>chat_app,uploader_app</code>).</li>
-<li><code>--sources, -src</code> (comma-separated): Data sources to enable (e.g., <code>jira,redmine</code>).</li>
+<li><code>--services, -s</code> (comma-separated, required): List of services to enable (e.g., <code>chatbot,uploader</code>).</li>
+<li><code>--sources, -src</code> (comma-separated): Additional data sources to enable (e.g., <code>git,jira</code>). The <code>links</code> source is always available.</li>
 <li><code>--podman, -p</code>: Use Podman instead of Docker.</li>
 <li><code>--gpu-ids</code>: GPU configuration (<code>all</code> or comma-separated IDs).</li>
 <li><code>--tag, -t</code> (str): Image tag for built containers (default: <code>2000</code>).</li>
@@ -177,7 +168,7 @@
 </ul>
 <hr />
 <h4 id="2-delete">2. <code>delete</code></h4>
-<p>Delete an existing A2rchi deployment.</p>
+<p>Delete an existing A2RCHI deployment.</p>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-sh">a2rchi delete --name &lt;deployment_name&gt; [OPTIONS]
 </code></pre>
@@ -190,34 +181,46 @@
 <li><code>--list</code>: List all available deployments.</li>
 </ul>
 <hr />
-<h4 id="3-list_services">3. <code>list_services</code></h4>
-<p>List all available A2rchi services and data sources.</p>
+<h4 id="3-list-services">3. <code>list-services</code></h4>
+<p>List all available A2RCHI services and data sources.</p>
 <p><strong>Usage:</strong></p>
-<pre><code class="language-sh">a2rchi list_services
+<pre><code class="language-sh">a2rchi list-services
 </code></pre>
 <hr />
-<h4 id="4-list_deployments">4. <code>list_deployments</code></h4>
-<p>List all existing A2rchi deployments.</p>
+<h4 id="4-list-deployments">4. <code>list-deployments</code></h4>
+<p>List all existing A2RCHI deployments.</p>
 <p><strong>Usage:</strong></p>
-<pre><code class="language-sh">a2rchi list_deployments
+<pre><code class="language-sh">a2rchi list-deployments
 </code></pre>
+<hr />
+<h4 id="5-evaluate">5. <code>evaluate</code></h4>
+<p>Launch the benchmarking runtime to evaluate one or more configurations against a set of questions/answers.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-sh">a2rchi evaluate --name &lt;run_name&gt; --env-file &lt;secrets.env&gt; --config &lt;file.yaml&gt; [OPTIONS]
+</code></pre>
+<p>Use <code>--config-dir</code> if you want to point to a directory of configs instead.</p>
+<p><strong>Options:</strong></p>
+<ul>
+<li>Supports the same flags as <code>create</code> (<code>--sources</code>, <code>--podman</code>, <code>--gpu-ids</code>, <code>--tag</code>, <code>--hostmode</code>, <code>--verbosity</code>, <code>--force</code>).</li>
+<li>Reads configuration from one or more YAML files that should define the <code>services.benchmarking</code> section.</li>
+</ul>
 <hr />
 <h3 id="examples">Examples</h3>
-<p><strong>Create a deployment:</strong>  </p>
-<pre><code class="language-sh">a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chat_app,uploader_app
+<p><strong>Create a deployment:</strong></p>
+<pre><code class="language-sh">a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chatbot,uploader
 </code></pre>
 <p><strong>Delete a deployment and remove images/volumes:</strong></p>
 <pre><code class="language-sh">a2rchi delete --name mybot --rmi --rmv
 </code></pre>
 <p><strong>List all deployments:</strong></p>
-<pre><code class="language-sh">a2rchi list_deployments
+<pre><code class="language-sh">a2rchi list-deployments
 </code></pre>
 <p><strong>List all services:</strong></p>
-<pre><code class="language-sh">a2rchi list_services
+<pre><code class="language-sh">a2rchi list-services
 </code></pre>
 <hr />
 <h2 id="configuration-yaml-api-reference">Configuration YAML API Reference</h2>
-<p>The A2rchi configuration YAML file defines the deployment, services, data sources, pipelines, models, and interface settings for your A2rchi instance.</p>
+<p>The A2RCHI configuration YAML file defines the deployment, services, data sources, pipelines, models, and interface settings for your A2RCHI instance.</p>
 <hr />
 <h3 id="top-level-fields">Top-Level Fields</h3>
 <h4 id="name"><code>name</code></h4>
@@ -227,316 +230,98 @@
 </ul>
 <h4 id="global"><code>global</code></h4>
 <ul>
-<li><strong>TRAINED_ON:</strong> string<br />
-  Description of the data or corpus the system was trained on.</li>
-<li><strong>DATA_PATH:</strong> string<br />
-  Path to data storage.</li>
-<li><strong>ACCOUNTS_PATH:</strong> string<br />
-  Path to user accounts.</li>
-<li><strong>ACCEPTED_FILES:</strong> list<br />
-  Allowed file extensions for uploads.</li>
-<li><strong>ROLES:</strong> list<br />
-  User roles available in the system.</li>
-<li><strong>LOGGING.input_output_filename:</strong> string<br />
-  Log file for input/output.</li>
-<li><strong>verbosity:</strong> int<br />
-  Logging verbosity (0-4).</li>
+<li><strong>DATA_PATH:</strong> path for persisted data (defaults to <code>/root/data/</code>).</li>
+<li><strong>ACCOUNTS_PATH:</strong> path for uploader/grader account data.</li>
+<li><strong>ACCEPTED_FILES:</strong> list of extensions allowed for manual uploads.</li>
+<li><strong>LOGGING.input_output_filename:</strong> log file that stores pipeline inputs/outputs.</li>
+<li><strong>verbosity:</strong> default logging level for services (0-4).</li>
 </ul>
 <hr />
-<h3 id="interfaces"><code>interfaces</code></h3>
-<p>Settings for each web interface or service.</p>
-<h4 id="chat_app-uploader_app-grader_app-grafana"><code>chat_app</code>, <code>uploader_app</code>, <code>grader_app</code>, <code>grafana</code></h4>
+<h3 id="services"><code>services</code></h3>
+<p>Holds configuration for every containerised service. Common keys include:</p>
 <ul>
-<li><strong>port:</strong> int<br />
-  Internal port that the Flask application binds to inside the container. This is the port the Flask server listens on within the container's network namespace. Usually don't need to change this unless you have port conflicts within the container. Default is <code>7861</code>.</li>
-<li><strong>external_port:</strong> int<br />
-  External port that maps to the container's internal port, making the chat application accessible from outside the container. This is the port users will connect to in their browser (e.g., <code>your-hostname:7861</code>). When running multiple deployments on the same machine, each deployment must use a different external port to avoid conflicts. Default is <code>7861</code>.</li>
-<li><strong>host:</strong> string<br />
-  Network interface address that the Flask application binds to inside the container. Setting this to <code>0.0.0.0</code> allows the application to accept connections from any network interface, which is necessary for the application to be accessible from outside the container. Shouldn't remain unchanged unless you have specific networking requirements. Default is <code>0.0.0.0</code>.</li>
-<li><strong>hostname:</strong> string<br />
-  The hostname or IP address that client browsers will use to make API requests to the Flask server. This gets embedded into the JavaScript code and determines where the frontend sends its API calls. Must be set to the actual hostname/IP of the machine running the container. Using <code>localhost</code> will only work if accessing the application from the same machine. Default is <code>localhost</code>.</li>
-<li><strong>template_folder:</strong> string<br />
-  Path to HTML templates.</li>
-<li><strong>static_folder:</strong> string<br />
-  Path to static files (if applicable).</li>
-<li><strong>num_responses_until_feedback:</strong> int<br />
-  Number of responses before the user is encouraged to provide feedback.</li>
-<li><strong>include_copy_button:</strong> bool<br />
-  Show copy-to-clipboard button.</li>
-<li><strong>enable_debug_chroma_endpoints:</strong> bool<br />
-  Enable debug endpoints (chat_app).</li>
-<li><strong>flask_debug_mode:</strong> bool<br />
-  Enable Flask debug mode.</li>
-<li><strong>num_problems:</strong> int<br />
-  Number of problems (grader_app).</li>
-<li><strong>local_rubric_dir:</strong> string<br />
-  Path to rubric files (grader_app).</li>
-<li><strong>local_users_csv_dir:</strong> string<br />
-  Path to users CSV (grader_app).</li>
-<li><strong>verify_urls:</strong> bool<br />
-  Verify URLs on upload (uploader_app).</li>
+<li><strong>port / external_port:</strong> internal versus host port mapping for web apps.</li>
+<li><strong>host / hostname:</strong> network binding and public hostname for frontends.</li>
+<li><strong>volume/paths:</strong> template or static asset paths expected by the service.</li>
+</ul>
+<p>Key services:</p>
+<ul>
+<li><strong>chat_app:</strong> Chat interface options (<code>trained_on</code>, ports, UI toggles).</li>
+<li><strong>uploader_app:</strong> Document uploader settings (<code>verify_urls</code>, ports).</li>
+<li><strong>grader_app:</strong> Grader-specific knobs (<code>num_problems</code>, rubric paths).</li>
+<li><strong>grafana:</strong> Port configuration for the monitoring dashboard.</li>
+<li><strong>chromadb:</strong> Connection details for the vector store container (<code>chromadb_host</code>, <code>chromadb_port</code>, <code>chromadb_external_port</code>).</li>
+<li><strong>postgres:</strong> Database credentials (<code>user</code>, <code>database</code>, <code>port</code>, <code>host</code>).</li>
+<li><strong>piazza</strong>, <strong>mattermost</strong>, <strong>redmine_mailbox</strong>, <strong>benchmarking</strong>, ...: Service-specific options (see user guide sections above).</li>
 </ul>
 <hr />
 <h3 id="data_manager"><code>data_manager</code></h3>
-<p>Controls vector store, chunking, and embedding settings.</p>
+<p>Controls ingestion sources and vector store behaviour.</p>
 <ul>
-<li><strong>collection_name:</strong> string<br />
-  Name of the vector collection.</li>
-<li><strong>input_lists:</strong> list<br />
-  List of files with initial context URLs.</li>
-<li><strong>local_vstore_path:</strong> string<br />
-  Path to local vector store.</li>
-<li><strong>embedding_name:</strong> string<br />
-  Embedding backend (<code>OpenAIEmbeddings</code>, <code>HuggingFaceEmbeddings</code>).</li>
-<li><strong>embedding_class_map:</strong> dict<br />
-  Embedding backend configuration (see below).</li>
-<li><strong>chunk_size:</strong> int<br />
-  Number of characters per chunk, i.e., a string that will get embedded and stored in the vector database. Default is <code>1000</code>.</li>
-<li><strong>chunk_overlap:</strong> int<br />
-  When splitting documents into chunks, how much should they overlap. Default is <code>0</code>.</li>
-<li><strong>use_HTTP_chromadb_client:</strong> bool<br />
-  Use HTTP client for ChromaDB.</li>
-<li><strong>chromadb_host:</strong> string<br />
-  Hostname for ChromaDB.</li>
-<li><strong>chromadb_port:</strong> int<br />
-  Internal port for ChromaDB.</li>
-<li><strong>chromadb_external_port:</strong> int<br />
-  Host port for ChromaDB.</li>
-<li><strong>reset_collection:</strong> bool<br />
-  Reset vector collection on startup.</li>
-<li><strong>num_documents_to_retrieve:</strong> int<br />
-  How many chunks to query in order of decreasing similarity (so 1 would return the most similar only, 2 the next most similar, etc.).</li>
-<li><strong>stemming.enabled:</strong> bool<br />
-  Enable stemming for search.</li>
-<li><strong>distance_metric:</strong> string<br />
-  Distance metric to use for similarity search in ChromaDB. Options are <code>cosine</code>, <code>l2</code>, and <code>ip</code>. Read more (here)[https://docs.trychroma.com/docs/collections/configure]. Default for A2rchi is cosine.</li>
-<li><strong>use_hybrid_search:</strong> bool<br />
-  Enables hybrid search, that is performing lexical search as well as semantic search. Docs retrieved from both searches are combined. The default is <code>False</code></li>
-<li><strong>bm25_weight:</strong> float<br />
-  Weight for BM25 in hybrid search.</li>
-<li><strong>semantic_weight:</strong> float<br />
-  Weight for semantic search in hybrid search.</li>
-<li><strong>bm25.k1:</strong> float<br />
-  BM25 term frequency saturation. Controls how much the score increases with additional occurrences of a term in a document. Range: <code>[1.2,2.0]</code></li>
-<li><strong>bm25.b:</strong> float<br />
-  BM25 length normalization. Controls how much the document length influences the score. BM25 normalizes term frequency by document length compared to the average document length in the corpus. Range: <code>[0,1]</code></li>
+<li><strong>sources.links.input_lists:</strong> <code>.list</code> files with seed URLs.</li>
+<li><strong>sources.links.scraper:</strong> Behaviour toggles for HTTP scraping (resetting data, URL verification, warning output).</li>
+<li><strong>sources.git.enabled / sources.sso.enabled / sources.jira.enabled / sources.redmine.enabled:</strong> Toggle additional collectors when paired with <code>--sources</code>.</li>
+<li><strong>embedding_name:</strong> Embedding backend (<code>OpenAIEmbeddings</code>, <code>HuggingFaceEmbeddings</code>, ...).</li>
+<li><strong>embedding_class_map:</strong> Backend specific parameters (model name, device, similarity threshold).</li>
+<li><strong>chunk_size / chunk_overlap:</strong> Text splitter parameters.</li>
+<li><strong>reset_collection:</strong> Whether to wipe the collection before re-populating.</li>
+<li><strong>num_documents_to_retrieve:</strong> Top-k documents returned at query time.</li>
+<li><strong>distance_metric / use_hybrid_search / bm25_weight / semantic_weight / bm25.{k1,b}:</strong> Retrieval tuning knobs.</li>
+<li><strong>utils.anonymizer</strong> (legacy) / <strong>data_manager.utils.anonymizer</strong>: Redaction settings applied when ticket collectors anonymise content.</li>
 </ul>
-<h4 id="embedding_class_map"><code>embedding_class_map</code></h4>
-<ul>
-  <li>
-    <strong>OpenAIEmbeddings:</strong>
-    <ul>
-      <li><strong>class:</strong> <code>string</code></li>
-      <li><strong>kwargs.model:</strong> <code>string</code></li>
-      <li><strong>similarity_score_reference:</strong> <code>float</code></li>
-    </ul>
-  </li>
-  <li>
-    <strong>HuggingFaceEmbeddings:</strong>
-    <ul>
-      <li><strong>class:</strong> <code>string</code></li>
-      <li>
-        <strong>kwargs.model_name:</strong> <code>string</code><br>
-        The HuggingFace embedding model you want to use. Default is <code>sentence-transformers/all-MiniLM-L6-v2</code>. TODO: fix logic to require token if private model is requested.
-      </li>
-      <li>
-        <strong>kwargs.model_kwargs.device:</strong> <code>string</code> (<code>cpu</code> or <code>cuda</code>)<br>
-        Argument passed to embedding model initialization, to load onto <code>cpu</code> (default) or <code>cuda</code> (GPU), which you can select if you are deploying a2rchi onto GPU.
-      </li>
-      <li>
-        <strong>kwargs.encode_kwargs.normalize_embeddings:</strong> <code>bool</code><br>
-        Whether to normalize the embedded vectors or not. Default is <code>true</code>. Note, the default distance metric that chromadb uses is l2, which measures the absolute geometric distance between vectors, so whether they are normalized or not will affect the search.
-      </li>
-      <li>
-        <strong>similarity_score_reference:</strong> <code>float</code><br>
-        The threshold for whether to include the link to the most relevant context in the chat response. It is an approximate distance (chromadb uses an HNSW index, where default distance function is l2 -- see more <a href="https://docs.trychroma.com/docs/collections/configure">here</a>), so smaller values represent higher similarity. The link will be included if the score is <em>below</em> the chosen value. Default is <code>10</code> (scores are usually order 1, so default is to always include link).
-      </li>
-      <li>
-        <strong>query_embedding_instructions:</strong> <code>string</code> or <code>null</code><br>
-        Instructions to accompany the embedding of the query and subsequent document search. Only certain embedding models support this -- see <code>INSTRUCTION_AWARE_MODELS</code> in <code>a2rchi/chains/retrievers.py</code> to add models that support this. For example, the <code>Qwen/Qwen3-Embedding-XB</code> embedding models support this and are listed, see more <a href="https://huggingface.co/Qwen/Qwen3-Embedding-0.6B">here</a>. Default is <code>None</code>. You should write the string directly into the config. An example instruction might look like: <code>"Given a query, retrieve relevant information to answer the query"</code>. You might tune it to be more specific to your use case which might improve performance.
-      </li>
-    </ul>
-  </li>
-</ul>
-
 <hr />
 <h3 id="a2rchi"><code>a2rchi</code></h3>
-<p>Pipeline and model configuration.</p>
+<p>Defines pipelines and model routing.</p>
 <ul>
-  <li><strong>pipelines:</strong> <code>list</code><br>
-    List of enabled pipelines (e.g., <code>QAPipeline</code>, <code>GradingPipeline</code>).
-  </li>
-  <li><strong>pipeline_map:</strong> <code>dict</code><br>
-    Configuration for each pipeline:
-    <ul>
-      <li><strong>max_tokens:</strong> <code>int</code></li>
-      <li><strong>prompts.required:</strong> <code>dict</code><br>
-        Required prompt files for the pipeline.
-      </li>
-      <li><strong>prompts.optional:</strong> <code>dict</code><br>
-        Optional prompt files.
-      </li>
-      <li><strong>models.required:</strong> <code>dict</code><br>
-        Required models for the pipeline.
-      </li>
-      <li><strong>models.optional:</strong> <code>dict</code><br>
-        Optional models.
-      </li>
-    </ul>
-  </li>
-  <li><strong>model_class_map:</strong> <code>dict</code><br>
-    Model backend configuration (see below).
-  </li>
-  <li><strong>chain_update_time:</strong> <code>int</code><br>
-    Time (seconds) between chain updates.
-  </li>
+<li><strong>pipelines:</strong> List of pipeline names to load (e.g., <code>QAPipeline</code>).</li>
+<li><strong>pipeline_map:</strong> Per-pipeline configuration of prompts, models, and token limits.</li>
+<li><strong>model_class_map:</strong> Definitions for each model family (base model names, provider-specific kwargs).</li>
+<li><strong>chain_update_time:</strong> Polling interval for hot-reloading chains.</li>
 </ul>
-
-<h4 id="model_class_map"><code>model_class_map</code></h4>
-<p>Each model (e.g., <code>AnthropicLLM</code>, <code>OpenAIGPT4</code>, <code>LlamaLLM</code>, etc.) has:</p>
-<ul>
-  <li><strong>class:</strong> <code>string</code></li>
-  <li><strong>kwargs:</strong> <code>dict</code><br>
-    Model-specific parameters (see template for details).
-  </li>
-</ul>
-
 <hr />
 <h3 id="utils"><code>utils</code></h3>
+<p>Utility configuration for supporting components (mostly legacy fallbacks):</p>
 <ul>
-  <li><strong>postgres:</strong>
-    <ul>
-      <li><strong>port:</strong> <code>int</code></li>
-      <li><strong>user:</strong> <code>string</code></li>
-      <li><strong>database:</strong> <code>string</code></li>
-      <li><strong>host:</strong> <code>string</code></li>
-    </ul>
-  </li>
-  <li><strong>sso:</strong>
-    <ul>
-      <li><strong>enabled:</strong> <code>bool</code></li>
-      <li><strong>sso_class:</strong> <code>string</code></li>
-      <li><strong>sso_class_map:</strong> <code>dict</code>
-        <ul>
-          <li><strong>class:</strong> <code>string</code></li>
-          <li><strong>kwargs:</strong> <code>dict</code></li>
-        </ul>
-      </li>
-    </ul>
-  </li>
-  <li><strong>git:</strong>
-    <ul>
-      <li><strong>enabled:</strong> <code>bool</code></li>
-    </ul>
-  </li>
-  <li><strong>scraper:</strong>
-    <ul>
-      <li><strong>reset_data:</strong> <code>bool</code></li>
-      <li><strong>verify_urls:</strong> <code>bool</code></li>
-      <li><strong>enable_warnings:</strong> <code>bool</code></li>
-    </ul>
-  </li>
-  <li><strong>piazza:</strong>
-    <ul>
-      <li><strong>network_id:</strong> <code>string</code></li>
-      <li><strong>update_time:</strong> <code>int</code></li>
-    </ul>
-  </li>
-  <li><strong>mattermost:</strong>
-    <ul>
-      <li><strong>update_time:</strong> <code>int</code></li>
-    </ul>
-  </li>
-  <li><strong>redmine:</strong>
-    <ul>
-      <li><strong>redmine_update_time:</strong> <code>int</code></li>
-      <li><strong>answer_tag:</strong> <code>string</code></li>
-    </ul>
-  </li>
-  <li><strong>mailbox:</strong>
-    <ul>
-      <li><strong>imap4_port:</strong> <code>int</code></li>
-      <li><strong>mailbox_update_time:</strong> <code>int</code></li>
-    </ul>
-  </li>
-<ul>
-  <li><strong>jira:</strong>
-    <ul>
-      <li><strong>url:</strong> <code>string</code><br>
-        The URL of the JIRA instance from which A2rchi will fetch data.
-      </li>
-      <li><strong>projects:</strong> <code>list</code><br>
-        List of JIRA project names that A2rchi will fetch data from.
-      </li>
-      <li><strong>anonymize_data:</strong> <code>bool</code><br>
-        Boolean flag indicating whether the fetched data from JIRA should be anonymized. Default is <code>True</code>.
-      </li>
-    </ul>
-  </li>
-  <li><strong>anonymizer:</strong>
-    <ul>
-      <li><strong>nlp_model:</strong> <code>string</code><br>
-        The NLP model that the <code>spacy</code> library will use to perform Named Entity Recognition (NER).
-      </li>
-      <li><strong>excluded_words:</strong> <code>list</code><br>
-        The list of words that the anonymizer should remove.
-      </li>
-      <li><strong>greeting_patterns:</strong> <code>list</code><br>
-        The regex patterns to match and remove greeting patterns.
-      </li>
-      <li><strong>signoff_patterns:</strong> <code>list</code><br>
-        The regex patterns to match and remove signoff patterns.
-      </li>
-      <li><strong>email_pattern:</strong> <code>string</code><br>
-        The regex pattern to match and remove email addresses.
-      </li>
-      <li><strong>username_pattern:</strong> <code>string</code><br>
-        The regex pattern to match and remove JIRA usernames.
-      </li>
-    </ul>
-  </li>
-</ul>
+<li><strong>sso:</strong> Global SSO defaults used when a source-specific override is not provided.</li>
+<li><strong>git:</strong> Legacy toggle for Git scraping.</li>
+<li><strong>jira / redmine:</strong> Compatibility settings for ticket integrations; prefer configuring these under <code>data_manager.sources</code>.</li>
 </ul>
 <hr />
 <h3 id="required-fields">Required Fields</h3>
-<p>Some fields are required depending on enabled services and pipelines.<br />
-For example:</p>
+<p>Some fields are required depending on enabled services and pipelines. For example:</p>
 <ul>
 <li><code>name</code></li>
-<li><code>global.TRAINED_ON</code></li>
-<li><code>a2rchi.pipelines</code></li>
-<li>Service-specific fields (e.g., <code>utils.piazza.network_id</code>, <code>interfaces.grader_app.num_problems</code>)</li>
+<li><code>data_manager.sources.links.input_lists</code> (or other source-specific configuration)</li>
+<li><code>a2rchi.pipelines</code> and matching <code>a2rchi.pipeline_map</code> entries</li>
+<li>Service-specific fields (e.g., <code>services.piazza.network_id</code>, <code>services.grader_app.num_problems</code>)</li>
 </ul>
 <p>See the <a href="../user_guide/">User Guide</a> for more configuration examples and explanations.</p>
 <hr />
 <h3 id="example">Example</h3>
 <pre><code class="language-yaml">name: my_deployment
 global:
-  TRAINED_ON: &quot;MIT course data&quot;
   DATA_PATH: &quot;/root/data/&quot;
   ACCOUNTS_PATH: &quot;/root/.accounts/&quot;
   ACCEPTED_FILES: [&quot;.txt&quot;, &quot;.pdf&quot;]
-  ROLES: [&quot;User&quot;, &quot;A2rchi&quot;, &quot;Expert&quot;]
   LOGGING:
     input_output_filename: &quot;chain_input_output.log&quot;
   verbosity: 3
 
-interfaces:
-  chat_app:
-    port: 7861
-    external_port: 7861
-    host: &quot;0.0.0.0&quot;
-    hostname: &quot;localhost&quot;
-    num_responses_until_feedback: 3
-    flask_debug_mode: true
-
 data_manager:
-  collection_name: &quot;default_collection&quot;
-  input_lists: [&quot;configs/miscellanea.list&quot;]
+  sources:
+    links:
+      input_lists:
+        - configs/miscellanea.list
+      scraper:
+        reset_data: true
+        verify_urls: false
+        enable_warnings: false
+  utils:
+    anonymizer:
+      nlp_model: en_core_web_sm
   embedding_name: &quot;OpenAIEmbeddings&quot;
   chunk_size: 1000
   chunk_overlap: 0
-  distance_metric: &quot;cosine&quot;
   num_documents_to_retrieve: 5
 
 a2rchi:
@@ -546,34 +331,34 @@ a2rchi:
       max_tokens: 10000
       prompts:
         required:
-          condense_prompt: &quot;condense.prompt&quot;
-          chat_prompt: &quot;chat.prompt&quot;
+          condense_prompt: &quot;configs/prompts/condense.prompt&quot;
+          chat_prompt: &quot;configs/prompts/chat.prompt&quot;
       models:
         required:
-          condense_model: &quot;DumbLLM&quot;
-          chat_model: &quot;DumbLLM&quot;
+          condense_model: &quot;OpenAIGPT4&quot;
+          chat_model: &quot;OpenAIGPT4&quot;
   model_class_map:
-    DumbLLM:
-      class: DumbLLM
+    OpenAIGPT4:
+      class: OpenAIGPT4
       kwargs:
-        sleep_time_mean: 3
-        filler: null
+        model_name: gpt-4
 
-utils:
-  postgres:
-    port: 5432
-    user: &quot;a2rchi&quot;
-    database: &quot;a2rchi-db&quot;
-    host: &quot;postgres&quot;
+services:
+  chat_app:
+    trained_on: &quot;Course documentation&quot;
+    hostname: &quot;example.mit.edu&quot;
+  chromadb:
+    chromadb_host: &quot;chromadb&quot;
 </code></pre>
 <hr />
-<p><strong>Tip:</strong><br />
-For a full template, see <code>a2rchi/cli/templates/base-config.yaml</code> in</p>
+<p><strong>Tip:</strong>
+For a full template, see <code>src/cli/templates/base-config.yaml</code> in
+the repository.</p>
               
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="../advanced_setup_deploy/" class="btn btn-neutral float-left" title="Advanced Setup and Deployment"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../advanced_setup_deploy/" class="btn btn-neutral float-left" title="Advanced Setup & Deployment"><span class="icon icon-circle-arrow-left"></span> Previous</a>
         <a href="../developer_guide/" class="btn btn-neutral float-right" title="Developer Guide">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
@@ -597,7 +382,7 @@ For a full template, see <code>a2rchi/cli/templates/base-config.yaml</code> in</
   <span class="rst-current-version" data-toggle="rst-current-version">
     
         <span>
-          <a href="https://github.com/mit-submit/A2rchi" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+          <a href="https://github.com/mit-submit/a2rchi" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
         </span>
     
     

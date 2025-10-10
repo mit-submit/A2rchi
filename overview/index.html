@@ -5,15 +5,15 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="shortcut icon" href="../img/favicon.ico" />
-    <title>Install - A2RCHI Docs</title>
+    <title>A2RCHI - A2RCHI Docs</title>
     <link rel="stylesheet" href="../css/theme.css" />
     <link rel="stylesheet" href="../css/theme_extra.css" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
     
       <script>
         // Current page data
-        var mkdocs_page_name = "Install";
-        var mkdocs_page_input_path = "install.md";
+        var mkdocs_page_name = "A2RCHI";
+        var mkdocs_page_input_path = "overview.md";
         var mkdocs_page_url = null;
       </script>
     
@@ -42,18 +42,22 @@
       </div>
 
       <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
-                <li class="toctree-l1"><a class="reference internal" href="../overview/">A2RCHI</a>
-                </li>
-              </ul>
               <ul class="current">
-                <li class="toctree-l1 current"><a class="reference internal current" href="#">Install</a>
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">A2RCHI</a>
     <ul class="current">
-    <li class="toctree-l2"><a class="reference internal" href="#system-requirements">System Requirements</a>
+    <li class="toctree-l2"><a class="reference internal" href="#about">About</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#educational-support">Educational Support</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a>
+    <li class="toctree-l3"><a class="reference internal" href="#research-resource-support">Research Resource Support</a>
+    </li>
+        </ul>
     </li>
     </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../install/">Install</a>
                 </li>
               </ul>
               <ul>
@@ -90,9 +94,9 @@
         <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
   <ul class="wy-breadcrumbs">
     <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
-      <li class="breadcrumb-item active">Install</li>
+      <li class="breadcrumb-item active">A2RCHI</li>
     <li class="wy-breadcrumbs-aside">
-          <a href="https://github.com/mit-submit/a2rchi/edit/master/docs/install.md" class="icon icon-github"> Edit on GitHub</a>
+          <a href="https://github.com/mit-submit/a2rchi/edit/master/docs/overview.md" class="icon icon-github"> Edit on GitHub</a>
     </li>
   </ul>
   <hr/>
@@ -100,56 +104,26 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
             <div class="section" itemprop="articleBody">
               
-                <h1 id="install">Install</h1>
-<h2 id="system-requirements">System Requirements</h2>
-<p>A2RCHI is deployed using a Python-based CLI onto containers. It requires:</p>
+                <h1 id="a2rchi">A2RCHI</h1>
+<p>A2RCHI (AI Augmented Research Chat Intelligence) is a retrieval-augmented generation (RAG) framework designed to be a low-barrier, open-source, private, and customizable AI solution for research and educational support.</p>
+<p>A2RCHI makes it easy to deploy AI assistants with a suite of tools that connect to</p>
 <ul>
-<li><code>docker</code> version 24+ or <code>podman</code> version 5.4.0+ (for containers)</li>
-<li><code>python 3.10.0+</code> (for the CLI)</li>
+<li>communication platforms such as Piazza, Slack, Discourse, Mattermost, and email, and</li>
+<li>knowledge bases such as web links, files, JIRA tickets, and documentation.</li>
 </ul>
-<blockquote>
-<p><strong>Note:</strong> We support either running open-source models locally or connecting to existing APIs. If you plan to run open-source models on your machine's GPUs, see the <a href="../advanced_setup_deploy/">Advanced Setup &amp; Deployment</a> section.</p>
-</blockquote>
-<h2 id="installation">Installation</h2>
-<p>Clone the A2RCHI repository:</p>
-<pre><code class="language-bash">git clone https://github.com/mit-submit/A2rchi.git
-</code></pre>
-<p>Install A2RCHI (from inside the repository):</p>
-<pre><code class="language-bash">pip install -e .
-</code></pre>
-<p>This installs A2RCHI's dependencies and the CLI tool. Verify the installation with:</p>
-<pre><code class="language-bash">which a2rchi
-</code></pre>
-<p>The command prints the path to the <code>a2rchi</code> executable.</p>
-<details>
-<summary>Show Full Installation Script</summary>
-
-
-<pre><code class="language-bash"># Clone the repository
-git clone https://github.com/mit-submit/A2rchi.git
-cd A2rchi
-export A2RCHI_DIR=$(pwd)
-
-# (Optional) Create and activate a virtual environment
-python3 -m venv .a2rchi_venv
-source .a2rchi_venv/bin/activate
-
-# Install dependencies
-cd &quot;$A2RCHI_DIR&quot;
-pip install -e .
-
-# Verify installation
-which a2rchi
-</code></pre>
-
-
-</details>
+<p>It is modular and extensible, allowing users to add connectors and customise pipeline behaviour for a wide range of tasks—from answering simple questions to delivering detailed explanations.</p>
+<h2 id="about">About</h2>
+<p>A2RCHI is an end-to-end framework developed by Prof. Paus (MIT Physics), Prof. Kraska (MIT EECS), and their students. It has already been successfully deployed as a user chatbot and technical assistant at SubMIT (the MIT Physics Department's private cluster) and as an educational assistant for several MIT courses, including 8.01 and 8.511.</p>
+<p>What sets A2RCHI apart is that it is fully open source, configurable across foundational models and LLM libraries, and designed for private deployment. Under the hood, A2RCHI is a highly configurable RAG system tailored for educational and scientific support. Given its success, the scope now spans additional MIT classes, CERN, Harvard, and internal deployments such as CSAIL's support staff.</p>
+<h3 id="educational-support">Educational Support</h3>
+<p>A2RCHI assists TAs, lecturers, and support staff—or students directly—by preparing answers based on curated class resources. In MIT course deployments, A2RCHI leverages Piazza posts, documentation, and other class-specific materials. The Piazza integration can draft answers for staff to review or send, while the system continuously learns from revisions and new posts, improving over time.</p>
+<h3 id="research-resource-support">Research Resource Support</h3>
+<p>A2RCHI also serves technical support teams and end users. At SubMIT, it functions both as a user-facing chatbot and as a ticket assistant. Integration with Redmine enables A2RCHI to prepare draft responses to support tickets that staff can review before sending. In both roles, A2RCHI accesses the corpus of tickets and documentation, citing relevant sources in its answers.</p>
               
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href="../overview/" class="btn btn-neutral float-left" title="A2RCHI"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../quickstart/" class="btn btn-neutral float-right" title="Quickstart">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="../install/" class="btn btn-neutral float-right" title="Install">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -176,10 +150,8 @@ which a2rchi
         </span>
     
     
-      <span><a href="../overview/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
-    
-      <span><a href="../quickstart/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="../install/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>

@@ -5,14 +5,14 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="shortcut icon" href="../img/favicon.ico" />
-    <title>Advanced Setup and Deployment - A2rchi Docs</title>
+    <title>Advanced Setup & Deployment - A2RCHI Docs</title>
     <link rel="stylesheet" href="../css/theme.css" />
     <link rel="stylesheet" href="../css/theme_extra.css" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
     
       <script>
         // Current page data
-        var mkdocs_page_name = "Advanced Setup and Deployment";
+        var mkdocs_page_name = "Advanced Setup \u0026 Deployment";
         var mkdocs_page_input_path = "advanced_setup_deploy.md";
         var mkdocs_page_url = null;
       </script>
@@ -30,10 +30,10 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
     <div class="wy-side-scroll">
       <div class="wy-side-nav-search">
-          <a href=".." class="icon icon-home"> A2rchi Docs
+          <a href=".." class="icon icon-home"> A2RCHI Docs
         </a>
         <div class="version">
-          1.1.0
+          1.2.0
         </div><div role="search">
   <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
       <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
@@ -43,7 +43,7 @@
 
       <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul>
-                <li class="toctree-l1"><a class="reference internal" href="..">A2rchi</a>
+                <li class="toctree-l1"><a class="reference internal" href="../overview/">A2RCHI</a>
                 </li>
               </ul>
               <ul>
@@ -59,7 +59,7 @@
                 </li>
               </ul>
               <ul class="current">
-                <li class="toctree-l1 current"><a class="reference internal current" href="#">Advanced Setup and Deployment</a>
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Advanced Setup & Deployment</a>
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#configuring-podman">Configuring Podman</a>
     </li>
@@ -91,16 +91,16 @@
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
       <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="..">A2rchi Docs</a>
+          <a href="..">A2RCHI Docs</a>
         
       </nav>
       <div class="wy-nav-content">
         <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
   <ul class="wy-breadcrumbs">
     <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
-      <li class="breadcrumb-item active">Advanced Setup and Deployment</li>
+      <li class="breadcrumb-item active">Advanced Setup & Deployment</li>
     <li class="wy-breadcrumbs-aside">
-          <a href="https://github.com/mit-submit/A2rchi/edit/master/docs/advanced_setup_deploy.md" class="icon icon-github"> Edit on GitHub</a>
+          <a href="https://github.com/mit-submit/a2rchi/edit/master/docs/advanced_setup_deploy.md" class="icon icon-github"> Edit on GitHub</a>
     </li>
   </ul>
   <hr/>
@@ -109,74 +109,91 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="advanced-setup-deployment">Advanced Setup &amp; Deployment</h1>
-<p>Topics related to advanced setup and deployment of A2rchi.</p>
+<p>Topics related to advanced setup and deployment of A2RCHI.</p>
 <h2 id="configuring-podman">Configuring Podman</h2>
-<p>To ensure your Podman containers stay running for extended periods, you need to enable lingering. To do this, the following command should work:</p>
+<p>To ensure your Podman containers stay running for extended periods, you need to enable lingering. To do this, run:</p>
 <pre><code class="language-bash">loginctl enable-linger
 </code></pre>
-<p>To check/confirm the lingering status, simply do</p>
+<p>To check or confirm the lingering status, run:</p>
 <pre><code class="language-bash">loginctl user-status | grep -m1 Linger
 </code></pre>
-<p>See the redhat <a href="https://access.redhat.com/solutions/7054698">docs</a> to read more.</p>
+<p>See the Red Hat <a href="https://access.redhat.com/solutions/7054698">documentation</a> for additional context.</p>
 <h2 id="running-llms-locally-on-your-gpus">Running LLMs locally on your GPUs</h2>
 <p>There are a few additional system requirements for this to work:</p>
 <ol>
-<li>
-<p>First, make sure you have nvidia drivers installed.</p>
-</li>
-<li>
-<p>(Optional) For the containers where A2rchi will run to access the GPUs, please install the <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html">nvidia container toolkit</a>. If you are using one of the supported services, these containers are already configured to use GPUs.</p>
-</li>
-<li>
-<p>Configure the container runtime to access the GPUs.</p>
-<p><details><summary>For Podman</summary>
-For Podman, run</p>
-<p><code>bash
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml</code></p>
-<p>Then, the following command</p>
-<p><code>nvidia-ctk cdi list</code></p>
-<p>should show an output that includes</p>
-<p><code>nohighlight
-INFO[0000] Found 9 CDI devices 
+<li>Make sure you have NVIDIA drivers installed.</li>
+<li>(Optional) For the containers where A2RCHI will run to access the GPUs, install the <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html">NVIDIA container toolkit</a>.</li>
+<li>Configure the container runtime to access the GPUs.</li>
+</ol>
+<details>
+<summary>For Podman</summary>
+
+Run the following command:
+
+
+<pre><code class="language-bash">sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+</code></pre>
+
+
+Then list the devices:
+
+
+<pre><code class="language-bash">nvidia-ctk cdi list
+</code></pre>
+
+
+You should see output similar to:
+
+
+<pre><code class="language-text">INFO[0000] Found 9 CDI devices
 ...
 nvidia.com/gpu=0
 nvidia.com/gpu=1
 ...
 nvidia.com/gpu=all
-...</code></p>
-<p>These listed "CDI devices" will be referenced to run A2rchi on the GPUs, so make sure this is there. To see more about accessing GPUs with Podman, click <a href="https://podman-desktop.io/docs/podman/gpu">here</a>.
-</details></p>
-<p><details><summary>For Docker</summary>
-If you have Docker, run</p>
-<p><code>bash
-sudo nvidia-ctk runtime configure --runtime=docker</code></p>
-<p>What follows should be the same as above -- NOTE: this has not been tested yet with Docker. To see more about accessing GPUs with Docker, click <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuration">here</a>.
-</details></p>
-</li>
-</ol>
-<p>Once these requirements are met, the <code>a2rchi create [...] --gpu-ids &lt;gpus&gt;</code> option will deploy A2rchi across your GPUs.</p>
+...
+</code></pre>
+
+
+These listed "CDI devices" will be referenced to run A2RCHI on the GPUs, so make sure they are present. To learn more, consult the [Podman GPU documentation](https://podman-desktop.io/docs/podman/gpu).
+
+</details>
+
+<details>
+<summary>For Docker</summary>
+
+Run the following command:
+
+
+<pre><code class="language-bash">sudo nvidia-ctk runtime configure --runtime=docker
+</code></pre>
+
+
+The remaining steps mirror the Podman flow. NOTE: this has not yet been fully tested with Docker. Refer to the [NVIDIA toolkit documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#configuration) for details.
+
+</details>
+
+<p>Once these requirements are met, the <code>a2rchi create [...] --gpu-ids &lt;gpus&gt;</code> option will deploy A2RCHI across your GPUs.</p>
 <h2 id="helpful-notes-for-production-deployments">Helpful Notes for Production Deployments</h2>
 <p>You may wish to use the CLI in order to stage production deployments. This section covers some useful notes to keep in mind.</p>
 <h3 id="running-multiple-deployments-on-the-same-machine">Running multiple deployments on the same machine</h3>
-<p>The CLI is built to allow multiple deployments to run on the same daemon in the case of Docker (Podman has no daemon). The container networks between all the deployments are separate, so there is very little risk of them accidentally communicating with one another.</p>
-<p>However, you need to be careful with the external ports. Suppose you're running two deployments and both of them are running the chat on external port 8000. There is no way to view both deployments at the same time from the same port, so instead you should split to forwarding the deployments to other external ports. Generally, this can be done in the configuration:</p>
-<pre><code>interfaces:
+<p>The CLI allows multiple deployments to run on the same daemon in the case of Docker (Podman has no daemon). The container networks between all the deployments are separate, so there is very little risk of them accidentally communicating with one another.</p>
+<p>However, you need to be careful with the external ports. Suppose you're running two deployments and both of them are running the chat on external port 8000. There is no way to view both deployments at the same time from the same port, so instead you should forward the deployments to other external ports. Generally, this can be done in the configuration:</p>
+<pre><code class="language-yaml">services:
   chat_app:
-    EXTERNAL_PORT: 7862 # default is 7681
+    external_port: 7862  # default is 7861
   uploader_app:
-    EXTERNAL_PORT: 5004 # default is 5003
+    external_port: 5004  # default is 5003
   grafana:
-    EXTERNAL_PORT: 3001 # default is 3000
-
-utils:
-  data_manager:
-    chromadb_external_port: 8001 # default is 8000
+    external_port: 3001  # default is 3000
+  chromadb:
+    chromadb_external_port: 8001  # default is 8000
 </code></pre>
 <h3 id="persisting-data-between-deployments">Persisting data between deployments</h3>
-<p>Volumes persist between deployments, so if you deploy an instance, and upload some further documents, you will not need to redo this every time you deploy. Of course, if you are editing any data, you should explicitly remove this information from the volume, or simply remove the volume itself with</p>
+<p>Volumes persist between deployments, so if you deploy an instance and upload additional documents, you do not need to redo this every time you deploy. If you are editing any data, explicitly remove this information from the volume, or remove the volume itself with:</p>
 <pre><code class="language-bash">docker/podman volume rm &lt;volume-name&gt;
 </code></pre>
-<p>You can see what volumes are currently up with</p>
+<p>To see what volumes are currently present, run:</p>
 <pre><code class="language-bash">docker/podman volume ls
 </code></pre>
               
@@ -207,7 +224,7 @@ utils:
   <span class="rst-current-version" data-toggle="rst-current-version">
     
         <span>
-          <a href="https://github.com/mit-submit/A2rchi" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+          <a href="https://github.com/mit-submit/a2rchi" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
         </span>
     
     
