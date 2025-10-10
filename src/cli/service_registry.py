@@ -152,9 +152,11 @@ class ServiceRegistry:
             name='redmine-mailer',
             description='Email processing and Cleo/Redmine ticket management',
             category='integration',
-            required_secrets=['IMAP_USER', 'IMAP_PW', 'REDMINE_URL', 'REDMINE_USER', 
-                            'REDMINE_PW', 'REDMINE_PROJECT', 'SENDER_SERVER', 'SENDER_PORT', 
-                            'SENDER_REPLYTO', 'SENDER_USER', 'SENDER_PW']
+            required_secrets=['IMAP_USER', 'IMAP_PW', 'REDMINE_USER', 
+                            'REDMINE_PW', 'SENDER_SERVER', 'SENDER_PORT', 
+                            'SENDER_REPLYTO', 'SENDER_USER', 'SENDER_PW'],
+            required_config_fields=['services.redmine_mailbox.url',
+                                    'services.redmine_mailbox.project']
         ))
 
         self.register(ServiceDefinition(

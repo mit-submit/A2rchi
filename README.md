@@ -1,4 +1,4 @@
-<p float="center">
+<p align="center">
   <img src="https://raw.githubusercontent.com/mit-submit/A2rchi/reorganization_and_sources/docs/docs/_static/a2rchi_logo.png" width="200" />
 </p>
 
