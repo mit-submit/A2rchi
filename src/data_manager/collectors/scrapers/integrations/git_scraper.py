@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Tuple
 
-import yaml
+from mkdocs.utils.yaml import yaml_load
 from git import Repo
 
 from src.data_manager.collectors.scrapers.scraped_resource import \
@@ -66,8 +66,8 @@ class GitScraper:
         url_dict = self._parse_url(url)
         repo_path = self._clone_repo(url_dict)
         with (repo_path / "mkdocs.yml").open("r") as file:
-            data = yaml.safe_load(file)
-        base_site_url = data["site_url"]
+            data = yaml_load(file)
+        base_site_url = data["site_url"] if data["site_url"][-1]=="/" else data["site_url"]+"/"
         logger.info(f"Site base url: {base_site_url}")
         return repo_path, base_site_url
 
@@ -92,7 +92,10 @@ class GitScraper:
                 suffix="txt",
                 metadata={"source": "git", "path": str(markdown_path.relative_to(repo_path))},
             )
-            resources.append(resource)
+            if len(resource.content)>0:
+                resources.append(resource)
+            else:
+                logger.info(f"Resource {current_url} is empty. Skipping...")
 
         return resources
 
