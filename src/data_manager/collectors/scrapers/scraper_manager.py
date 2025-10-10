@@ -63,6 +63,10 @@ class ScraperManager:
         if self.config.get("reset_data", False):
             persistence.reset_directory(websites_dir)
 
+        if not self.links_enabled:
+            logger.info("Links disabled, skipping all scraping")
+            return
+
         for raw_url in self.collect_urls_from_lists():
             if raw_url.startswith("git-"):
                 git_urls.append(raw_url.split("git-", 1)[1])

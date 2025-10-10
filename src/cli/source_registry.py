@@ -10,6 +10,7 @@ class SourceDefinition:
     description: str
     required_secrets: List[str] = field(default_factory=list)
     required_config_fields: List[str] = field(default_factory=list)
+    depends_on: List[str] = field(default_factory=list)
 
 
 class SourceRegistry:
@@ -37,6 +38,7 @@ class SourceRegistry:
                 required_config_fields=[
                     "data_manager.sources.sso.sso_class",
                 ],
+                depends_on=["links"],
             )
         )
         self.register(
@@ -44,6 +46,7 @@ class SourceRegistry:
                 name="git",
                 description="Git repository scraping for MkDocs-based documentation",
                 required_secrets=["GIT_USERNAME", "GIT_TOKEN"],
+                depends_on=["links"],
             )
         )
         self.register(
@@ -75,6 +78,28 @@ class SourceRegistry:
     def register(self, source_def: SourceDefinition) -> None:
         self._sources[source_def.name] = source_def
 
+    def resolve_dependencies(self, sources: List[str]) -> List[str]:
+        """Return sources including their dependency closure."""
+        resolved_order: List[str] = []
+        visited = set()
+
+        def visit(name: str) -> None:
+            if name in visited:
+                return
+            visited.add(name)
+            source_def = self._sources.get(name)
+            if not source_def:
+                return
+            for dep in source_def.depends_on:
+                visit(dep)
+            if name not in resolved_order:
+                resolved_order.append(name)
+
+        for src in sources:
+            visit(src)
+
+        return resolved_order
+
     def get(self, name: str) -> SourceDefinition:
         if name not in self._sources:
             raise KeyError(f"Unknown source: {name}")
@@ -85,14 +110,14 @@ class SourceRegistry:
 
     def required_secrets(self, enabled_sources: List[str]) -> List[str]:
         secrets: List[str] = []
-        for source in enabled_sources:
+        for source in self.resolve_dependencies(enabled_sources):
             if source in self._sources:
                 secrets.extend(self._sources[source].required_secrets)
         return sorted(set(secrets))
 
     def required_config_fields(self, enabled_sources: List[str]) -> List[str]:
         fields: List[str] = []
-        for source in enabled_sources:
+        for source in self.resolve_dependencies(enabled_sources):
             if source in self._sources:
                 fields.extend(self._sources[source].required_config_fields)
         return sorted(set(fields))

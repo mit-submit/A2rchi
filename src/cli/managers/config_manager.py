@@ -125,7 +125,7 @@ class ConfigurationManager:
     def validate_configs(self, services: List[str], sources: Optional[List[str]] = None):
         """Validate that all required fields are present in each config"""
 
-        sources = sources or []
+        sources = source_registry.resolve_dependencies(sources or [])
         static_requirements = self._get_static_required_fields_for_services(services)
 
         for config in self.configs:
@@ -189,6 +189,24 @@ class ConfigurationManager:
                     enabled.add(name)
 
         return sorted(enabled)
+
+    def get_disabled_sources(self) -> List[str]:
+        """Return sources explicitly disabled across configs."""
+        valid_names = set(source_registry.names())
+        disabled: Set[str] = set()
+
+        for conf in self.configs:
+            sources_section = conf.get('data_manager', {}).get('sources', {}) or {}
+            for name, entry in sources_section.items():
+                if name not in valid_names:
+                    continue
+                if isinstance(entry, dict):
+                    if entry.get('enabled') is False:
+                        disabled.add(name)
+                elif isinstance(entry, bool) and entry is False:
+                    disabled.add(name)
+
+        return sorted(disabled)
 
     def set_sources_enabled(self, enabled_sources: List[str]) -> None:
         enabled_set = set(enabled_sources or [])

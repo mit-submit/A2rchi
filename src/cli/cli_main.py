@@ -78,8 +78,19 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         # Initialize managers
         config_manager = ConfigurationManager(config_files,env)
         secrets_manager = SecretsManager(env_file, config_manager)
+
+        # Reconcile CLI-enabled and config-enabled/disabled sources
         config_defined_sources = config_manager.get_enabled_sources()
+        config_disabled_sources = config_manager.get_disabled_sources()
         enabled_sources = list(dict.fromkeys(requested_sources + config_defined_sources))
+        enabled_sources = [src for src in enabled_sources if src not in config_disabled_sources]
+        enabled_sources = source_registry.resolve_dependencies(enabled_sources)
+
+        disabled_conflicts = sorted(set(enabled_sources) & set(config_disabled_sources))
+        if disabled_conflicts:
+            raise click.ClickException(
+                f"Cannot enable sources due to disabled dependencies in config: {', '.join(disabled_conflicts)}"
+            )
 
         # Log deployment info and dependency resolution
         log_deployment_start(name, services, enabled_sources, dry)
@@ -333,10 +344,21 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
                     )
 
         config_manager = ConfigurationManager(config_files,env)
-
         secrets_manager = SecretsManager(env_file, config_manager)
+
+        # Reconcile CLI-enabled and config-enabled/disabled sources
         config_defined_sources = config_manager.get_enabled_sources()
+        config_disabled_sources = config_manager.get_disabled_sources()
         enabled_sources = list(dict.fromkeys(requested_sources + config_defined_sources))
+        enabled_sources = [src for src in enabled_sources if src not in config_disabled_sources]
+        enabled_sources = source_registry.resolve_dependencies(enabled_sources)
+
+        disabled_conflicts = sorted(set(enabled_sources) & set(config_disabled_sources))
+        if disabled_conflicts:
+            raise click.ClickException(
+                f"Cannot enable sources due to disabled dependencies in config: {', '.join(disabled_conflicts)}"
+            )
+
         config_manager.validate_configs(enabled_services, enabled_sources)
 
         required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services), set(enabled_sources))
