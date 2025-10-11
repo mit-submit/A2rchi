@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+
 from datetime import datetime
 from threading import Lock
 from typing import List
@@ -29,9 +30,8 @@ from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import (SQL_INSERT_CONFIG, SQL_INSERT_CONVO,
-                           SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING,
-                           SQL_QUERY_CONVO)
+from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION
+
 
 logger = get_logger(__name__)
 
@@ -339,6 +339,55 @@ class ChatWrapper:
 
         return history
 
+    def create_conversation(self, first_message: str) -> int:
+        """
+        Gets first message (activates a new conversation), and generates a title w/ first msg. 
+        (TODO: commercial ones use one-sentence summarizer to make the title)
+        
+        Returns: Conversation ID.
+        
+        """
+        service = "Chatbot"
+        title = first_message[:20] + ("..." if len(first_message) > 20 else "")
+        now = datetime.now()
+        
+        # title, a2rchi_service, conf_id, created_at, last_message_at
+        insert_tup = (title, service, self.config_id, now, now)
+
+        # create connection to database        
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_CREATE_CONVERSATION, insert_tup)
+        self.conn.commit()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+        
+        logger.info(f"New conversation created with ID: {self.cursor.fetchone()[0]}")
+        return self.cursor.fetchone()[0]
+
+    def update_conversation_timestamp(self, conversation_id: int):
+        """
+        Update the last_message_at timestamp for a conversation.
+        last_message_at is used to reorder conversations in the UI (on vertical sidebar).
+        """
+        now = datetime.now()
+        
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        
+        # update timestamp
+        self.cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id))
+        self.conn.commit()
+        
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
     def prepare_context_for_storage(self, source_documents, sources, scores):
 
         scores = scores or []
@@ -442,7 +491,7 @@ class ChatWrapper:
         except FileNotFoundError:
             self.links_db = dict()
 
-    def __call__(self, message: List[str], conversation_id: int, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
+    def __call__(self, message: List[str], conversation_id: int|None, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
         """
@@ -474,12 +523,15 @@ class ChatWrapper:
             # convert the message to native A2rchi form (because javascript does not have tuples)
             sender, content = tuple(message[0])
 
-            # TODO: incr. from 0?
-            # get discussion ID so that the conversation can be saved (It seems that random is no good... TODO)
-            conversation_id = conversation_id or np.random.randint(100000, 999999)
-
-            # fetch history given conversation_id
-            history = self.query_conversation_history(conversation_id)
+            # new conversation if conversation_id is None, otherwise use existing
+            # But since now we don't use the random id system, maybe fixing conversation_id input as int type works?
+            if conversation_id is None:
+                conversation_id = self.create_conversation(content)
+                history = []
+            else:
+                history = self.query_conversation_history(conversation_id)
+                self.update_conversation_timestamp(conversation_id)
+            
             timestamps['query_convo_history_ts'] = datetime.now()
 
             # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
@@ -605,6 +657,13 @@ class FlaskAppWrapper(object):
             self.add_endpoint('/api/search_docs', 'search_docs', self.search_docs, methods=["POST"])
         else:
             logger.info("ChromaDB API endpoints disabled by config")
+        
+        # endpoints for conversations managing
+        logger.info("Adding conversations management API endpoints")
+        self.add_endpoint('/api/list_conversations', 'list_conversations', self.list_conversations, methods=["GET"])
+        self.add_endpoint('/api/load_conversation', 'load_conversation', self.load_conversation, methods=["POST"])
+        self.add_endpoint('/api/new_conversation', 'new_conversation', self.new_conversation, methods=["POST"])
+        self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.delete_conversation, methods=["POST"])
 
     def health(self):
         return jsonify({"status": "OK"}, 200)
@@ -1055,4 +1114,161 @@ class FlaskAppWrapper(object):
             return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
         except Exception as e:
             print(f"ERROR in search_docs: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def list_conversations(self):
+        """
+        List all conversations, ordered by most recent first.
+        
+        Query parameters:
+        - limit (optional): Number of conversations to return (default: 50, max: 500)
+        
+        Returns:
+            JSON with list of conversations with fields: (conversation_id, title, created_at, last_message_at).
+        """
+        service = "Chatbot"
+        try:
+            limit = min(int(request.args.get('limit', 50)), 500)
+            
+            # create connection to database
+            conn = psycopg2.connect(**self.pg_config)
+            cursor = conn.cursor()
+            cursor.execute(SQL_LIST_CONVERSATIONS, (service, limit))
+            rows = cursor.fetchall()
+            
+            conversations = []
+            for row in rows:
+                conversations.append({
+                    'conversation_id': row[0],
+                    'title': row[1] or "New Chat",
+                    'created_at': row[2].isoformat() if row[2] else None,
+                    'last_message_at': row[3].isoformat() if row[3] else None,
+                })
+            
+            # clean up database connection state
+            cursor.close()
+            conn.close()
+            
+            return jsonify({'conversations': conversations}), 200
+ 
+        except ValueError as e:
+            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+        except Exception as e:
+            print(f"ERROR in list_conversations: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def load_conversation(self):
+        """
+        Load a specific conversation's full history.
+        
+        POST body:
+        - conversation_id: The ID of the conversation to load
+        
+        Returns:
+            JSON with conversation metadata and full message history
+        """
+        try:
+            data = request.json
+            conversation_id = data.get('conversation_id')
+            
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id missing'}), 400
+            
+            # create connection to database
+            conn = psycopg2.connect(**self.pg_config)
+            cursor = conn.cursor()
+            
+            # get conversation_metadata
+            cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, ))
+            meta_row = cursor.festchone()
+            
+            # if no metatdata found, return error
+            if not meta_row:
+                cursor.close()
+                conn.close()
+                return jsonify({'error': 'conversation not found'}), 404
+            
+            # get history of the conversation
+            cursor.execute(SQL_QUERY_CONVO, (conversation_id, ))
+            history_rows = cursor.fetchall()
+            
+            conversation = {
+                'conversation_id': meta_row[0],
+                'title': meta_row[1] or "New Conversation",
+                'created_at': meta_row[2].isoformat() if meta_row[2] else None,
+                'last_message_at': meta_row[3].isoformat() if meta_row[3] else None,
+                'messages': [
+                    {'sender': row[0], 'content': row[1]}
+                    for row in history_rows
+                ]
+            }
+            
+            # clean up database connection state
+            cursor.close()
+            conn.close()
+            
+            return jsonify(conversation), 200
+            
+        except Exception as e:
+            logger.error(f"Error in load_conversation: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def new_conversation(self):
+        """
+        Start a new conversation without sending a message yet.
+        This simply returns null(Conversation ID == None) to indicate that the frontend should 
+        reset its conversation_id, and a new one will be created on first message.
+        
+        Returns:
+            JSON with conversation_id == None
+        """
+        try:
+            # return null to indicate a new conversation
+            # actual conversation will be created when the first message is sent
+            return jsonify({'conversation_id': None}), 200
+            
+        except Exception as e:
+            logger.error(f"Error in new_conversation: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def delete_conversation(self):
+        """
+        Delete a conversation and all its messages. (Using SQL CASCADE)
+        
+        POST body:
+        - conversation_id: The ID of the conversation to delete
+        
+        Returns:
+            JSON with success status
+        """
+        try:
+            data = request.json
+            conversation_id = data.get('conversation_id')
+
+            if not conversation_id:
+                return jsonify({'error': 'conversation_id missing when deleting.'}), 400
+            
+            # create connection to database
+            conn = psycopg2.connect(**self.pg_config)
+            cursor = conn.cursor()
+            
+            # Delete conversation metadata (SQL CASCADE will delete all child messages)
+            cursor.execute(SQL_DELETE_CONVERSATION, (conversation_id,))
+            deleted_count = cursor.rowcount
+            conn.commit()
+            
+            # clean up database connection state
+            cursor.close()
+            conn.close()
+            
+            if deleted_count == 0:
+                return jsonify({'error': 'Conversation not found'}), 404
+            
+            logger.info(f"Deleted conversation {conversation_id}")
+            return jsonify({'success': True, 'deleted_conversation_id': conversation_id}), 200
+            
+        except ValueError as e:
+            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+        except Exception as e:
+            print(f"ERROR in delete_conversation: {str(e)}")
             return jsonify({'error': str(e)}), 500
