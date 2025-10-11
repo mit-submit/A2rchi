@@ -11,21 +11,44 @@
     <script src="https://cdn.jsdelivr.net/npm/marked@2.0.3/marked.min.js"></script>
   </head>
   <body>
-    <!-- Chats container -->
-    <div class="chat-container"></div>
-    
-    <!-- Typing container -->
-    <div class="typing-container">
-      <div class="typing-content">
-        <div class="typing-textarea">
-          <textarea id="chat-input" spellcheck="false" placeholder="Enter your question for A2rchi" required></textarea>
-          <span id="send-btn" class="material-symbols-rounded">send</span>
+    <div class="main-container">
+      <!-- Main Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <button id="new-chat-btn" class="new-chat-button">
+            <span class="material-symbols-rounded">add</span>
+            <span>New chat</span>
+          </button>
+          <button id="toggle-sidebar-btn" class="toggle-sidebar">
+            <span class="material-symbols-rounded">chevron_left</span>
+          </button>
         </div>
-        <div class="typing-controls">
-          <select id="config-dropdown"> </select>
-          <span id="theme-btn" class="material-symbols-rounded">light_mode</span>
-          <span id="refresh-btn" class="material-symbols-rounded">autorenew</span>
-          <span id="delete-btn" class="material-symbols-rounded">delete</span>
+        <div class="conversations-list" id="conversations-list">
+          <!-- Conversations will be loaded here dynamically -->
+          <div class="loading-conversations">Loading conversations...</div>
+        </div>
+      </aside>
+
+      <!-- Main content area -->
+      <div class="main-content">
+        <!-- Chats container -->
+        <div class="chat-container"></div>
+        
+        <!-- Typing container -->
+        <div class="typing-container">
+          <div class="typing-content">
+            <div class="typing-textarea">
+              <textarea id="chat-input" spellcheck="false" placeholder="Enter your question for A2rchi" required></textarea>
+              <span id="send-btn" class="material-symbols-rounded">send</span>
+            </div>
+            <div class="typing-controls">
+              <select id="config-dropdown"> </select>
+              <span id="theme-btn" class="material-symbols-rounded">light_mode</span>
+              <span id="refresh-btn" class="material-symbols-rounded">autorenew</span>
+              <span id="delete-btn" class="material-symbols-rounded">delete</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

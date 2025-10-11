@@ -5,6 +5,16 @@ CREATE TABLE IF NOT EXISTS configs (
     config_name TEXT NOT NULL,
     PRIMARY KEY (config_id)
 );
+CREATE TABLE IF NOT EXISTS conversation_metadata (
+    conversation_id SERIAL,
+    title TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    a2rchi_service TEXT NOT NULL,
+    conf_id INTEGER NOT NULL,
+    PRIMARY KEY (conversation_id),
+    FOREIGN KEY (conf_id) REFERENCES configs(config_id)
+);
 CREATE TABLE IF NOT EXISTS conversations (
     a2rchi_service TEXT NOT NULL,
     conversation_id INTEGER NOT NULL,
@@ -16,7 +26,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     ts TIMESTAMP NOT NULL,
     conf_id INTEGER NOT NULL,
     PRIMARY KEY (message_id),
-    FOREIGN KEY (conf_id) REFERENCES configs(config_id)
+    FOREIGN KEY (conf_id) REFERENCES configs(config_id),
+    FOREIGN KEY (conversation_id) REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS feedback (
     mid INTEGER NOT NULL,
@@ -27,7 +38,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     unhelpful BOOLEAN,
     inappropriate BOOLEAN,
     PRIMARY KEY (mid, feedback_ts),
-    FOREIGN KEY (mid) REFERENCES conversations(message_id)
+    FOREIGN KEY (mid) REFERENCES conversations(message_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS timing (
     mid INTEGER NOT NULL,
@@ -43,7 +54,7 @@ CREATE TABLE IF NOT EXISTS timing (
     server_response_msg_ts TIMESTAMP NOT NULL,
     msg_duration INTERVAL SECOND NOT NULL,
     PRIMARY KEY (mid),
-    FOREIGN KEY (mid) REFERENCES conversations(message_id)
+    FOREIGN KEY (mid) REFERENCES conversations(message_id) ON DELETE CASCADE
 );
 
 -- create grafana user if it does not exist
@@ -56,6 +67,7 @@ BEGIN
         GRANT USAGE ON SCHEMA public TO grafana;
         GRANT SELECT ON public.timing TO grafana;
         GRANT SELECT ON public.conversations TO grafana;
+        GRANT SELECT ON public.conversation_metadata TO grafana;
         GRANT SELECT ON public.feedback TO grafana;
         GRANT SELECT ON public.configs TO grafana;
     END IF;
