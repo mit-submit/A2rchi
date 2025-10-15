@@ -63,17 +63,10 @@ class RedmineAIWrapper:
         if num_retrieved_docs > 0:
             for k in range(num_retrieved_docs):
                 document = source_documents[k]
-                document_source_hash = document.metadata['source']
-                if '/' in document_source_hash and '.' in document_source_hash:
-                    document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
-                link_k = "link not available"
-                if document_source_hash in sources:
-                    link_k = sources[document_source_hash]
-                if k == 0:
-                    link = link_k
+                link = document.metadata.get('url', 'No URL')
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
-                context += f"Source {k+1}: {document.metadata.get('title', 'No Title')} ({link_k})\n\n{content}\n\n\n\n"
+                context += f"Source {k+1}: {document.metadata.get('title', 'No Title')} ({link})\n\n{content}\n\n\n\n"
 
         return link, context
 
