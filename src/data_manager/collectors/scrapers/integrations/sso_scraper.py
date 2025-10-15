@@ -398,7 +398,10 @@ class SSOCollector:
                         url=page_url,
                         content=content,
                         suffix=item.get("suffix", "html"),
-                        metadata={"source": "sso"},
+                        metadata={
+                            "source": "sso",
+                            "visible": str(self._visible).lower(),
+                        },
                     )
                 )
 

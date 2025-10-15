@@ -110,6 +110,7 @@ class ChatWrapper:
         self.data_manager.update_vectorstore()
         embedding_name = self.config["data_manager"]["embedding_name"]
         self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
+        self.sources_config = self.config["data_manager"]["sources"]
 
         # store postgres connection info
         self.pg_config = {
@@ -161,8 +162,6 @@ class ChatWrapper:
         """
         Build a list of top reference entries (link or ticket id).
         """
-        self.reload_links_db()
-
         if scores:
             sorted_indices = np.argsort(scores)
             scores = [scores[i] for i in sorted_indices]
@@ -176,23 +175,20 @@ class ChatWrapper:
             if score is not None and score > self.similarity_score_reference:
                 break
 
-            metadata = document.metadata
-            source_hash = self._extract_source_hash(metadata)
+            metadata = document.metadata or {}
 
-            link = None
-            if source_hash and source_hash in self.links_db:
-                link = self.links_db[source_hash]
-                display_name = self._format_link_display(link)
-                ref_key = ("link", link)
-            else:
-                display_name = self._format_reference_label(metadata)
-                if not display_name:
-                    continue
-                ref_key = ("display", display_name)
-
-            if ref_key in seen_refs:
+            display_name = self._get_display_name(metadata)
+            if not display_name:
                 continue
-            seen_refs.add(ref_key)
+
+            if not self._get_doc_visibility(self, metadata):
+                continue
+
+            link = self._extract_link(metadata)
+
+            if display_name in seen_refs:
+                continue
+            seen_refs.add(display_name)
 
             top_sources.append(
                 {
@@ -229,11 +225,11 @@ class ChatWrapper:
                 link = entry["link"]
                 display_name = entry["display"]
                 score_str = score if isinstance(score, str) else f"{score:.2f}"
-                
+
                 if link:
                     reference_html = f"<a href=\"{link}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #66b3ff; text-decoration: none;\" onmouseover=\"this.style.textDecoration='underline'\" onmouseout=\"this.style.textDecoration='none'\">{display_name}</a>"
                 else:
-                    reference_html = f"<span>{display_name}</span>"
+                    reference_html = f"<span style=\"color: #66b3ff;\">{display_name}</span>"
 
                 _output += f'''
                     <div style="margin: 0.15em 0; display: flex; align-items: center; gap: 0.4em;">
@@ -248,48 +244,41 @@ class ChatWrapper:
         return _output
 
     @staticmethod
-    def _format_link_display(link: str) -> str:
-        parsed_link = urlparse(link)
-        display_name = parsed_link.hostname or link
-        if parsed_link.path and parsed_link.path != '/':
-            first_path = parsed_link.path.strip('/').split('/')[0]
-            display_name += f"/{first_path}"
-        return display_name
+    def _looks_like_url(value: str | None) -> bool:
+        return isinstance(value, str) and value.startswith(("http://", "https://"))
 
     @staticmethod
-    def _extract_source_hash(metadata: dict) -> str | None:
-        source = metadata.get("source")
-        candidate = None
-        if isinstance(source, str) and source:
-            candidate = os.path.basename(source)
-        if not candidate:
-            filename = metadata.get("filename")
-            if isinstance(filename, str) and filename:
-                candidate = os.path.basename(filename)
-        if not candidate:
+    def _get_display_name(metadata: dict) -> str | None:
+        display_name = metadata.get("display_name")
+        if isinstance(display_name, str) and display_name.strip():
+            return display_name.strip()
+        else:
+            logger.error("display_name is not a valid non-empty string in metadata")
+            logger.error(f"Metadata content: {metadata}")
             return None
-        if "." in candidate:
-            candidate = candidate.split(".")[0]
-        return candidate or None
 
     @staticmethod
-    def _format_reference_label(metadata: dict) -> str | None:
-        source = metadata.get("source")
-        filename = metadata.get("filename")
-        candidate = None
-        if isinstance(filename, str) and filename:
-            candidate = os.path.basename(filename)
-        elif isinstance(source, str) and source:
-            candidate = os.path.basename(source)
-        if not candidate:
-            return None
-        base = candidate.split(".")[0]
-        lower_base = base.lower()
-        if lower_base.startswith("jira_"):
-            return f"JIRA {base[5:]}"
-        if lower_base.startswith("redmine_"):
-            return f"Redmine {base[len('redmine_'):]}"
-        return base
+    def _get_doc_visibility(self, metadata: dict) -> bool:
+        """
+        From the metadata, check the source type.
+        From the config, check if the source type is visible or not.
+        """
+        source_type = metadata.get("source_type")
+        if not source_type:
+            return True  # default to True if not specified
+
+        if source_type not in self.sources_config:
+            logger.error(f"Source type {source_type} not found in config, defaulting to visible")
+            return True
+        return bool(self.sources_config[source_type].get("visible", True))
+
+    @staticmethod
+    def _extract_link(metadata: dict) -> str | None:
+        for key in ("url", "link", "href"):
+            candidate = metadata.get(key)
+            if ChatWrapper._looks_like_url(candidate):
+                return candidate
+        return None
 
     def insert_feedback(self, feedback):
         """
@@ -389,21 +378,21 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
-    def prepare_context_for_storage(self, source_documents, sources, scores):
-
+    def prepare_context_for_storage(self, source_documents, scores):
         scores = scores or []
         num_retrieved_docs = len(source_documents)
         context = ""
         if num_retrieved_docs > 0:
             for k in range(num_retrieved_docs):
                 document = source_documents[k]
-                metadata = document.metadata
-                document_source_hash = self._extract_source_hash(metadata)
-                link_k = None
-                if document_source_hash and document_source_hash in sources:
-                    link_k = sources[document_source_hash]
+                metadata = document.metadata or {}
+                link_k = self._extract_link(metadata)
                 if not link_k:
-                    link_k = self._format_reference_label(metadata) or "link not available"
+                    link_k = (
+                        self._get_display_name(metadata)
+                        or self._format_reference_label(metadata)
+                        or "link not available"
+                    )
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
                 # Safely get the score, use "N/A" if index is out of range
@@ -481,16 +470,6 @@ class ChatWrapper:
         self.cursor.close()
         self.conn.close()
         self.cursor, self.conn = None, None
-
-    def reload_links_db(self):
-        """
-        Load the sources.yaml file which contains the mapping from file hashes to links.
-        """
-        try:
-            with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
-                self.links_db = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            self.links_db = dict()
 
     def __call__(self, message: List[str], conversation_id: int|None, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
@@ -574,7 +553,7 @@ class ChatWrapper:
             timestamps['a2rchi_message_ts'] = datetime.now()
             
             # formatting context
-            context = self.prepare_context_for_storage(documents, self.links_db, scores)
+            context = self.prepare_context_for_storage(documents, scores)
 
             best_reference = "Link unavailable"
             if top_sources:

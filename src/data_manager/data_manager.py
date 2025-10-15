@@ -39,7 +39,7 @@ class DataManager():
             logger.info(message)
             step()
 
-        self.persistence.flush_all()
+        self.persistence.flush_index()
 
         self.vector_manager = VectorStoreManager(
             config=self.config,

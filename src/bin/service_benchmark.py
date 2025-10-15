@@ -20,6 +20,8 @@ from ragas.metrics import (answer_relevancy, context_precision, context_recall,
 
 from src.a2rchi.a2rchi import A2rchi
 from src.a2rchi.models import HuggingFaceOpenLLM
+from src.data_manager.collectors.utils.index_utils import \
+    load_sources_catalog
 from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
@@ -186,9 +188,7 @@ class Benchmarker:
         res = {}
         sources = result['documents']
 
-
-        with open(os.path.join(self.data_path, 'sources.yml'), 'r') as file:
-            sources_to_links = yaml.load(file, Loader=yaml.FullLoader)
+        sources_to_links = load_sources_catalog(self.data_path)
         
         num_sources = len(sources)
 
@@ -216,7 +216,7 @@ class Benchmarker:
         res['link_result'] = result_dict[match]
 
         return res, match
-         
+
     def get_ragas_results(self, data, to_add):
         """WARNING: this method modifies the to_add dictionary to add the relevant scores to the relevant questions"""
         
