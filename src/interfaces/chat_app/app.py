@@ -351,8 +351,8 @@ class ChatWrapper:
         title = first_message[:20] + ("..." if len(first_message) > 20 else "")
         now = datetime.now()
         
-        # title, a2rchi_service, conf_id, created_at, last_message_at
-        insert_tup = (title, service, self.config_id, now, now)
+        # title, created_at, last_message_at
+        insert_tup = (title, now, now)
 
         # create connection to database        
         self.conn = psycopg2.connect(**self.pg_config)
@@ -1127,14 +1127,13 @@ class FlaskAppWrapper(object):
         Returns:
             JSON with list of conversations with fields: (conversation_id, title, created_at, last_message_at).
         """
-        service = "Chatbot"
         try:
             limit = min(int(request.args.get('limit', 50)), 500)
             
             # create connection to database
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
-            cursor.execute(SQL_LIST_CONVERSATIONS, (service, limit))
+            cursor.execute(SQL_LIST_CONVERSATIONS, (limit,))
             rows = cursor.fetchall()
             
             conversations = []
