@@ -90,7 +90,10 @@ class GitScraper:
                 url=current_url,
                 content=text_content,
                 suffix="txt",
-                metadata={"source": "git", "path": str(markdown_path.relative_to(repo_path))},
+                source_type="git",
+                metadata={
+                    "path": str(markdown_path.relative_to(repo_path)),
+                },
             )
             if len(resource.content)>0:
                 resources.append(resource)

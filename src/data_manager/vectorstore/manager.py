@@ -16,6 +16,7 @@ from langchain_community.document_loaders import (BSHTMLLoader, PyPDFLoader,
 from langchain_community.document_loaders.text import TextLoader
 from langchain_text_splitters.character import CharacterTextSplitter
 
+from src.data_manager.collectors.utils.index_utils import load_sources_catalog
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -88,48 +89,34 @@ class VectorStoreManager:
         """Synchronise filesystem documents with the vectorstore."""
         collection = self.fetch_collection()
 
-        files_in_vstore = [
-            metadata["filename"]
-            for metadata in collection.get(include=["metadatas"])["metadatas"]
-        ]
+        sources = load_sources_catalog(self.data_path)
+        collection_metadatas = collection.get(include=["metadatas"]).get("metadatas", [])
+        files_in_vstore = self._collect_vstore_documents(collection_metadatas)
+        files_in_data = self._collect_indexed_documents(sources)
 
-        dirs = [
-            os.path.join(self.data_path, directory)
-            for directory in os.listdir(self.data_path)
-            if os.path.isdir(os.path.join(self.data_path, directory))
-            and directory != "vstore"
-        ]
-        files_in_data_fullpath = [
-            os.path.join(directory, file)
-            for directory in dirs
-            for file in os.listdir(directory)
-        ]
-        files_in_data = {
-            os.path.basename(path): path for path in files_in_data_fullpath
-        }
+        hashes_in_vstore = set(files_in_vstore.keys())
+        hashes_in_data = set(files_in_data.keys())
 
-        sources_path = os.path.join(self.data_path, "sources.yml")
-        try:
-            with open(sources_path, "r") as file:
-                sources = yaml.load(file, Loader=yaml.FullLoader) or {}
-        except FileNotFoundError:
-            sources = {}
-
-        if set(files_in_data.keys()) == set(files_in_vstore):
+        if hashes_in_data == hashes_in_vstore:
             logger.info("Vectorstore is up to date")
         else:
             logger.info("Vectorstore needs to be updated")
 
-            files_to_remove = list(set(files_in_vstore) - set(files_in_data.keys()))
-            logger.info(f"Files to remove: {files_to_remove}")
-            collection = self._remove_from_vectorstore(collection, files_to_remove)
+            hashes_to_remove = list(hashes_in_vstore - hashes_in_data)
+            if hashes_to_remove:
+                files_to_remove = {
+                    hash_value: files_in_vstore.get(hash_value, "<unknown>")
+                    for hash_value in hashes_to_remove
+                }
+                logger.info(f"Resources to remove: {files_to_remove}")
+                collection = self._remove_from_vectorstore(collection, hashes_to_remove)
 
+            hashes_to_add = hashes_in_data - hashes_in_vstore
             files_to_add = {
-                filename: files_in_data[filename]
-                for filename in set(files_in_data.keys()) - set(files_in_vstore)
+                hash_value: files_in_data[hash_value] for hash_value in hashes_to_add
             }
             logger.info(f"Files to add: {files_to_add}")
-            collection = self._add_to_vectorstore(collection, files_to_add, sources)
+            collection = self._add_to_vectorstore(collection, files_to_add)
             logger.info("Vectorstore update has been completed")
 
         logger.info(f"N Collection: {collection.count()}")
@@ -152,19 +139,19 @@ class VectorStoreManager:
             settings=Settings(allow_reset=True, anonymized_telemetry=False),
         )
 
-    def _remove_from_vectorstore(self, collection, files_to_remove: List[str]):
-        for filename in files_to_remove:
-            collection.delete(where={"filename": filename})
+    def _remove_from_vectorstore(self, collection, hashes_to_remove: List[str]):
+        for resource_hash in hashes_to_remove:
+            collection.delete(where={"resource_hash": resource_hash})
         return collection
 
     def _add_to_vectorstore(
         self,
         collection,
         files_to_add: Dict[str, str],
-        sources: Dict[str, str],
     ):
-        for filename, file_path in files_to_add.items():
-            logger.info(f"Processing file: {filename}")
+        for filehash, file_path in files_to_add.items():
+            filename = Path(file_path).name
+            logger.info(f"Processing file: {filename} (hash: {filehash})")
 
             try:
                 loader = self.loader(file_path)
@@ -180,6 +167,8 @@ class VectorStoreManager:
             chunks: List[str] = []
             metadatas: List[Dict] = []
 
+            file_level_metadata = self._load_file_metadata(file_path)
+
             docs = loader.load()
             for doc in docs:
                 new_chunks = [
@@ -193,16 +182,17 @@ class VectorStoreManager:
                         stemmed_words = [self.stemmer.stem(word) for word in words]
                         chunk = " ".join(stemmed_words)
                     chunks.append(chunk)
-                    metadatas.append(dict(doc.metadata))
-
-            filehash = filename.split(".")[0]
-            url = sources.get(filehash, "")
-            logger.info(f"Corresponding: {filename} {filehash} -> {url}")
+                    entry_metadata = dict(doc.metadata)
+                    if file_level_metadata:
+                        for key, value in file_level_metadata.items():
+                            entry_metadata.setdefault(key, value)
+                    metadatas.append(entry_metadata)
 
             embeddings = self.embedding_model.embed_documents(chunks)
 
             for metadata in metadatas:
                 metadata["filename"] = filename
+                metadata["resource_hash"] = filehash
 
             ids: List[str] = []
             for chunk in chunks:
@@ -230,9 +220,7 @@ class VectorStoreManager:
                 metadatas=metadatas,
             )
 
-            logger.info(f"Successfully added file {filename}")
-            if url:
-                logger.info(f"with URL: {url}")
+            logger.info(f"Successfully added file {filename} (hash: {filehash})")
 
         return collection
 
@@ -252,3 +240,80 @@ class VectorStoreManager:
 
         logger.error(f"Format not supported -- {file_path}")
         return None
+
+    def _collect_indexed_documents(self, sources: Dict[str, str]) -> Dict[str, str]:
+        """
+        Build a mapping of resource hash -> absolute path from the persisted index.
+        """
+        files_in_data: Dict[str, str] = {}
+        for resource_hash, stored_path in sources.items():
+            path = Path(stored_path)
+            if not path.exists():
+                logger.warning(
+                    f"Indexed resource '{resource_hash}' points to missing file: {stored_path}"
+                )
+                continue
+            if path.is_dir():
+                logger.debug(
+                    f"Indexed resource '{resource_hash}' points to a directory; skipping."
+                )
+                continue
+
+            if resource_hash in files_in_data and files_in_data[resource_hash] != str(path):
+                logger.warning(
+                    "Duplicate resource hash detected in index; keeping first occurrence. "
+                    f"hash={resource_hash}, existing={files_in_data[resource_hash]}, ignored={path}"
+                )
+                continue
+
+            files_in_data[resource_hash] = str(path)
+
+        return files_in_data
+
+    def _collect_vstore_documents(self, metadatas: List[Dict]) -> Dict[str, str]:
+        """
+        Build a mapping of resource hash -> filename currently stored in the vectorstore.
+        """
+        files_in_vstore: Dict[str, str] = {}
+        for metadata in metadatas:
+            filename = metadata.get("filename")
+            filehash = metadata.get("resource_hash")
+            if not filename or not filehash:
+                continue
+            files_in_vstore.setdefault(filehash, filename)
+        return files_in_vstore
+
+    def _load_file_metadata(self, file_path: str) -> Dict[str, str]:
+        """
+        Load persisted metadata stored alongside the document, if available.
+        """
+        path = Path(file_path)
+        meta_path = path.with_suffix(f"{path.suffix}.meta.yaml")
+
+        if not meta_path.exists():
+            return {}
+
+        try:
+            with meta_path.open("r", encoding="utf-8") as fh:
+                metadata = yaml.safe_load(fh) or {}
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning(f"Failed to load metadata for {file_path}: {exc}")
+            return {}
+
+        if not isinstance(metadata, dict):
+            logger.warning(
+                f"Metadata file {meta_path} does not contain a mapping; ignoring."
+            )
+            return {}
+
+        sanitized: Dict[str, str] = {}
+        for key, value in metadata.items():
+            if key is None:
+                continue
+            key_str = str(key)
+
+            if value is None:
+                continue
+            sanitized[key_str] = str(value)
+
+        return sanitized

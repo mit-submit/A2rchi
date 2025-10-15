@@ -7,6 +7,8 @@ import yaml
 from flask import flash, redirect, render_template, request, session, url_for
 
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
+from src.data_manager.collectors.utils.index_utils import load_index, \
+    write_index
 from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -113,19 +115,15 @@ def get_filename_from_hash(hash_string, data_path, filehashes_yaml_file="manual_
 
 
 def remove_url_from_sources(url, sources_path):
-    try:
-        # load existing accounts or initialize as empty dictionary
-        with open(sources_path, 'r') as file:
-            sources = yaml.safe_load(file) or {}
-    except FileNotFoundError:
-        sources = {}
+    data_path = Path(sources_path).parent
+    index_data = load_index(data_path)
+    sources = index_data.get("sources", {})
 
-    # check if the url already exists and remove if it does
-    sources = {k:v for k,v in sources.items() if v != url}
+    # remove any entry whose value matches the URL
+    sources = {k: v for k, v in sources.items() if v != url}
+    index_data["sources"] = sources
 
-    # write the updated dictionary back to the YAML file
-    with open(sources_path, 'w') as file:
-        yaml.dump(sources, file)
+    write_index(data_path, index_data)
 
 
 def add_username_password(username, password, salt, accounts_path, file_name='accounts.yaml'):
@@ -217,7 +215,7 @@ class FlaskAppWrapper(object):
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
 
         # create path specifying URL sources for scraping
-        self.sources_path = os.path.join(self.data_path, 'sources.yml')
+        self.sources_path = os.path.join(self.data_path, 'index.yaml')
         self.scraper_manager = ScraperManager()
 
         # add endpoints for flask app

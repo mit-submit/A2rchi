@@ -40,7 +40,7 @@ class TicketManager:
         if persistence is None:
             persistence = PersistenceService(self.data_path)
         self.collect(persistence)
-        persistence.flush_tickets()
+        persistence.flush_index()
 
     def _init_client(self, factory, name: str):
         try:
@@ -82,7 +82,7 @@ class TicketManager:
 
         for resource in resources:
             try:
-                persistence.persist_ticket(resource)
+                persistence.persist_resource(resource, persistence.data_path / "tickets")
             except Exception as exc:
                 logger.error(
                     f"Failed to persist ticket {resource.ticket_id} from {resource.source}: {exc}"

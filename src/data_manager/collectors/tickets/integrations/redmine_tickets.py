@@ -23,6 +23,7 @@ class RedmineClient:
         self.redmine_pw: Optional[str] = None
         self.redmine_project: Optional[str] = None
         self.anonymizer: Optional[Anonymizer] = None
+        self.visible: bool = True
 
         redmine_config = dict(config or {})
         if not redmine_config.get("enabled", False):
@@ -31,6 +32,7 @@ class RedmineClient:
 
         self.redmine_url = redmine_config.get("url")
         self.redmine_project = redmine_config.get("project")
+        self.visible = bool(redmine_config.get("visible", True))
         if not self.redmine_url or not self.redmine_project:
             logger.warning("Redmine config missing url/project; skipping Redmine collection")
             return
@@ -112,8 +114,6 @@ class RedmineClient:
 
                     metadata: Dict[str, Any] = {
                         "subject": subject,
-                        "question": question,
-                        "answer": answer,
                     }
 
                     created_at = getattr(full_issue, "created_on", None)
@@ -126,7 +126,7 @@ class RedmineClient:
                     yield TicketResource(
                         ticket_id=issue_id,
                         content=content,
-                        source="redmine",
+                        source_type="redmine",
                         created_at=created_at_str,
                         metadata=metadata,
                     )

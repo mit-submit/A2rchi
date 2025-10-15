@@ -56,7 +56,7 @@ class ScraperManager:
         self, persistence: PersistenceService
     ) -> None:
         """Run the configured scrapers and persist their output."""
-        websites_dir = persistence.websites_dir
+        websites_dir = persistence.data_path / "websites"
         git_urls: List[str] = []
         sso_urls: List[str] = []
 
@@ -77,13 +77,13 @@ class ScraperManager:
                 continue
 
             if self.links_enabled:
-                self._handle_standard_url(raw_url, persistence)
+                self._handle_standard_url(raw_url, persistence, websites_dir)
 
         if self.sso_enabled and sso_urls:
             sso_resources = self._collect_sso_resources(sso_urls)
             for resource in sso_resources:
-                persistence.persist_scraped_resource(
-                    resource, persistence.websites_dir
+                persistence.persist_resource(
+                    resource, websites_dir
                 )
         elif sso_urls:
             logger.warning("SSO URLs detected but SSO source is disabled; skipping SSO scraping")
@@ -114,12 +114,12 @@ class ScraperManager:
         return urls
 
     def _handle_standard_url(
-        self, url: str, persistence: PersistenceService
+        self, url: str, persistence: PersistenceService, websites_dir: Path
     ) -> None:
         try:
             for resource in self.web_scraper.scrape(url):
-                persistence.persist_scraped_resource(
-                    resource, persistence.websites_dir
+                persistence.persist_resource(
+                    resource, websites_dir
                 )
         except Exception as exc:
             logger.error(f"Failed to scrape {url}: {exc}")
@@ -142,8 +142,23 @@ class ScraperManager:
         git_scraper = self._get_git_scraper()
         resources = git_scraper.collect(git_urls)
         for resource in resources:
-            persistence.persist_scraped_resource(resource, persistence.git_dir)
+            persistence.persist_resource(resource, persistence.git_dir)
         return resources
+
+    # ------------------------------------------------------------------
+    # Backwards compatibility helpers for manual uploader workflows
+    # ------------------------------------------------------------------
+    def register_resource(self, target_dir: Path, resource: ScrapedResource) -> Path:
+        """Persist a scraped resource using a fresh persistence service."""
+        persistence = PersistenceService(self.data_path)
+        path = persistence.persist_resource(resource, target_dir)
+        persistence.flush_index()
+        return path
+
+    def persist_sources(self) -> None:
+        """Flush the unified index when running outside the main pipeline."""
+        persistence = PersistenceService(self.data_path)
+        persistence.flush_index()
 
     def _get_git_scraper(self) -> "GitScraper":
         if self._git_scraper is None:

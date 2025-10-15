@@ -17,6 +17,7 @@ class JiraClient:
         self.jira_projects: list = []
         self.anonymize_data = True
         self.anonymizer: Optional[Anonymizer] = None
+        self.visible: bool = True
 
         jira_config: Dict[str, Any] = dict(config or {})
 
@@ -45,6 +46,7 @@ class JiraClient:
             return
 
         self.anonymize_data = jira_config.get('anonymize_data', True)
+        self.max_tickets = int(jira_config.get('max_tickets', 1e10))
 
         client = self.log_in(pat)
         if not client:
@@ -88,13 +90,13 @@ class JiraClient:
 
             metadata = {
                 "project": getattr(getattr(issue.fields, "project", None), "key", None),
-                "url": f"{self.jira_url}/browse/{issue_key}" if self.jira_url else None,
+                "url": f"{self.jira_url.rstrip('/')}/browse/{issue_key}" if self.jira_url else None,
             }
 
             record = TicketResource(
                 ticket_id=str(issue_key),
                 content=content,
-                source="jira",
+                source_type="jira",
                 created_at=created_at or None,
                 metadata={k: v for k, v in metadata.items() if v},
             )
@@ -104,7 +106,7 @@ class JiraClient:
 
     def get_all_issues(self) -> Iterator[jira.Issue]:
         """Fetch all issues from the configured JIRA projects."""
-        max_results = 100  # You can adjust this up to 1000 for JIRA Cloud
+        max_batch_results = 100  # You can adjust this up to 1000 for JIRA Cloud
         for project in self.jira_projects:
             logger.debug(f"Fetching issues for project: {project}")
             query = f"project={project}"
@@ -113,14 +115,17 @@ class JiraClient:
                 batch = self.client.search_issues(
                     query,
                     startAt=start_at,
-                    maxResults=max_results,
+                    maxResults=max_batch_results,
                 )
                 if not batch:
                     break
                 yield from batch
-                if len(batch) < max_results:
+                if len(batch) < max_batch_results:
                     break
-                start_at += max_results
+                start_at += max_batch_results
+                if start_at > self.max_tickets:
+                    logger.warning(f"Reached max ticket limit of {self.max_tickets}. Stopping further fetch.")
+                    break
 
     def _build_issue_text(self, issue: jira.Issue) -> str:
         """Return a formatted representation of a JIRA issue body."""

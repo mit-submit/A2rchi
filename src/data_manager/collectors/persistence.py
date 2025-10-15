@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import hashlib
-import re
 from pathlib import Path
-from typing import Dict
+from typing import Dict, TYPE_CHECKING, Union, Any
 
 import yaml
 
-from src.data_manager.collectors.scrapers.scraped_resource import \
-    ScrapedResource
-from src.data_manager.collectors.tickets.ticket_resource import TicketResource
+from src.data_manager.collectors.utils.index_utils import (load_index,
+                                                           write_index)
 from src.utils.logging import get_logger
+from src.data_manager.collectors.utils.metadata import ResourceMetadata
+
+if TYPE_CHECKING:
+    from src.data_manager.collectors.resource_base import BaseResource
 
 logger = get_logger(__name__)
 
@@ -20,50 +21,50 @@ class PersistenceService:
 
     def __init__(self, data_path: Path | str) -> None:
         self.data_path = Path(data_path)
-        self.sources_path = self.data_path / "sources.yml"
-        self.websites_dir = self.data_path / "websites"
-        self.git_dir = self.data_path / "git"
-        self.tickets_dir = self.data_path / "tickets"
-        self.tickets_index_path = self.data_path / "tickets.yml"
 
-        for directory in (self.websites_dir, self.git_dir, self.tickets_dir):
-            directory.mkdir(parents=True, exist_ok=True)
+        self._index: Dict[str, str] = load_index(self.data_path)
+        self._index_dirty = False
 
-        self._sources: Dict[str, str] = self._load_sources()
-        self._sources_need_flush = False
+        self._metadata_index: Dict[str, str] = load_index(
+            self.data_path, filename="metadata_index.yaml"
+        )
+        self._metadata_index_dirty = False
 
-        self._tickets_index: Dict[str, Dict] = self._load_tickets_index()
-        self._tickets_need_flush = False
-
-    def persist_scraped_resource(self, resource: ScrapedResource, target_dir: Path) -> Path:
-        """Persist a scraped web resource and update the sources catalogue."""
+    def persist_resource(self, resource: "BaseResource", target_dir: Path) -> Path:
+        """
+        Write a resource and its metadata to disk,
+        updating both indices accordingly: with the unique hash of the file as key for both,
+        and the path to the file (metadata file) as value for the main (metadata) index.
+        """
         target_dir.mkdir(parents=True, exist_ok=True)
+        file_path = resource.get_file_path(target_dir)
+        content = resource.get_content()
+        self._write_content(file_path, content)
 
-        file_id = self._hash_string(resource.url)
-        suffix = resource.suffix.lstrip(".")
-        file_path = target_dir / f"{file_id}.{suffix}"
+        metadata = resource.get_metadata()
+        if metadata is not None:
+            metadata_path = resource.get_metadata_path(file_path)
+            self._write_metadata(metadata_path, metadata)
+            try:
+                metadata_relative_path = (
+                    metadata_path.relative_to(self.data_path).as_posix()
+                )
+            except ValueError:
+                metadata_relative_path = str(metadata_path)
 
-        if resource.is_binary:
-            content = resource.content if isinstance(resource.content, (bytes, bytearray)) else bytes(resource.content)
-            file_path.write_bytes(content)
-        else:
-            file_path.write_text(str(resource.content))
+            resource_hash = resource.get_hash()
+            self._metadata_index[resource_hash] = metadata_relative_path
+            self._metadata_index_dirty = True
 
-        logger.info(f"Stored resource {resource.url} -> {file_path}")
-        self._sources[file_id] = resource.url
-        self._sources_need_flush = True
-        return file_path
+        try:
+            relative_path = file_path.relative_to(self.data_path).as_posix()
+        except ValueError:
+            relative_path = str(file_path)
 
-    def persist_ticket(self, resource: TicketResource) -> Path:
-        """Persist a ticket resource and update the ticket index."""
-        file_name = f"{resource.source}_{self._normalise_identifier(resource.ticket_id)}.txt"
-        file_path = self.tickets_dir / file_name
-
-        file_path.write_text(resource.content, encoding="utf-8")
-        logger.info(f"Stored ticket {resource.ticket_id} at {file_path}")
-
-        self._tickets_index[file_name] = resource.to_index_record()
-        self._tickets_need_flush = True
+        resource_hash = resource.get_hash()
+        logger.info(f"Stored resource {resource_hash} -> {file_path}")
+        self._index[resource_hash] = relative_path
+        self._index_dirty = True
         return file_path
 
     def reset_directory(self, directory: Path) -> None:
@@ -77,55 +78,55 @@ class PersistenceService:
             else:
                 self._remove_tree(item)
 
-    def flush_sources(self) -> None:
-        if not self._sources_need_flush:
-            return
-
-        with self.sources_path.open("w", encoding="utf-8") as fh:
-            yaml.safe_dump(self._sources, fh)
-        self._sources_need_flush = False
-
-    def flush_tickets(self) -> None:
-        if not self._tickets_need_flush:
-            return
-
-        with self.tickets_index_path.open("w", encoding="utf-8") as fh:
-            yaml.safe_dump(self._tickets_index, fh)
-        self._tickets_need_flush = False
-
-    def flush_all(self) -> None:
-        self.flush_sources()
-        self.flush_tickets()
-
-    def _load_sources(self) -> Dict[str, str]:
-        if not self.sources_path.exists():
-            return {}
-
         try:
-            with self.sources_path.open("r", encoding="utf-8") as fh:
-                return yaml.safe_load(fh) or {}
-        except yaml.YAMLError as exc:
-            logger.warning(f"Failed to parse sources.yml: {exc}")
-            return {}
+            relative_prefix = directory.relative_to(self.data_path)
+        except ValueError:
+            relative_prefix = None
 
-    def _load_tickets_index(self) -> Dict[str, Dict]:
-        if not self.tickets_index_path.exists():
-            return {}
+        if relative_prefix is not None:
+            prefix_parts = relative_prefix.parts
+            keys_to_remove = []
+            for key, stored in self._index.items():
+                stored_path = Path(stored)
+                if stored_path.is_absolute():
+                    try:
+                        stored_path = stored_path.relative_to(self.data_path)
+                    except ValueError:
+                        continue
+                if stored_path.parts[: len(prefix_parts)] == prefix_parts:
+                    keys_to_remove.append(key)
+            if keys_to_remove:
+                for key in keys_to_remove:
+                    self._index.pop(key, None)
+                self._index_dirty = True
 
-        try:
-            with self.tickets_index_path.open("r", encoding="utf-8") as fh:
-                return yaml.safe_load(fh) or {}
-        except yaml.YAMLError as exc:
-            logger.warning(f"Failed to parse tickets.yml: {exc}")
-            return {}
+            metadata_keys_to_remove = []
+            for key, stored in self._metadata_index.items():
+                stored_path = Path(stored)
+                if stored_path.is_absolute():
+                    try:
+                        stored_path = stored_path.relative_to(self.data_path)
+                    except ValueError:
+                        continue
+                if stored_path.parts[: len(prefix_parts)] == prefix_parts:
+                    metadata_keys_to_remove.append(key)
+            if metadata_keys_to_remove:
+                for key in metadata_keys_to_remove:
+                    self._metadata_index.pop(key, None)
+                self._metadata_index_dirty = True
 
-    def _hash_string(self, value: str) -> str:
-        identifier = hashlib.md5()
-        identifier.update(value.encode("utf-8"))
-        return str(int(identifier.hexdigest(), 16))[0:12]
+    def flush_index(self) -> None:
+        if self._index_dirty:
+            write_index(self.data_path, self._index)
+            self._index_dirty = False
 
-    def _normalise_identifier(self, identifier: str) -> str:
-        return re.sub(r"[^A-Za-z0-9._-]+", "_", identifier)
+        if self._metadata_index_dirty:
+            write_index(
+                self.data_path,
+                self._metadata_index,
+                filename="metadata_index.yaml",
+            )
+            self._metadata_index_dirty = False
 
     def _remove_tree(self, path: Path) -> None:
         for item in path.iterdir():
@@ -134,3 +135,59 @@ class PersistenceService:
             else:
                 item.unlink()
         path.rmdir()
+
+    def _write_content(
+        self,
+        file_path: Path,
+        content: Union[str, bytes, bytearray],
+    ) -> None:
+        if content is None:
+            raise ValueError("Resource provided no content to persist")
+
+        if isinstance(content, (bytes, bytearray)):
+            payload = bytes(content)
+            if not payload:
+                raise ValueError("Refusing to persist empty binary content")
+            file_path.write_bytes(payload)
+            return
+
+        if isinstance(content, str):
+            if not content:
+                raise ValueError("Refusing to persist empty textual content")
+            file_path.write_text(content, encoding="utf-8")
+            return
+
+        raise TypeError(
+            f"Unsupported content type {type(content)!r}; "
+            "resources must return str or bytes"
+        )
+
+    def _write_metadata(self, metadata_path: Path, metadata: Any) -> None:
+        if type(metadata) != ResourceMetadata:
+            raise Exception("Metadata must be of type ResourceMetadata")
+        metadata_dict = self._normalise_metadata(metadata)
+        if not metadata_dict:
+            raise ValueError("Refusing to persist empty metadata payload")
+
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        with metadata_path.open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(metadata_dict, fh, sort_keys=True)
+
+    @staticmethod
+    def _normalise_metadata(metadata: Any) -> Dict[str, str]:
+        if hasattr(metadata, "as_dict"):
+            metadata_dict = metadata.as_dict()
+        elif isinstance(metadata, dict):
+            metadata_dict = metadata
+        else:
+            metadata_dict = {"value": str(metadata)}
+
+        if not isinstance(metadata_dict, dict):
+            raise TypeError("Metadata serialisation must produce a dictionary")
+
+        sanitized: Dict[str, str] = {}
+        for key, value in metadata_dict.items():
+            if value is None:
+                continue
+            sanitized[str(key)] = str(value)
+        return sanitized

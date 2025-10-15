@@ -74,7 +74,7 @@ data_manager:
   sources:
     links:
       input_lists:  # REQUIRED
-        - configs/miscellanea.list  # list of websites with relevant info
+        - miscellanea.list  # list of websites with relevant info
         - [...other lists...]
 ```
 
@@ -313,7 +313,7 @@ data_manager:
   sources:
     links:
       input_lists:
-        - configs/class_info.list # class info links
+        - class_info.list # class info links
 
 a2rchi:
   [... a2rchi config ...]
@@ -517,14 +517,14 @@ a2rchi:
     GradingPipeline:
       prompts:
         required:
-          final_grade_prompt: configs/prompts/final_grade.prompt
+          final_grade_prompt: final_grade.prompt
       models:
         required:
           final_grade_model: OllamaInterface
     ImageProcessingPipeline:
       prompts:
         required:
-          image_processing_prompt: configs/prompts/image_processing.prompt
+          image_processing_prompt: image_processing.prompt
       models:
         required:
           image_processing_model: OllamaInterface
@@ -695,7 +695,7 @@ A2RCHI automatically synchronizes your data directory with the vector store:
 
 1. **Adding documents**: New files in the data directory are automatically chunked, embedded, and added to the collection
 2. **Removing documents**: Files deleted from the data directory are removed from the collection
-3. **URL tracking**: Document source URLs can be tracked via a `sources.yml` file in the data directory
+3. **Source tracking**: Each ingested artifact is recorded in the unified `index.yaml` file as `<resource-hash>: <relative file path>` inside the data directory
 
 ### Hybrid Search
 
@@ -783,7 +783,7 @@ Then within all of the yaml configuration files that you wish to test, add a con
 ```yaml
 services:
   benchmarking:
-    queries_path: configs/benchmarking/queries.json
+    queries_path: examples/benchmarking/queries.json
     out_dir: bench_out
     modes:
       - "RAGAS"
@@ -810,7 +810,7 @@ The RAGAS mode will use the Ragas RAG evaluator module to return numerical value
 ```yaml
 services:
   benchmarking:
-    queries_path: configs/benchmarking/queries.json
+    queries_path: examples/benchmarking/queries.json
     out_dir: bench_out
     modes:
       - "RAGAS"

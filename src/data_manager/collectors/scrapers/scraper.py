@@ -36,6 +36,7 @@ class WebScraper:
                 url=url,
                 content=response.content,
                 suffix="pdf",
+                source_type="links",
                 metadata={"content_type": content_type},
             )
         else:
@@ -43,6 +44,7 @@ class WebScraper:
                 url=url,
                 content=response.text,
                 suffix="html",
+                source_type="links",
                 metadata={
                     "content_type": content_type,
                     "encoding": response.encoding,

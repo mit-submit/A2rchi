@@ -45,11 +45,11 @@ You specify which pipelines should be available in the configuration file.
 
 ## Configuration
 
-Once you have chosen the services, sources, and pipelines you want to use, create a configuration file that specifies their settings. You can start from one of the example configuration files in `configs/`, or create your own from scratch. This file sets parameters; the selected services and sources are determined at deployment time.
+Once you have chosen the services, sources, and pipelines you want to use, create a configuration file that specifies their settings. You can start from one of the example configuration files under `examples/deployments/`, or create your own from scratch. This file sets parameters; the selected services and sources are determined at deployment time.
 
 > **Important:** The configuration file follows the format of `src/cli/templates/base-config.yaml`. Any fields not specified in your configuration will be populated with the defaults from this template.
 
-Example configuration (`configs/my_config.yaml`) for the `chatbot` service using `QAPipeline` with a local VLLM model:
+Example configuration (`examples/deployments/basic-gpu/config.yaml`) for the `chatbot` service using `QAPipeline` with a local VLLM model:
 
 ```yaml
 name: my_a2rchi
@@ -57,8 +57,9 @@ name: my_a2rchi
 data_manager:
   sources:
     links:
+      visible: true          # include scraped pages in the chat citations
       input_lists:
-        - configs/miscellanea.list
+        - examples/deployments/basic-gpu/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
   chunk_size: 1000
 
@@ -69,8 +70,8 @@ a2rchi:
     QAPipeline:
       prompts:
         required:
-          condense_prompt: configs/prompts/condense.prompt
-          chat_prompt: configs/prompts/submit.prompt
+          condense_prompt: examples/deployments/basic-gpu/condense.prompt
+          chat_prompt: examples/deployments/basic-gpu/qa.prompt
       models:
         required:
           chat_model: VLLM
@@ -94,6 +95,7 @@ services:
 - `name`: Name of your A2RCHI deployment.
 - `data_manager`: Settings related to data ingestion and the vector store.
   - `sources.links.input_lists`: Lists of URLs to seed the deployment.
+  - `sources.<name>.visible`: Controls whether content from a given source should be surfaced to end users (defaults to `true`).
   - `embedding_name`: Embedding model used for vectorization.
   - `chunk_size`: Controls how documents are split prior to embedding.
 - `a2rchi`: Core pipeline settings.
@@ -133,7 +135,7 @@ Other services may require additional secrets; see the [User Guide](user_guide.m
 Create your deployment with the CLI:
 
 ```bash
-a2rchi create --name my-a2rchi --config configs/my_config.yaml --podman --env-file .secrets.env --services chatbot 
+a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 ```
 
 This command specifies:
@@ -146,15 +148,11 @@ This command specifies:
 
 Note that this command will create a deployment using only the link sources specified in the `data_manager.sources.links.input_lists` by default, if other sources (such as git-based documentation or pages under sso) want to be included they must be included using the `--sources` flag and in the configuration file.
 
-### A note about multiple configurations
-
-When multiple configuration files are passed, their `services` sections must remain consistent, otherwise the deployment fails. The current use cases for multiple configurations include swapping pipelines/prompts dynamically via the chat app and maintaining separate benchmarking configurations.
-
 <details>
 <summary>Example output</summary>
 
 ```bash
-a2rchi create --name my-a2rchi -c test.yaml --podman --env-file secrets.env --services chatbot
+a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 ```
 
 ```
@@ -180,6 +178,10 @@ Services running: chatbot, postgres, chromadb
 The first deployment builds the container images from scratch (which may take a few minutes). Subsequent deployments reuse the images and complete much faster (roughly a minute).
 
 > **Tip:** Having issues? Run the command with `-v 4` to enable DEBUG-level logging.
+
+### A note about multiple configurations
+
+When multiple configuration files are passed, their `services` sections must remain consistent, otherwise the deployment fails. The current use cases for multiple configurations include swapping pipelines/prompts dynamically via the chat app and maintaining separate benchmarking configurations.
 
 ### Verifying a deployment
 
