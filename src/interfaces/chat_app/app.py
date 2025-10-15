@@ -270,6 +270,7 @@ class ChatWrapper:
         if source_type not in self.sources_config:
             logger.error(f"Source type {source_type} not found in config, defaulting to visible")
             return True
+        logger.info(self.sources_config[source_type])
         return bool(self.sources_config[source_type].get("visible", True))
 
     @staticmethod

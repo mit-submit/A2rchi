@@ -380,7 +380,7 @@ class SSOCollector:
                         suffix=page.get("suffix", "html"),
                         metadata={
                             "title": page.get("title"),
-                            "source": "sso",
+                            "source_type": "sso",
                         },
                     )
                 )
@@ -399,7 +399,7 @@ class SSOCollector:
                         content=content,
                         suffix=item.get("suffix", "html"),
                         metadata={
-                            "source": "sso",
+                            "source_type": "sso",
                             "visible": str(self._visible).lower(),
                         },
                     )

@@ -91,7 +91,7 @@ class GitScraper:
                 content=text_content,
                 suffix="txt",
                 metadata={
-                    "source": "git",
+                    "source_type": "git",
                     "path": str(markdown_path.relative_to(repo_path)),
                 },
             )

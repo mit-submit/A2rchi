@@ -159,9 +159,9 @@ data_manager:
             headless: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.kwargs.headless | default(true, true) }}
             max_depth: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
     jira:
-      enabled: {{ data_manager.sources.jira.enabled | default(false, true) }}
+      enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}
       url: {{ data_manager.sources.jira.url | default('', true) }}
-      visible: {{ data_manager.sources.jira.visible | default(true, true) }}
+      visible: {{ data_manager.sources.jira.visible | default(false, true) }}
       projects:
         {%- for project in data_manager.sources.jira.projects | default([], true) %}
         - {{ project }}
