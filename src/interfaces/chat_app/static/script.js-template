@@ -12,6 +12,10 @@ const correct_checkbox= document.getElementById("correct_checkbox");
 const helpful_checkbox = document.getElementById("helpful_checkbox");
 const appropriate_checkbox = document.getElementById("appropriate_checkbox");
 const configDropdown = document.getElementById("config-dropdown");
+const newChatButton = document.getElementById("new-chat-btn");
+const conversationsList = document.getElementById("conversations-list");
+const toggleSidebarButton = document.getElementById("toggle-sidebar-btn");
+
 popupForm.style.display = "none";
 
 // DEFINITIONS
@@ -72,6 +76,152 @@ async function populateDropdown() {
         console.error("Failed to fetch dropdown options:", error);
     }
 
+}
+
+async function loadConversations() {
+    const API_URL = "/api/list_conversations?limit=100";
+    
+    try {
+        const response = await (await fetch(API_URL)).json();
+        
+        if (response.error) {
+            console.error("API Error fetching conversations", response.error);
+            conversationsList.innerHTML = '<div class="loading-conversations">Error loading conversations</div>';
+            return;
+        }
+        
+        // clear the list
+        conversationsList.innerHTML = '';
+        
+        // fill with conversations
+        if (response.conversations.length === 0) {
+            conversationsList.innerHTML = '<div class="loading-conversations">No conversations yet</div>';
+            return;
+        }
+        
+        response.conversations.forEach(conv => {
+            const convElement = document.createElement("div");
+            convElement.classList.add("conversation-item");
+            convElement.dataset.conversationId = conv.conversation_id;
+            
+            // Mark active conversation meaning user's working conversation_id space
+            if (conv.conversation_id === conversation_id) {
+                convElement.classList.add("active");
+            }
+            
+            const date = new Date(conv.last_message_at);
+            const now = new Date();
+            const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+            let dateStr;
+            if (diffDays === 0) {
+                dateStr = "Today";
+            } else if (diffDays === 1) {
+                dateStr = "Yesterday";
+            } else if (diffDays < 7) {
+                dateStr = `${diffDays} days ago`;
+            } else {
+                dateStr = date.toLocaleDateString();
+            }
+            
+            convElement.innerHTML = `
+                <div class="conversation-item-title">${conv.title}</div>
+                <div class="conversation-item-date">${dateStr}</div>
+            `;
+            
+            convElement.addEventListener("click", () => loadConversation(conv.conversation_id));
+            conversationsList.appendChild(convElement);
+        });
+        
+    } catch (error) {
+        console.error("Failed to load conversations:", error);
+        conversationsList.innerHTML = '<div class="loading-conversations">Error loading conversations</div>';
+    }
+}
+
+async function loadConversation(convId) {
+    const API_URL = "/api/load_conversation";
+    
+    try {
+        const response = await (await fetch(API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ conversation_id: convId }),
+        })).json();
+        
+        if (response.error) {
+            console.error("Error loading conversation:", response.error);
+            return;
+        }
+        
+        // clear current chat & conversation state & container
+        conversation = [];
+        conversation_id = convId;
+        num_responses_since_last_rating = 0;        
+        chatContainer.innerHTML = '';
+        
+        // message format
+        response.messages.forEach(msg => {
+            const className = msg.sender === "User" ? "outgoing" : "incoming";
+            const html = className === "outgoing" 
+                ? `<div class="chat-content">
+                        <div class="chat-details">
+                            <img src="/static/images/user.svg" alt="user-img">
+                            <p>${msg.content}</p>
+                        </div>
+                    </div>`
+                : `<div class="chat-content">
+                        <div class="chat-details">
+                            <img src="/static/images/a2rchi.png" alt="chatbot-img">
+                            <div>${msg.content}</div>
+                        </div>
+                        <div class="button-container">
+                            <button onclick="likeResponse(this)" class="material-button">
+                                <img src="/static/images/thumbs_up.png" alt="Like" width="30" height="30">
+                            </button>
+                            <button onclick="dislikeResponse(this)" class="material-button">
+                                <img src="/static/images/thumbs_down.png" alt="Dislike" width="30" height="30">
+                            </button>
+                        </div>
+                    </div>`;
+            
+            const chatDiv = createChatElement(html, className);
+            chatContainer.appendChild(chatDiv);
+            conversation.push([msg.sender, msg.content]);
+        });
+        
+        // show latest history first
+        chatContainer.scrollTo(0, chatContainer.scrollHeight);
+        
+        // update sidebar to remark active conversation
+        loadConversations();
+        
+    } catch (error) {
+        console.error("Failed to execute loadConversation:", error);
+    }
+}
+
+function startNewConversation() {
+    // reset conversation state
+    conversation = [];
+    conversation_id = null;
+    num_responses_since_last_rating = 0;
+    
+    // clear localStorage and show default welcome text
+    localStorage.removeItem("all-chats");
+    const defaultText = `<div class="default-text">
+                            <h1>A2rchi</h1>
+                            <p>Start a conversation and explore the power of A2rchi, specially trained on XX-TRAINED_ON-XX.<br> 
+                            Your chat history will be displayed here. <br> <br>
+                            Remember, the more context you provide in your question, the better A2rchi will be able to answer your question! <br> <br>
+                            By using this website, you agree to the <a href="/terms">terms and conditions</a>.</p>
+                        </div>`;
+    chatContainer.innerHTML = defaultText;
+    chatContainer.scrollTo(0, chatContainer.scrollHeight);
+    
+    // update sidebar to deselect previous active conversation
+    loadConversations();
 }
 
 const loadDataFromLocalstorage = () => {
@@ -183,6 +333,9 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     incomingChatDiv.querySelector(".chat-details").appendChild(pElement);
     localStorage.setItem("all-chats", chatContainer.innerHTML);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
+
+    // reload conversations list to update sidebar
+    setTimeout(() => loadConversations(), 500);
 
     // ask user for feedback if it's been too many messages w/out any feedback
     setTimeout(showFeedbackRequest, 500);
@@ -386,13 +539,27 @@ const handleOutgoingChat = () => {
     setTimeout(showTypingAnimation, 500);
 }
 
-deleteButton.addEventListener("click", () => {
-    // Remove the chats from local storage and call loadDataFromLocalstorage function
-    if(confirm("Are you sure you want to delete all the chats?")) {
-        conversation = []
-        conversation_id = null
+deleteButton.addEventListener("click", async () => {
+    // Remove the chats via api/delete_conversation
+    if(confirm("Are you sure you want to delete this chat?")) {
+        if (conversation_id !== null) {
+            try {
+                const response = await fetch("/api/delete_conversation", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ conversation_id: conversation_id }),
+                });
+                
+                const result = await response.json();
+            } catch (error) {
+                console.error("Error deleting conversation:", error);
+            }
+        }
+        
         localStorage.removeItem("all-chats");
-        loadDataFromLocalstorage();
+        startNewConversation();
     }
 });
 
@@ -425,5 +592,25 @@ chatInput.addEventListener("keydown", (e) => {
 });
 
 loadDataFromLocalstorage();
-populateDropdown(); 
+populateDropdown();
+loadConversations();
+
+// Event listeners for new conversation
+newChatButton.addEventListener("click", startNewConversation);
+
+toggleSidebarButton.addEventListener("click", () => {
+    const sidebar = document.querySelector(".sidebar");
+    const icon = toggleSidebarButton.querySelector(".material-symbols-rounded");
+    
+    // On mobile (screen width <= 800px), toggle 'hidden' class
+    // On desktop, toggle 'collapsed' class
+    if (window.innerWidth <= 800) {
+        sidebar.classList.toggle("hidden");
+        icon.textContent = sidebar.classList.contains("hidden") ? "menu" : "close";
+    } else {
+        sidebar.classList.toggle("collapsed");
+        icon.textContent = sidebar.classList.contains("collapsed") ? "menu" : "chevron_left";
+    }
+});
+
 sendButton.addEventListener("click", handleOutgoingChat);
