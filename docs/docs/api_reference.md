@@ -97,7 +97,7 @@ Use `--config-dir` if you want to point to a directory of configs instead.
 
 **Create a deployment:**
 ```sh
-a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chatbot,uploader
+a2rchi create --name mybot --config my.yaml --env-file secrets.env --services chatbot,uploader
 ```
 
 **Delete a deployment and remove images/volumes:**
@@ -166,6 +166,7 @@ Controls ingestion sources and vector store behaviour.
 
 - **sources.links.input_lists:** `.list` files with seed URLs.
 - **sources.links.scraper:** Behaviour toggles for HTTP scraping (resetting data, URL verification, warning output).
+- **sources.<name>.visible:** Mark whether documents harvested from a source should appear in chat citations and other user-facing listings (`true` by default).
 - **sources.git.enabled / sources.sso.enabled / sources.jira.enabled / sources.redmine.enabled:** Toggle additional collectors when paired with `--sources`.
 - **embedding_name:** Embedding backend (`OpenAIEmbeddings`, `HuggingFaceEmbeddings`, ...).
 - **embedding_class_map:** Backend specific parameters (model name, device, similarity threshold).
@@ -227,7 +228,7 @@ data_manager:
   sources:
     links:
       input_lists:
-        - configs/miscellanea.list
+        - examples/deployments/basic-gpu/miscellanea.list
       scraper:
         reset_data: true
         verify_urls: false
@@ -247,8 +248,8 @@ a2rchi:
       max_tokens: 10000
       prompts:
         required:
-          condense_prompt: "configs/prompts/condense.prompt"
-          chat_prompt: "configs/prompts/chat.prompt"
+          condense_prompt: "examples/deployments/basic-gpu/condense.prompt"
+          chat_prompt: "examples/deployments/basic-gpu/qa.prompt"
       models:
         required:
           condense_model: "OpenAIGPT4"
