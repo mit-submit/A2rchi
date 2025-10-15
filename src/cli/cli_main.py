@@ -60,6 +60,14 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
     
+    # Check if Docker is available when --podman is not specified
+    if not other_flags.get('podman', False) and not check_docker_available():
+        raise click.ClickException(
+            "Docker is not available on this system. "
+            "Please install Docker or use the '--podman' option to use Podman instead.\n"
+            "Example: a2rchi create --name mybot --podman ..."
+        )
+    
     try:
         # Validate inputs
         validate_services_selection(services)
@@ -326,6 +334,14 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
     print("Starting A2RCHI benchmarking process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
+
+    # Check if Docker is available when --podman is not specified
+    if not other_flags.get('podman', False) and not check_docker_available():
+        raise click.ClickException(
+            "Docker is not available on this system. "
+            "Please install Docker or use the '--podman' option to use Podman instead.\n"
+            "Example: a2rchi evaluate --name mybot --podman ..."
+        )
 
     gpu = other_flags.get("gpu-ids") != None
 

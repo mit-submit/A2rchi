@@ -49,9 +49,9 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
 
 SQL_CREATE_CONVERSATION = """
 INSERT INTO conversation_metadata (
-    title, a2rchi_service, conf_id, created_at, last_message_at
+    title, created_at, last_message_at
 )
-VALUES (%s, %s, %s, %s, %s)
+VALUES (%s, %s, %s)
 RETURNING conversation_id;
 """
 
@@ -64,7 +64,6 @@ WHERE conversation_id = %s;
 SQL_LIST_CONVERSATIONS = """
 SELECT conversation_id, title, created_at, last_message_at
 FROM conversation_metadata
-WHERE a2rchi_service = %s
 ORDER BY last_message_at DESC
 LIMIT %s;
 """

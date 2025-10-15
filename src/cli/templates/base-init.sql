@@ -10,10 +10,7 @@ CREATE TABLE IF NOT EXISTS conversation_metadata (
     title TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    a2rchi_service TEXT NOT NULL,
-    conf_id INTEGER NOT NULL,
-    PRIMARY KEY (conversation_id),
-    FOREIGN KEY (conf_id) REFERENCES configs(config_id)
+    PRIMARY KEY (conversation_id)
 );
 CREATE TABLE IF NOT EXISTS conversations (
     a2rchi_service TEXT NOT NULL,
