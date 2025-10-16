@@ -49,5 +49,8 @@ def setup_cli_logging(verbosity):
         force=True
     )
 
-def get_logger(name):
-    return logging.getLogger(name)
+def get_logger(name, verbosity=None):
+    logger = logging.getLogger(name)
+    if verbosity is not None:
+        logger.setLevel(logging_verboseLevel[max(0, min(4, verbosity))])
+    return logger
