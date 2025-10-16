@@ -17,6 +17,13 @@ Clone the A2RCHI repository:
 git clone https://github.com/mit-submit/A2rchi.git
 ```
 
+Check out the latest stable tag:
+
+```bash
+cd A2rchi
+git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+```
+
 Install A2RCHI (from inside the repository):
 
 ```bash
@@ -39,6 +46,9 @@ The command prints the path to the `a2rchi` executable.
 git clone https://github.com/mit-submit/A2rchi.git
 cd A2rchi
 export A2RCHI_DIR=$(pwd)
+
+# (Optional) Checkout the latest stable tag
+git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
 
 # (Optional) Create and activate a virtual environment
 python3 -m venv .a2rchi_venv

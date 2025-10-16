@@ -1,6 +1,6 @@
 [project]
 name = "a2rchi"
-version = "1.2.0"
+version = "1.2.4"
 description = "An AI Augmented Research Chat Intelligence (A2rchi)"
 requires-python = ">=3.7"
 authors = [

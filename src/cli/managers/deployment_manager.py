@@ -42,7 +42,8 @@ class DeploymentManager:
         except Exception as e:
             raise DeploymentError(f"Invalid compose file: {e}", 1)
         
-        compose_cmd = f"{self.compose_tool} -f {compose_file} up -d --build --force-recreate --always-recreate-deps"
+        flags = os.environ.get("A2RCHI_COMPOSE_UP_FLAGS", "--build --force-recreate --always-recreate-deps")
+        compose_cmd = f"{self.compose_tool} -f {compose_file} up -d {flags}"
         
         try:
             stdout, stderr, exit_code = CommandRunner.run_streaming(compose_cmd, cwd=deployment_dir)

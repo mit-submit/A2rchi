@@ -79,7 +79,12 @@ a2rchi:
   model_class_map:
     VLLM:
       kwargs:
-        base_model: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+        base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
+        quantization: True
+        max_model_len: 32768
+        tensor_parallel_size: 2
+        repetition_penalty: 1.0
+        gpu_memory_utilization: 0.5
 
 services:
   chat_app:
