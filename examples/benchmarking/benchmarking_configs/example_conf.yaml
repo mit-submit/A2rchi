@@ -5,8 +5,17 @@ global:
 
 
 data_manager:
-  input_lists:  
-    - configs/benchmarking/ppc.list 
+  sources:
+    links:
+      enabled: true
+      input_lists:  
+        - examples/benchmarking/ppc.list 
+    jira:
+      enabled: true
+      max_tickets: 100
+      url: https://its.cern.ch/jira/
+      projects:
+        - "CMSPROD"
   embedding_name: HuggingFaceEmbeddings
 
 a2rchi:
@@ -16,21 +25,29 @@ a2rchi:
     QAPipeline:
       prompts:
         required:
-          condense_prompt: configs/prompts/condense.prompt  
-          chat_prompt: configs/prompts/submit.prompt  
+          condense_prompt: examples/benchmarking/condense.prompt  
+          chat_prompt: examples/benchmarking/qa.prompt  
       models:
         required:
-          chat_model: HuggingFaceOpenLLM
-          condense_model: HuggingFaceOpenLLM
+          chat_model: OllamaInterface
+          condense_model: OllamaInterface
+  model_class_map:
+    OllamaInterface:
+      kwargs:
+        url: http://localhost:7870 # make sure this matches your ollama server URL!
+        base_model: "gemma3" # make sure this matches a model you have downloaded locally with ollama
 
 services:
+
   benchmarking: 
-    queries_path: configs/benchmarking/simple_queries.json
+    queries_path: examples/benchmarking/queries.json
     out_dir: bench_out
     modes: 
-      - "RAGAS"
-      - "LINKS"
+      #- "RAGAS"
+      - "SOURCES"
     mode_settings:
+      sources_settings:
+        default_match_field: "display_name" # matadata field to check for source matching
       ragas_settings: 
         provider: "HuggingFace"
         evaluation_model_settings: 
@@ -39,5 +56,6 @@ services:
         timeout: 200
         batch_size: 5
   chromadb:
-    chromadb_port: 8000
-    chromadb_external_port: 8004
+    # running in hostmode, want to avoid taking the default chromadb port (8000) since it's usually taken by host already
+    chromadb_port: 8003
+    chromadb_external_port: 8003
