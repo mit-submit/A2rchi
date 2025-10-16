@@ -2,7 +2,11 @@
 key.py
 *.txt
 !requirements.txt
+!requirements/*.txt
+!templates/dockerfiles/base-pytorch-image/*
+!templates/dockerfiles/base-python-image/*
 *.ipynb
+!plots/*.ipynb
 __pycache__
 venv
 *.DS_Store
@@ -14,5 +18,5 @@ venv
 logos/
 docs/site
 setup.sh
-.*
+.env
 build/

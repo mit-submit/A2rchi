@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>A2rchi Chat Service</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Google Fonts Link For Icons -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@2.0.3/marked.min.js"></script>
+  </head>
+  <body>
+    <div class="main-container">
+      <!-- Main Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <button id="new-chat-btn" class="new-chat-button">
+            <span class="material-symbols-rounded">add</span>
+            <span>New chat</span>
+          </button>
+          <button id="toggle-sidebar-btn" class="toggle-sidebar">
+            <span class="material-symbols-rounded">chevron_left</span>
+          </button>
+        </div>
+        <div class="conversations-list" id="conversations-list">
+          <!-- Conversations will be loaded here dynamically -->
+          <div class="loading-conversations">Loading conversations...</div>
+        </div>
+      </aside>
+
+      <!-- Main content area -->
+      <div class="main-content">
+        <!-- Chats container -->
+        <div class="chat-container"></div>
+        
+        <!-- Typing container -->
+        <div class="typing-container">
+          <div class="typing-content">
+            <div class="typing-textarea">
+              <textarea id="chat-input" spellcheck="false" placeholder="Enter your question for A2rchi" required></textarea>
+              <span id="send-btn" class="material-symbols-rounded">send</span>
+            </div>
+            <div class="typing-controls">
+              <select id="config-dropdown"> </select>
+              <span id="theme-btn" class="material-symbols-rounded">light_mode</span>
+              <span id="refresh-btn" class="material-symbols-rounded">autorenew</span>
+              <span id="delete-btn" class="material-symbols-rounded">delete</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pop-up form for dislikes-->
+    <div id="popup-form" style="display: none;">
+      <div id="popup-content">
+        <div id="popup-heading-container" >
+          <h2>Additional Feedback</h2>
+          <button id="dislike-close-button" onclick="closeFeedback(this)">
+            <img src="/static/images/close.png" alt="Close" width="30" height="30">
+          </button>
+        </div>
+        <textarea id="dislike-additional-thoughts" rows="4" cols="50" placeholder="Why did you dislike the response?" ></textarea>
+        <br>
+        <input type="checkbox" id="correct_checkbox">
+        <label for="correct_checkbox"> The answer is not correct</label><br>
+        <input type="checkbox" id="helpful_checkbox">
+        <label for="helpful_checkbox"> The answer is not helpful</label><br>
+        <input type="checkbox" id="appropriate_checkbox">
+        <label for="appropriate_checkbox"> The answer is not appropriate</label><br>
+        <br>
+        <button id="dislike-submit-button">Submit</button>
+      </div>
+    </div>
+
+  </body>
+</html>

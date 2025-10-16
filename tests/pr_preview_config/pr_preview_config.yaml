@@ -1,0 +1,37 @@
+name: pr_preview_config
+
+services:
+  chat_app:
+    trained_on: "Dummy data for preview"
+
+data_manager:
+  embedding_name: HuggingFaceEmbeddings
+  embedding_class_map:
+    HuggingFaceEmbeddings:
+      class: HuggingFaceEmbeddings
+      kwargs:
+        model_name: sentence-transformers/all-MiniLM-L6-v2
+        model_kwargs:
+          device: cpu
+        encode_kwargs:
+          normalize_embeddings: true
+      similarity_score_reference: 10
+  chromadb_host: localhost  
+  use_hybrid_search: true
+  sources:
+    links:
+      input_lists:
+        - tests/pr_preview_config/test_links.list
+
+a2rchi:
+  pipelines: ['QAPipeline']
+  pipeline_map:
+    QAPipeline:
+      prompts:
+        required:
+          condense_prompt: tests/pr_preview_config/condense.prompt
+          chat_prompt: tests/pr_preview_config/qa.prompt
+      models:
+        required:
+          condense_model: DumbLLM
+          chat_model: DumbLLM

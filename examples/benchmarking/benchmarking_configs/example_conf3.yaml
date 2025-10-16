@@ -1,0 +1,38 @@
+name: HuggingfaceEmbeddingHYBRID
+
+global:
+  TRAINED_ON: "the SubMIT Cluster"  
+
+data_manager:
+  input_lists:  
+    - configs/benchmarking/ppc.list
+  chromadb_port: 8000
+  chromadb_external_port: 8001
+  embedding_name: HuggingFaceEmbeddings
+  use_hybrid_search: true
+  bm25_weight: 0.6
+  semantic_weight: 0.4
+
+a2rchi:
+  pipelines: 
+   - QAPipeline
+  pipeline_map:
+    QAPipeline:
+      prompts:
+        required:
+          condense_prompt: configs/prompts/condense.prompt  
+          chat_prompt: configs/prompts/submit.prompt  
+      models:
+        required:
+          chat_model: OpenAIGPT4
+          condense_model: OpenAIGPT4
+
+
+services:
+  benchmarking: 
+    queries_path: configs/benchmarking/queries.json
+    out_dir: bench_out
+    modes: 
+      - "RAGAS"
+      - "LINKS"
+
