@@ -1,5 +1,9 @@
 name: Test and Build Tag
 
+env:
+  A2RCHI_DIR: /home/runner/work/a2rchi-local
+  HOME: /home/runner
+
 on:
   workflow_dispatch:
     inputs:
@@ -15,11 +19,11 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build-images:
     runs-on: ubuntu-latest
-    env:
-      A2RCHI_DIR: /home/runner/work/a2rchi-local
-      HOME: /home/runner
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      clean: ${{ steps.version.outputs.clean }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,18 +56,47 @@ jobs:
       - name: Ensure build scripts are executable
         run: chmod +x scripts/dev/*.sh
 
-      - name: Build Docker images
+      - name: Build Docker base images
         run: scripts/dev/build_docker_images.sh "${{ steps.version.outputs.tag }}"
 
-      - name: Point Dockerfiles to local base images
+      - name: Push versioned base images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          PUSH_LATEST: "false"
+        run: scripts/dev/push_docker_images.sh "${{ steps.version.outputs.tag }}"
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CLI dependencies
         run: |
-          scripts/dev/use_local_base_images.py "${{ steps.version.outputs.tag }}"
+          python -m pip install --upgrade pip
+          pip install ".[all]" || pip install .
+
+      - name: Ensure scripts are executable
+        run: chmod +x scripts/dev/*.sh
+
+      - name: Point Dockerfiles to versioned base images
+        run: scripts/dev/update_service_base_images.py "${{ needs.build-images.outputs.tag }}"
 
       - name: Run smoke deployment
         uses: ./.github/actions/run-smoke
         with:
           deployment-name: release-${{ github.run_id }}
-          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull never
+          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull always
           config-path: tests/pr_preview_config/pr_preview_config.yaml
           config-destination: configs/ci/ci_config.yaml
           env-file: .env
@@ -77,19 +110,41 @@ jobs:
           docker system prune -af
           docker volume prune -f
 
-      - name: Push Docker images
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-images, smoke-test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Promote Docker images to latest
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: scripts/dev/push_docker_images.sh "${{ steps.version.outputs.tag }}"
-
-      - name: Update version in pyproject.toml and docs/mkdocs.yml
+          VERSION_TAG: ${{ needs.build-images.outputs.tag }}
         run: |
-          scripts/dev/update_version.py "${{ steps.version.outputs.clean }}"
+          set -euo pipefail
+          echo "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+          for image in a2rchi/a2rchi-python-base a2rchi/a2rchi-pytorch-base; do
+            docker pull "$image:$VERSION_TAG"
+            docker tag "$image:$VERSION_TAG" "$image:latest"
+            docker push "$image:latest"
+          done
+
+      - name: Update version in project files
+        run: scripts/dev/update_version.py "${{ needs.build-images.outputs.clean }}"
 
       - name: Commit version bump
         env:
-          VERSION_CLEAN: ${{ steps.version.outputs.clean }}
+          VERSION_CLEAN: ${{ needs.build-images.outputs.clean }}
           TARGET_REF: ${{ inputs.ref || 'main' }}
         run: |
           set -euo pipefail
@@ -105,7 +160,7 @@ jobs:
 
       - name: Create Git tag
         env:
-          TAG_NAME: ${{ steps.version.outputs.tag }}
+          TAG_NAME: ${{ needs.build-images.outputs.tag }}
         run: |
           if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "Tag $TAG_NAME already exists locally." >&2

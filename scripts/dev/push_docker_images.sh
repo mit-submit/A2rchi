@@ -34,8 +34,14 @@ ensure_runtime "$RUNTIME"
 echo "Using container runtime: $RUNTIME"
 echo "Image tag: $TAG"
 
+PUSH_LATEST="${PUSH_LATEST:-true}"
+TAGS=("$TAG")
+if [[ "${PUSH_LATEST,,}" == "true" ]]; then
+  TAGS+=("latest")
+fi
+
 for image in "${!IMAGE_DIRS[@]}"; do
-  for tag in "$TAG" latest; do
+  for tag in "${TAGS[@]}"; do
     if ! "$RUNTIME" image inspect "$image:$tag" >/dev/null 2>&1; then
       echo "Error: image $image:$tag not found locally. Build it before pushing." >&2
       exit 1
@@ -46,10 +52,14 @@ done
 docker_login "$RUNTIME"
 
 for image in "${!IMAGE_DIRS[@]}"; do
-  for tag in "$TAG" latest; do
+  for tag in "${TAGS[@]}"; do
     echo "Pushing $image:$tag"
     "$RUNTIME" push "$image:$tag"
   done
 done
 
-echo "All images pushed with tags $TAG and latest."
+if [[ "${PUSH_LATEST,,}" == "true" ]]; then
+  echo "All images pushed with tags $TAG and latest."
+else
+  echo "All images pushed with tag $TAG."
+fi
