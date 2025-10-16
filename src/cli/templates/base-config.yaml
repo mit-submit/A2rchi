@@ -21,7 +21,7 @@ services:
       {%- endfor %}
     mode_settings: 
       sources_settings:
-        match_field: {{ services.benchmarking.mode_settings.sources_settings.match_field | default("display_name", true) }} # matadata field to check for source matching
+        default_match_field: {{ services.benchmarking.mode_settings.sources_settings.default_match_field | default("display_name", true) }} # matadata field to check for source matching
       ragas_settings: 
         enabled_metrics:
           {%- for metric in services.benchmarking.ragas_settings.enabled_metrics | default(["answer_relevancy", "faithfulness", "context_precision", "context_recall"]) %}

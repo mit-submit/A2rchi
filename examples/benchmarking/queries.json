@@ -1,13 +1,6 @@
 [
 
   {
-    "question": "could you give me some information about Redirecting GPU RelVals Automatically?",
-    "sources": ["CMSPROD-313"],
-    "source_match_field": ["ticket_id"],
-    "answer": "we are starting to produce RelVals on GPU regularly. At the moment, we are redirecting these manually towards specific sites. Would it be possible to have this done automatically? We could have a list of reliable sites with GPUs (e.g. T1_DE_KIT or T2_US_UWisconsin) to which we can redirect the samples. To avoid issues, for these wfs it would be useful also to have TrustPUSite = True (to allow for PU input to be accessed via xrootd and not only locally)."
-  },
-
-  {
     "question": "Does Jorian Benke work with the PPC and what topic will she work on?",
     "sources": ["https://ppc.mit.edu/blog/2025/07/14/welcome-our-first-ever-in-house-masters-student/"],
     "answer": "Yes, Jorian works with the PPC and her topic is the study of Lorentz invariance.",

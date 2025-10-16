@@ -10,12 +10,6 @@ data_manager:
       enabled: true
       input_lists:  
         - examples/benchmarking/ppc.list 
-    jira:
-      enabled: true
-      max_tickets: 100
-      url: https://its.cern.ch/jira/
-      projects:
-        - "CMSPROD"
   embedding_name: HuggingFaceEmbeddings
 
 a2rchi:
