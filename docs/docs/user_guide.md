@@ -765,20 +765,33 @@ A2RCHI has benchmarking functionality provided by the `evaluate` CLI command. Be
 
     {
         "question": "",
-        "link": "",
+        "sources": [...],
         "answer": ""
+        // (optional)
+        "sources_match_field": [...]
+    },
+ ...
+ ```
+
+ Example: (see also `examples/benchmarking/queries.json`)
+ ```json 
+     {
+      "question": "Does Jorian Benke work with the PPC and what topic will she work on?",
+      "sources": ["https://ppc.mit.edu/blog/2025/07/14/welcome-our-first-ever-in-house-masters-student/", "CMSPROD-42"],
+      "answer": "Yes, Jorian works with the PPC and her topic is the study of Lorentz invariance.",
+      "source_match_field": ["url", "ticket_id"]
     },
 
- ...
-     {
-        "question": "",
-        "link": "",
-        "answer": ""
-     }
+   ...
 ]
 ```
+Explanation of fields:
+- `question`: The question to be answered by the A2RCHI instance.
+- `sources`: A list of sources (e.g., URLs, ticket IDs) that contain the answer. They are identified via the `sources_match_field`, which must be one of the metadata fields of the documents in your vector store.
+- `answer`: The expected answer to the question, used for evaluation.
+- `sources_match_field` (optional): A list of metadata fields to match the sources against (e.g., `url`, `ticket_id`). If not provided, defaults to what is in the configuration file under `data_manager:services:benchmarking:mode_settings:sources:default_match_field`.
 
-Then within all of the yaml configuration files that you wish to test, add a configuration for your benchmarking script, which looks like the following:
+Then, within the yaml configuration file(s) that you wish to test, add a configuration for your benchmarking script, which looks like the following:
 
 ```yaml
 services:
@@ -833,7 +846,9 @@ services:
     batch_size: <desired batch size> # no default setting, set by Ragas...
 ```
 
-To later examine your data, there is a folder called plots in the base directory which contains some plotting functions and an ipynotebook with some basic usage examples. This is useful to play around with the results of the benchmarking, we will soon also have instead dedicated scripts to produce the plots of interest.
+### Results
+
+To later examine your data, check out `scripts/benchmarking/`, which contains some plotting functions and an ipynotebook with some basic usage examples. This is useful to play around with the results of the benchmarking, we will soon also have instead dedicated scripts to produce the plots of interest.
 
 ---
 
