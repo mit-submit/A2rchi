@@ -42,6 +42,7 @@ class ScraperManager:
         self.sso_enabled = self.sso_config.get("enabled", False)
         self.data_path = Path(global_config["DATA_PATH"])
         self.input_lists = links_config.get("input_lists", [])
+        self.git_dir = self.data_path / "git"
 
         self.data_path.mkdir(parents=True, exist_ok=True)
 
@@ -90,7 +91,7 @@ class ScraperManager:
 
         if self.git_enabled and git_urls:
             if self.config.get("reset_data", False):
-                persistence.reset_directory(self.data_path / "git")
+                persistence.reset_directory(self.git_dir)
             git_resources = self._collect_git_resources(
                 git_urls, persistence
             )
@@ -142,7 +143,7 @@ class ScraperManager:
         git_scraper = self._get_git_scraper()
         resources = git_scraper.collect(git_urls)
         for resource in resources:
-            persistence.persist_resource(resource, git_scraper.git_dir)
+            persistence.persist_resource(resource, self.git_dir)
         return resources
 
     # ------------------------------------------------------------------
