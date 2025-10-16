@@ -1,0 +1,97 @@
+name: Release Docker Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    env:
+      A2RCHI_DIR: /home/runner/work/a2rchi-local
+      HOME: /home/runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CLI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[all]" || pip install .
+
+      - name: Ensure scripts are executable
+        run: |
+          chmod +x scripts/dev/*.sh
+          chmod +x tests/smoke/*.sh
+
+      - name: Build Docker images
+        run: scripts/dev/build_docker_images.sh "${{ github.ref_name }}"
+
+      - name: Prepare CI config
+        run: |
+          mkdir -p configs/ci
+          cp tests/pr_preview_config/pr_preview_config.yaml configs/ci/ci_config.yaml
+
+      - name: Create .env file for PG_PASSWORD with random password
+        run: |
+          echo "PG_PASSWORD=$(openssl rand -base64 32)" > .env
+
+      - name: Create deployment
+        id: create
+        run: |
+          NAME="release-${{ github.run_id }}"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          a2rchi create --name "$NAME" --config configs/ci/ci_config.yaml -v 4 --hostmode --services chatbot --env-file .env
+
+      - name: Wait for service readiness
+        run: |
+          echo "Waiting for service to be ready..."
+          tries=0
+          until curl -fsS http://localhost:7861/api/health >/dev/null 2>&1 || [ $tries -gt 60 ]; do
+            tries=$((tries+1))
+            echo "Attempt $tries/60..."
+            sleep 2
+          done
+          if [ $tries -gt 60 ]; then
+            echo "Service did not become ready in time" >&2
+            docker ps -a
+            exit 1
+          fi
+          echo "Service is ready!"
+
+      - name: Run smoke tests
+        env:
+          BASE_URL: http://localhost:7861
+        run: ./tests/smoke/smoke.sh "${{ steps.create.outputs.name }}"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "=== Container status ==="
+          docker ps -a
+          echo "=== Container logs ==="
+          docker ps -a --format '{{.Names}}' | xargs -I{} sh -c 'echo "---- {} ----"; docker logs --tail 50 {} || true'
+
+      - name: Push Docker images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: scripts/dev/push_docker_images.sh "${{ github.ref_name }}"
+
+      - name: Cleanup deployment
+        if: always()
+        run: |
+          NAME="${{ steps.create.outputs.name }}"
+          if [ -n "$NAME" ]; then
+            a2rchi delete --name "$NAME" || true
+          fi
