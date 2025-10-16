@@ -45,28 +45,8 @@ jobs:
           echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
 
       - name: Update version metadata
-        env:
-          VERSION_TAG: ${{ steps.version.outputs.tag }}
-          VERSION_CLEAN: ${{ steps.version.outputs.clean }}
         run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-          
-          version = os.environ["VERSION_CLEAN"]
-          
-          py_path = Path("pyproject.toml")
-          py_text = py_path.read_text()
-          py_new = re.sub(r'^version\s*=\s*".*?"', f'version = "{version}"', py_text, count=1, flags=re.MULTILINE)
-          py_path.write_text(py_new)
-          
-          mkdocs_path = Path("docs/mkdocs.yml")
-          mkdocs_text = mkdocs_path.read_text()
-          mkdocs_new = re.sub(r'(^\s*version:\s*)[^\n]+', rf'\1{version}', mkdocs_text, count=1, flags=re.MULTILINE)
-          mkdocs_path.write_text(mkdocs_new)
-          PY
+          scripts/dev/update_version.py "${{ steps.version.outputs.clean }}"
 
       - name: Commit version bump
         env:
@@ -95,6 +75,10 @@ jobs:
       - name: Build Docker images
         run: scripts/dev/build_docker_images.sh "${{ steps.version.outputs.tag }}"
 
+      - name: Point Dockerfiles to local base images
+        run: |
+          scripts/dev/use_local_base_images.py "${{ steps.version.outputs.tag }}"
+          
       - name: Run smoke deployment
         uses: ./.github/actions/run-smoke
         with:
