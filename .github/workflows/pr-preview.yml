@@ -33,6 +33,9 @@ jobs:
 
       - name: Verify MkDocs build
         run: mkdocs build --config-file docs/mkdocs.yml --strict
+        
+      - name: Clean up MkDocs build artifacts
+        run: rm -rf site
 
       - name: Run smoke deployment
         uses: ./.github/actions/run-smoke
