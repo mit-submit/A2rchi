@@ -37,7 +37,7 @@ services:
     queries_path: examples/benchmarking/queries.json
     out_dir: bench_out
     modes: 
-      #- "RAGAS"
+      - "RAGAS"
       - "SOURCES"
     mode_settings:
       sources_settings:
