@@ -144,18 +144,19 @@ Data Sources:
 <p>An example pipeline is <code>QAPipeline</code>, a question-answering pipeline that takes a user's question, retrieves relevant documents from the vector store, and generates an answer using a language model.</p>
 <p>You specify which pipelines should be available in the configuration file.</p>
 <h2 id="configuration">Configuration</h2>
-<p>Once you have chosen the services, sources, and pipelines you want to use, create a configuration file that specifies their settings. You can start from one of the example configuration files in <code>configs/</code>, or create your own from scratch. This file sets parameters; the selected services and sources are determined at deployment time.</p>
+<p>Once you have chosen the services, sources, and pipelines you want to use, create a configuration file that specifies their settings. You can start from one of the example configuration files under <code>examples/deployments/</code>, or create your own from scratch. This file sets parameters; the selected services and sources are determined at deployment time.</p>
 <blockquote>
 <p><strong>Important:</strong> The configuration file follows the format of <code>src/cli/templates/base-config.yaml</code>. Any fields not specified in your configuration will be populated with the defaults from this template.</p>
 </blockquote>
-<p>Example configuration (<code>configs/my_config.yaml</code>) for the <code>chatbot</code> service using <code>QAPipeline</code> with a local VLLM model:</p>
+<p>Example configuration (<code>examples/deployments/basic-gpu/config.yaml</code>) for the <code>chatbot</code> service using <code>QAPipeline</code> with a local VLLM model:</p>
 <pre><code class="language-yaml">name: my_a2rchi
 
 data_manager:
   sources:
     links:
+      visible: true          # include scraped pages in the chat citations
       input_lists:
-        - configs/miscellanea.list
+        - examples/deployments/basic-gpu/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
   chunk_size: 1000
 
@@ -166,8 +167,8 @@ a2rchi:
     QAPipeline:
       prompts:
         required:
-          condense_prompt: configs/prompts/condense.prompt
-          chat_prompt: configs/prompts/submit.prompt
+          condense_prompt: examples/deployments/basic-gpu/condense.prompt
+          chat_prompt: examples/deployments/basic-gpu/qa.prompt
       models:
         required:
           chat_model: VLLM
@@ -190,6 +191,7 @@ services:
 - `name`: Name of your A2RCHI deployment.
 - `data_manager`: Settings related to data ingestion and the vector store.
   - `sources.links.input_lists`: Lists of URLs to seed the deployment.
+  - `sources.<name>.visible`: Controls whether content from a given source should be surfaced to end users (defaults to `true`).
   - `embedding_name`: Embedding model used for vectorization.
   - `chunk_size`: Controls how documents are split prior to embedding.
 - `a2rchi`: Core pipeline settings.
@@ -220,7 +222,7 @@ services:
 <p>Other services may require additional secrets; see the <a href="../user_guide/">User Guide</a> for details.</p>
 <h2 id="creating-an-a2rchi-deployment">Creating an A2RCHI Deployment</h2>
 <p>Create your deployment with the CLI:</p>
-<pre><code class="language-bash">a2rchi create --name my-a2rchi --config configs/my_config.yaml --podman --env-file .secrets.env --services chatbot 
+<pre><code class="language-bash">a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 </code></pre>
 <p>This command specifies:</p>
 <ul>
@@ -231,13 +233,11 @@ services:
 <li><code>--services</code>: Services to deploy (only the <code>chatbot</code> service in this example but others can be included separated by commas).</li>
 </ul>
 <p>Note that this command will create a deployment using only the link sources specified in the <code>data_manager.sources.links.input_lists</code> by default, if other sources (such as git-based documentation or pages under sso) want to be included they must be included using the <code>--sources</code> flag and in the configuration file.</p>
-<h3 id="a-note-about-multiple-configurations">A note about multiple configurations</h3>
-<p>When multiple configuration files are passed, their <code>services</code> sections must remain consistent, otherwise the deployment fails. The current use cases for multiple configurations include swapping pipelines/prompts dynamically via the chat app and maintaining separate benchmarking configurations.</p>
 <details>
 <summary>Example output</summary>
 
 
-<pre><code class="language-bash">a2rchi create --name my-a2rchi -c test.yaml --podman --env-file secrets.env --services chatbot
+<pre><code class="language-bash">a2rchi create --name my-a2rchi --config examples/deployments/basic-gpu/config.yaml --podman --env-file .secrets.env --services chatbot --gpu-ids all
 </code></pre>
 
 
@@ -266,6 +266,8 @@ Services running: chatbot, postgres, chromadb
 <blockquote>
 <p><strong>Tip:</strong> Having issues? Run the command with <code>-v 4</code> to enable DEBUG-level logging.</p>
 </blockquote>
+<h3 id="a-note-about-multiple-configurations">A note about multiple configurations</h3>
+<p>When multiple configuration files are passed, their <code>services</code> sections must remain consistent, otherwise the deployment fails. The current use cases for multiple configurations include swapping pipelines/prompts dynamically via the chat app and maintaining separate benchmarking configurations.</p>
 <h3 id="verifying-a-deployment">Verifying a deployment</h3>
 <p>List running deployments with:</p>
 <pre><code class="language-bash">a2rchi list-deployments

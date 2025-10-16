@@ -339,7 +339,7 @@ A2RCHI will fetch the content from each URL and add it to the vector store, usin
   sources:
     links:
       input_lists:  # REQUIRED
-        - configs/miscellanea.list  # list of websites with relevant info
+        - miscellanea.list  # list of websites with relevant info
         - [...other lists...]
 </code></pre>
 <p>Each list should be a simple text file containing one URL per line, e.g.,</p>
@@ -507,7 +507,7 @@ data_manager:
   sources:
     links:
       input_lists:
-        - configs/class_info.list # class info links
+        - class_info.list # class info links
 
 a2rchi:
   [... a2rchi config ...]
@@ -650,14 +650,14 @@ a2rchi:
     GradingPipeline:
       prompts:
         required:
-          final_grade_prompt: configs/prompts/final_grade.prompt
+          final_grade_prompt: final_grade.prompt
       models:
         required:
           final_grade_model: OllamaInterface
     ImageProcessingPipeline:
       prompts:
         required:
-          image_processing_prompt: configs/prompts/image_processing.prompt
+          image_processing_prompt: image_processing.prompt
       models:
         required:
           image_processing_model: OllamaInterface
@@ -795,7 +795,7 @@ data_manager:
 <ol>
 <li><strong>Adding documents</strong>: New files in the data directory are automatically chunked, embedded, and added to the collection</li>
 <li><strong>Removing documents</strong>: Files deleted from the data directory are removed from the collection</li>
-<li><strong>URL tracking</strong>: Document source URLs can be tracked via a <code>sources.yml</code> file in the data directory</li>
+<li><strong>Source tracking</strong>: Each ingested artifact is recorded in the unified <code>index.yaml</code> file as <code>&lt;resource-hash&gt;: &lt;relative file path&gt;</code> inside the data directory</li>
 </ol>
 <h3 id="hybrid-search">Hybrid Search</h3>
 <p>Combine semantic search with keyword-based BM25 search for improved retrieval:</p>
@@ -859,7 +859,7 @@ data_manager:
 <p>Then within all of the yaml configuration files that you wish to test, add a configuration for your benchmarking script, which looks like the following:</p>
 <pre><code class="language-yaml">services:
   benchmarking:
-    queries_path: configs/benchmarking/queries.json
+    queries_path: examples/benchmarking/queries.json
     out_dir: bench_out
     modes:
       - &quot;RAGAS&quot;
@@ -876,7 +876,7 @@ data_manager:
 <p>The RAGAS mode will use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics: <code>answer_relevancy</code>, <code>faithfulness</code>, <code>context precision</code>, and <code>context relevancy</code>. More information about these metrics can be found on their website at: https://docs.ragas.io/en/stable/concepts/metrics/. Note that ragas will by default use OpenAI to evaluate your llm responses and ragging pipeline contexts. To change this, it is possible to specify using other providers such as Anthropic, Ollama, and HuggingFace for your LLM evaluator, as well as HuggingFace for the embeddings. To do so simply specify in the configuration as follows:</p>
 <pre><code class="language-yaml">services:
   benchmarking:
-    queries_path: configs/benchmarking/queries.json
+    queries_path: examples/benchmarking/queries.json
     out_dir: bench_out
     modes:
       - &quot;RAGAS&quot;

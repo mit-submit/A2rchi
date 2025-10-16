@@ -207,7 +207,7 @@
 <hr />
 <h3 id="examples">Examples</h3>
 <p><strong>Create a deployment:</strong></p>
-<pre><code class="language-sh">a2rchi create --name mybot --config configs/my.yaml --env-file secrets.env --services chatbot,uploader
+<pre><code class="language-sh">a2rchi create --name mybot --config my.yaml --env-file secrets.env --services chatbot,uploader
 </code></pre>
 <p><strong>Delete a deployment and remove images/volumes:</strong></p>
 <pre><code class="language-sh">a2rchi delete --name mybot --rmi --rmv
@@ -260,6 +260,7 @@
 <ul>
 <li><strong>sources.links.input_lists:</strong> <code>.list</code> files with seed URLs.</li>
 <li><strong>sources.links.scraper:</strong> Behaviour toggles for HTTP scraping (resetting data, URL verification, warning output).</li>
+<li><strong>sources.<name>.visible:</strong> Mark whether documents harvested from a source should appear in chat citations and other user-facing listings (<code>true</code> by default).</li>
 <li><strong>sources.git.enabled / sources.sso.enabled / sources.jira.enabled / sources.redmine.enabled:</strong> Toggle additional collectors when paired with <code>--sources</code>.</li>
 <li><strong>embedding_name:</strong> Embedding backend (<code>OpenAIEmbeddings</code>, <code>HuggingFaceEmbeddings</code>, ...).</li>
 <li><strong>embedding_class_map:</strong> Backend specific parameters (model name, device, similarity threshold).</li>
@@ -311,7 +312,7 @@ data_manager:
   sources:
     links:
       input_lists:
-        - configs/miscellanea.list
+        - examples/deployments/basic-gpu/miscellanea.list
       scraper:
         reset_data: true
         verify_urls: false
@@ -331,8 +332,8 @@ a2rchi:
       max_tokens: 10000
       prompts:
         required:
-          condense_prompt: &quot;configs/prompts/condense.prompt&quot;
-          chat_prompt: &quot;configs/prompts/chat.prompt&quot;
+          condense_prompt: &quot;examples/deployments/basic-gpu/condense.prompt&quot;
+          chat_prompt: &quot;examples/deployments/basic-gpu/qa.prompt&quot;
       models:
         required:
           condense_model: &quot;OpenAIGPT4&quot;
