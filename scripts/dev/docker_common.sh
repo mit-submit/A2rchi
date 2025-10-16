@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Common utilities shared by Docker image build/push scripts.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Map of image name -> build context directory.
 declare -Ag IMAGE_DIRS=(
