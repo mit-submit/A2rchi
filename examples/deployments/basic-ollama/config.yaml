@@ -12,10 +12,11 @@ services:
   chat_app:
     trained_on: "My data"
     port: 7868
+    external_port: 7868
   chromadb:
     # running in hostmode, want to avoid taking the default chromadb port (8000) since it's usually taken by host already
     chromadb_port: 8003
-    chromadb_external_port: 8003 
+    chromadb_external_port: 8003
 
 data_manager:
   sources:
