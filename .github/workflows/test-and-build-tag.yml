@@ -134,13 +134,11 @@ jobs:
           set -euo pipefail
           echo "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
           for image in a2rchi/a2rchi-python-base a2rchi/a2rchi-pytorch-base; do
-            docker pull "$image:$VERSION_TAG"
-            docker tag "$image:$VERSION_TAG" "$image:latest"
-            docker push "$image:latest"
+            docker buildx imagetools create --tag "$image:latest" "$image:$VERSION_TAG"
           done
 
       - name: Update version in project files
-        run: scripts/dev/update_version.py "${{ needs.build-images.outputs.clean }}"
+        run: python scripts/dev/update_version.py "${{ needs.build-images.outputs.clean }}"
 
       - name: Commit version bump
         env:
