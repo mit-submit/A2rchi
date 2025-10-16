@@ -1,0 +1,151 @@
+name: Run Smoke Deployment
+description: Launches an A2rchi deployment and runs smoke tests.
+
+inputs:
+  deployment-name:
+    description: Name used for the temporary deployment.
+    required: true
+  config-path:
+    description: Source path to the deployment config file.
+    required: true
+    default: tests/pr_preview_config/pr_preview_config.yaml
+  config-destination:
+    description: Destination path where the config will be copied.
+    required: false
+    default: configs/ci/ci_config.yaml
+  env-file:
+    description: Path to the environment file used for secrets.
+    required: false
+    default: .env
+  services:
+    description: Services list passed to a2rchi create.
+    required: false
+    default: chatbot
+  hostmode:
+    description: Whether to include --hostmode when creating the deployment.
+    required: false
+    default: "true"
+  wait-url:
+    description: Health endpoint to poll for readiness.
+    required: false
+    default: http://localhost:7861/api/health
+  wait-attempts:
+    description: Number of readiness checks before failing.
+    required: false
+    default: "60"
+  wait-sleep-seconds:
+    description: Seconds to sleep between readiness attempts.
+    required: false
+    default: "2"
+  base-url:
+    description: Base URL passed to smoke.sh via BASE_URL.
+    required: false
+    default: http://localhost:7861
+
+outputs:
+  deployment-name:
+    description: The deployment name used for the smoke test.
+    value: ${{ inputs.deployment-name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Ensure smoke scripts are executable
+      shell: bash
+      run: |
+        set -euo pipefail
+        chmod +x tests/smoke/*.sh
+
+    - name: Prepare CI config
+      shell: bash
+      env:
+        CONFIG_SRC: ${{ inputs.config-path }}
+        CONFIG_DEST: ${{ inputs.config-destination }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$(dirname "${CONFIG_DEST}")"
+        cp "${CONFIG_SRC}" "${CONFIG_DEST}"
+
+    - name: Create .env file with random PG password
+      shell: bash
+      env:
+        ENV_FILE: ${{ inputs.env-file }}
+      run: |
+        set -euo pipefail
+        echo "PG_PASSWORD=$(openssl rand -base64 32)" > "${ENV_FILE}"
+
+    - name: Launch deployment
+      shell: bash
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        CONFIG_DEST: ${{ inputs.config-destination }}
+        SERVICES: ${{ inputs.services }}
+        HOSTMODE: ${{ inputs.hostmode }}
+        ENV_FILE: ${{ inputs.env-file }}
+      run: |
+        set -euo pipefail
+        CMD=(a2rchi create --name "${DEPLOYMENT_NAME}" --config "${CONFIG_DEST}" -v 4 --services "${SERVICES}" --env-file "${ENV_FILE}")
+        if [[ "${HOSTMODE,,}" == "true" ]]; then
+          CMD+=(--hostmode)
+        fi
+        "${CMD[@]}"
+
+    - name: Wait for service readiness
+      shell: bash
+      env:
+        WAIT_URL: ${{ inputs.wait-url }}
+        WAIT_ATTEMPTS: ${{ inputs.wait-attempts }}
+        WAIT_SLEEP: ${{ inputs.wait-sleep-seconds }}
+      run: |
+        set -euo pipefail
+        echo "Waiting for service to be ready..."
+        attempt=0
+        max_attempts=${WAIT_ATTEMPTS}
+        sleep_seconds=${WAIT_SLEEP}
+        while true; do
+          if curl -fsS "${WAIT_URL}" >/dev/null 2>&1; then
+            echo "Service is ready!"
+            break
+          fi
+          attempt=$((attempt + 1))
+          if (( attempt >= max_attempts )); then
+            echo "Service did not become ready in time" >&2
+            exit 1
+          fi
+          echo "Attempt ${attempt}/${max_attempts}..."
+          sleep "${sleep_seconds}"
+        done
+
+    - name: Run smoke tests
+      shell: bash
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        BASE_URL: ${{ inputs.base-url }}
+      run: |
+        set -euo pipefail
+        ./tests/smoke/smoke.sh "${DEPLOYMENT_NAME}"
+
+    - name: Dump logs on failure
+      if: failure()
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "=== Container status ==="
+        docker ps -a
+        echo "=== Container logs ==="
+        docker ps -a --format '{{.Names}}' | xargs -I{} sh -c 'echo "---- {} ----"; docker logs --tail 50 {} || true'
+
+    - name: Cleanup deployment
+      if: always()
+      shell: bash
+      env:
+        DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        ENV_FILE: ${{ inputs.env-file }}
+        CONFIG_DEST: ${{ inputs.config-destination }}
+      run: |
+        set +e
+        if [[ -n "${DEPLOYMENT_NAME}" ]]; then
+          a2rchi delete --name "${DEPLOYMENT_NAME}" || true
+        fi
+        rm -f "${ENV_FILE}"
+        # Leave copied config in place for debugging if needed.
