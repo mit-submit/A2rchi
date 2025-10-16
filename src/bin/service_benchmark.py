@@ -39,8 +39,6 @@ os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
 os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 
 
-
-
 class ResultHandler:
     results = {} 
 
@@ -66,12 +64,13 @@ class ResultHandler:
 
         ResultHandler.map_prompts(config)
 
-        current_results = { f"{benchmark_name} - {config_name}" : { 
-                       "single question results": results, 
-                       "total_results": total_results, 
-                       "configuration used": config, 
-                       }
-                }
+        current_results = { 
+            f"{benchmark_name} - {config_name}" : { 
+                "single question results": results, 
+                "total_results": total_results, 
+                "configuration used": config, 
+            }
+        }
 
         ResultHandler.results.update(current_results)
 
@@ -83,24 +82,27 @@ class ResultHandler:
         meta_data = {
             "time": str(datetime.now()),
             "git info": additional_info, 
-            }
+        }
 
         ResultHandler.results.update(meta_data)
 
 
     @staticmethod 
     def dump(benchmark_name: Path):
-        filename = f"{benchmark_name}-{datetime.now()}.json"
-        
+        filename = f"{benchmark_name}-{datetime.now().strftime('%y%m%d_%H%M%S')}.json"
         file_path = OUTPUT_DIR / filename
+        logger.info(f"Dumping results to {file_path}")
+        logger.debug(f"Full results: {ResultHandler.results}")
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
         with open(file_path, "w") as f:
             json.dump(ResultHandler.results, f, indent=4)
 
 
-
 class Benchmarker: 
+
     def __init__(self, configs: Path, q_to_a: dict[str, str]):
         self.queries_to_answers = q_to_a 
+        self.required_fields = ['question']
         self.benchmark_name = os.environ['container_name']
         self.all_config_files = self.get_all_configs(configs)
         self.all_config_files.append('FINISHED')
@@ -143,6 +145,10 @@ class Benchmarker:
         del self.chain
         self.config = config 
         self.benchmarking_configs = config['services']['benchmarking']
+        if 'SOURCES' in self.benchmarking_configs:
+            self.required_fields += ['sources']
+        elif 'RAGAS' in self.benchmarking_configs:
+            self.required_fields += ['answer']
 
         # for now it only uses one pipeline (the first one) but maybe later we make this work for mulitple
         logger.info(f"loaded new configuration: {self.current_config}")
@@ -184,36 +190,109 @@ class Benchmarker:
             case _:
                 return OpenAIEmbeddings()
 
-    def get_link_results(self, result: Dict, link):
-        res = {}
-        sources = result['documents']
+    def get_source_results(
+            self,
+            result: Dict,
+            reference_sources: List[str] | str,
+            match_field: List[str] | str = 'display_name',
+        ):
+        """
+        For each reference source, check the specified metadata field in the retrieved documents.
+        The reference sources and match fields are paired one-to-one; a single string field is
+        expanded to cover all provided sources. Returns summary information and whether all
+        reference sources were found.
+        """
+        sources = result.get('documents', [])
 
-        sources_to_links = load_sources_catalog(self.data_path)
-        
-        num_sources = len(sources)
+        # Clean and prepare reference sources
+        raw_references: List[str] = []
+        if isinstance(reference_sources, str):
+            cleaned = reference_sources.strip()
+            if cleaned and cleaned != 'N/A':
+                raw_references = [reference_sources]
+        elif isinstance(reference_sources, list):
+            raw_references = [ref for ref in reference_sources if ref not in (None, '')]
+        elif reference_sources is None:
+            raw_references = []
+        else:
+            raw_references = [reference_sources]
+        reference_sources_list: List[str] = []
+        for ref in raw_references:
+            ref_str = str(ref).strip()
+            if ref_str and ref_str != 'N/A':
+                reference_sources_list.append(ref_str)
 
-        match = False 
-        links_generated = []
-        for k in range(num_sources): 
-            document = sources[k]
-            document_source_hash = document.metadata['source']
-            if '/' in document_source_hash and '.' in document_source_hash:
-                document_source_hash = document_source_hash.split('/')[-1].split('.')[0]
-            link_k = sources_to_links.get(document_source_hash, "NO LINK FOUND")
+        # Prepare match fields
+        if isinstance(match_field, str):
+            match_fields_list = [match_field] if match_field else []
+        elif match_field is None:
+            match_fields_list = []
+        else:
+            match_fields_list = [field for field in match_field if field]
+        if reference_sources_list:
+            if not match_fields_list:
+                match_fields_list = ['display_name'] * len(reference_sources_list)
+            elif len(match_fields_list) == 1 and len(reference_sources_list) > 1:
+                match_fields_list = match_fields_list * len(reference_sources_list)
+            elif len(match_fields_list) != len(reference_sources_list):
+                logger.error(
+                    "Number of match fields (%s) does not align with number of reference sources (%s); reusing the last field for the remaining references.",
+                    len(match_fields_list),
+                    len(reference_sources_list),
+                )
+                raise ValueError("Mismatch between number of match fields and reference sources.")
+        else:
+            match_fields_list = []
+        fields_to_capture: List[str] = []
+        seen_fields = set()
+        for field in match_fields_list:
+            if field not in seen_fields:
+                seen_fields.add(field)
+                fields_to_capture.append(field)
+        logger.debug("Fields to capture from metadata: %s", fields_to_capture)
 
-            if link_k not in links_generated: 
-                links_generated += [link_k]
+        sources_returned: List[Dict[str, Any]] = []
+        for document in sources:
+            metadata = getattr(document, 'metadata', {}) or {}
+            if fields_to_capture:
+                record = {field: metadata.get(field) for field in fields_to_capture}
+            else:
+                record = dict(metadata)
+            sources_returned.append(record)
+        logger.debug("Sources returned: %s", sources_returned)
 
-            if link == link_k: 
-                match = True
+        matched_sources: List[str] = []
+        for reference, field in zip(reference_sources_list, match_fields_list):
+            logger.debug("Checking for reference source '%s' in field '%s'", reference, field)
+            for document in sources:
+                metadata = getattr(document, 'metadata', {}) or {}
+                value = metadata.get(field)
+                logger.debug("Checking against document metadata field '%s': %s", field, value)
+                if value is None:
+                    continue
+                if isinstance(value, list):
+                    values = [str(v).strip() for v in value if v is not None]
+                else:
+                    values = [str(value).strip()]
+                if reference in values:
+                    matched_sources.append(reference)
+                    break
 
-        result_dict = {True: "LINK FOUND",
-                       False: "NOT FOUND"
-                       }
-            
-        res["correct_link"] = link
-        res['links_returned'] = links_generated
-        res['link_result'] = result_dict[match]
+        match = bool(reference_sources_list) and len(matched_sources) == len(reference_sources_list)
+        logger.debug("Source matching result: %s", match)
+
+        result_dict = {
+            True: 'SOURCE FOUND',
+            False: 'SOURCE NOT FOUND'
+        }
+
+        res = {
+            'correct_source': reference_sources,
+            'sources_returned': sources_returned,
+            'matched_reference_sources': matched_sources,
+            'match_fields_used': match_fields_list,
+            'source_result': result_dict[match],
+        }
 
         return res, match
 
@@ -268,7 +347,7 @@ class Benchmarker:
 
             all_results = []
 
-            link_accuracy = 0.0 
+            source_accuracy = 0.0 
 
             # results for each questions
             question_wise_results = {}
@@ -276,7 +355,20 @@ class Benchmarker:
             #results for all of the questions in this config
             total_results = {}
 
-            for question, (link, reference_answer) in self.queries_to_answers.items(): 
+            for question_item in self.queries_to_answers:
+
+                if type(question_item) is not dict:
+                    logger.error(f"Each item in the question to answer list must be a dictionary, but got {type(question_item)}")
+                    continue
+
+                if not all(field in question_item for field in self.required_fields):
+                    logger.error(f"Each item in the question to answer list must contain the following fields: {self.required_fields}, but got {question_item.keys()}")
+                    continue
+
+                question = question_item['question']
+                reference_answer = question_item.get('answer', 'N/A')
+                reference_sources = question_item.get('sources', 'N/A')
+
                 question_id +=1
                 formatted_question = [("User", question)]
                 start = time.perf_counter()
@@ -285,8 +377,7 @@ class Benchmarker:
                 to_add = {}
 
                 sources =  result['documents']
-                contexts = [source.page_content for source in sources]
-
+                contexts = [s.page_content for s in sources]
 
                 if "RAGAS" in modes_being_run:
                     dataset_result = {
@@ -304,11 +395,16 @@ class Benchmarker:
                 to_add['document_scores'] = result['documents_scores']
                 to_add['ground_truth'] = reference_answer
 
-                if "LINKS" in modes_being_run: 
-                    link_info, match = self.get_link_results(result, link)
-                    to_add.update(link_info)
+                if "SOURCES" in modes_being_run: 
+                    reference_sources_match_field = question_item.get('source_match_field', self.benchmarking_configs['mode_settings'].get('sources_settings', {'display_name'}).get('default_match_field', 'display_name'))
+                    source_info, match = self.get_source_results(
+                        result,
+                        reference_sources,
+                        match_field=reference_sources_match_field
+                    )
+                    to_add.update(source_info)
                     if match: 
-                        link_accuracy += 1.0
+                        source_accuracy += 1.0
 
                 question_wise_results[f"question_{question_id}"] = to_add
                 logger.info(f"Finished answering question: {question_id}")
@@ -330,9 +426,8 @@ class Benchmarker:
                 total_results['aggregate_context_precision'] = context_precision
                 total_results['aggregate_context_recall'] = context_recall
 
-            if "LINKS" in modes_being_run:
-                total_results['link_accuracy'] = link_accuracy / len(self.queries_to_answers)
-
+            if "SOURCES" in modes_being_run:
+                total_results['source_accuracy'] = source_accuracy / len(self.queries_to_answers)
 
             ResultHandler.handle_results(self.benchmark_name, Path(self.current_config), question_wise_results, total_results)
             self.load_new_configuration()
@@ -346,13 +441,8 @@ if __name__ == "__main__":
     query_file = Path("QandA.txt") 
     configs_folder = Path('configs')
 
-    question_to_answer = {}
-
     with open(Path(query_file), "r") as f:
-        obj = json.load(f)
-
-    for d in obj: 
-        question_to_answer[d['question']] = (d['link'], d['answer']) 
+        question_to_answer = json.load(f)
 
     benchmarker = Benchmarker(configs_folder, question_to_answer)
     benchmarker.run()
