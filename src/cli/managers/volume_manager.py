@@ -35,9 +35,11 @@ class VolumeManager:
         else:
             create_cmd = f"docker volume create --name {volume_name}"
         
-        stdout, stderr, _ = CommandRunner.run_simple(create_cmd)
-        if stderr:
+        stdout, stderr, exit_code = CommandRunner.run_simple(create_cmd)
+        if exit_code != 0:
             raise RuntimeError(f"Failed to create volume '{volume_name}': {stderr}")
+        elif stderr:
+            logger.warning(f"Volume creation warning: {stderr.strip()}")
         
     def remove_volume(self, volume_name_substr: str, force: bool = False) -> None:
         """Remove any volume that ends with '-<name>'"""
@@ -45,11 +47,13 @@ class VolumeManager:
 
         # List existing volumes
         list_cmd = "podman volume ls --format '{{.Name}}'" if self.use_podman else "docker volume ls --format '{{.Name}}'"
-        stdout, stderr, _ = CommandRunner.run_simple(list_cmd)
+        stdout, stderr, exit_code = CommandRunner.run_simple(list_cmd)
 
-        # Podman prints a warning to stderr even when it succeeds
-        if stderr and "Emulate Docker CLI using podman" not in stderr:
+        # Podman can print warnings to stderr even when it succeeds
+        if exit_code != 0:
             raise RuntimeError(f"Failed to list volumes: {stderr}")
+        elif stderr:
+            logger.warning(f"Volume listing warning: {stderr.strip()}")
 
         all_volumes = stdout.strip().splitlines()
         suffix = f"-{volume_name_substr}"
@@ -62,7 +66,7 @@ class VolumeManager:
         for vol in matching_volumes:
             logger.info(f"Removing volume: {vol}")
             remove_cmd = f"podman volume rm {'-f' if force else ''} {vol}" if self.use_podman else f"docker volume rm {'-f' if force else ''} {vol}"
-            stdout, stderr, _ = CommandRunner.run_simple(remove_cmd)
+            stdout, stderr, exit_code = CommandRunner.run_simple(remove_cmd)
             if stderr and "Emulate Docker CLI using podman" not in stderr:
                 logger.warning(f"Failed to remove volume '{vol}': {stderr}")
             else:
@@ -75,10 +79,12 @@ class VolumeManager:
     def _volume_exists(self, volume_name: str) -> bool:
         """Check if a volume already exists"""
         list_cmd = f"{self.container_tool} volume ls"
-        stdout, stderr, _ = CommandRunner.run_simple(list_cmd)
+        stdout, stderr, exit_code = CommandRunner.run_simple(list_cmd)
         
-        if stderr:
+        if exit_code != 0:
             raise RuntimeError(f"Failed to list volumes: {stderr}")
+        elif stderr:
+            logger.warning(f"Volume listing warning: {stderr.strip()}")
         
         # Check if volume name appears in the output
         for line in stdout.split("\n"):
