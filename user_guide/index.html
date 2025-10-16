@@ -221,11 +221,15 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#benchmarking">Benchmarking</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#required-inputs-and-configuration">Required inputs and configuration</a>
+    <li class="toctree-l3"><a class="reference internal" href="#preparing-the-queries-file">Preparing the queries file</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_10">Configuration</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#running_9">Running</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#additional-options">Additional options</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#results">Results</a>
     </li>
         </ul>
     </li>
@@ -837,43 +841,57 @@ data_manager:
 </code></pre>
 <hr />
 <h2 id="benchmarking">Benchmarking</h2>
-<h3 id="required-inputs-and-configuration">Required inputs and configuration</h3>
-<p>A2RCHI has benchmarking functionality provided by the <code>evaluate</code> CLI command. Before beginning, provide your list of questions in JSON format as follows:</p>
-<pre><code class="language-json">
-[
-
-    {
-        &quot;question&quot;: &quot;&quot;,
-        &quot;link&quot;: &quot;&quot;,
-        &quot;answer&quot;: &quot;&quot;
-    },
-
- ...
-     {
-        &quot;question&quot;: &quot;&quot;,
-        &quot;link&quot;: &quot;&quot;,
-        &quot;answer&quot;: &quot;&quot;
-     }
+<p>A2RCHI has benchmarking functionality provided by the <code>evaluate</code> CLI command. We currently support two modes:</p>
+<ol>
+<li><code>SOURCES</code>: given a user question and a list of correct sources, check if the retrieved documents contain any of the correct sources.</li>
+<li><code>RAGAS</code>: use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics the quality of the answer: <code>answer_relevancy</code>, <code>faithfulness</code>, <code>context precision</code>, and <code>context relevancy</code>.</li>
+</ol>
+<h3 id="preparing-the-queries-file">Preparing the queries file</h3>
+<p>Provide your list of questions, answers, and relevant sources in JSON format as follows:</p>
+<pre><code class="language-json">[
+  {
+    &quot;question&quot;: &quot;&quot;,
+    &quot;sources&quot;: [...],
+    &quot;answer&quot;: &quot;&quot;
+    // (optional)
+    &quot;sources_match_field&quot;: [...]
+  },
+  ...
 ]
 </code></pre>
-<p>Then within all of the yaml configuration files that you wish to test, add a configuration for your benchmarking script, which looks like the following:</p>
-<pre><code class="language-yaml">services:
-  benchmarking:
-    queries_path: examples/benchmarking/queries.json
-    out_dir: bench_out
-    modes:
-      - &quot;RAGAS&quot;
-      - &quot;LINKS&quot;
-
+<p>Explanation of fields:
+- <code>question</code>: The question to be answered by the A2RCHI instance.
+- <code>sources</code>: A list of sources (e.g., URLs, ticket IDs) that contain the answer. They are identified via the <code>sources_match_field</code>, which must be one of the metadata fields of the documents in your vector store.
+- <code>answer</code>: The expected answer to the question, used for evaluation.
+- <code>sources_match_field</code> (optional): A list of metadata fields to match the sources against (e.g., <code>url</code>, <code>ticket_id</code>). If not provided, defaults to what is in the configuration file under <code>data_manager:services:benchmarking:mode_settings:sources:default_match_field</code>.</p>
+<p>Example: (see also <code>examples/benchmarking/queries.json</code>)</p>
+<pre><code class="language-json">[
+  {
+    &quot;question&quot;: &quot;Does Jorian Benke work with the PPC and what topic will she work on?&quot;,
+    &quot;sources&quot;: [&quot;https://ppc.mit.edu/blog/2025/07/14/welcome-our-first-ever-in-house-masters-student/&quot;, &quot;CMSPROD-42&quot;],
+    &quot;answer&quot;: &quot;Yes, Jorian works with the PPC and her topic is the study of Lorentz invariance.&quot;,
+    &quot;source_match_field&quot;: [&quot;url&quot;, &quot;ticket_id&quot;]
+  },
+  ...
+]
 </code></pre>
-<p>Finally, before you run the command ensure <code>out_dir</code>, the output directory, both exists on your system and that the path is correctly specified so that results can show up inside of it. To run the benchmarking script simply run the following:</p>
-<h3 id="running_9">Running</h3>
-<pre><code class="language-bash">a2rchi evaluate -n &lt;name&gt; -e &lt;env_file&gt; -cd &lt;configs_directory&gt; &lt;optionally use  -c &lt;file1&gt;,&lt;file2&gt;, ...&gt; &lt;OPTIONS&gt;
+<p>N.B.: one could also provide the <code>url</code> for the JIRA ticket: it is just a choice that you must make, and detail in <code>source_match_field</code>. i.e., the following will evaluate equivalently as the above example:</p>
+<pre><code class="language-json">[
+  {
+    &quot;question&quot;: &quot;Does Jorian Benke work with the PPC and what topic will she work on?&quot;,
+    &quot;sources&quot;: [&quot;https://ppc.mit.edu/blog/2025/07/14/welcome-our-first-ever-in-house-masters-student/&quot;, &quot;https://its.cern.ch/jira/browse/CMSPROD-42&quot;],
+    &quot;answer&quot;: &quot;Yes, Jorian works with the PPC and her topic is the study of Lorentz invariance.&quot;,
+    &quot;source_match_field&quot;: [&quot;url&quot;, &quot;url&quot;]
+  },
+  ...
+]
 </code></pre>
-<p>Currently, the benchmarking supports both a RAGAS runtime and a LINKS runtime, users can specify which modes they want to run by using the modes section. By default, both are enabled.</p>
-<p>The LINKS mode will generate outputs from your A2RCHI instance as specified in your other configurations and evaluate it based on if the top k documents retrieved include information from the provided link answer. Note however that this still might mean that the chunks provided as context might still be incorrect, even if they are from the same source link.</p>
-<h3 id="additional-options">Additional options</h3>
-<p>The RAGAS mode will use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics: <code>answer_relevancy</code>, <code>faithfulness</code>, <code>context precision</code>, and <code>context relevancy</code>. More information about these metrics can be found on their website at: https://docs.ragas.io/en/stable/concepts/metrics/. Note that ragas will by default use OpenAI to evaluate your llm responses and ragging pipeline contexts. To change this, it is possible to specify using other providers such as Anthropic, Ollama, and HuggingFace for your LLM evaluator, as well as HuggingFace for the embeddings. To do so simply specify in the configuration as follows:</p>
+<h3 id="configuration_10">Configuration</h3>
+<p>You can evaluate one or more configurations by specifying the <code>evaluate</code> command with the <code>-cd</code> flag pointing to the directory containing your configuration file(s). You can also specify individual files with the <code>-c</code> flag. This can be useful if you're interested in comparing different hyperparameter settings.</p>
+<p>We support two modes, which you can specify in the configuration file under <code>services:benchmarking:modes</code>. You can choose either or both of <code>RAGAS</code> and <code>SOURCES</code>.</p>
+<p>The RAGAS mode will use the Ragas RAG evaluator module to return numerical values judging by 4 of their provided metrics: <code>answer_relevancy</code>, <code>faithfulness</code>, <code>context precision</code>, and <code>context relevancy</code>. More information about these metrics can be found on the <a href="https://docs.ragas.io/en/stable/concepts/metrics/">Ragas website</a>. </p>
+<p>The SOURCES mode will check if the retrieved documents contain any of the correct sources. The matching is done by comparing a given metadata field for any source. The default is <code>display_name</code>, as per the configuration file (<code>data_manager:services:benchmarking:mode_settings:sources:default_match_field</code>). You can override this on a per-query basis by specifying the <code>sources_match_field</code> field in the queries file, as described above.</p>
+<p>The configuration file should look like the following:</p>
 <pre><code class="language-yaml">services:
   benchmarking:
     queries_path: examples/benchmarking/queries.json
@@ -882,6 +900,8 @@ data_manager:
       - &quot;RAGAS&quot;
       - &quot;LINKS&quot;
     mode_settings:
+      sources:
+        default_match_field: [&quot;display_name&quot;] # default field to match sources against, can be overridden in the queries file
       ragas_settings:
         provider: &lt;provider name&gt; # can be one of OpenAI, HuggingFace, Ollama, and Anthropic
         evaluation_model_settings:
@@ -889,13 +909,24 @@ data_manager:
           base_url: &lt;url&gt; # address to your running Ollama server should you have chosen the Ollama provider
         embedding_model: &lt;embedding provider&gt; # OpenAI or HuggingFace
 </code></pre>
+<p>Finally, before you run the command ensure <code>out_dir</code>, the output directory, both exists on your system and that the path is correctly specified so that results can show up inside of it.</p>
+<h3 id="running_9">Running</h3>
+<p>To run the benchmarking script simply run the following:</p>
+<pre><code class="language-bash">a2rchi evaluate -n &lt;name&gt; -e &lt;env_file&gt; -cd &lt;configs_directory&gt; &lt;optionally use  -c &lt;file1&gt;,&lt;file2&gt;, ...&gt; &lt;OPTIONS&gt;
+</code></pre>
+<p>Example:</p>
+<pre><code class="language-bash">a2rchi evaluate -n benchmark -c examples/benchmarking/benchmark_configs/example_conf.yaml --gpu-ids all
+</code></pre>
+<h3 id="additional-options">Additional options</h3>
 <p>You might also want to adjust the <code>timeout</code> setting, which is the upper limit on how long the Ragas evaluation takes on a single QA pair, or the <code>batch_size</code>, which determines how many QA pairs to evaluate at once, which you might want to adjust, e.g., based on hardware constraints, as Ragas doesn't pay great attention to that. The corresponding configuration options are similarly set for the benchmarking services, as follows:</p>
 <pre><code class="language-yaml">services:
   benchmarking:
     timeout: &lt;time in seconds&gt; # default is 180
     batch_size: &lt;desired batch size&gt; # no default setting, set by Ragas...
 </code></pre>
-<p>To later examine your data, there is a folder called plots in the base directory which contains some plotting functions and an ipynotebook with some basic usage examples. This is useful to play around with the results of the benchmarking, we will soon also have instead dedicated scripts to produce the plots of interest.</p>
+<h3 id="results">Results</h3>
+<p>The output of the benchmarking will be saved in the <code>out_dir</code> specified in the configuration file. The results will be saved in a timestamped subdirectory, e.g., <code>bench_out/2042-10-01_12-00-00/</code>.</p>
+<p>To later examine your data, check out <code>scripts/benchmarking/</code>, which contains some plotting functions and an ipynotebook with some basic usage examples. This is useful to play around with the results of the benchmarking, we will soon also have instead dedicated scripts to produce the plots of interest.</p>
 <hr />
 <h2 id="other">Other</h2>
 <p>Some useful additional features supported by the framework.</p>
