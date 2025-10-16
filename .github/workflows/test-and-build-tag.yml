@@ -1,0 +1,79 @@
+name: Test and Build Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or commit to release
+        required: false
+        default: main
+      tag_name:
+        description: Tag to create (e.g. v1.2.3)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      A2RCHI_DIR: /home/runner/work/a2rchi-local
+      HOME: /home/runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CLI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[all]" || pip install .
+
+      - name: Ensure build scripts are executable
+        run: chmod +x scripts/dev/*.sh
+
+      - name: Build Docker images
+        run: scripts/dev/build_docker_images.sh "${{ inputs.tag_name }}"
+
+      - name: Run smoke deployment
+        uses: ./.github/actions/run-smoke
+        with:
+          deployment-name: release-${{ github.run_id }}
+          config-path: tests/pr_preview_config/pr_preview_config.yaml
+          config-destination: configs/ci/ci_config.yaml
+          env-file: .env
+          services: chatbot
+          hostmode: "true"
+          wait-url: http://localhost:7861/api/health
+          base-url: http://localhost:7861
+
+      - name: Create Git tag
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists locally." >&2
+            exit 1
+          fi
+          if git ls-remote --tags origin "$TAG_NAME" | grep "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists on origin." >&2
+            exit 1
+          fi
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
+
+      - name: Push Docker images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: scripts/dev/push_docker_images.sh "${{ inputs.tag_name }}"

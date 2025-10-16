@@ -34,55 +34,14 @@ jobs:
       - name: Verify MkDocs build
         run: mkdocs build --config-file docs/mkdocs.yml --strict
 
-      - name: Prepare CI config
-        run: |
-          mkdir -p configs/ci
-          cp tests/pr_preview_config/pr_preview_config.yaml configs/ci/ci_config.yaml
-
-      - name: Create .env file for PG_PASSWORD with random password
-        run: |
-          echo "PG_PASSWORD=$(openssl rand -base64 32)" > .env
-
-      - name: Create PR deployment
-        id: create
-        run: |
-          NAME="manual-${{ github.run_id }}"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          a2rchi create --name "$NAME" --config configs/ci/ci_config.yaml -v 4 --hostmode --services chatbot --env-file .env
-
-      - name: Wait for service readiness
-        run: |
-          echo "Waiting for service to be ready..."
-          tries=0
-          until curl -fsS http://localhost:7861/api/health >/dev/null 2>&1 || [ $tries -gt 60 ]; do
-            tries=$((tries+1))
-            echo "Attempt $tries/60..."
-            sleep 2
-          done
-          if [ $tries -gt 60 ]; then
-            echo "Service did not become ready in time" >&2
-            docker ps -a
-            exit 1
-          fi
-          echo "Service is ready!"
-
-      - name: Make smoke script executable
-        run: chmod +x tests/smoke/smoke.sh
-
-      - name: Run smoke tests
-        env:
-          BASE_URL: http://localhost:7861
-        run: ./tests/smoke/smoke.sh "${{ steps.create.outputs.name }}"
-
-      - name: Dump logs on failure
-        if: failure()
-        run: |
-          echo "=== Container status ==="
-          docker ps -a
-          echo "=== Container logs ==="
-          docker ps -a --format '{{.Names}}' | xargs -I{} sh -c 'echo "---- {} ----"; docker logs --tail 50 {} || true'
-
-      - name: Cleanup deployment
-        if: always()
-        run: |
-          a2rchi delete --name "${{ steps.create.outputs.name }}" || true
+      - name: Run smoke deployment
+        uses: ./.github/actions/run-smoke
+        with:
+          deployment-name: manual-${{ github.run_id }}
+          config-path: tests/pr_preview_config/pr_preview_config.yaml
+          config-destination: configs/ci/ci_config.yaml
+          env-file: .env
+          services: chatbot
+          hostmode: "true"
+          wait-url: http://localhost:7861/api/health
+          base-url: http://localhost:7861
