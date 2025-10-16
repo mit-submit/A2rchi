@@ -44,7 +44,46 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
 
-      - name: Update version metadata
+      - name: Install CLI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[all]" || pip install .
+
+      - name: Ensure build scripts are executable
+        run: chmod +x scripts/dev/*.sh
+
+      - name: Build Docker images
+        run: scripts/dev/build_docker_images.sh "${{ steps.version.outputs.tag }}"
+
+      - name: Point Dockerfiles to local base images
+        run: |
+          scripts/dev/use_local_base_images.py "${{ steps.version.outputs.tag }}"
+
+      - name: Run smoke deployment
+        uses: ./.github/actions/run-smoke
+        with:
+          deployment-name: release-${{ github.run_id }}
+          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull never
+          config-path: tests/pr_preview_config/pr_preview_config.yaml
+          config-destination: configs/ci/ci_config.yaml
+          env-file: .env
+          services: chatbot
+          hostmode: "true"
+          wait-url: http://localhost:7861/api/health
+          base-url: http://localhost:7861
+
+      - name: Prune Docker cache
+        run: |
+          docker system prune -af
+          docker volume prune -f
+
+      - name: Push Docker images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: scripts/dev/push_docker_images.sh "${{ steps.version.outputs.tag }}"
+
+      - name: Update version in pyproject.toml and docs/mkdocs.yml
         run: |
           scripts/dev/update_version.py "${{ steps.version.outputs.clean }}"
 
@@ -64,33 +103,6 @@ jobs:
             git push origin HEAD:"${TARGET_REF}"
           fi
 
-      - name: Install CLI dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ".[all]" || pip install .
-
-      - name: Ensure build scripts are executable
-        run: chmod +x scripts/dev/*.sh
-
-      - name: Build Docker images
-        run: scripts/dev/build_docker_images.sh "${{ steps.version.outputs.tag }}"
-
-      - name: Point Dockerfiles to local base images
-        run: |
-          scripts/dev/use_local_base_images.py "${{ steps.version.outputs.tag }}"
-          
-      - name: Run smoke deployment
-        uses: ./.github/actions/run-smoke
-        with:
-          deployment-name: release-${{ github.run_id }}
-          config-path: tests/pr_preview_config/pr_preview_config.yaml
-          config-destination: configs/ci/ci_config.yaml
-          env-file: .env
-          services: chatbot
-          hostmode: "true"
-          wait-url: http://localhost:7861/api/health
-          base-url: http://localhost:7861
-
       - name: Create Git tag
         env:
           TAG_NAME: ${{ steps.version.outputs.tag }}
@@ -107,9 +119,3 @@ jobs:
           git config user.name "github-actions[bot]"
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
-
-      - name: Push Docker images
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: scripts/dev/push_docker_images.sh "${{ steps.version.outputs.tag }}"

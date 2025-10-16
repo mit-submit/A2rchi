@@ -17,6 +17,10 @@ inputs:
     description: Path to the environment file used for secrets.
     required: false
     default: .env
+  extra-env:
+    description: Additional environment variables (key=value lines)
+    required: false
+    default: ""
   services:
     description: Services list passed to a2rchi create.
     required: false
@@ -78,12 +82,20 @@ runs:
       shell: bash
       env:
         DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        EXTRA_ENV: ${{ inputs.extra-env }}
         CONFIG_DEST: ${{ inputs.config-destination }}
         SERVICES: ${{ inputs.services }}
         HOSTMODE: ${{ inputs.hostmode }}
         ENV_FILE: ${{ inputs.env-file }}
       run: |
         set -euo pipefail
+        if [[ -n "${EXTRA_ENV}" ]]; then
+          while IFS="=" read -r key value; do
+            if [[ -n "${key}" ]]; then
+              export "${key}"="${value}"
+            fi
+          done <<< "${EXTRA_ENV}"
+        fi
         CMD=(a2rchi create --name "${DEPLOYMENT_NAME}" --config "${CONFIG_DEST}" -v 4 --services "${SERVICES}" --env-file "${ENV_FILE}")
         if [[ "${HOSTMODE,,}" == "true" ]]; then
           CMD+=(--hostmode)
@@ -120,9 +132,17 @@ runs:
       shell: bash
       env:
         DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        EXTRA_ENV: ${{ inputs.extra-env }}
         BASE_URL: ${{ inputs.base-url }}
       run: |
         set -euo pipefail
+        if [[ -n "${EXTRA_ENV}" ]]; then
+          while IFS="=" read -r key value; do
+            if [[ -n "${key}" ]]; then
+              export "${key}"="${value}"
+            fi
+          done <<< "${EXTRA_ENV}"
+        fi
         ./tests/smoke/smoke.sh "${DEPLOYMENT_NAME}"
 
     - name: Dump logs on failure
@@ -140,10 +160,18 @@ runs:
       shell: bash
       env:
         DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        EXTRA_ENV: ${{ inputs.extra-env }}
         ENV_FILE: ${{ inputs.env-file }}
         CONFIG_DEST: ${{ inputs.config-destination }}
       run: |
         set +e
+        if [[ -n "${EXTRA_ENV}" ]]; then
+          while IFS="=" read -r key value; do
+            if [[ -n "${key}" ]]; then
+              export "${key}"="${value}"
+            fi
+          done <<< "${EXTRA_ENV}"
+        fi
         if [[ -n "${DEPLOYMENT_NAME}" ]]; then
           a2rchi delete --name "${DEPLOYMENT_NAME}" || true
         fi
