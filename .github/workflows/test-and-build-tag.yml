@@ -105,6 +105,24 @@ jobs:
           wait-url: http://localhost:7861/api/health
           base-url: http://localhost:7861
 
+      - name: Commit Dockerfile base image updates
+        if: success()
+        env:
+          TARGET_REF: ${{ inputs.ref || 'main' }}
+          VERSION_TAG: ${{ needs.build-images.outputs.tag }}
+        run: |
+          set -euo pipefail
+          CHANGED_FILES="$(git diff --name-only | grep -E '(^|/)Dockerfile' || true)"
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No Dockerfile updates to commit"
+          else
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            printf '%s\n' "$CHANGED_FILES" | xargs git add
+            git commit -m "chore: update Dockerfiles for ${VERSION_TAG}"
+            git push origin HEAD:"${TARGET_REF}"
+          fi
+
       - name: Prune Docker cache
         run: |
           docker system prune -af
