@@ -224,7 +224,24 @@ class HybridRetriever(BaseRetriever):
             ensemble_docs = self._ensemble_retriever._get_relevant_documents(query, run_manager=run_manager)
             logger.error(f"Ensemble returned {len(ensemble_docs)} final documents")
             
-            return ensemble_docs
+            # Get scores for ensemble documents using semantic similarity
+            # (EnsembleRetriever doesn't provide scores, so we compute them)
+            docs_with_scores = []
+            for doc in ensemble_docs:
+                # Get semantic similarity score for this document
+                similar_docs = self.vectorstore.similarity_search_with_score(
+                    doc.page_content[:500],  # Use first 500 chars as query
+                    k=1
+                )
+                if similar_docs:
+                    # Use the score if we found a match
+                    score = similar_docs[0][1]
+                else:
+                    # Default score if not found
+                    score = 0.5
+                docs_with_scores.append((doc, score))
+            
+            return docs_with_scores
         else:
             logger.info(f"Falling back to semantic search only, retrieving top-{self.search_kwargs.get('k')} docs")
-            return self.vectorstore.similarity_search(query, **self.search_kwargs)
+            return self.vectorstore.similarity_search_with_score(query, **self.search_kwargs)
