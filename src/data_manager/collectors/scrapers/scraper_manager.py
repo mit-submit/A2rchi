@@ -104,6 +104,9 @@ class ScraperManager:
     def collect_urls_from_lists(self) -> List[str]:
         """Collect URLs from the configured weblists."""
         urls: List[str] = []
+        # Handle case where input_lists might be None
+        if not self.input_lists:
+            return urls
         for list_name in self.input_lists:
             list_path = Path("weblists") / Path(list_name).name
             if not list_path.exists():
