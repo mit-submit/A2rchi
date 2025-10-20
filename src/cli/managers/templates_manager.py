@@ -398,12 +398,14 @@ class TemplateManager:
 
     # input list / source copying helpers
     def _copy_web_input_lists(self, context: TemplateContext) -> None:
+        # Always create weblists directory (required by Dockerfiles, even if empty)
+        weblists_path = context.base_dir / "weblists"
+        weblists_path.mkdir(exist_ok=True)
+        logger.debug(f"Created weblists directory at {weblists_path}")
+        
         input_lists = context.config_manager.get_input_lists()
         if not input_lists:
             return
-
-        weblists_path = context.base_dir / "weblists"
-        weblists_path.mkdir(exist_ok=True)
 
         for input_list in input_lists:
             if os.path.exists(input_list):
@@ -413,6 +415,7 @@ class TemplateManager:
                 logger.warning(f"Configured input list {input_list} not found; skipping")
 
     def _copy_source_code(self, base_dir: Path) -> None:
+        repo_root = Path.cwd()
         source_files = [
             ("src", "a2rchi_code"),
             ("pyproject.toml", "pyproject.toml"),
@@ -420,12 +423,13 @@ class TemplateManager:
         ]
 
         for src, dst in source_files:
-            src_path = Path(src)
+            src_path = repo_root / src
             dst_path = base_dir / dst
+
 
             if src_path.is_dir():
                 if dst_path.exists():
                     shutil.rmtree(dst_path)
-                shutil.copytree(src, dst_path)
+                shutil.copytree(src_path, dst_path)
             elif src_path.exists():
-                shutil.copyfile(src, dst_path)
+                shutil.copyfile(src_path, dst_path)
