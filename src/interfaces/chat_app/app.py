@@ -172,7 +172,9 @@ class ChatWrapper:
         pairs = zip(scores, documents) if scores else ((None, doc) for doc in documents)
 
         for score, document in pairs:
-            if score is not None and score > self.similarity_score_reference:
+            # Skip threshold filtering for placeholder scores (-1)
+            # Otherwise, filter out documents with score > threshold
+            if score is not None and score != -1.0 and score > self.similarity_score_reference:
                 break
 
             metadata = document.metadata or {}
@@ -224,7 +226,14 @@ class ChatWrapper:
                 score = entry["score"]
                 link = entry["link"]
                 display_name = entry["display"]
-                score_str = score if isinstance(score, str) else f"{score:.2f}"
+                
+                # Format score: show "N/A" for -1 (placeholder), otherwise show numeric value
+                if isinstance(score, str):
+                    score_str = score
+                elif score == -1.0:
+                    score_str = "N/A"
+                else:
+                    score_str = f"{score:.2f}"
 
                 if link:
                     reference_html = f"<a href=\"{link}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #66b3ff; text-decoration: none;\" onmouseover=\"this.style.textDecoration='underline'\" onmouseout=\"this.style.textDecoration='none'\">{display_name}</a>"

@@ -307,13 +307,31 @@ class QAPipeline(BasePipeline):
         """
         Update the retriever with a new vectorstore.
         """
-        self.retriever = SemanticRetriever(
-            vectorstore=vectorstore,
-            search_kwargs={
-                "k": self.dm_config["num_documents_to_retrieve"]
-            },
-            dm_config=self.dm_config
-        )
+        # Check if hybrid search should be used
+        use_hybrid = self.dm_config.get("use_hybrid_search", False)
+        
+        if use_hybrid:
+            from src.a2rchi.retrievers import HybridRetriever
+            logger.info("Initializing HybridRetriever with BM25 + semantic search")
+            self.retriever = HybridRetriever(
+                vectorstore=vectorstore,
+                search_kwargs={
+                    "k": self.dm_config["num_documents_to_retrieve"]
+                },
+                bm25_weight=self.dm_config.get("bm25_weight", 0.6),
+                semantic_weight=self.dm_config.get("semantic_weight", 0.4),
+                bm25_k1=self.dm_config.get("bm25", {}).get("k1", 0.5),
+                bm25_b=self.dm_config.get("bm25", {}).get("b", 0.75)
+            )
+        else:
+            logger.info("Using SemanticRetriever (vector search only)")
+            self.retriever = SemanticRetriever(
+                vectorstore=vectorstore,
+                search_kwargs={
+                    "k": self.dm_config["num_documents_to_retrieve"]
+                },
+                dm_config=self.dm_config
+            )
 
     def invoke(self, **kwargs) -> Dict[str, Any]:
         """
