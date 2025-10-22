@@ -6,10 +6,9 @@ from flask import Flask
 from src.interfaces.uploader_app.app import FlaskAppWrapper
 from src.utils.config_loader import load_config
 from src.utils.env import read_secret
-from src.utils.logging import setup_logging
+from src.utils.logging import get_logger
 
-# set basicConfig for logging
-setup_logging()
+logger = get_logger(__name__)
 
 # set openai
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
@@ -32,5 +31,9 @@ chroma_config = load_config()["services"]["chromadb"]
 run_dynamically = chroma_config["use_HTTP_chromadb_client"]
 
 if run_dynamically:
-    app = FlaskAppWrapper(Flask(__name__, template_folder=uploader_config["template_folder"]))
+    app = FlaskAppWrapper(Flask(
+        __name__,
+        template_folder=uploader_config["template_folder"],
+        static_folder=uploader_config["static_folder"]
+    ))
     app.run(debug=uploader_config["flask_debug_mode"], port=uploader_config["port"], host=uploader_config["host"])

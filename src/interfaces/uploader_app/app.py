@@ -4,7 +4,7 @@ import urllib
 from pathlib import Path
 
 import yaml
-from flask import flash, redirect, render_template, request, session, url_for
+from flask import flash, redirect, render_template, request, session, url_for, jsonify
 
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.utils.index_utils import load_index, \
@@ -209,6 +209,9 @@ class FlaskAppWrapper(object):
         self.app.config['WEBSITE_FOLDER'] = os.path.join(self.data_path, "manual_websites")
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
 
+        # Get other sources folder
+        self.app.config['WEBLISTS_FOLDER'] = os.path.join(self.data_path, "websites")
+
         # create upload and accounts folders if they don't already exist
         os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
         os.makedirs(self.app.config['WEBSITE_FOLDER'], exist_ok=True)
@@ -226,7 +229,8 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/upload', 'upload', self.upload, methods=['POST'])
         self.add_endpoint('/delete/<filename>', 'delete', self.delete)
         self.add_endpoint('/upload_url', 'upload_url', self.upload_url, methods=['POST'])
-        self.add_endpoint('/delete_url/<path:encoded_url>', 'delete_url', self.delete_url)
+        self.add_endpoint('/delete_url/<path:url_hash>', 'delete_url', self.delete_url)
+        self.add_endpoint('/load_document/<path:file_hash>', 'load_document', self.load_document)
 
 
     def configs(self, **configs):
@@ -305,11 +309,16 @@ class FlaskAppWrapper(object):
                 sources = yaml.safe_load(file) or {}
 
             url_hashes = os.listdir(self.app.config['WEBSITE_FOLDER'])
-            url_names = [sources[url_hash.split(".")[0]] for url_hash in url_hashes]
+            url_names = [sources[url_hash.split(".")[0]].split('/')[-1].split(".")[0] for url_hash in url_hashes if not 'meta' in url_hash]
+            
+            link_names = [(link_name,sources[link_name].split('/')[0]) for link_name in sources.keys() if (not ('manual_websites' in sources[link_name])) and os.path.exists(os.path.join(self.data_path,str(sources[link_name])))]
+
         else:
             url_names = []
+            link_names = []
 
-        return render_template('index.html', files=file_names, urls=url_names)
+        
+        return render_template('index.html', files=file_names, urls=url_names, links=link_names)
 
 
     #@app.route('/upload', methods=['POST'])
@@ -401,11 +410,15 @@ class FlaskAppWrapper(object):
         return redirect(url_for('index'))
 
 
-    #@app.route('/delete_url/<path:encoded_url>')
-    def delete_url(self, encoded_url):
-        url = urllib.parse.unquote(encoded_url)
-        file_path = os.path.join(self.app.config['WEBSITE_FOLDER'], simple_hash(url)[0:12] + ".html")
-        logger.info(f"Removing the following URL: {file_path}")
+    #@app.route('/delete_url/<path:url_hash>')
+    def delete_url(self, url_hash):
+        file_path = os.path.join(self.app.config['WEBSITE_FOLDER'], url_hash + ".html")
+
+        with open(os.path.join(self.app.config['WEBSITE_FOLDER'], url_hash + ".html.meta.yaml")) as file:
+            metadata = yaml.safe_load(file)
+        url = metadata['url']
+
+        logger.info(f"Removing the following URL: {url} in file path: {file_path}")
 
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -415,3 +428,35 @@ class FlaskAppWrapper(object):
             flash('URL not found')
 
         return redirect(url_for('index'))
+    
+    
+    #@app.route('/load_document/<path:file_hash>')
+    def load_document(self, file_hash):
+        index = load_index(data_path=self.data_path)
+        if file_hash in index.keys():
+            file_path = index[file_hash]
+            file_path = os.path.join(self.data_path,file_path)
+            metada_path = os.path.join(self.data_path,file_path+'.meta.yaml')
+            with open(file_path, 'r') as file:
+                document = file.read()
+
+            with open(metada_path, 'r') as file:
+                metadata = yaml.safe_load(file)
+
+            logger.info(f"Getting document: {file_path}")
+
+            title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
+
+            return jsonify({'document':document, 
+                            'display_name':metadata['display_name'],
+                            'source_type':metadata['source_type'],
+                            'original_url':metadata['url'],
+                            'title':title})
+    
+        else:
+            return jsonify({'document':"Document not found", 
+                            'display_name':"Error",
+                            'source_type':'null',
+                            'original_url':"no_url",
+                            'title':'Not found'})
+
