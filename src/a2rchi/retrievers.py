@@ -223,7 +223,27 @@ class HybridRetriever(BaseRetriever):
             ensemble_docs = self._ensemble_retriever._get_relevant_documents(query)
             logger.error(f"Ensemble returned {len(ensemble_docs)} final documents")
             
-            return ensemble_docs
+            # Return placeholder scores for hybrid search
+            logger.info("Using placeholder score (-1) for hybrid search results")
+            docs_with_scores = self._compute_hybrid_scores(ensemble_docs, query)
+            
+            return docs_with_scores
         else:
             logger.info(f"Falling back to semantic search only, retrieving top-{self.search_kwargs.get('k')} docs")
-            return self.vectorstore.similarity_search(query, **self.search_kwargs)
+            return self.vectorstore.similarity_search_with_score(query, **self.search_kwargs)
+    
+    def _compute_hybrid_scores(self, ensemble_docs, query):
+        """
+        Return hardcoded -1 scores for hybrid search.
+        This is a temporary placeholder until proper hybrid scoring is implemented.
+        The -1 indicates to users that these scores are not yet calibrated.
+        """
+        docs_with_scores = []
+        
+        for doc in ensemble_docs:
+            # Use -1 as a placeholder score to indicate scores are not yet properly implemented
+            docs_with_scores.append((doc, -1.0))
+            
+            logger.debug(f"Doc: {doc.metadata.get('filename', 'unknown')[:50]}... Score=-1.0 (placeholder)")
+        
+        return docs_with_scores
