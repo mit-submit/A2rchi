@@ -60,6 +60,16 @@ jobs:
           PUSH_LATEST: "true"
         run: scripts/dev/push_docker_images.sh "${{ steps.build.outputs.tag }}"
 
+      - name: Prune old main Docker tags
+        if: ${{ success() && steps.base_changes.outputs.changed == 'true' }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          CURRENT_TAG: ${{ steps.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python scripts/dev/manage_docker_tags.py prune-prefix --prefix main- --keep "${CURRENT_TAG}"
+
       - name: Skip notification
         if: steps.base_changes.outputs.changed != 'true'
         run: echo "No base image inputs changed; skipping build and push."
