@@ -21,7 +21,7 @@ services:
     network_mode: host
     {% endif %}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://0.0.0.0:{{ chromadb_port_host }}/api/v1/heartbeat"]
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:{{ chromadb_port_host }}/api/v2/heartbeat"]
       interval: 15s
       timeout: 10s
       retries: 3
