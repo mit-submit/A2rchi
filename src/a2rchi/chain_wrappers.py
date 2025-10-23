@@ -2,12 +2,9 @@ import os
 import pprint
 from typing import Any, Dict, List, Optional
 
-from langchain.callbacks.manager import CallbackManagerForChainRun
-from langchain.chains.llm import LLMChain  # deprecated, should update
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
 
-from src.a2rchi.utils.callback_handlers import PromptLogger
 from src.a2rchi.utils.token_limiter import TokenLimiter
 from src.utils.config_loader import load_global_config
 from src.utils.logging import get_logger
@@ -38,9 +35,6 @@ class ChainWrapper:
         self.unprunable_input_variables = unprunable_input_variables
         self.prompt = self._check_prompt(prompt)
 
-        self.prompt_logger = PromptLogger(
-            os.path.join(global_configs["DATA_PATH"], global_configs["LOGGING"]["input_output_filename"])
-        )
         self.token_limiter = TokenLimiter(
             llm=self.llm,
             prompt=self.prompt,
@@ -93,7 +87,7 @@ class ChainWrapper:
         # produce LLM response
         answer = self.chain.invoke(
             input_variables,
-            config={"callbacks": [self.prompt_logger]}
+            config={}
         )
 
         logger.debug(f"Chain produced answer: {answer}")

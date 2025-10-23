@@ -4,9 +4,8 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
-from langchain.chains.combine_documents.stuff import \
+from langchain_classic.chains.combine_documents.stuff import \
     create_stuff_documents_chain
-from langchain_core.callbacks.file import FileCallbackHandler
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts.base import BasePromptTemplate

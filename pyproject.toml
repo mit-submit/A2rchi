@@ -22,7 +22,8 @@ dependencies = [
     "ipython==8.18.0",
     "matplotlib==3.9.4",
     "pandas==2.3.2",
-    "isort==6.0.1"
+    "isort==6.0.1",
+    "pre-commit>=4"
 ]
 
 [project.scripts]
