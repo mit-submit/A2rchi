@@ -1,0 +1,1 @@
+Scripts primarily used for the automated actions found in the `.github/` directory, or, if those fail, by sad developers.

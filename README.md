@@ -7,14 +7,14 @@
 [![CI](https://github.com/mit-submit/A2rchi/actions/workflows/pr-preview.yml/badge.svg)](https://github.com/mit-submit/A2rchi/actions/workflows/pr-preview.yml)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://mit-submit.github.io/A2rchi/)
 
-A2RCHI is a retrieval-augmented generation framework for research and education teams who need a low-barrier to entry, private, and extensible assistant. The system was first developed at MIT for the SubMIT computing project, and now powers chat, ticketing, and course-support workflows across academia and research organizations.
+A2RCHI is a retrieval-augmented generation framework for research and education teams who need a low-barrier to entry, configurable, private, and extensible assistant. The system was first developed at MIT for the SubMIT computing project, and now powers chat, ticketing, and course-support workflows across academia and research organizations.
 
 ## Key Capabilities
 
 A2RCHI provides:
-- Several data ingestion connectors: Piazza, Slack, Discourse, email, web links, files, JIRA, and Redmine.
-- Several interfaces: a chat app, ticketing assistant, email bot, and more.
-- Customizable AI pipelines that combine retrieval, LLMs, and tools.
+- Customizable AI pipelines that combine data retrieval and LLMs (and more tools to come!).
+- Data ingestion connectors: web links, git repositories, local files, JIRA, and more.
+- Interfaces: chat app, ticketing assistant, email bot, and more.
 - Support for running or interacting with local and API-based LLMs.
 - Modular design that allows custom data sources, LLM backends, and deployment targets.
 - Containerized services and CLI utilities for repeatable deployments.
