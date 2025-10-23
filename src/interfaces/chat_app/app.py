@@ -62,14 +62,10 @@ class AnswerRenderer(mt.HTMLRenderer):
             "mathematica" : MathematicaLexer,
             "matlab": MatlabLexer
         }
-    
+
     def __init__(self):
         self.config = load_config()
         super().__init__()
-
-    def block_text(self,text):
-         #Handle blocks of text (the negatives of blocks of code) and sets them in paragraphs
-         return f"""<p>{text}</p>"""
 
     def block_code(self, code, info=None):
         # Handle code blocks (triple backticks)
@@ -79,15 +75,15 @@ class AnswerRenderer(mt.HTMLRenderer):
         if self.config["services"]["chat_app"]["include_copy_button"]:
             button = """<button class="copy-code-btn" onclick="copyCode(this)"> Copy Code </button>"""
         else: button = ""
-        
+
         return f"""<div class="code-box">
-                <div class="code-box-header"> 
+                <div class="code-box-header">
                 <span>{info}</span>{button}
                 </div>
                 <div class="code-box-body">{code_block_highlighted}
                 </div>
                 </div>"""
-        
+
     def codespan(self, text):
         # Handle inline code snippets (single backticks)
         return f"""<code class="code-snippet">{text}</code>"""
@@ -135,11 +131,11 @@ class ChatWrapper:
     @staticmethod
     def convert_to_app_history(history):
         """
-        Input: the history in the form of a list of tuples, where the first entry of each tuple is 
+        Input: the history in the form of a list of tuples, where the first entry of each tuple is
         the author of the text and the second entry is the text itself (native A2rchi history format)
 
-        Output: the history in the form of a list of lists, where the first entry of each tuple is 
-        the author of the text and the second entry is the text itself 
+        Output: the history in the form of a list of lists, where the first entry of each tuple is
+        the author of the text and the second entry is the text itself
         """
         return [list(entry) for entry in history]
 
@@ -147,17 +143,21 @@ class ChatWrapper:
     @staticmethod
     def format_code_in_text(text):
         """
-        Takes in input plain text (the output from A2rchi); 
-        Recognizes structures in canonical Markdown format, and processes according to the custom renderer; 
-        Returns it formatted in HTML 
+        Takes in input plain text (the output from A2rchi);
+        Recognizes structures in canonical Markdown format, and processes according to the custom renderer;
+        Returns it formatted in HTML
         """
-        markdown = mt.create_markdown(renderer=AnswerRenderer())
+        # --- THIS IS THE FIX ---
+        # We must explicitly enable the 'table' plugin for mistune
+        enabled_plugins = ['table']
+        markdown = mt.create_markdown(renderer=AnswerRenderer(), plugins=enabled_plugins)
+
         try:
             return markdown(text)
-        except: 
+        except:
              logger.info("Rendering error: markdown formatting failed")
              return text
-        
+
     def get_top_sources(self, documents, scores):
         """
         Build a list of top reference entries (link or ticket id).
@@ -204,7 +204,7 @@ class ChatWrapper:
                 break
 
         return top_sources
-        
+
     @staticmethod
     def format_links(top_sources):
         _output = ""
@@ -226,7 +226,7 @@ class ChatWrapper:
                 score = entry["score"]
                 link = entry["link"]
                 display_name = entry["display"]
-                
+
                 # Format score: show "N/A" for -1 (placeholder), otherwise show numeric value
                 if isinstance(score, str):
                     score_str = score
@@ -339,20 +339,20 @@ class ChatWrapper:
 
     def create_conversation(self, first_message: str) -> int:
         """
-        Gets first message (activates a new conversation), and generates a title w/ first msg. 
+        Gets first message (activates a new conversation), and generates a title w/ first msg.
         (TODO: commercial ones use one-sentence summarizer to make the title)
-        
+
         Returns: Conversation ID.
-        
+
         """
         service = "Chatbot"
         title = first_message[:20] + ("..." if len(first_message) > 20 else "")
         now = datetime.now()
-        
+
         # title, created_at, last_message_at
         insert_tup = (title, now, now)
 
-        # create connection to database        
+        # create connection to database
         self.conn = psycopg2.connect(**self.pg_config)
         self.cursor = self.conn.cursor()
         self.cursor.execute(SQL_CREATE_CONVERSATION, insert_tup)
@@ -363,7 +363,7 @@ class ChatWrapper:
         self.cursor.close()
         self.conn.close()
         self.cursor, self.conn = None, None
-        
+
         logger.info(f"Created new conversation with ID: {conversation_id}")
         return conversation_id
 
@@ -373,15 +373,15 @@ class ChatWrapper:
         last_message_at is used to reorder conversations in the UI (on vertical sidebar).
         """
         now = datetime.now()
-        
+
         # create connection to database
         self.conn = psycopg2.connect(**self.pg_config)
         self.cursor = self.conn.cursor()
-        
+
         # update timestamp
         self.cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id))
         self.conn.commit()
-        
+
         # clean up database connection state
         self.cursor.close()
         self.conn.close()
@@ -446,7 +446,7 @@ class ChatWrapper:
         self.cursor, self.conn = None, None
 
         return message_ids
-    
+
     def insert_timing(self, message_id, timestamps):
         """
         Store timing info to understand response profile.
@@ -455,7 +455,7 @@ class ChatWrapper:
 
         # construct insert_tup
         insert_tup = (
-            message_id, 
+            message_id,
             timestamps['client_sent_msg_ts'],
             timestamps['server_received_msg_ts'],
             timestamps['lock_acquisition_ts'],
@@ -520,7 +520,7 @@ class ChatWrapper:
             else:
                 history = self.query_conversation_history(conversation_id)
                 self.update_conversation_timestamp(conversation_id)
-            
+
             timestamps['query_convo_history_ts'] = datetime.now()
 
             # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
@@ -549,8 +549,10 @@ class ChatWrapper:
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
             # display answer
-            output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
 
+            logger.info(f"--- DEBUG: Raw answer from A2rchi: {result['answer'][:150]}... ---")
+            output = self.format_code_in_text(result["answer"])
+            logger.info(f"--- DEBUG: Final rendered output: {output[:150]}... ---")
 
             # display sources (links or ticket references)
             documents = result.get("documents", [])
@@ -560,7 +562,7 @@ class ChatWrapper:
 
             # message is constructed!
             timestamps['a2rchi_message_ts'] = datetime.now()
-            
+
             # formatting context
             context = self.prepare_context_for_storage(documents, scores)
 
@@ -592,7 +594,7 @@ class ChatWrapper:
                 self.cursor.close()
             if self.conn is not None:
                 self.conn.close()
-        
+
         timestamps['finish_call_ts'] = datetime.now()
 
         return output, conversation_id, message_ids, timestamps, None
@@ -638,7 +640,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
         self.add_endpoint('/api/get_configs', 'get_configs', self.get_configs, methods=["GET"])
-        
+
         # conditionally add ChromaDB endpoints based on config
         if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
             logger.info("Adding ChromaDB API endpoints (list_docs, search_docs)")
@@ -646,7 +648,7 @@ class FlaskAppWrapper(object):
             self.add_endpoint('/api/search_docs', 'search_docs', self.search_docs, methods=["POST"])
         else:
             logger.info("ChromaDB API endpoints disabled by config")
-        
+
         # endpoints for conversations managing
         logger.info("Adding conversations management API endpoints")
         self.add_endpoint('/api/list_conversations', 'list_conversations', self.list_conversations, methods=["GET"])
@@ -656,7 +658,7 @@ class FlaskAppWrapper(object):
 
     def health(self):
         return jsonify({"status": "OK"}, 200)
-      
+
     def configs(self, **configs):
         for config, value in configs:
             self.app.config[config.upper()] = value
@@ -744,7 +746,7 @@ class FlaskAppWrapper(object):
         self.chat.update_config(self.config_id)
 
         return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
-    
+
     def get_configs(self):
         """
         Gets the names of configs loaded in A2rchi.
@@ -761,7 +763,7 @@ class FlaskAppWrapper(object):
     def get_chat_response(self):
         """
         Gets a response when prompted. Asks as an API to the main app, who's
-        functionality is carried through by javascript and html. Input is a 
+        functionality is carried through by javascript and html. Input is a
         requestion with
 
             conversation_id: Either None or an integer
@@ -927,13 +929,13 @@ class FlaskAppWrapper(object):
         # Check if ChromaDB endpoints are enabled
         if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
             return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
-            
+
         try:
             # Get pagination parameters from query string
             page = int(request.args.get('page', 1))
             per_page = min(int(request.args.get('per_page', 50)), 500)  # Cap at 500
             content_length = int(request.args.get('content_length', -1))  # Default -1 for full content
-            
+
             # Validate parameters
             if page < 1:
                 return jsonify({'error': 'Page must be >= 1'}), 400
@@ -941,28 +943,28 @@ class FlaskAppWrapper(object):
                 return jsonify({'error': 'per_page must be >= 1'}), 400
             if content_length < -1 or content_length == 0:
                 return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
-            
+
             # Get the collection from ChromaDB
             collection = self.chat.data_manager.fetch_collection()
-            
+
             # Get total count first
             total_documents = collection.count()
-            
+
             # Calculate pagination
             offset = (page - 1) * per_page
             total_pages = (total_documents + per_page - 1) // per_page  # Ceiling division
-            
+
             # Check if page is valid
             if page > total_pages and total_documents > 0:
                 return jsonify({'error': f'Page {page} does not exist. Total pages: {total_pages}'}), 400
-            
+
             # Get paginated documents from the collection
             result = collection.get(
                 include=['documents', 'metadatas'],
                 limit=per_page,
                 offset=offset
             )
-            
+
             # Format the response
             documents = []
             for i, doc in enumerate(result['documents']):
@@ -971,7 +973,7 @@ class FlaskAppWrapper(object):
                     content = doc  # Return full content
                 else:
                     content = doc[:content_length] + '...' if len(doc) > content_length else doc
-                
+
                 doc_info = {
                     'id': result['ids'][i],
                     'content': content,
@@ -979,7 +981,7 @@ class FlaskAppWrapper(object):
                     'metadata': result['metadatas'][i] if i < len(result['metadatas']) else {}
                 }
                 documents.append(doc_info)
-            
+
             response_data = {
                 'pagination': {
                     'page': page,
@@ -993,9 +995,9 @@ class FlaskAppWrapper(object):
                 },
                 'documents': documents
             }
-            
+
             return jsonify(response_data), 200
-            
+
         except ValueError as e:
             return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
         except Exception as e:
@@ -1017,7 +1019,7 @@ class FlaskAppWrapper(object):
         # Check if ChromaDB endpoints are enabled
         if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
             return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
-            
+
         try:
             # Get the query from request
             data = request.json
@@ -1025,16 +1027,16 @@ class FlaskAppWrapper(object):
             n_results = min(int(data.get('n_results', 5)), 100)  # Cap at 100
             content_length = min(int(data.get('content_length', -1)), 5000) if data.get('content_length', -1) != -1 else -1  # Default -1 for full content
             include_full_content = data.get('include_full_content', False)
-            
+
             if not query:
                 return jsonify({'error': 'Query parameter is required'}), 400
-            
+
             if n_results < 1:
                 return jsonify({'error': 'n_results must be >= 1'}), 400
-            
+
             if content_length < -1 or content_length == 0:
                 return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
-            
+
             # Connect to ChromaDB and create vectorstore
             client = None
             if self.services_config["chromadb"]["use_HTTP_chromadb_client"]:
@@ -1048,21 +1050,21 @@ class FlaskAppWrapper(object):
                     path=self.global_config["LOCAL_VSTORE_PATH"],
                     settings=Settings(allow_reset=True, anonymized_telemetry=False),
                 )
-            
+
             # Get the collection name and embedding model from chat
             collection_name = self.chat.chain.collection_name
             embedding_model = self.chat.chain.embedding_model
-            
+
             # Create vectorstore
             vectorstore = Chroma(
                 client=client,
                 collection_name=collection_name,
                 embedding_function=embedding_model,
             )
-            
+
             # Perform similarity search with scores
             results = vectorstore.similarity_search_with_score(query, k=n_results)
-            
+
             # Format the response
             documents = []
             for doc, score in results:
@@ -1070,10 +1072,10 @@ class FlaskAppWrapper(object):
                 if include_full_content or content_length == -1:
                     content = doc.page_content
                 else:
-                    content = (doc.page_content[:content_length] + '...' 
-                             if len(doc.page_content) > content_length 
+                    content = (doc.page_content[:content_length] + '...'
+                             if len(doc.page_content) > content_length
                              else doc.page_content)
-                
+
                 doc_info = {
                     'content': content,
                     'content_length': len(doc.page_content),  # Original content length
@@ -1081,7 +1083,7 @@ class FlaskAppWrapper(object):
                     'similarity_score': float(score)
                 }
                 documents.append(doc_info)
-            
+
             response_data = {
                 'query': query,
                 'search_params': {
@@ -1092,13 +1094,13 @@ class FlaskAppWrapper(object):
                 },
                 'documents': documents
             }
-            
+
             # Clean up
             del vectorstore
             del client
-            
+
             return jsonify(response_data), 200
-            
+
         except ValueError as e:
             return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
         except Exception as e:
@@ -1108,22 +1110,22 @@ class FlaskAppWrapper(object):
     def list_conversations(self):
         """
         List all conversations, ordered by most recent first.
-        
+
         Query parameters:
         - limit (optional): Number of conversations to return (default: 50, max: 500)
-        
+
         Returns:
             JSON with list of conversations with fields: (conversation_id, title, created_at, last_message_at).
         """
         try:
             limit = min(int(request.args.get('limit', 50)), 500)
-            
+
             # create connection to database
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
             cursor.execute(SQL_LIST_CONVERSATIONS, (limit,))
             rows = cursor.fetchall()
-            
+
             conversations = []
             for row in rows:
                 conversations.append({
@@ -1132,13 +1134,13 @@ class FlaskAppWrapper(object):
                     'created_at': row[2].isoformat() if row[2] else None,
                     'last_message_at': row[3].isoformat() if row[3] else None,
                 })
-            
+
             # clean up database connection state
             cursor.close()
             conn.close()
-            
+
             return jsonify({'conversations': conversations}), 200
- 
+
         except ValueError as e:
             return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
         except Exception as e:
@@ -1148,38 +1150,38 @@ class FlaskAppWrapper(object):
     def load_conversation(self):
         """
         Load a specific conversation's full history.
-        
+
         POST body:
         - conversation_id: The ID of the conversation to load
-        
+
         Returns:
             JSON with conversation metadata and full message history
         """
         try:
             data = request.json
             conversation_id = data.get('conversation_id')
-            
+
             if not conversation_id:
                 return jsonify({'error': 'conversation_id missing'}), 400
-            
+
             # create connection to database
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
-            
+
             # get conversation metadata
             cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id,))
             meta_row = cursor.fetchone()
-            
+
             # if no metadata found, return error
             if not meta_row:
                 cursor.close()
                 conn.close()
                 return jsonify({'error': 'conversation not found'}), 404
-            
+
             # get history of the conversation
             cursor.execute(SQL_QUERY_CONVO, (conversation_id, ))
             history_rows = cursor.fetchall()
-            
+
             conversation = {
                 'conversation_id': meta_row[0],
                 'title': meta_row[1] or "New Conversation",
@@ -1190,13 +1192,13 @@ class FlaskAppWrapper(object):
                     for row in history_rows
                 ]
             }
-            
+
             # clean up database connection state
             cursor.close()
             conn.close()
-            
+
             return jsonify(conversation), 200
-            
+
         except Exception as e:
             logger.error(f"Error in load_conversation: {str(e)}")
             return jsonify({'error': str(e)}), 500
@@ -1204,9 +1206,9 @@ class FlaskAppWrapper(object):
     def new_conversation(self):
         """
         Start a new conversation without sending a message yet.
-        This simply returns null(Conversation ID == None) to indicate that the frontend should 
+        This simply returns null(Conversation ID == None) to indicate that the frontend should
         reset its conversation_id, and a new one will be created on first message.
-        
+
         Returns:
             JSON with conversation_id == None
         """
@@ -1214,7 +1216,7 @@ class FlaskAppWrapper(object):
             # return null to indicate a new conversation
             # actual conversation will be created when the first message is sent
             return jsonify({'conversation_id': None}), 200
-            
+
         except Exception as e:
             logger.error(f"Error in new_conversation: {str(e)}")
             return jsonify({'error': str(e)}), 500
@@ -1222,10 +1224,10 @@ class FlaskAppWrapper(object):
     def delete_conversation(self):
         """
         Delete a conversation and all its messages. (Using SQL CASCADE)
-        
+
         POST body:
         - conversation_id: The ID of the conversation to delete
-        
+
         Returns:
             JSON with success status
         """
@@ -1235,26 +1237,26 @@ class FlaskAppWrapper(object):
 
             if not conversation_id:
                 return jsonify({'error': 'conversation_id missing when deleting.'}), 400
-            
+
             # create connection to database
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
-            
+
             # Delete conversation metadata (SQL CASCADE will delete all child messages)
             cursor.execute(SQL_DELETE_CONVERSATION, (conversation_id,))
             deleted_count = cursor.rowcount
             conn.commit()
-            
+
             # clean up database connection state
             cursor.close()
             conn.close()
-            
+
             if deleted_count == 0:
                 return jsonify({'error': 'Conversation not found'}), 404
-            
+
             logger.info(f"Deleted conversation {conversation_id}")
             return jsonify({'success': True, 'deleted_conversation_id': conversation_id}), 200
-            
+
         except ValueError as e:
             return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
         except Exception as e:
