@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Tuple
 
 import nltk
+from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
@@ -62,7 +63,7 @@ class GradingRetriever(BaseRetriever):
         self.vectorstore = vectorstore
         self.search_kwargs = search_kwargs or {'k': 3}
 
-    def _get_relevant_documents(self, query: str, *, run_manager) -> List[Document]:
+    def _get_relevant_documents(self, query: str) -> List[Document]:
         """
         Retrieve relevant documents based on the query.
         """
@@ -194,7 +195,7 @@ class HybridRetriever(BaseRetriever):
         except Exception as e:
             logger.error(f"Error getting documents from ChromaDB: {e}")
     
-    def _get_relevant_documents(self, query: str) -> List[Document]:
+    def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None) -> List[Document]:
         """
         Retrieve relevant documents using hybrid search (BM25 + semantic).
         Falls back to semantic search only if hybrid search is not available.
@@ -203,7 +204,7 @@ class HybridRetriever(BaseRetriever):
             logger.info(f"Using hybrid search (BM25 + semantic) to retrieve top-{self.search_kwargs.get('k')} docs")
             
             try:                
-                bm25_docs = self._bm25_retriever._get_relevant_documents(query)
+                bm25_docs = self._bm25_retriever._get_relevant_documents(query, run_manager=run_manager)
                 logger.debug(f"BM25 retrieved {len(bm25_docs)} documents")
                 
                 logger.debug("=== BM25 Results ===")
@@ -220,7 +221,7 @@ class HybridRetriever(BaseRetriever):
                 logger.error(f"Error getting individual retriever results: {e}")
             
             # Get combined results from ensemble
-            ensemble_docs = self._ensemble_retriever._get_relevant_documents(query)
+            ensemble_docs = self._ensemble_retriever._get_relevant_documents(query, run_manager=run_manager)
             logger.error(f"Ensemble returned {len(ensemble_docs)} final documents")
             
             # Return placeholder scores for hybrid search
