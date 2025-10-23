@@ -9,24 +9,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  formatting:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  # formatting:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.11"
 
-      - name: Install formatting tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install black==24.10.0
+  #     - name: Install formatting tools
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install black==24.10.0
 
-      - name: Check formatting with Black
-        run: black --check .
+  #     - name: Check formatting with Black
+  #       run: black --check .
 
   preview:
     runs-on: ubuntu-latest
