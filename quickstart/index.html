@@ -33,7 +33,7 @@
           <a href=".." class="icon icon-home"> A2RCHI Docs
         </a>
         <div class="version">
-          1.2.0
+          1.2.4
         </div><div role="search">
   <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
       <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
@@ -176,7 +176,12 @@ a2rchi:
   model_class_map:
     VLLM:
       kwargs:
-        base_model: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+        base_model: 'Qwen/Qwen2.5-7B-Instruct-1M'
+        quantization: True
+        max_model_len: 32768
+        tensor_parallel_size: 2
+        repetition_penalty: 1.0
+        gpu_memory_utilization: 0.5
 
 services:
   chat_app:

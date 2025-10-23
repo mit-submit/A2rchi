@@ -33,7 +33,7 @@
           <a href=".." class="icon icon-home"> A2RCHI Docs
         </a>
         <div class="version">
-          1.2.0
+          1.2.4
         </div><div role="search">
   <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
       <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
@@ -114,6 +114,10 @@
 <p>Clone the A2RCHI repository:</p>
 <pre><code class="language-bash">git clone https://github.com/mit-submit/A2rchi.git
 </code></pre>
+<p>Check out the latest stable tag:</p>
+<pre><code class="language-bash">cd A2rchi
+git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+</code></pre>
 <p>Install A2RCHI (from inside the repository):</p>
 <pre><code class="language-bash">pip install -e .
 </code></pre>
@@ -129,6 +133,9 @@
 git clone https://github.com/mit-submit/A2rchi.git
 cd A2rchi
 export A2RCHI_DIR=$(pwd)
+
+# (Optional) Checkout the latest stable tag
+git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
 
 # (Optional) Create and activate a virtual environment
 python3 -m venv .a2rchi_venv
