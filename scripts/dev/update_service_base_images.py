@@ -67,12 +67,23 @@ def _build_image_spec(prefix: str, image: str, tag: Optional[str]) -> str:
     return repo
 
 
+def _split_line_ending(line: str) -> Tuple[str, str]:
+    if line.endswith("\r\n"):
+        return line[:-2], "\r\n"
+    if line.endswith("\n"):
+        return line[:-1], "\n"
+    if line.endswith("\r"):
+        return line[:-1], "\r"
+    return line, ""
+
+
 def _update_line(line: str, base_name: str, options: UpdateOptions) -> Tuple[str, bool]:
-    stripped = line.lstrip()
+    core, newline = _split_line_ending(line)
+    stripped = core.lstrip()
     if not stripped.startswith("FROM "):
         return line, False
 
-    match = re.match(r"(?P<intro>\s*FROM\s+)(?P<image>\S+)(?P<suffix>.*)", line)
+    match = re.match(r"(?P<intro>\s*FROM\s+)(?P<image>\S+)(?P<suffix>.*)", core)
     if not match:
         return line, False
 
@@ -94,7 +105,7 @@ def _update_line(line: str, base_name: str, options: UpdateOptions) -> Tuple[str
     if updated_spec == image_spec:
         return line, False
 
-    return f"{intro}{updated_spec}{suffix}", True
+    return f"{intro}{updated_spec}{suffix}{newline}", True
 
 
 def update_base_tags(options: UpdateOptions) -> None:
