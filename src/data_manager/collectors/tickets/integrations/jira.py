@@ -106,7 +106,7 @@ class JiraClient:
 
     def get_all_issues(self) -> Iterator[jira.Issue]:
         """Fetch all issues from the configured JIRA projects."""
-        max_batch_results = 100  # You can adjust this up to 1000 for JIRA Cloud
+        max_batch_results = min(100, self.max_tickets)  # You can adjust this up to 1000 for JIRA Cloud
         for project in self.jira_projects:
             logger.debug(f"Fetching issues for project: {project}")
             query = f"project={project}"

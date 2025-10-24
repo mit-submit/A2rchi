@@ -415,7 +415,7 @@ class TemplateManager:
                 logger.warning(f"Configured input list {input_list} not found; skipping")
 
     def _copy_source_code(self, base_dir: Path) -> None:
-        repo_root = Path.cwd()
+        repo_root = Path(__file__).resolve().parent.parent.parent.parent
         source_files = [
             ("src", "a2rchi_code"),
             ("pyproject.toml", "pyproject.toml"),
@@ -425,11 +425,12 @@ class TemplateManager:
         for src, dst in source_files:
             src_path = repo_root / src
             dst_path = base_dir / dst
-
-
+            logger.debug(f"Copying source from {src_path} to {dst_path}")
             if src_path.is_dir():
                 if dst_path.exists():
                     shutil.rmtree(dst_path)
                 shutil.copytree(src_path, dst_path)
             elif src_path.exists():
                 shutil.copyfile(src_path, dst_path)
+            else:
+                raise FileNotFoundError(f"Source path {src_path} does not exist. Something went wrong in the repo structure.")

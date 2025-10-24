@@ -229,7 +229,14 @@ a2rchi:
       models:
         required:
           image_processing_model: {{ a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model | default('HuggingFaceImageLLM', true) }}
-    
+    CMSCompOpsAgent:
+      prompts:
+        required:
+          agent_prompt: {% if a2rchi.pipeline_map.CMSCompOpsAgent.prompts.required.agent_prompt %}"{{ a2rchi.pipeline_map.CMSCompOpsAgent.prompts.required.agent_prompt }}"{% else %}null{% endif %}
+      models:
+        required:
+          agent_model: {{ a2rchi.pipeline_map.CMSCompOpsAgent.models.required.agent_model | default('OllamaInterface', true) }}
+
   model_class_map:
     AnthropicLLM:
       class: AnthropicLLM

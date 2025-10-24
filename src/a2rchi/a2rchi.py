@@ -3,6 +3,7 @@ from chromadb.config import Settings
 from langchain_chroma.vectorstores import Chroma
 
 import src.a2rchi.pipelines as A2rchiPipelines
+import src.a2rchi.agents as A2rchiAgents
 from src.utils.config_loader import load_config
 from src.utils.logging import get_logger
 
@@ -21,7 +22,7 @@ class A2rchi():
             *args,
             **kwargs
         ):
-        self.update(pipeline)
+        self.update(pipeline, config_name=kwargs.get("config_name", None))
         self.pipeline_name = pipeline
         self._init_vectorstore_params()
 
@@ -70,7 +71,11 @@ class A2rchi():
         logger.debug("and kwargs:")
         logger.debug(f"{kwargs}")
         try:
-            cls = getattr(A2rchiPipelines, class_name)
+            # TODO this is an extremely ugly hack while we decide how we split these
+            if "agent" in class_name.lower():
+                cls = getattr(A2rchiAgents, class_name)
+            else:
+                cls = getattr(A2rchiPipelines, class_name)
             return cls(*args, **kwargs)
         except AttributeError:
             raise ValueError(f"Class '{class_name}' not found in module")
@@ -82,6 +87,8 @@ class A2rchi():
         Function to update the vectorstore connection.
         Called each time you invoke your Pipeline.
         """
+        # TODO I think this should be moved eslewhere, and can be called by the agents/pipelines as needed
+        # TODO this function can probably be put as util somewhere else then
         
         # connect to chromadb server
         client = None
@@ -108,15 +115,52 @@ class A2rchi():
 
         return vectorstore
 
-    def __call__(self, *args, **kwargs):
+    def _prepare_call_kwargs(self, kwargs):
+        """Attach a freshly initialised vectorstore to the call kwargs."""
+        call_kwargs = dict(kwargs)
+        call_kwargs["vectorstore"] = self._update_vectorstore()
+        return call_kwargs
+
+    def supports_stream(self) -> bool:
+        """Return True when the active pipeline exposes a synchronous stream."""
+        return callable(getattr(self.pipeline, "stream", None))
+
+    def supports_astream(self) -> bool:
+        """Return True when the active pipeline exposes an async stream."""
+        return callable(getattr(self.pipeline, "astream", None))
+
+    def invoke(self, *args, **kwargs):
         """
         Updates the vectorstore connection,
         passes it to the Pipeline's retriever,
         and then invokes the Pipeline.
         """
-        vectorstore = self._update_vectorstore()
-        result = self.pipeline.invoke(vectorstore=vectorstore, *args, **kwargs)
-        return result
+        call_kwargs = self._prepare_call_kwargs(kwargs)
+        return self.pipeline.invoke(*args, **call_kwargs)
+
+    def stream(self, *args, **kwargs):
+        """
+        Stream the pipeline output if the underlying pipeline supports it.
+        """
+        if not self.supports_stream():
+            raise AttributeError(f"Pipeline '{self.pipeline_name}' does not expose a 'stream' method.")
+        call_kwargs = self._prepare_call_kwargs(kwargs)
+        return self.pipeline.stream(*args, **call_kwargs)
+
+    async def astream(self, *args, **kwargs):
+        """
+        Asynchronously stream the pipeline output if supported.
+        """
+        if not self.supports_astream():
+            raise AttributeError(f"Pipeline '{self.pipeline_name}' does not expose an 'astream' method.")
+        call_kwargs = self._prepare_call_kwargs(kwargs)
+        async for event in self.pipeline.astream(*args, **call_kwargs):
+            yield event
+
+    def __call__(self, *args, **kwargs):
+        return self.invoke(*args, **kwargs)
 
     
+
+
     
