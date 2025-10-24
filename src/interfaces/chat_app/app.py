@@ -147,9 +147,7 @@ class ChatWrapper:
         Recognizes structures in canonical Markdown format, and processes according to the custom renderer;
         Returns it formatted in HTML
         """
-        # --- THIS IS THE FIX ---
-        # We must explicitly enable the 'table' plugin for mistune
-        enabled_plugins = ['table']
+        enabled_plugins = ['table']  # We must explicitly enable the 'table' plugin for mistune
         markdown = mt.create_markdown(renderer=AnswerRenderer(), plugins=enabled_plugins)
 
         try:
@@ -550,9 +548,7 @@ class ChatWrapper:
 
             # display answer
 
-            logger.info(f"--- DEBUG: Raw answer from A2rchi: {result['answer'][:150]}... ---")
             output = self.format_code_in_text(result["answer"])
-            logger.info(f"--- DEBUG: Final rendered output: {output[:150]}... ---")
 
             # display sources (links or ticket references)
             documents = result.get("documents", [])
