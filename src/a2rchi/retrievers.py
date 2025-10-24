@@ -1,9 +1,9 @@
 from typing import Any, Dict, List, Tuple
 
 import nltk
-from langchain.retrievers import EnsembleRetriever
-from langchain_community.retrievers import BM25Retriever
 from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
+from langchain_classic.retrievers import EnsembleRetriever
+from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores.base import VectorStore
@@ -31,7 +31,7 @@ class SemanticRetriever(BaseRetriever):
         self.instructions = instructions
         self.dm_config = dm_config
 
-    def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None) -> List[Document]:
+    def _get_relevant_documents(self, query: str) -> List[Document]:
         """
         Internal method to retrieve relevant documents based on the query.
         """
@@ -63,7 +63,7 @@ class GradingRetriever(BaseRetriever):
         self.vectorstore = vectorstore
         self.search_kwargs = search_kwargs or {'k': 3}
 
-    def _get_relevant_documents(self, query: str, *, run_manager) -> List[Document]:
+    def _get_relevant_documents(self, query: str) -> List[Document]:
         """
         Retrieve relevant documents based on the query.
         """
