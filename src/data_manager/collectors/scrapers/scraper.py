@@ -1,6 +1,7 @@
 from typing import List
 
 import requests
+import re
 
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
@@ -40,6 +41,7 @@ class WebScraper:
                 metadata={"content_type": content_type},
             )
         else:
+            title = re.findall(r'<title>(.*)<\/title>',response.text)
             resource = ScrapedResource(
                 url=url,
                 content=response.text,
@@ -48,6 +50,7 @@ class WebScraper:
                 metadata={
                     "content_type": content_type,
                     "encoding": response.encoding,
+                    "title": title[0] if len(title)>0 else url
                 },
             )
 

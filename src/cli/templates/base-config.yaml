@@ -81,6 +81,7 @@ services:
     external_port: {{ services.uploader_app.external_port | default(5003, true) }}
     host: {{ services.uploader_app.host | default("0.0.0.0", true) }}
     template_folder: "{{ services.uploader_app.template_folder | default('/root/A2rchi/src/interfaces/uploader_app/templates', true) }}"
+    static_folder: "{{ services.uploader_app.static_folder | default('/root/A2rchi/src/interfaces/uploader_app/static', true) }}"
     verify_urls: {{ services.uploader_app.verify_urls | default(true, false) }}
     flask_debug_mode: {{ services.uploader_app.flask_debug_mode | default(true, false) }}
   grader_app:
