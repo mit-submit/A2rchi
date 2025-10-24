@@ -60,7 +60,7 @@ services:
     imap4_port: {{ services.redmine_mailbox.imap4_port | default(143, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
   postgres:
-    port: {{ services.postgres.port | default(5432, true) }}
+    port: {{ services.postgres.port if host_mode else 5432 }}
     user: {{ services.postgres.user | default('a2rchi', true) }}
     database: {{ services.postgres.database | default('a2rchi-db', true) }}
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
