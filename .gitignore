@@ -15,6 +15,7 @@ venv
 .vscode
 801-content/
 *secrets/
+*secrets*
 logos/
 docs/site
 setup.sh
