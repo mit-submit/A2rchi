@@ -60,7 +60,7 @@ services:
     imap4_port: {{ services.redmine_mailbox.imap4_port | default(143, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
   postgres:
-    port: {{ services.postgres.port | default(5432, true) }}
+    port: {{ services.postgres.port if host_mode else 5432 }}
     user: {{ services.postgres.user | default('a2rchi', true) }}
     database: {{ services.postgres.database | default('a2rchi-db', true) }}
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
@@ -306,7 +306,7 @@ a2rchi:
     VLLM:
       class: VLLM
       kwargs:
-        base_model: {{ a2rchi.model_class_map.VLLM.kwargs.base_model | default("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", true) }}
+        base_model: {{ a2rchi.model_class_map.VLLM.kwargs.base_model | default('Qwen/Qwen2.5-7B-Instruct-1M', true) }}
         seed: {{ a2rchi.model_class_map.VLLM.kwargs.seed | default("null", true) }}
         enable_salesforce_content_safety: {{ a2rchi.model_class_map.VLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
         max_new_tokens: {{ a2rchi.model_class_map.VLLM.kwargs.max_new_tokens | default(4096, true) }}

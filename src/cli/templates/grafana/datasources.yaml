@@ -3,7 +3,7 @@ apiVersion: 1
 datasources:
   - name: Postgres
     type: postgres
-    url: {{ 'localhost:5432' if host_mode else 'postgres:5432' }}
+    url: {{ 'localhost' if host_mode else 'postgres' }}:{{ postgres_port }}
     user: grafana
     secureJsonData:
       password: {{ grafana_pg_password }}

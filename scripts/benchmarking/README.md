@@ -1,0 +1,1 @@
+Scripts to analyze the output of the `a2rchi evaluate` benchmarking.
