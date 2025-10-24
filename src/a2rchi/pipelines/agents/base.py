@@ -1,7 +1,7 @@
 from typing import Any, Dict
 from langchain.messages  import SystemMessage
 
-from src.a2rchi.utils.prompt_utils import read_prompt
+from src.a2rchi.pipelines.agents.utils.prompt_utils import read_prompt
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

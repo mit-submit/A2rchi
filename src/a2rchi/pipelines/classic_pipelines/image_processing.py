@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from src.a2rchi.chain_wrappers import ChainWrapper
+from src.a2rchi.pipelines.classic_pipelines.utils.chain_wrappers import ChainWrapper
 from src.a2rchi.chains import ImageLLMChain
 from src.a2rchi.pipelines.base import BasePipeline
 from src.utils.logging import get_logger

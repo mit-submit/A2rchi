@@ -8,8 +8,8 @@ from langgraph.graph.state import CompiledStateGraph
 from langchain.agents import create_agent
 
 from src.utils.logging import get_logger
-from src.a2rchi.agents.base import BaseAgent
-from src.a2rchi.retrievers import SemanticRetriever
+from src.a2rchi.pipelines.agents.base import BaseAgent
+from src.data_manager.vectorstore.retrievers.utils import SemanticRetriever
 from src.a2rchi.tools.base import (
     CatalogService,
     create_file_search_tool,
@@ -143,7 +143,7 @@ class CMSCompOpsAgent(BaseAgent):
         search_kwargs = {"k": self.dm_config.get("num_documents_to_retrieve", 3)}
 
         if self.dm_config.get("use_hybrid_search", False):
-            from src.a2rchi.retrievers import HybridRetriever
+            from A2rchi.A2rchi.src.data_manager.vectorstore.retrievers.utils import HybridRetriever
 
             retriever = HybridRetriever(
                 vectorstore=vectorstore,

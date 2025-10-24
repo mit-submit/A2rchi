@@ -6,9 +6,9 @@ from typing import Any, Dict
 
 from langchain_core.output_parsers import StrOutputParser
 
-from src.a2rchi.chain_wrappers import ChainWrapper
+from src.a2rchi.pipelines.classic_pipelines.utils.chain_wrappers import ChainWrapper
 from src.a2rchi.pipelines.base import BasePipeline
-from src.a2rchi.retrievers import SemanticRetriever
+from src.data_manager.vectorstore.retrievers import SemanticRetriever
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

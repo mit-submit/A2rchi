@@ -1,8 +1,8 @@
 import re
 from typing import Callable, Tuple
 
-from src.a2rchi.utils import history_utils
-from src.a2rchi.utils.prompt_validator import SUPPORTED_INPUT_VARIABLES
+from src.a2rchi.pipelines.classic_pipelines.utils import history_utils
+from src.a2rchi.pipelines.classic_pipelines.utils.prompt_validator import SUPPORTED_INPUT_VARIABLES
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
