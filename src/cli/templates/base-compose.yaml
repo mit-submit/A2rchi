@@ -37,6 +37,9 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       POSTGRES_USER: a2rchi
       POSTGRES_DB: a2rchi-db
+      {% if host_mode -%}
+      PGPORT: {{ postgres_port }}
+      {% endif %}
     secrets:
       - pg_password
     volumes:
