@@ -158,43 +158,6 @@ services:
     {% endif %}
   {%- endif %}
 
-  {% if uploader_enabled -%}
-  uploader:
-    image: {{ uploader_image }}:{{ uploader_tag }}
-    build:
-      context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-uploader
-    depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
-      {% if postgres_enabled -%}
-      postgres:
-        condition: service_healthy
-      {% endif %}
-    environment:
-      {% for secret in required_secrets | default([]) -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
-      {% endfor %}
-    secrets:
-      {% for secret in required_secrets | default([]) -%}
-      - {{ secret.lower() }}
-      {% endfor %}
-    ports:
-      - {{ uploader_port_host }}:{{ uploader_port_container }}
-    volumes:
-      - {{ chromadb_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
-    logging:
-      options:
-        max-size: 10m
-    restart: always
-    {% if host_mode -%}
-    network_mode: host
-    {% endif %}
-  {%- endif %}
-
   {% if grader_enabled -%}
   grader:
     image: {{ grader_image }}:{{ grader_tag }}

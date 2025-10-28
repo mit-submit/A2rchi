@@ -23,28 +23,18 @@ toggleSidebarButton.addEventListener("click", () => {
     }
 });
 
-linkList[0].addEventListener("click", (event) => {
-    const clickedElement = event.target;
-    if (clickedElement.tagName === 'LI') {
-        const fullText = clickedElement.textContent.trim();
-        const linkName = fullText.split(/\s+/)[0];
-        loadDocument(linkName);
-    }
-});
-
-linkList[2].addEventListener("click", (event) => {
-    const clickedElement = event.target;
-    const listItem = clickedElement.closest('LI');
-    if (listItem) {
-        const fullText = listItem.textContent.trim();
-        const parts = fullText.split(/\s+/);
-        const linkName = parts[0]; 
-        loadDocument(linkName);
-    }
+linkList.forEach((element) => {
+    element.addEventListener("click", (event) => {
+        const liElement = event.target.closest('li');
+        if (liElement) {
+            const linkName = liElement.id;
+            loadDocument(linkName);
+        }
+    })
 });
 
 async function loadDocument(documentPath) {
-    const API_URL = "/load_document/"+documentPath;
+    const API_URL = "/document_index/load_document/"+documentPath;
     
     try {
         const response = await fetch(API_URL);
@@ -81,7 +71,9 @@ async function loadDocument(documentPath) {
         if (source_type === "git"){
             documentHtml = marked.parse(documentHtml);
             additionalAttributes = customCSS
-        }else {
+        } else if (source_type ==="jira"){
+            additionalAttributes = customCSS
+        } else {
             additionalAttributes = baseTag
         }
 
@@ -126,7 +118,7 @@ async function loadDocument(documentPath) {
 newUploadButton.addEventListener("click", uploadFile);
 
 function uploadFile(){
-    window.location.href = '/';
+    window.location.href = '/document_index/';
     fileContainer.innerHTML = '';
     fileContainer.style.display = 'none';
 }

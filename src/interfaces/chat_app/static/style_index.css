@@ -365,6 +365,11 @@ form.upload-control {
   align-items: center;
 }
 
+.url-name{
+  width: 85%;
+  overflow-x: hidden;
+}
+
 a.material-symbols-rounded{
   text-decoration: none;
   color: var(--icon-color);
