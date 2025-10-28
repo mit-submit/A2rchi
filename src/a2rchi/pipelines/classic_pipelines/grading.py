@@ -7,7 +7,8 @@ from typing import Any, Dict
 from langchain_core.output_parsers import StrOutputParser
 
 from src.a2rchi.pipelines.classic_pipelines.utils.chain_wrappers import ChainWrapper
-from src.a2rchi.pipelines.base import BasePipeline
+from src.a2rchi.pipelines.classic_pipelines.base import BasePipeline
+from src.a2rchi.utils.output_dataclass import PipelineOutput
 from src.data_manager.vectorstore.retrievers import SemanticRetriever
 from src.utils.logging import get_logger
 
@@ -93,7 +94,7 @@ class GradingPipeline(BasePipeline):
         additional_comments: str = "",
         vectorstore=None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> PipelineOutput:
         if vectorstore:
             self.update_retriever(vectorstore)
 
@@ -126,9 +127,20 @@ class GradingPipeline(BasePipeline):
             "additional_comments": additional_comments,
         })['answer'] if self.final_grade_chain else "No final grade chain defined."
 
-        return {
-            "summary": summary,
-            "analysis": analysis,
-            "final_grade": final_grade,
-            "retrieved_context": retrieved_docs,
-        }
+        documents = list(retrieved_docs) if retrieved_docs else []
+        intermediate_steps = []
+        if summary:
+            intermediate_steps.append(summary)
+        if analysis:
+            intermediate_steps.append(analysis)
+
+        return PipelineOutput(
+            answer=final_grade,
+            source_documents=documents,
+            intermediate_steps=intermediate_steps,
+            metadata={
+                "summary": summary,
+                "analysis": analysis,
+                "additional_comments": additional_comments,
+            },
+        )

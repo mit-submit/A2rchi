@@ -122,7 +122,7 @@ class ChatWrapper:
 
         # initialize lock and chain
         self.lock = Lock()
-        self.a2rchi = A2rchi(pipeline="QAPipeline")
+        self.a2rchi = A2rchi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
         # initialize config_id to be None
@@ -130,7 +130,7 @@ class ChatWrapper:
 
     def update_config(self, config_id, config_name=None):
         self.config_id = config_id
-        self.a2rchi.update(pipeline="QAPipeline",config_name=config_name)
+        self.a2rchi.update(pipeline=self.config["services"]["chat_app"]["pipeline"],config_name=config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -549,8 +549,8 @@ class ChatWrapper:
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
             # display answer
-            output = "<p>" + self.format_code_in_text(result["answer"]) + "</p>"
-
+            # TODO this needs to be improved to support <think> and markdown and possible othe rhings
+            output = "<p>" + self.format_code_in_text(result['answer']) + "</p>"
 
             # display sources (links or ticket references)
             documents = result.get("documents", [])
@@ -631,6 +631,7 @@ class FlaskAppWrapper(object):
 
         # add endpoints for flask app
         self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
+    self.add_endpoint('/api/stream_chat_response', 'stream_chat_response', self.stream_chat_response, methods=["POST"])
         self.add_endpoint('/', '', self.index)
         self.add_endpoint('/terms', 'terms', self.terms)
         self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])

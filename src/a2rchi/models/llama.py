@@ -4,7 +4,7 @@ import torch
 
 from src.a2rchi.models.base import BaseCustomLLM
 from src.a2rchi.models.safety import SalesforceSafetyChecker
-from src.a2rchi.utils.safety_checker import check_safety
+from src.a2rchi.pipelines.classic_pipelines.utils.safety_checker import check_safety
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

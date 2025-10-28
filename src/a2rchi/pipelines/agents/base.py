@@ -1,7 +1,9 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 from langchain.messages  import SystemMessage
 
 from src.a2rchi.pipelines.agents.utils.prompt_utils import read_prompt
+from src.a2rchi.utils.output_dataclass import PipelineOutput
+from src.a2rchi.pipelines.agents.utils.document_collector import DocumentCollector
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -23,14 +25,52 @@ class BaseAgent:
         self.a2rchi_config = self.config["a2rchi"]
         self.dm_config = self.config["data_manager"]
         self.pipeline_config = self.a2rchi_config["pipeline_map"][self.__class__.__name__]
+        self._active_collector: Optional[DocumentCollector] = None
         self._init_llms()
         self._init_prompts()
 
-    def invoke(self, *args, **kwargs) -> Dict[str, Any]:
-        return {
-            "answer": "Stat rosa pristina nomine, nomina nuda tenemus.",
-            "documents": [],
-        }
+    def invoke(self, *args, **kwargs) -> PipelineOutput:
+        collector = self.start_run_collector()
+        return self.finalize_output(answer="Stat rosa pristina nomine, nomina nuda tenemus.", collector=collector)
+
+    def create_document_collector(self) -> DocumentCollector:
+        """Instantiate a fresh document collector for an agent run."""
+        return DocumentCollector()
+
+    def start_run_collector(self) -> DocumentCollector:
+        """Create and store the active collector for the current run."""
+        collector = self.create_document_collector()
+        self._active_collector = collector
+        return collector
+
+    @property
+    def active_collector(self) -> Optional[DocumentCollector]:
+        """Return the collector currently associated with the run, if any."""
+        return self._active_collector
+
+    def finalize_output(
+        self,
+        *,
+        answer: str,
+        collector: Optional[DocumentCollector] = None,
+        intermediate_steps: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        final: bool = True,
+        include_collector_steps: bool = True,
+    ) -> PipelineOutput:
+        """Compose a PipelineOutput from the provided components."""
+        collector = collector or self.create_document_collector()
+        documents = collector.unique_documents()
+        steps: List[str] = list(intermediate_steps or [])
+        if include_collector_steps:
+            steps.extend(collector.intermediate_steps())
+        return PipelineOutput(
+            answer=answer,
+            source_documents=documents,
+            intermediate_steps=steps,
+            metadata=metadata or {},
+            final=final,
+        )
 
     def _init_llms(self) -> None:
         """Initialise language models declared for the pipeline."""

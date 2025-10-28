@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from src.a2rchi.utils.prompt_utils import read_prompt
-from src.a2rchi.utils.prompt_validator import ValidatedPromptTemplate
+from src.a2rchi.pipelines.classic_pipelines.utils.prompt_utils import read_prompt
+from src.a2rchi.pipelines.classic_pipelines.utils.prompt_validator import ValidatedPromptTemplate
+from src.a2rchi.utils.output_dataclass import PipelineOutput
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -33,11 +34,12 @@ class BasePipeline:
     def update_retriever(self, vectorstore):
         self.retriever = None
 
-    def invoke(self, *args, **kwargs) -> Dict[str, Any]:
-        return {
-            "answer": "Stat rosa pristina nomine, nomina nuda tenemus.",
-            "documents": [],
-        }
+    def invoke(self, *args, **kwargs) -> PipelineOutput:
+        return PipelineOutput(
+            answer="Stat rosa pristina nomine, nomina nuda tenemus.",
+            source_documents=[],
+            intermediate_steps=[],
+        )
 
     def _init_llms(self) -> None:
         """Initialise language models declared for the pipeline."""

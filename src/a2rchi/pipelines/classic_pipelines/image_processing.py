@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from src.a2rchi.pipelines.classic_pipelines.utils.chain_wrappers import ChainWrapper
-from src.a2rchi.chains import ImageLLMChain
-from src.a2rchi.pipelines.base import BasePipeline
+from src.a2rchi.pipelines.classic_pipelines.chains import ImageLLMChain
+from src.a2rchi.pipelines.classic_pipelines.base import BasePipeline
+from src.a2rchi.utils.output_dataclass import PipelineOutput
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,7 +40,14 @@ class ImageProcessingPipeline(BasePipeline):
         self,
         images: List[Any],
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> PipelineOutput:
         logger.info("Processing %s images.", len(images))
         text_from_image = self.image_processing_chain.invoke(inputs={"images": images})
-        return text_from_image
+        answer = text_from_image.get("answer") if isinstance(text_from_image, dict) else text_from_image
+        metadata = {} if not isinstance(text_from_image, dict) else {k: v for k, v in text_from_image.items() if k != "answer"}
+        return PipelineOutput(
+            answer=answer or "",
+            source_documents=[],
+            intermediate_steps=[],
+            metadata=metadata,
+        )

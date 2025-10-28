@@ -14,6 +14,7 @@ from langchain_community.document_loaders import (BSHTMLLoader, PyPDFLoader,
                                                   PythonLoader,
                                                   UnstructuredMarkdownLoader)
 from langchain_community.document_loaders.text import TextLoader
+from .loader_utils import select_loader
 from langchain_text_splitters.character import CharacterTextSplitter
 
 from src.data_manager.collectors.utils.index_utils import load_sources_catalog
@@ -226,20 +227,10 @@ class VectorStoreManager:
 
     def loader(self, file_path: str):
         """Return the document loader for a given path."""
-        _, file_extension = os.path.splitext(file_path)
-        if file_extension in {".txt", ".C"}:
-            return TextLoader(file_path)
-        if file_extension == ".md":
-            return UnstructuredMarkdownLoader(file_path)
-        if file_extension == ".py":
-            return PythonLoader(file_path)
-        if file_extension == ".html":
-            return BSHTMLLoader(file_path, bs_kwargs={"features": "html.parser"})
-        if file_extension == ".pdf":
-            return PyPDFLoader(file_path)
-
-        logger.error(f"Format not supported -- {file_path}")
-        return None
+        loader = select_loader(file_path)
+        if loader is None:
+            logger.error(f"Format not supported -- {file_path}")
+        return loader
 
     def _collect_indexed_documents(self, sources: Dict[str, str]) -> Dict[str, str]:
         """

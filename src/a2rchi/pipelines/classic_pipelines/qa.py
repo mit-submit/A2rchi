@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from langchain_classic.chains.combine_documents.stuff import create_stuff_documents_chain
 from langchain_core.output_parsers import StrOutputParser
 
 from src.a2rchi.pipelines.classic_pipelines.utils.chain_wrappers import ChainWrapper
 from src.a2rchi.pipelines.classic_pipelines.base import BasePipeline
+from src.a2rchi.utils.output_dataclass import PipelineOutput
 from src.data_manager.vectorstore.retrievers import SemanticRetriever
 from src.a2rchi.pipelines.classic_pipelines.utils import history_utils
 from src.utils.logging import get_logger
@@ -68,7 +69,7 @@ class QAPipeline(BasePipeline):
         use_hybrid = self.dm_config.get("use_hybrid_search", False)
 
         if use_hybrid:
-            from A2rchi.A2rchi.src.data_manager.vectorstore.retrievers.utils import HybridRetriever
+            from src.data_manager.vectorstore.retrievers.utils import HybridRetriever
 
             logger.info("Initializing HybridRetriever with BM25 + semantic search")
             self.retriever = HybridRetriever(
@@ -91,7 +92,7 @@ class QAPipeline(BasePipeline):
                 dm_config=self.dm_config,
             )
 
-    def invoke(self, **kwargs) -> Dict[str, Any]:
+    def invoke(self, **kwargs) -> PipelineOutput:
         vectorstore = kwargs.get("vectorstore")
         if vectorstore:
             self.update_retriever(vectorstore)
@@ -100,18 +101,27 @@ class QAPipeline(BasePipeline):
 
         condense_output = self.condense_chain.invoke({**inputs})
         retriever_output = self.retriever.invoke(condense_output['answer'])
+        documents: List = []
+        scores: List = []
         if retriever_output:
-            docs, scores = zip(*retriever_output)
-        else:
-            docs, scores = [], []
+            retrieved_docs, retrieved_scores = zip(*retriever_output)
+            documents = list(retrieved_docs)
+            scores = list(retrieved_scores)
+
         answer_output = self.chat_chain.invoke({
             **inputs,
             'condense_output': condense_output['answer'],
-            'retriever_output': docs if docs else "",
+            'retriever_output': documents if documents else "",
         })
 
-        return {
-            "answer": answer_output['answer'],
-            "documents": docs,
-            "documents_scores": scores,
-        }
+        intermediate_steps = [condense_output['answer']] if condense_output.get('answer') else []
+
+        return PipelineOutput(
+            answer=answer_output['answer'],
+            source_documents=documents,
+            intermediate_steps=intermediate_steps,
+            metadata={
+                "retriever_scores": scores,
+                "question": inputs.get("question", ""),
+            },
+        )
