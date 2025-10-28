@@ -381,7 +381,7 @@ class FlaskAppWrapper(object):
             logger.info(f"Uploading the following URL: {url}")
             try:
                 target_dir = Path(self.app.config['WEBSITE_FOLDER'])
-                resources = self.scraper_manager.web_scraper.scrape(url)
+                resources = self.scraper_manager.web_scraper.crawl(url, depth=1)
                 for resource in resources:
                     self.scraper_manager.register_resource(target_dir, resource)
                 self.scraper_manager.persist_sources()
