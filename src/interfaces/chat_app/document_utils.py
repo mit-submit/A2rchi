@@ -65,34 +65,6 @@ def add_filename_to_filehashes(filename, data_path, filehashes_yaml_file="manual
 
     return True
 
-#TODO: Obsolete?
-def remove_filename_from_filehashes(filename, data_path, filehashes_yaml_file="manual_file_hashes.yaml"):
-    """
-    Removes a filename and its respective hash from the map between filenames and hashes
-
-    Map is stored as a .yml file in the same path as where the data is stored. Keys are the hashes 
-    and values are the filenames
-
-    Always returns true
-    """
-    hash_string = file_hash(filename)
-    try:
-        # load existing accounts or initialize as empty dictionary
-        with open(os.path.join(data_path, filehashes_yaml_file), 'r') as file:
-            filenames_dict = yaml.safe_load(file) or {}
-    except FileNotFoundError:
-        filenames_dict = {}
-
-    # check if the filename already exists and remove if it does
-    if hash_string in filenames_dict.keys():
-        filenames_dict.pop(hash_string)
-
-    # write the updated dictionary back to the YAML file
-    with open(os.path.join(data_path, filehashes_yaml_file), 'w') as file:
-        yaml.dump(filenames_dict, file)
-
-    return True
-
 
 def get_filename_from_hash(hash_string, data_path, filehashes_yaml_file="manual_file_hashes.yaml"):
     """
