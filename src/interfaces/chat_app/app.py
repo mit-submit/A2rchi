@@ -553,8 +553,8 @@ class ChatWrapper:
 
 
             # display sources (links or ticket references)
-            documents = result.get("documents", [])
-            scores = result.get("documents_scores", [])
+            documents = result.get("source_documents", [])
+            scores = result.get("metadata", {}).get("retriever_scores", [])
             top_sources = self.get_top_sources(documents, scores)
             output += self.format_links(top_sources)
 
