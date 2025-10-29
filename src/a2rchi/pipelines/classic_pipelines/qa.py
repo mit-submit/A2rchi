@@ -69,7 +69,7 @@ class QAPipeline(BasePipeline):
         use_hybrid = self.dm_config.get("use_hybrid_search", False)
 
         if use_hybrid:
-            from src.data_manager.vectorstore.retrievers.utils import HybridRetriever
+            from src.data_manager.vectorstore.retrievers import HybridRetriever
 
             logger.info("Initializing HybridRetriever with BM25 + semantic search")
             self.retriever = HybridRetriever(
