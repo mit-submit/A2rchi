@@ -69,7 +69,7 @@ class ScraperManager:
             logger.info("Links disabled, skipping all scraping")
             return
 
-        for raw_url in self.collect_urls_from_lists():
+        for raw_url, depth in self.collect_urls_from_lists():
             if raw_url.startswith("git-"):
                 git_urls.append(raw_url.split("git-", 1)[1])
                 continue
@@ -79,7 +79,7 @@ class ScraperManager:
                 continue
 
             if self.links_enabled:
-                self._handle_standard_url(raw_url, persistence, websites_dir)
+                self._handle_standard_url(raw_url, persistence, websites_dir, max_depth = depth)
 
         if self.sso_enabled and sso_urls:
             sso_resources = self._collect_sso_resources(sso_urls)
@@ -102,10 +102,10 @@ class ScraperManager:
 
         logger.info("Web scraping was completed successfully")
 
-    def collect_urls_from_lists(self) -> List[str]:
+    def collect_urls_from_lists(self) -> List[tuple[str, int]]:
         """Collect URLs from the configured weblists."""
-        urls: List[str] = []
         # Handle case where input_lists might be None
+        urls: List[tuple[str, int]] = []
         if not self.input_lists:
             return urls
         for list_name in self.input_lists:
@@ -119,24 +119,31 @@ class ScraperManager:
         return urls
 
     def _handle_standard_url(
-        self, url: str, persistence: PersistenceService, websites_dir: Path
+        self, url: str, persistence: PersistenceService, websites_dir: Path, max_depth=1
     ) -> None:
         try:
-            for resource in self.web_scraper.crawl(url, max_depth =  3):
+            for resource in self.web_scraper.crawl(url, max_depth =  max_depth):
                 persistence.persist_resource(
                     resource, websites_dir
                 )
         except Exception as exc:
             logger.error(f"Failed to scrape {url}: {exc}")
 
-    def _extract_urls_from_file(self, path: Path) -> List[str]:
+    def _extract_urls_from_file(self, path: Path) -> List[tuple[str, int]]:
         urls: List[str] = []
         with path.open("r") as file:
             for line in file:
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#"):
                     continue
-                urls.append(stripped)
+                # check if a depth was specified  for crawling if not make it 1
+                url_depth = stripped.split(",")
+                depth = 1 # default
+                if len(url_depth) > 1  and len(url_depth) < 3: 
+                    stripped = url_depth[0]
+                    depth = url_depth[1]
+
+                urls.append((stripped, depth))
         return urls
 
     def _collect_git_resources(
