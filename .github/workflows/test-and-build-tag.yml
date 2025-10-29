@@ -1,0 +1,192 @@
+name: Test and Build Tag
+
+env:
+  A2RCHI_DIR: /home/runner/work/a2rchi-local
+  HOME: /home/runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or commit to release
+        required: false
+        default: main
+      tag_name:
+        description: Tag to create (e.g. v1.2.3)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      clean: ${{ steps.version.outputs.clean }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Determine release version
+        id: version
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          CLEAN="${TAG#v}"
+          if [[ -z "$CLEAN" ]]; then
+            echo "Unable to derive version from tag '$TAG'" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
+
+      - name: Install CLI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[all]" || pip install .
+
+      - name: Ensure build scripts are executable
+        run: chmod +x scripts/dev/*.sh
+
+      - name: Build Docker base images
+        run: scripts/dev/build_docker_images.sh "${{ steps.version.outputs.tag }}"
+
+      - name: Push versioned base images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          PUSH_LATEST: "false"
+        run: scripts/dev/push_docker_images.sh "${{ steps.version.outputs.tag }}"
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CLI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[all]" || pip install .
+
+      - name: Ensure scripts are executable
+        run: chmod +x scripts/dev/*.sh
+
+      - name: Point Dockerfiles to versioned base images
+        run: python scripts/dev/update_service_base_images.py "${{ needs.build-images.outputs.tag }}"
+
+      - name: Run smoke deployment
+        uses: ./.github/actions/run-smoke
+        with:
+          deployment-name: release-${{ github.run_id }}
+          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull always
+          config-path: tests/pr_preview_config/pr_preview_config.yaml
+          config-destination: configs/ci/ci_config.yaml
+          env-file: .env
+          services: chatbot
+          hostmode: "true"
+          wait-url: http://localhost:7861/api/health
+          base-url: http://localhost:7861
+
+      - name: Commit Dockerfile base image updates
+        if: success()
+        env:
+          TARGET_REF: ${{ inputs.ref || 'main' }}
+          VERSION_TAG: ${{ needs.build-images.outputs.tag }}
+        run: |
+          set -euo pipefail
+          CHANGED_FILES="$(git diff --name-only | grep -E '(^|/)Dockerfile' || true)"
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No Dockerfile updates to commit"
+          else
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            printf '%s\n' "$CHANGED_FILES" | xargs git add
+            git commit -m "chore: update Dockerfiles for ${VERSION_TAG}"
+            git push origin HEAD:"${TARGET_REF}"
+          fi
+
+      - name: Prune Docker cache
+        run: |
+          docker system prune -af
+          docker volume prune -f
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-images, smoke-test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Promote Docker images to latest
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          VERSION_TAG: ${{ needs.build-images.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+          for image in a2rchi/a2rchi-python-base a2rchi/a2rchi-pytorch-base; do
+            docker buildx imagetools create --tag "$image:latest" "$image:$VERSION_TAG"
+          done
+
+      - name: Update version in project files
+        run: python scripts/dev/update_version.py "${{ needs.build-images.outputs.clean }}"
+
+      - name: Commit version bump
+        env:
+          VERSION_CLEAN: ${{ needs.build-images.outputs.clean }}
+          TARGET_REF: ${{ inputs.ref || 'main' }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Version files already set to ${VERSION_CLEAN}"
+          else
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            git add pyproject.toml docs/mkdocs.yml
+            git commit -m "chore: bump version to ${VERSION_CLEAN}"
+            git push origin HEAD:"${TARGET_REF}"
+          fi
+
+      - name: Create Git tag
+        env:
+          TAG_NAME: ${{ needs.build-images.outputs.tag }}
+        run: |
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists locally." >&2
+            exit 1
+          fi
+          if git ls-remote --tags origin "$TAG_NAME" | grep "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists on origin." >&2
+            exit 1
+          fi
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"

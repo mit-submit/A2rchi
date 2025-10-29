@@ -1,0 +1,44 @@
+# Basic configuration file for a A2RCHI deployment
+# with a chat app interface, agent, and
+# a ChromaDB instance for document storage.
+# The LLM is used through an existing Ollama server.
+#
+# run with:
+# a2rchi create --name my-a2rchi-agent --config examples/deployments/basic-agent/config.yaml --services chatbot --hostmode
+
+name: my_a2rchi
+
+services:
+  chat_app:
+    pipeline: CMSCompOpsAgent
+    trained_on: "My data"
+    port: 7868
+    external_port: 7868
+  chromadb:
+    # running in hostmode, want to avoid taking the default chromadb port (8000) since it's usually taken by host already
+    chromadb_port: 8003
+    chromadb_external_port: 8003
+
+data_manager:
+  sources:
+    links:
+      input_lists:
+        - examples/deployments/basic-agent/miscellanea.list
+  embedding_name: HuggingFaceEmbeddings
+
+a2rchi:
+  pipelines:
+    - CMSCompOpsAgent
+  pipeline_map:
+    CMSCompOpsAgent:
+      prompts:
+        required:
+          agent_prompt: examples/deployments/basic-agent/agent.prompt
+      models:
+        required:
+          agent_model: OllamaInterface
+  model_class_map:
+    OllamaInterface:
+      kwargs:
+        url: http://submit76.mit.edu:7870 # make sure this matches your ollama server URL!
+        base_model: "qwen3:32b" # make sure this matches a model you have downloaded locally with ollama
