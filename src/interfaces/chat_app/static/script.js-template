@@ -25,7 +25,6 @@ let conversation_id = null;
 let conversation = []
 let num_responses_since_last_rating = 0;
 let last_response_is_feedback_request = false;
-let STREAM_CHAT_ENABLED = Boolean(window.A2RCHI_STREAMING_ENABLED);
 
 async function fetchWithTimeout(resource, options = {}) {
     // extracts `timeout` field from options dict;
@@ -273,12 +272,13 @@ const refreshChat = async () => {
     showTypingAnimation(isRefresh=true);
 }
 
-const fetchChatResponse = async (incomingChatDiv, isRefresh=false) => {
+const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     const API_URL = "/api/get_chat_response";
     const pElement = document.createElement("div");
     const configName = configDropdown.value;
 
-    const requestOptions = {
+     // Define the properties and data for the API request
+     const requestOptions = {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -292,19 +292,23 @@ const fetchChatResponse = async (incomingChatDiv, isRefresh=false) => {
             client_timeout: DEFAULT_TIMEOUT_SECS * 1000
         }),
         timeout: DEFAULT_TIMEOUT_SECS * 1000
-    };
+    }
 
+    // send POST request to Flask API, get response and set the response as paragraph element text, console logging nice for debugging
     try {
         const response = await (await fetchWithTimeout(API_URL, requestOptions)).json();
         console.log("Full API Response:", response);
 
+        // Check if response contains an error message
         if (response.error) {
             console.error("API Returned an Error:", response.error);
             throw new Error(response.error);
         }
 
+        // potential HTML escaping issue
         console.log("Checking response.response:", response.response);
 
+        // Attempt setting response normally
         try {
             pElement.innerHTML = response.response;
         } catch (error) {
@@ -312,10 +316,8 @@ const fetchChatResponse = async (incomingChatDiv, isRefresh=false) => {
             throw error;
         }
 
-        if (response.a2rchi_msg_id) {
-            pElement.setAttribute('id', response.a2rchi_msg_id.toString());
-        }
-        pElement.classList.add("default-text");
+        pElement.setAttribute('id', response.a2rchi_msg_id.toString());
+        pElement.classList.add(".default-text");
         conversation.push(["A2rchi", response.response]);
         conversation_id = response.conversation_id;
         last_response_is_feedback_request = false;
@@ -325,150 +327,19 @@ const fetchChatResponse = async (incomingChatDiv, isRefresh=false) => {
         pElement.textContent = "Oops! Something went wrong while retrieving the response. Please try again.";
     }
 
-    incomingChatDiv.querySelector(".typing-animation")?.remove();
+    // Remove the typing animation, append the paragraph element and save the chats to local storage
+    incomingChatDiv.querySelector(".typing-animation").remove();
     incomingChatDiv.querySelector("#loading-text")?.remove();
     incomingChatDiv.querySelector(".chat-details").appendChild(pElement);
     localStorage.setItem("all-chats", chatContainer.innerHTML);
     chatContainer.scrollTo(0, chatContainer.scrollHeight);
 
+    // reload conversations list to update sidebar
     setTimeout(() => loadConversations(), 500);
+
+    // ask user for feedback if it's been too many messages w/out any feedback
     setTimeout(showFeedbackRequest, 500);
-};
-
-const streamChatResponse = async (incomingChatDiv, isRefresh=false) => {
-    const API_URL = "/api/stream_chat_response";
-    const configName = configDropdown.value;
-    const requestOptions = {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            last_message: conversation.slice(-1),
-            conversation_id: conversation_id,
-            config_name: configName,
-            is_refresh: isRefresh,
-            client_sent_msg_ts: Date.now(),
-            client_timeout: DEFAULT_TIMEOUT_SECS * 1000
-        }),
-        timeout: DEFAULT_TIMEOUT_SECS * 1000
-    };
-
-    const response = await fetchWithTimeout(API_URL, requestOptions);
-    if (!response.ok || !response.body) {
-        throw new Error(`Streaming request failed with status ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    const details = incomingChatDiv.querySelector(".chat-details");
-    const typingNode = details.querySelector(".typing-animation");
-    const loadingNode = details.querySelector("#loading-text");
-
-    let buffer = "";
-    let outputElement = null;
-    let appended = false;
-    let finished = false;
-    let placeholdersRemoved = false;
-
-    const ensureOutputElement = () => {
-        if (!outputElement) {
-            outputElement = document.createElement("div");
-            outputElement.classList.add("default-text");
-        }
-        if (!appended) {
-            if (typingNode) {
-                typingNode.remove();
-                placeholdersRemoved = true;
-            }
-            if (loadingNode) {
-                loadingNode.remove();
-                placeholdersRemoved = true;
-            }
-            details.appendChild(outputElement);
-            appended = true;
-        }
-        return outputElement;
-    };
-
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-
-            let newlineIndex;
-            while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
-                const line = buffer.slice(0, newlineIndex).trim();
-                buffer = buffer.slice(newlineIndex + 1);
-                if (!line) continue;
-
-                const event = JSON.parse(line);
-                if (event.type === "delta") {
-                    const element = ensureOutputElement();
-                    element.textContent += event.text;
-                } else if (event.type === "final") {
-                    const element = ensureOutputElement();
-                    if (event.response) {
-                        element.innerHTML = event.response;
-                    }
-                    if (event.a2rchi_msg_id) {
-                        element.setAttribute('id', event.a2rchi_msg_id.toString());
-                    }
-                    conversation.push(["A2rchi", event.response]);
-                    conversation_id = event.conversation_id;
-                    last_response_is_feedback_request = false;
-                    localStorage.setItem("all-chats", chatContainer.innerHTML);
-                    chatContainer.scrollTo(0, chatContainer.scrollHeight);
-                    setTimeout(() => loadConversations(), 500);
-                    setTimeout(showFeedbackRequest, 500);
-                    finished = true;
-                } else if (event.type === "error") {
-                    throw new Error(event.message || "Streaming error");
-                }
-            }
-        }
-    } catch (error) {
-        if (appended && outputElement?.parentElement) {
-            outputElement.remove();
-        }
-        if (!finished && placeholdersRemoved) {
-            const imageNode = details.querySelector('img');
-            if (typingNode) {
-                if (imageNode && imageNode.nextSibling) {
-                    details.insertBefore(typingNode, imageNode.nextSibling);
-                } else {
-                    details.appendChild(typingNode);
-                }
-            }
-            if (loadingNode) {
-                details.appendChild(loadingNode);
-            }
-        }
-        throw error;
-    } finally {
-        reader.releaseLock?.();
-    }
-
-    if (!finished) {
-        throw new Error("Streaming terminated before final response");
-    }
-};
-
-const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
-    if (STREAM_CHAT_ENABLED) {
-        try {
-            await streamChatResponse(incomingChatDiv, isRefresh);
-            return;
-        } catch (error) {
-            console.error("Streaming failed, falling back to standard response:", error);
-            STREAM_CHAT_ENABLED = false;
-        }
-    }
-
-    return fetchChatResponse(incomingChatDiv, isRefresh);
-};
-
+}
 
 const copyCode = (copyCodeBtn) => {
     // Copy the text content of the response to the clipboard
@@ -628,7 +499,7 @@ const showFeedbackRequest = () => {
     const html = `<div class="chat-content">
                     <div class="chat-details">
                         <img src="/static/images/a2rchi.png" alt="chatbot-img">
-                        <div class="default-text">
+                        <div class=".default-text">
                             <p>I've noticed you haven't rated any of my responses in a while. Rating responses is crucial because it not only helps me improve, but it also ensures that this project remains open source and freely accessible for everyone. Your input is highly valuable in supporting the A2rchi mission! </p>
                         </div>
                     </div>
