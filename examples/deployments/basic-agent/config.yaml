@@ -1,10 +1,10 @@
 # Basic configuration file for a A2RCHI deployment
-# with a chat app interface, a QA pipeline, and
+# with a chat app interface, agent, and
 # a ChromaDB instance for document storage.
 # The LLM is used through an existing Ollama server.
 #
 # run with:
-# a2rchi create --name my-a2rchi-ollama --config examples/deployments/basic-ollama/config.yaml --services chatbot --hostmode
+# a2rchi create --name my-a2rchi-agent --config examples/deployments/basic-agent/config.yaml --services chatbot --hostmode
 
 name: my_a2rchi
 
@@ -23,15 +23,7 @@ data_manager:
   sources:
     links:
       input_lists:
-        - /home/submit/lavezzo/a2rchi/A2rchi/A2rchi/examples/deployments/basic-agent/miscellanea.list
-    jira:
-      enabled: false
-      visible: false
-      max_tickets: 100
-      url: https://its.cern.ch/jira/
-      projects:
-        - "CMSPROD"
-          #- "CMSTRANSF"
+        - examples/deployments/basic-agent/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
 
 a2rchi:
@@ -41,7 +33,7 @@ a2rchi:
     CMSCompOpsAgent:
       prompts:
         required:
-          agent_prompt: /home/submit/lavezzo/a2rchi/A2rchi/A2rchi/examples/deployments/basic-agent/cms_comp_ops.prompt
+          agent_prompt: examples/deployments/basic-agent/agent.prompt
       models:
         required:
           agent_model: OllamaInterface
