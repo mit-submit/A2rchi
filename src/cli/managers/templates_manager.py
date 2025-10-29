@@ -415,7 +415,8 @@ class TemplateManager:
                 logger.warning(f"Configured input list {input_list} not found; skipping")
 
     def _copy_source_code(self, base_dir: Path) -> None:
-        repo_root = Path(__file__).resolve().parent.parent.parent.parent
+        # repo_root = Path(__file__).resolve().parent.parent.parent.parent
+        repo_root = Path.cwd()
         source_files = [
             ("src", "a2rchi_code"),
             ("pyproject.toml", "pyproject.toml"),
