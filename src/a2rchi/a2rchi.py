@@ -1,10 +1,8 @@
-import chromadb
-from chromadb.config import Settings
-from langchain_chroma.vectorstores import Chroma
-
-import src.a2rchi.pipelines as A2rchiPipelines
+import src.a2rchi.pipelines as A2rchiPipelines 
 from src.utils.config_loader import load_config
 from src.utils.logging import get_logger
+from src.a2rchi.utils.output_dataclass import PipelineOutput
+from src.a2rchi.utils.vectorstore_connector import VectorstoreConnector
 
 logger = get_logger(__name__)
 
@@ -21,9 +19,9 @@ class A2rchi():
             *args,
             **kwargs
         ):
-        self.update(pipeline)
+        self.update(pipeline, config_name=kwargs.get("config_name", None))
         self.pipeline_name = pipeline
-        self._init_vectorstore_params()
+        self.vs_connector = VectorstoreConnector(self.config)
 
     def update(self, pipeline=None, config_name = None):
         """
@@ -38,27 +36,6 @@ class A2rchi():
             self.pipeline_name,
             config=self.config
         )
-
-    def _init_vectorstore_params(self):
-        """
-        Initialize the vectorstore parameters from the config.
-        """
-
-        dm_config = self.config["data_manager"]
-        chroma_config = self.config["services"]["chromadb"]
-
-        embedding_class_map = dm_config["embedding_class_map"]
-        embedding_name = dm_config["embedding_name"]
-        self.embedding_model = embedding_class_map[embedding_name]["class"](
-            **embedding_class_map[embedding_name]["kwargs"]
-        )
-        self.collection_name = dm_config["collection_name"] + "_with_" + embedding_name
-        self.use_HTTP_chromadb_client = chroma_config["use_HTTP_chromadb_client"]
-        self.chromadb_host = chroma_config["chromadb_host"]
-        self.chromadb_port = chroma_config["chromadb_port"]
-        self.local_vstore_path = chroma_config["local_vstore_path"]
-
-        logger.info(f"Using collection: {self.collection_name}")
 
     def _create_pipeline_instance(self, class_name, *args, **kwargs):
         """
@@ -77,46 +54,62 @@ class A2rchi():
         except Exception as e:
             raise RuntimeError(f"Error creating instance of '{class_name}': {e}")
 
-    def _update_vectorstore(self):
-        """
-        Function to update the vectorstore connection.
-        Called each time you invoke your Pipeline.
-        """
-        
-        # connect to chromadb server
-        client = None
-        if self.use_HTTP_chromadb_client:
-            client = chromadb.HttpClient(
-                host=self.chromadb_host,
-                port=self.chromadb_port,
-                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
-            )
-        else: # TODO what is this?
-            client = chromadb.PersistentClient(
-                path=self.local_vstore_path,
-                settings=Settings(allow_reset=True, anonymized_telemetry=False),  # NOTE: anonymized_telemetry doesn't actually do anything; need to build Chroma on our own without it
-            )
+    def _prepare_call_kwargs(self, kwargs):
+        """Attach a freshly initialised vectorstore to the call kwargs."""
+        call_kwargs = dict(kwargs)
+        call_kwargs["vectorstore"] = self.vs_connector.get_vectorstore()
+        return call_kwargs
 
-        vectorstore = Chroma(
-            client=client,
-            collection_name=self.collection_name,
-            embedding_function=self.embedding_model,
+    def _ensure_pipeline_output(self, result) -> PipelineOutput:
+        """Validate that pipelines return the standard PipelineOutput object."""
+        if isinstance(result, PipelineOutput):
+            return result
+        raise TypeError(
+            f"Pipeline '{self.pipeline_name}' returned '{type(result).__name__}' instead of PipelineOutput."
         )
 
-        logger.debug(f"N entries: {client.get_collection(self.collection_name).count()}")
-        logger.debug("Updated chain with new vectorstore")
+    def supports_stream(self) -> bool:
+        """Return True when the active pipeline exposes a synchronous stream."""
+        return callable(getattr(self.pipeline, "stream", None))
 
-        return vectorstore
+    def supports_astream(self) -> bool:
+        """Return True when the active pipeline exposes an async stream."""
+        return callable(getattr(self.pipeline, "astream", None))
 
-    def __call__(self, *args, **kwargs):
+    def invoke(self, *args, **kwargs) -> PipelineOutput:
         """
         Updates the vectorstore connection,
         passes it to the Pipeline's retriever,
         and then invokes the Pipeline.
         """
-        vectorstore = self._update_vectorstore()
-        result = self.pipeline.invoke(vectorstore=vectorstore, *args, **kwargs)
-        return result
+        call_kwargs = self._prepare_call_kwargs(kwargs)
+        result = self.pipeline.invoke(*args, **call_kwargs)
+        return self._ensure_pipeline_output(result)
+
+    def stream(self, *args, **kwargs):
+        """
+        Stream the pipeline output if the underlying pipeline supports it.
+        """
+        if not self.supports_stream():
+            raise AttributeError(f"Pipeline '{self.pipeline_name}' does not expose a 'stream' method.")
+        call_kwargs = self._prepare_call_kwargs(kwargs)
+        for event in self.pipeline.stream(*args, **call_kwargs):
+            yield self._ensure_pipeline_output(event)
+
+    async def astream(self, *args, **kwargs):
+        """
+        Asynchronously stream the pipeline output if supported.
+        """
+        if not self.supports_astream():
+            raise AttributeError(f"Pipeline '{self.pipeline_name}' does not expose an 'astream' method.")
+        call_kwargs = self._prepare_call_kwargs(kwargs)
+        async for event in self.pipeline.astream(*args, **call_kwargs):
+            yield self._ensure_pipeline_output(event)
+
+    def __call__(self, *args, **kwargs) -> PipelineOutput:
+        return self.invoke(*args, **kwargs)
 
     
+
+
     

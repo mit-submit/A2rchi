@@ -122,7 +122,7 @@ class ChatWrapper:
 
         # initialize lock and chain
         self.lock = Lock()
-        self.a2rchi = A2rchi(pipeline="QAPipeline")
+        self.a2rchi = A2rchi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
         # initialize config_id to be None
@@ -130,7 +130,7 @@ class ChatWrapper:
 
     def update_config(self, config_id, config_name=None):
         self.config_id = config_id
-        self.a2rchi.update(pipeline="QAPipeline",config_name=config_name)
+        self.a2rchi.update(pipeline=self.config["services"]["chat_app"]["pipeline"], config_name=config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -553,8 +553,8 @@ class ChatWrapper:
 
 
             # display sources (links or ticket references)
-            documents = result.get("documents", [])
-            scores = result.get("documents_scores", [])
+            documents = result.get("source_documents", [])
+            scores = result.get("metadata", {}).get("retriever_scores", [])
             top_sources = self.get_top_sources(documents, scores)
             output += self.format_links(top_sources)
 
