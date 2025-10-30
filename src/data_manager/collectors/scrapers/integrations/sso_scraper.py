@@ -21,45 +21,27 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-class SSOScraper(ABC):
-    """Generic base class for SSO-authenticated web scrapers."""
-    
-    def __init__(self, username=None, password=None, headless=True, site_type="generic", max_depth=2):
-        """Initialize the SSO scraper with credentials and browser settings.
+class SeleniumScraper(ABC):
+    def __init__(self, headless=True, site_type="generic", max_depth=2):
+        """Initialize the scraper's browser settings.
         
         Args:
-            username (str, optional): SSO username. If None, will try to get from env vars.
-            password (str, optional): SSO password. If None, will try to get from env vars.
             headless (bool): Whether to run the browser in headless mode.
             site_type (str): Type of site to scrape ('generic' or 'mkdocs')
             max_depth (int): Maximum number of levels to crawl per page.
         """
-        self.username = username or self.get_username_from_env()
-        self.password = password or self.get_password_from_env()
         self.headless = headless
         self.max_depth = max_depth
         self.site_type = site_type
         self.driver = None
         self.visited_urls = set()
+
+        self.config = utils_config["scraper"]
+        self.piazza_config = utils_config.get("piazza", None)
+        self.data_path = global_config["DATA_PATH"]
+
+        self.sources_path = os.path.join(self.data_path, 'sources.yml'),
         
-        if self.username:
-            logger.info(f"Using username: {self.username}")
-    
-    @abstractmethod
-    def get_username_from_env(self):
-        """Get username from environment variables. Override in subclasses."""
-        pass
-    
-    @abstractmethod
-    def get_password_from_env(self):
-        """Get password from environment variables. Override in subclasses."""
-        pass
-    
-    @abstractmethod
-    def login(self):
-        """Login to SSO with the provided credentials. Override in subclasses."""
-        pass
-    
     def setup_driver(self):
         """Configure and initialize the Firefox WebDriver."""
         firefox_options = FirefoxOptions()
@@ -84,7 +66,7 @@ class SSOScraper(ABC):
         self.driver.set_page_load_timeout(30)
         logger.info(f"Starting Firefox browser in {'headless' if self.headless else 'visible'} mode...")
         return self.driver
-    
+
     def navigate_to(self, url, wait_time=1):
         """Navigate to specified URL and wait for page to load."""
         if not self.driver:
@@ -152,12 +134,12 @@ class SSOScraper(ABC):
     
     def crawl(self, start_url):
         """Crawl pages starting from the given URL, storing title and content of each page.
-
+        
         Args:
             start_url (str): The URL to start crawling from
-
+            
         Returns:
-            List[Dict]: A list of dictionaries describing each visited page.
+            dictionary of source urls addressed via their internal file identifiers
         """
         max_depth = self.max_depth
         depth = 0
@@ -181,6 +163,7 @@ class SSOScraper(ABC):
         # History record   
         pages_visited = 0
         self.visited_urls = set()
+        sources = {}
         
         while to_visit and depth < max_depth:
             current_url = to_visit.pop(0)
@@ -225,7 +208,6 @@ class SSOScraper(ABC):
                 self.visited_urls.add(current_url)  # Mark as visited to avoid retrying           
             
         logger.info(f"Crawling complete. Visited {pages_visited} pages.")
-        return list(self.page_data)
 
     def _clear_url(self, url: str) -> bool:
         """Basic filtering for duplicate or fragment-only URLs."""
@@ -238,13 +220,60 @@ class SSOScraper(ABC):
 
         return True
     
+    def authenticate_and_navigate(self, url):
+        """navigates to the target url (for base urls, for now its no authentication for the base implementation)"""
+        try:
+            if not self.driver:
+                self.setup_driver()
+                
+            # First navigate to trigger SSO
+            self.driver.get(url)
+            
+            # for the base class this just returns true, but makes it easier to login with a 
+            # more specific implementation
+            # Navigate back to target page
+            title = self.navigate_to(url)
+            return title
+        except Exception as e:
+            logger.warning(f"Error during authentication: {e}")
+            return None
+
     def close(self):
         """Close the browser and clean up resources."""
         if self.driver:
             logger.info("Closing browser...")
             self.driver.quit()
             self.driver = None
+        
+    def __enter__(self):
+        """Context manager entry point."""
+        self.setup_driver()
+        return self
     
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit point."""
+        self.close()
+
+
+class SSOScraper(SeleniumScraper):
+    """Generic base class for SSO-authenticated web scrapers."""
+    
+    def __init__(self, username=None, password=None, headless=True, site_type="generic", max_depth=2):
+        """Initialize the SSO scraper with credentials and browser settings.
+        
+        Args:
+            username (str, optional): SSO username. If None, will try to get from env vars.
+            password (str, optional): SSO password. If None, will try to get from env vars.
+        """
+        super().__init__(headless = headless, site_type = site_type, max_depth=max_depth)
+
+        self.username = username or self.get_username_from_env()
+        self.password = password or self.get_password_from_env()
+        
+        if self.username:
+            logger.info(f"Using username: {self.username}")
+
+
     def authenticate_and_navigate(self, url):
         """Complete authentication flow and navigate to target URL."""
         try:
@@ -264,16 +293,6 @@ class SSOScraper(ABC):
         except Exception as e:
             logger.warning(f"Error during authentication: {e}")
             return None
-        
-    def __enter__(self):
-        """Context manager entry point."""
-        self.setup_driver()
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit point."""
-        self.close()
-
 
 class CERNSSOScraper(SSOScraper):
     """A scraper to handle CERN SSO authentication and page navigation."""
@@ -416,3 +435,4 @@ class SSOCollector:
             )
 
         return resources
+
