@@ -77,6 +77,8 @@ runs:
       run: |
         set -euo pipefail
         echo "PG_PASSWORD=$(openssl rand -base64 32)" > "${ENV_FILE}"
+        echo "UPLOADER_SALT=$(openssl rand -base64 32)" >> "${ENV_FILE}"
+        echo "FLASK_UPLOADER_APP_SECRET_KEY=$(openssl rand -base64 32)" >> "${ENV_FILE}"
 
     - name: Launch deployment
       shell: bash
