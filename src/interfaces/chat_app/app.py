@@ -1373,6 +1373,9 @@ class FlaskAppWrapper(object):
         Does not allow uploading if the file is not of a valid file type or if the file
         already exists in the filesystem.
         """
+        if not self.is_authenticated():
+            return redirect(url_for('login'))
+        
         # check that there is a file selected and that the name is not null
         if 'file' not in request.files:
             flash('No file part')
@@ -1382,22 +1385,17 @@ class FlaskAppWrapper(object):
         if file.filename == '':
             flash('No selected file')
             return redirect(url_for('index'))
-
+        
         # check it is a valid file
         file_extension = os.path.splitext(file.filename)[1]
         if file and file_extension in self.global_config["ACCEPTED_FILES"]:
-
-            # get the file hash and upload file to filesystem see if it is not already present
-            filename = file.filename
-            if add_filename_to_filehashes(filename, self.data_path):
-                files_hash = file_hash(filename)
-                file.save(os.path.join(self.app.config['UPLOAD_FOLDER'], files_hash))
+        
+            try:
+                resource = add_uploaded_file(target_dir=self.app.config['UPLOAD_FOLDER'],file=file, file_extension=file_extension)
+                self.scraper_manager.register_resource(target_dir=Path(self.app.config['UPLOAD_FOLDER']),resource=resource)
                 flash('File uploaded successfully')
-            else:
-                flash('File under this name already exists. If you would like to upload a new file, please delete the old one.')
-
-        else:
-            flash('Invalid file, accepted file types are ' + str(self.global_config["ACCEPTED_FILES"]))
+            except Exception:
+                flash(f'File under this name already exists. If you would like to upload a new file, please delete the old one.')
 
         return redirect(url_for('index'))
 
@@ -1434,7 +1432,7 @@ class FlaskAppWrapper(object):
             logger.info(f"Uploading the following URL: {url}")
             try:
                 target_dir = Path(self.app.config['WEBSITE_FOLDER'])
-                resources = self.scraper_manager.web_scraper.scrape(url,manual=True)
+                resources = self.scraper_manager.web_scraper.scrape(url)
                 for resource in resources:
                     self.scraper_manager.register_resource(target_dir, resource)
                 self.scraper_manager.persist_sources()

@@ -89,7 +89,7 @@ class ServiceRegistry:
             category='application',
             requires_volume=True,
             depends_on=['chromadb', 'postgres'],
-            required_secrets=['UPLOADER_SALT','FLASK_UPLOADER_APP_SECRET_KEY'],
+            required_secrets=[],
             default_host_port=7861,
             default_container_port=7861,
             port_config_path='services.chat_app'

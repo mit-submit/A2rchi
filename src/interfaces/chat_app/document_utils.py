@@ -6,6 +6,8 @@ from pathlib import Path
 from src.utils.logging import get_logger
 from src.data_manager.collectors.utils.index_utils import load_index, \
     write_index
+from src.data_manager.collectors.scrapers.scraped_resource import \
+    ScrapedResource
 
 logger = get_logger(__name__)
 
@@ -32,39 +34,21 @@ def file_hash(filename):
 
     return simple_hash(filename)[0:12] + "." + filename.split(".")[-1]
 
+def add_uploaded_file(target_dir, file, file_extension) -> ScrapedResource:
 
-def add_filename_to_filehashes(filename, data_path, filehashes_yaml_file="manual_file_hashes.yaml"):
-    """
-    Adds a filename and its respective hash to the map between filenames and hashes
-
-    Map is stored as a .yml file in the same path as where the data is stored. Keys are the hashes 
-    and values are the filenames
-
-    Returns true if hash was able to be added sucsessfully. Returns false if the hash (and thus likely)
-    the filename already exists.
-    """
-    hash_string = file_hash(filename)
-    try:
-        # load existing hashes or initialize as empty dictionary
-        with open(os.path.join(data_path, filehashes_yaml_file), 'r') as file:
-            filenames_dict = yaml.safe_load(file) or {}
-    except FileNotFoundError:
-        filenames_dict = {}
-
-    # check if the file already exists
-    if hash_string in filenames_dict.keys():
-        logger.info(f"File '{filename}' already exists.")
-        return False
-
-    # add the new filename and hashed file string to the accounts dictionary
-    filenames_dict[hash_string] = filename
-
-    # write the updated dictionary back to the YAML file
-    with open(os.path.join(data_path, filehashes_yaml_file), 'w') as file:
-        yaml.dump(filenames_dict, file)
-
-    return True
-
+    resource = ScrapedResource(
+                url=file.filename,
+                content=file.read(),
+                suffix=file_extension,
+                source_type="files",
+                metadata={
+                    "content_type": file.content_type,
+                    "title": file.filename
+                },
+            )
+    files_hash = file_hash(file.filename)
+    file.save(os.path.join(target_dir, files_hash))
+    return resource
 
 def get_filename_from_hash(hash_string, data_path, filehashes_yaml_file="manual_file_hashes.yaml"):
     """

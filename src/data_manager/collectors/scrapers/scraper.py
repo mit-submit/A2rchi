@@ -17,7 +17,7 @@ class WebScraper:
         self.verify_urls = verify_urls
         self.enable_warnings = enable_warnings
 
-    def scrape(self, url: str, manual: bool = False) -> List[ScrapedResource]:
+    def scrape(self, url: str) -> List[ScrapedResource]:
         """Fetch the given URL and return the retrieved payload.
 
         The caller is responsible for deciding how to persist the payload.
@@ -37,7 +37,7 @@ class WebScraper:
                 url=url,
                 content=response.content,
                 suffix="pdf",
-                source_type="uploaded_url" if manual else "links",
+                source_type="links",
                 metadata={"content_type": content_type},
             )
         else:
@@ -46,7 +46,7 @@ class WebScraper:
                 url=url,
                 content=response.text,
                 suffix="html",
-                source_type="uploaded_url" if manual else "links",
+                source_type="links",
                 metadata={
                     "content_type": content_type,
                     "encoding": response.encoding,
