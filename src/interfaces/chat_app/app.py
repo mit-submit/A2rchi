@@ -15,7 +15,7 @@ import psycopg2
 import psycopg2.extras
 import yaml
 from chromadb.config import Settings
-from flask import jsonify, render_template, request
+from flask import jsonify, render_template, request, session, flash, redirect, url_for
 from flask_cors import CORS
 from langchain_chroma.vectorstores import Chroma
 from pygments import highlight
@@ -31,6 +31,8 @@ from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION
+from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
+from src.interfaces.chat_app.document_utils import *
 
 
 logger = get_logger(__name__)
@@ -610,6 +612,22 @@ class FlaskAppWrapper(object):
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
+        
+        self.salt = read_secret("UPLOADER_SALT")
+        self.app.secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
+        self.app.config['UPLOAD_FOLDER'] = os.path.join(self.data_path, "manual_uploads")
+        self.app.config['WEBSITE_FOLDER'] = os.path.join(self.data_path, "manual_websites")
+        self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
+        self.app.config['WEBLISTS_FOLDER'] = os.path.join(self.data_path, "websites")
+
+        # create upload and accounts folders if they don't already exist
+        os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
+        os.makedirs(self.app.config['WEBSITE_FOLDER'], exist_ok=True)
+        os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
+
+        # create path specifying URL sources for scraping
+        self.sources_path = os.path.join(self.data_path, 'index.yaml')
+        self.scraper_manager = ScraperManager()
 
         # store postgres connection info
         self.pg_config = {
@@ -653,6 +671,17 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/load_conversation', 'load_conversation', self.load_conversation, methods=["POST"])
         self.add_endpoint('/api/new_conversation', 'new_conversation', self.new_conversation, methods=["POST"])
         self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.delete_conversation, methods=["POST"])
+
+        # add endpoints for document_index
+        self.add_endpoint('/document_index/', 'document_index', self.document_index)
+        self.add_endpoint('/document_index/index', 'index', self.document_index)
+        self.add_endpoint('/document_index/login', 'login', self.login, methods=['GET', 'POST'])
+        self.add_endpoint('/document_index/logout', 'logout', self.logout)
+        self.add_endpoint('/document_index/upload', 'upload', self.upload, methods=['POST'])
+        self.add_endpoint('/document_index/delete/<file_hash>', 'delete', self.delete)
+        self.add_endpoint('/document_index/delete_source/<source_type>', 'delete_source', self.delete_source)
+        self.add_endpoint('/document_index/upload_url', 'upload_url', self.upload_url, methods=['POST'])
+        self.add_endpoint('/document_index/load_document/<path:file_hash>', 'load_document', self.load_document)
 
     def health(self):
         return jsonify({"status": "OK"}, 200)
@@ -1260,3 +1289,197 @@ class FlaskAppWrapper(object):
         except Exception as e:
             print(f"ERROR in delete_conversation: {str(e)}")
             return jsonify({'error': str(e)}), 500
+        
+    def is_authenticated(self):
+        """
+        Keeps the state of the authentication. 
+
+        Returns true if there has been a correct login authentication and false otherwise.
+        """
+        return 'logged_in' in session and session['logged_in']
+    
+    #@app.route('/document_index/login', methods=['GET', 'POST'])
+    def login(self):
+        """
+        Method which governs the logging into the system. Relies on check_credentials function
+        """
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
+
+            if check_credentials(username, password, self.salt, self.app.config['ACCOUNTS_FOLDER']):
+                session['logged_in'] = True
+                return redirect(url_for('index'))
+            else:
+                flash('Invalid credentials')
+
+        return render_template('login.html')
+
+
+    #@app.route('/document_index/logout')
+    def logout(self):
+        """
+        Method which is responsible for logout
+
+        This method is never explictly called, login sessions 
+        are stored in the cookies.
+        """
+        session.pop('logged_in', None)
+
+        return redirect(url_for('login'))
+
+
+    #@app.route('/document_index/')
+    def document_index(self):
+        """
+        Methods which gets all the filenames in the UPLOAD_FOLDER and lists them
+        in the UI.
+
+        Note, this method must convert the file hashes (which is the name the files)
+        are stored under in the filesystem) to file names. It uses get_filename_from_hash
+        for this.
+        """
+        if not self.is_authenticated():
+            return redirect(url_for('login'))
+        
+        metadata_index = load_index(self.data_path,filename="metadata_index.yaml")
+
+        sources_index = {}
+
+        for source_hash, source_metadata_path in metadata_index.items():
+            try:
+                with open(os.path.join(self.data_path,source_metadata_path),"r") as file:
+                    metadata_source = yaml.safe_load(file)
+
+                source_type = metadata_source['source_type']
+                title = metadata_source['ticket_id'] if 'ticket_id' in metadata_source.keys() else metadata_source['url']
+                
+                if source_type in sources_index:
+                    sources_index[source_type].append((source_hash,title))
+                else:
+                    sources_index[source_type] = [(source_hash,title)]
+            except FileNotFoundError as e:
+                logger.info(f"Source with hash {source_hash} could not be found, skipping.")
+
+        
+        return render_template('document_index.html', sources_index=sources_index.items())
+
+
+    #@app.route('/document_index/upload', methods=['POST'])
+    def upload(self):
+        """
+        Methods which governs uploading.
+
+        Does not allow uploading if the file is not of a valid file type or if the file
+        already exists in the filesystem.
+        """
+        if not self.is_authenticated():
+            return redirect(url_for('login'))
+        
+        # check that there is a file selected and that the name is not null
+        if 'file' not in request.files:
+            flash('No file part')
+            return redirect(url_for('index'))
+
+        file = request.files['file']
+        if file.filename == '':
+            flash('No selected file')
+            return redirect(url_for('index'))
+        
+        # check it is a valid file
+        file_extension = os.path.splitext(file.filename)[1]
+        if file and file_extension in self.global_config["ACCEPTED_FILES"]:
+        
+            try:
+                resource = add_uploaded_file(target_dir=self.app.config['UPLOAD_FOLDER'],file=file, file_extension=file_extension)
+                self.scraper_manager.register_resource(target_dir=Path(self.app.config['UPLOAD_FOLDER']),resource=resource)
+                flash('File uploaded successfully')
+            except Exception:
+                flash(f'File under this name already exists. If you would like to upload a new file, please delete the old one.')
+
+        return redirect(url_for('index'))
+
+
+    #@app.route('/document_index/delete/<file_hash>')
+    def delete(self, file_hash):
+        """
+        Method which governs deleting
+
+        Technically can handle edge case where the file which is trying to be deleted
+        is not in the filesystem.
+        """
+        self.scraper_manager.remove_document(file_hash)
+
+        return redirect(url_for('index'))
+    
+    #@app.route('/document_index/delete_source/<source_type>')
+    def delete_source(self, source_type):
+        """
+        Method to delete all documents of a specific source type
+        """
+        self.scraper_manager.delete_with_metadata_filter(metadata_field='source_type',value=source_type)
+
+        return redirect(url_for('index'))
+
+
+    #@app.route('/document_index/upload_url', methods=['POST'])
+    def upload_url(self):
+        if not self.is_authenticated():
+            return redirect(url_for('login'))
+        
+        url = request.form.get('url')
+        if url:
+            logger.info(f"Uploading the following URL: {url}")
+            try:
+                target_dir = Path(self.app.config['WEBSITE_FOLDER'])
+                resources = self.scraper_manager.web_scraper.scrape(url)
+                for resource in resources:
+                    self.scraper_manager.register_resource(target_dir, resource)
+                self.scraper_manager.persist_sources()
+                added_to_urls = True
+
+            except Exception as e:
+                logger.error(f"Failed to upload URL: {str(e)}")
+                added_to_urls = False
+
+            if added_to_urls:
+                flash('URL uploaded successfully')
+            else:
+                flash('Failed to add URL')
+        else:
+            flash('No URL provided')
+
+        return redirect(url_for('index'))
+    
+    
+    #@app.route('/document_index/load_document/<path:file_hash>')
+    def load_document(self, file_hash):
+        index = load_index(data_path=self.data_path)
+        if file_hash in index.keys():
+            file_path = index[file_hash]
+            file_path = os.path.join(self.data_path,file_path)
+            metada_path = os.path.join(self.data_path,file_path+'.meta.yaml')
+            with open(file_path, 'r') as file:
+                document = file.read()
+
+            with open(metada_path, 'r') as file:
+                metadata = yaml.safe_load(file)
+
+            logger.info(f"Getting document: {file_path}")
+
+            title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
+
+            return jsonify({'document':document, 
+                            'display_name':metadata['display_name'],
+                            'source_type':metadata['source_type'],
+                            'original_url':metadata['url'],
+                            'title':title})
+    
+        else:
+            return jsonify({'document':"Document not found", 
+                            'display_name':"Error",
+                            'source_type':'null',
+                            'original_url':"no_url",
+                            'title':'Not found'})
+    
+

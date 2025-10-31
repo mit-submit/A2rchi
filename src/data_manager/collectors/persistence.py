@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, TYPE_CHECKING, Union, Any
+from typing import Dict, TYPE_CHECKING, Union, Any, List
 
 import yaml
 
@@ -66,6 +66,31 @@ class PersistenceService:
         self._index[resource_hash] = relative_path
         self._index_dirty = True
         return file_path
+    
+    def delete_resource(self, resource_hash:str) -> Path:
+        """
+        Delete a resource and its metadata from disk,
+        updating both indices accordingly: with the unique hash of the file as key for both,
+        and the path to the file (metadata file) as value for the main (metadata) index.
+        """
+        
+        try:
+            file_path = self.data_path / self._index[resource_hash]
+            metadata_path = self.data_path /self._metadata_index[resource_hash]
+        except Exception as e:
+            raise ValueError(f"Resource hash {resource_hash} not found. {e}")
+
+        self._delete_content(file_path)
+        self._index.pop(resource_hash)
+        self._index_dirty = True
+
+        self._delete_metadata(metadata_path)
+        self._metadata_index.pop(resource_hash)
+        self._metadata_index_dirty = True
+
+        
+        logger.info(f"Deleted resource {resource_hash} -> {file_path}")  
+        return file_path
 
     def reset_directory(self, directory: Path) -> None:
         """Remove all files and folders within the specified directory."""
@@ -128,6 +153,18 @@ class PersistenceService:
             )
             self._metadata_index_dirty = False
 
+    def get_resource_hashes_by_metadata_filter(self, metadata_field, value) -> List[str]:
+
+        filtered_hashes = []
+        for resource_hash, metadata_path in self._metadata_index.items():
+            with open(self.data_path / metadata_path) as metadata_file:
+                metadata = yaml.safe_load(metadata_file)
+            if metadata_field in metadata.keys() and metadata[metadata_field]==value:
+                filtered_hashes.append(resource_hash)
+
+
+        return filtered_hashes
+
     def _remove_tree(self, path: Path) -> None:
         for item in path.iterdir():
             if item.is_dir():
@@ -172,6 +209,12 @@ class PersistenceService:
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         with metadata_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(metadata_dict, fh, sort_keys=True)
+
+    def _delete_content(self,file_path: Path) -> None:
+        file_path.unlink()
+
+    def _delete_metadata(self, metadata_path: Path) -> None:
+        metadata_path.unlink()
 
     @staticmethod
     def _normalise_metadata(metadata: Any) -> Dict[str, str]:

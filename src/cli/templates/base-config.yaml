@@ -76,13 +76,7 @@ services:
     include_copy_button: {{ services.chat_app.include_copy_button | default(false, true) }}
     enable_debug_chroma_endpoints: {{ services.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ services.chat_app.flask_debug_mode | default(true, false) }}
-  uploader_app:
-    port: {{ services.uploader_app.port | default(5001, true) }}
-    external_port: {{ services.uploader_app.external_port | default(5003, true) }}
-    host: {{ services.uploader_app.host | default("0.0.0.0", true) }}
-    template_folder: "{{ services.uploader_app.template_folder | default('/root/A2rchi/src/interfaces/uploader_app/templates', true) }}"
     verify_urls: {{ services.uploader_app.verify_urls | default(true, false) }}
-    flask_debug_mode: {{ services.uploader_app.flask_debug_mode | default(true, false) }}
   grader_app:
     port: {{ services.grader_app.port | default(7861, true) }}
     external_port: {{ services.grader_app.external_port | default(7862, true) }}

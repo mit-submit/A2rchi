@@ -108,17 +108,6 @@ class ServiceRegistry:
         ))
         
         self.register(ServiceDefinition(
-            name='uploader',
-            description='Admin interface for uploading and managing documents',
-            category='application',
-            depends_on=['chromadb'],
-            required_secrets=['FLASK_UPLOADER_APP_SECRET_KEY', 'UPLOADER_SALT'],
-            default_host_port=5003,
-            default_container_port=5001,
-            port_config_path='services.uploader_app'
-        ))
-        
-        self.register(ServiceDefinition(
             name='grader',
             description='Automated grading service for assignments with web interface',
             category='application',

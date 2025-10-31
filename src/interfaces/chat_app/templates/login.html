@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+    <title>Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style_index.css') }}">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1 class="login-title">Login</h1>
+
+            <form action="/document_index/login" method="post" class="login-form">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required class="login-input">
+                
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required class="login-input">
+                
+                <input type="submit" value="Login" class="login-submit-btn">
+            </form>
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <ul class="flash-messages">
+                        {% for message in messages %}
+                            <li>{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            {% endwith %}
+        </div>
+    </div>
+</body>
+</html>
