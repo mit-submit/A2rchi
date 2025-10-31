@@ -2,7 +2,7 @@
 import getpass
 import os
 
-from src.interfaces.uploader_app.app import add_username_password
+from src.interfaces.chat_app.document_utils import add_username_password
 from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging

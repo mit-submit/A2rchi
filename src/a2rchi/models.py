@@ -8,8 +8,6 @@ import requests
 import torch
 from langchain_anthropic import ChatAnthropic
 from langchain_core.caches import BaseCache
-from langchain_core.callbacks import Callbacks
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.llms import LLM
 from langchain_ollama.chat_models import ChatOllama
 from langchain_openai import ChatOpenAI
@@ -57,7 +55,6 @@ class BaseCustomLLM(LLM):
         self,
         prompt: str,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         pass
 
@@ -73,7 +70,6 @@ class DumbLLM(BaseCustomLLM):
         self,
         prompt: str = None,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         sleep_time = np.random.normal(self.sleep_time_mean, 1)
         logger.info(f"DumbLLM: sleeping {sleep_time}")
@@ -159,7 +155,6 @@ class LlamaLLM(BaseCustomLLM):
         self,
         prompt: str = None,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         
         safe, safe_msg = check_safety(prompt, self.safety_checkers, 'prompt')
@@ -284,7 +279,6 @@ class VLLM(BaseCustomLLM):
         self,
         prompt: str = None,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         
         from vllm import SamplingParams
@@ -426,7 +420,6 @@ class HuggingFaceOpenLLM(BaseCustomLLM):
         self,
         prompt: str = None,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         
         safe, safe_msg = check_safety(prompt, self.safety_checkers, 'prompt')
@@ -563,7 +556,6 @@ class HuggingFaceImageLLM(BaseCustomLLM):
         prompt: str = None,
         images: List[Union[str, Any]] = None, # base64 encoded images
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
 
         logger.info(f"Processing prompt: {prompt}")
@@ -699,7 +691,6 @@ class ClaudeLLM(BaseCustomLLM):
         self,
         prompt: str = None,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
         max_tokens: int = 1024,
     ) -> str:
 

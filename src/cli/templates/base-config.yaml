@@ -60,7 +60,7 @@ services:
     imap4_port: {{ services.redmine_mailbox.imap4_port | default(143, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
   postgres:
-    port: {{ services.postgres.port | default(5432, true) }}
+    port: {{ services.postgres.port if host_mode else 5432 }}
     user: {{ services.postgres.user | default('a2rchi', true) }}
     database: {{ services.postgres.database | default('a2rchi-db', true) }}
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
@@ -76,13 +76,7 @@ services:
     include_copy_button: {{ services.chat_app.include_copy_button | default(false, true) }}
     enable_debug_chroma_endpoints: {{ services.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ services.chat_app.flask_debug_mode | default(true, false) }}
-  uploader_app:
-    port: {{ services.uploader_app.port | default(5001, true) }}
-    external_port: {{ services.uploader_app.external_port | default(5003, true) }}
-    host: {{ services.uploader_app.host | default("0.0.0.0", true) }}
-    template_folder: "{{ services.uploader_app.template_folder | default('/root/A2rchi/src/interfaces/uploader_app/templates', true) }}"
     verify_urls: {{ services.uploader_app.verify_urls | default(true, false) }}
-    flask_debug_mode: {{ services.uploader_app.flask_debug_mode | default(true, false) }}
   grader_app:
     port: {{ services.grader_app.port | default(7861, true) }}
     external_port: {{ services.grader_app.external_port | default(7862, true) }}
@@ -305,7 +299,7 @@ a2rchi:
     VLLM:
       class: VLLM
       kwargs:
-        base_model: {{ a2rchi.model_class_map.VLLM.kwargs.base_model | default("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", true) }}
+        base_model: {{ a2rchi.model_class_map.VLLM.kwargs.base_model | default('Qwen/Qwen2.5-7B-Instruct-1M', true) }}
         seed: {{ a2rchi.model_class_map.VLLM.kwargs.seed | default("null", true) }}
         enable_salesforce_content_safety: {{ a2rchi.model_class_map.VLLM.kwargs.enable_salesforce_content_safety | default(false, false) }}
         max_new_tokens: {{ a2rchi.model_class_map.VLLM.kwargs.max_new_tokens | default(4096, true) }}

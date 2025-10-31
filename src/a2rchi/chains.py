@@ -1,8 +1,5 @@
 from typing import Any, Dict, List, Optional
-
-from langchain.callbacks.manager import CallbackManagerForChainRun
-from langchain.chains.llm import LLMChain  # deprecated, should update
-
+from langchain_classic.chains.llm import LLMChain  # deprecated, should update
 
 class ImageLLMChain(LLMChain):
     """
@@ -12,7 +9,6 @@ class ImageLLMChain(LLMChain):
     def _call(
         self,
         inputs: Dict[str, Any],
-        run_manager: Optional[CallbackManagerForChainRun] = None,
     ) -> Dict[str, str]:
         images = inputs.get("images", [])
         
@@ -24,7 +20,6 @@ class ImageLLMChain(LLMChain):
         response = self.llm._call(
             prompt=prompt,
             images=images,
-            run_manager=run_manager.get_child() if run_manager else None,
         )
         
         return {"text": response}
