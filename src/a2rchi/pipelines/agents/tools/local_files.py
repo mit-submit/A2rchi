@@ -115,7 +115,7 @@ def create_file_search_tool(
                 break
 
         if store_docs:
-            store_docs(query, docs)
+            store_docs(f"{name}: {query}", docs)
 
         return _format_files_for_llm(hits)
 
@@ -190,7 +190,7 @@ def create_metadata_search_tool(
                 break
 
         if store_docs:
-            store_docs(query, docs)
+            store_docs(f"{name}: {query}", docs)
 
         return _format_files_for_llm(hits)
 

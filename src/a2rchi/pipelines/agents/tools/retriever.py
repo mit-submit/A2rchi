@@ -86,7 +86,7 @@ def create_retriever_tool(
         results = retriever.invoke(query)
         docs = _normalize_results(results or [])
         if store_docs:
-            store_docs(name, [doc for doc, _ in docs])
+            store_docs(f"{name}: {query}", [doc for doc, _ in docs])
         return _format_documents_for_llm(docs, max_documents=max_documents, max_chars=max_chars)
 
     return _retriever_tool

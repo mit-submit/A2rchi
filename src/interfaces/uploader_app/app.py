@@ -7,8 +7,7 @@ import yaml
 from flask import flash, redirect, render_template, request, session, url_for
 
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
-from src.data_manager.collectors.utils.index_utils import load_index, \
-    write_index
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -116,14 +115,14 @@ def get_filename_from_hash(hash_string, data_path, filehashes_yaml_file="manual_
 
 def remove_url_from_sources(url, sources_path):
     data_path = Path(sources_path).parent
-    index_data = load_index(data_path)
+    index_data = CatalogService.load_index(data_path)
     sources = index_data.get("sources", {})
 
     # remove any entry whose value matches the URL
     sources = {k: v for k, v in sources.items() if v != url}
     index_data["sources"] = sources
 
-    write_index(data_path, index_data)
+    CatalogService.write_index(data_path, index_data)
 
 
 def add_username_password(username, password, salt, accounts_path, file_name='accounts.yaml'):

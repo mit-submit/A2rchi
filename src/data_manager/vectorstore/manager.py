@@ -17,7 +17,7 @@ from langchain_community.document_loaders.text import TextLoader
 from .loader_utils import select_loader
 from langchain_text_splitters.character import CharacterTextSplitter
 
-from src.data_manager.collectors.utils.index_utils import load_sources_catalog
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -90,7 +90,7 @@ class VectorStoreManager:
         """Synchronise filesystem documents with the vectorstore."""
         collection = self.fetch_collection()
 
-        sources = load_sources_catalog(self.data_path)
+        sources = CatalogService.load_sources_catalog(self.data_path)
         collection_metadatas = collection.get(include=["metadatas"]).get("metadatas", [])
         files_in_vstore = self._collect_vstore_documents(collection_metadatas)
         files_in_data = self._collect_indexed_documents(sources)

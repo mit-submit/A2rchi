@@ -267,6 +267,16 @@ class ChatWrapper:
             return None
 
     @staticmethod
+    def _get_title(metadata: dict) -> str | None:
+        title = metadata.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+        else:
+            logger.error("title is not a valid non-empty string in metadata")
+            logger.error(f"Metadata content: {metadata}")
+            return None
+
+    @staticmethod
     def _get_doc_visibility(self, metadata: dict) -> bool:
         """
         From the metadata, check the source type.
@@ -399,7 +409,7 @@ class ChatWrapper:
                 if not link_k:
                     link_k = (
                         self._get_display_name(metadata)
-                        or self._format_reference_label(metadata)
+                        or self._get_title(metadata)
                         or "link not available"
                     )
                 multiple_newlines = r'\n{2,}'

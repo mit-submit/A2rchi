@@ -5,8 +5,7 @@ from typing import Dict, TYPE_CHECKING, Union, Any
 
 import yaml
 
-from src.data_manager.collectors.utils.index_utils import (load_index,
-                                                           write_index)
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.utils.logging import get_logger
 from src.data_manager.collectors.utils.metadata import ResourceMetadata
 
@@ -22,10 +21,10 @@ class PersistenceService:
     def __init__(self, data_path: Path | str) -> None:
         self.data_path = Path(data_path)
 
-        self._index: Dict[str, str] = load_index(self.data_path)
+        self._index: Dict[str, str] = CatalogService.load_index(self.data_path)
         self._index_dirty = False
 
-        self._metadata_index: Dict[str, str] = load_index(
+        self._metadata_index: Dict[str, str] = CatalogService.load_index(
             self.data_path, filename="metadata_index.yaml"
         )
         self._metadata_index_dirty = False
@@ -117,11 +116,11 @@ class PersistenceService:
 
     def flush_index(self) -> None:
         if self._index_dirty:
-            write_index(self.data_path, self._index)
+            CatalogService.write_index(self.data_path, self._index)
             self._index_dirty = False
 
         if self._metadata_index_dirty:
-            write_index(
+            CatalogService.write_index(
                 self.data_path,
                 self._metadata_index,
                 filename="metadata_index.yaml",

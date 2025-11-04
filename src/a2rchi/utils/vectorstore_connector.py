@@ -39,7 +39,7 @@ class VectorstoreConnector:
 
         logger.info(f"Vectorstore connection initialized with collection: {self.collection_name}")
 
-    def _update_vectorstore(self):
+    def _update_vectorstore_conn(self):
         """
         Function to update the vectorstore connection.
         """
@@ -73,4 +73,4 @@ class VectorstoreConnector:
         """
         Public method to get the updated vectorstore connection.
         """
-        return self._update_vectorstore()
+        return self._update_vectorstore_conn()

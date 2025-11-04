@@ -7,7 +7,7 @@ from typing import Iterable, List, Sequence, Tuple
 from langchain_core.documents import Document
 
 
-class DocumentCollector:
+class DocumentMemory:
     """Track documents and textual annotations produced by agent tool calls."""
     # TODO for now we return langchain's Document objects. We could think about returning the same Resource classes we use when collecting these (or vice versa) to reduce the amount of dataclasses to worry about.
     # TODO we don't collect retriever scores

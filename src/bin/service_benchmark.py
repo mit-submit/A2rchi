@@ -20,8 +20,7 @@ from ragas.metrics import (answer_relevancy, context_precision, context_recall,
 
 from src.a2rchi.a2rchi import A2rchi
 from src.a2rchi.models import HuggingFaceOpenLLM
-from src.data_manager.collectors.utils.index_utils import \
-    load_sources_catalog
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging

@@ -8,8 +8,7 @@ import psycopg2.extras
 from redminelib import Redmine as RedmineClient
 
 from src.a2rchi.a2rchi import A2rchi
-from src.data_manager.collectors.utils.index_utils import \
-    load_sources_catalog
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.data_manager.data_manager import DataManager
 from src.interfaces.redmine_mailer_integration.utils import sender
 from src.utils.config_loader import load_config
@@ -56,7 +55,7 @@ class RedmineAIWrapper:
     def prepare_context_for_storage(self, source_documents):
         
         # load the present list of sources
-        sources = load_sources_catalog(self.data_path)
+        sources = CatalogService.load_sources_catalog(self.data_path)
 
         num_retrieved_docs = len(source_documents)
         context = ""
