@@ -4,8 +4,7 @@ import yaml
 from pathlib import Path
 
 from src.utils.logging import get_logger
-from src.data_manager.collectors.utils.index_utils import load_index, \
-    write_index
+from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
 
@@ -19,7 +18,7 @@ def simple_hash(input_string):
     # perform the hash operation using hashlib
     identifier = hashlib.md5()
     identifier.update(input_string.encode('utf-8'))
-    hash_value= str(int(identifier.hexdigest(), 16))
+    hash_value = str(int(identifier.hexdigest(), 16))
 
     return hash_value
 
@@ -64,16 +63,9 @@ def get_filename_from_hash(hash_string, data_path, filehashes_yaml_file="manual_
     return filenames_dict[hash_string] if hash_string in filenames_dict else None
 
 
-def remove_url_from_sources(url, sources_path):
-    data_path = Path(sources_path).parent
-    index_data = load_index(data_path)
-    sources = index_data.get("sources", {})
-
-    # remove any entry whose value matches the URL
-    sources = {k: v for k, v in sources.items() if v != url}
-    index_data["sources"] = sources
-
-    write_index(data_path, index_data)
+def remove_url_from_sources(url: str, sources_path: str):
+    persistence = PersistenceService(sources_path)
+    persistence.delete_by_metadata_filter("url", url)
 
 
 def add_username_password(username, password, salt, accounts_path, file_name='accounts.yaml'):

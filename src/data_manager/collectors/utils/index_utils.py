@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from langchain_core.documents import Document
 
 import yaml
@@ -33,6 +33,8 @@ class CatalogService:
 
     data_path: Path | str
     include_extensions: Sequence[str] = field(default_factory=lambda: sorted(DEFAULT_TEXT_EXTENSIONS))
+    filename: str = "index.yaml"
+    metadata_filename: str = "metadata_index.yaml"
     _file_index: Dict[str, str] = field(init=False, default_factory=dict)
     _metadata_index: Dict[str, str] = field(init=False, default_factory=dict)
 
@@ -45,8 +47,8 @@ class CatalogService:
     def refresh(self) -> None:
         """Reload file and metadata indices from disk."""
         logger.debug("Refreshing catalog indices from %s", self.data_path)
-        self._file_index = self.load_sources_catalog(self.data_path)
-        self._metadata_index = self.load_index(self.data_path, filename="metadata_index.yaml")
+        self._file_index = self.load_index(self.data_path, filename=self.filename)
+        self._metadata_index = self.load_index(self.data_path, filename=self.metadata_filename)
 
     @property
     def file_index(self) -> Dict[str, str]:
@@ -56,16 +58,29 @@ class CatalogService:
     def metadata_index(self) -> Dict[str, str]:
         return self._metadata_index
 
+    def get_resource_hashes_by_metadata_filter(self, metadata_field: str, value: str) -> List[str]:
+        """
+        Return resource hashes whose metadata contains ``metadata_field`` equal to ``value``.
+        """
+        matches: List[str] = []
+        for resource_hash in self._metadata_index:
+            metadata = self.get_metadata_for_hash(resource_hash)
+            if not metadata:
+                continue
+            if metadata.get(metadata_field) == value:
+                matches.append(resource_hash)
+        return matches
+
     def iter_files(self) -> Iterable[Tuple[str, Path]]:
-        for resource_hash, absolute_path in self._file_index.items():
-            path = Path(absolute_path)
-            if not path.exists():
+        for resource_hash in self._file_index.keys():
+            path = self.get_filepath_for_hash(resource_hash)
+            if not path:
                 continue
             if self.include_extensions and path.suffix.lower() not in self.include_extensions:
                 continue
             yield resource_hash, path
 
-    def metadata_path_for(self, resource_hash: str) -> Optional[Path]:
+    def metadata_path_for_hash(self, resource_hash: str) -> Optional[Path]:
         stored = self._metadata_index.get(resource_hash)
         if not stored:
             return None
@@ -75,7 +90,7 @@ class CatalogService:
         return metadata_path if metadata_path.exists() else None
     
     def get_metadata_for_hash(self, hash: str) -> Optional[Dict[str, any]]:
-        metadata_path = self.metadata_path_for(hash)
+        metadata_path = self.metadata_path_for_hash(hash)
         if not metadata_path:
             return None
         try:
@@ -99,22 +114,20 @@ class CatalogService:
         return path if path.exists() else None
 
     def get_document_for_hash(self, hash: str) -> Optional[Document]:
-        file_path = self._file_index.get(hash)
-        if not file_path:
-            return None
-        path = Path(file_path)
-        if not path.exists():
+        path = self.get_filepath_for_hash(hash)
+        if not path:
             return None
         return load_doc_from_path(path)
 
-    @staticmethod
-    def load_index(data_path: Path | str, filename: str = "index.yaml") -> Dict[str, str]:
+    @classmethod
+    def load_index(cls, data_path: Path | str, filename: Optional[str] = None) -> Dict[str, str]:
         """
         Load the unified resource index from the provided YAML file located within ``data_path``.
         Returns an empty mapping if the file does not exist or cannot be parsed.
         """
         base_path = Path(data_path)
-        index_path = base_path / filename
+        target_filename = filename or cls.filename
+        index_path = base_path / target_filename
 
         if not index_path.exists():
             return {}
@@ -143,12 +156,12 @@ class CatalogService:
         return sanitized
 
     @classmethod
-    def load_sources_catalog(cls, data_path: Path | str) -> Dict[str, str]:
+    def load_sources_catalog(cls, data_path: Path | str, filename: Optional[str] = None) -> Dict[str, str]:
         """
         Convenience helper that returns the resource index mapping with absolute paths.
         """
         base_path = Path(data_path)
-        index = cls.load_index(base_path)
+        index = cls.load_index(base_path, filename=filename)
         resolved: Dict[str, str] = {}
         for key, stored_path in index.items():
             path = Path(stored_path)
@@ -157,15 +170,16 @@ class CatalogService:
             resolved[key] = str(path)
         return resolved
 
-    @staticmethod
+    @classmethod
     def write_index(
-        data_path: Path | str, index_data: Dict[str, str], filename: str = "index.yaml"
+        cls, data_path: Path | str, index_data: Dict[str, str], filename: Optional[str] = None
     ) -> None:
         """
         Persist the provided index to the given YAML file inside ``data_path``.
         """
         base_path = Path(data_path)
-        index_path = base_path / filename
+        target_filename = filename or cls.filename
+        index_path = base_path / target_filename
         index_path.parent.mkdir(parents=True, exist_ok=True)
 
         with index_path.open("w", encoding="utf-8") as fh:

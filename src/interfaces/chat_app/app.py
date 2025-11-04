@@ -32,6 +32,8 @@ from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
+from src.data_manager.collectors.persistence import PersistenceService
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.interfaces.chat_app.document_utils import *
 
 
@@ -622,6 +624,8 @@ class FlaskAppWrapper(object):
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
+        self.persistence = PersistenceService(self.data_path)
+        self.catalog = CatalogService(self.data_path)
         
         self.salt = read_secret("UPLOADER_SALT")
         self.app.secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
@@ -1351,25 +1355,25 @@ class FlaskAppWrapper(object):
         """
         if not self.is_authenticated():
             return redirect(url_for('login'))
-        
-        metadata_index = load_index(self.data_path,filename="metadata_index.yaml")
 
         sources_index = {}
 
-        for source_hash, source_metadata_path in metadata_index.items():
-            try:
-                with open(os.path.join(self.data_path,source_metadata_path),"r") as file:
-                    metadata_source = yaml.safe_load(file)
+        for source_hash in self.catalog.metadata_index.keys():
+            metadata_source = self.catalog.get_metadata_for_hash(source_hash)
+            if not isinstance(metadata_source, dict):
+                logger.info("Metadata for hash %s missing or invalid; skipping", source_hash)
+                continue
 
-                source_type = metadata_source['source_type']
-                title = metadata_source['ticket_id'] if 'ticket_id' in metadata_source.keys() else metadata_source['url']
-                
-                if source_type in sources_index:
-                    sources_index[source_type].append((source_hash,title))
-                else:
-                    sources_index[source_type] = [(source_hash,title)]
-            except FileNotFoundError as e:
-                logger.info(f"Source with hash {source_hash} could not be found, skipping.")
+            source_type = metadata_source.get("source_type")
+            if not source_type:
+                logger.info("Metadata for hash %s missing source_type; skipping", source_hash)
+                continue
+
+            title = metadata_source.get("ticket_id") or metadata_source.get("url")
+            if not title:
+                title = metadata_source.get("display_name") or source_hash
+
+            sources_index.setdefault(source_type, []).append((source_hash, title))
 
         
         return render_template('document_index.html', sources_index=sources_index.items())
@@ -1418,8 +1422,7 @@ class FlaskAppWrapper(object):
         Technically can handle edge case where the file which is trying to be deleted
         is not in the filesystem.
         """
-        self.scraper_manager.remove_document(file_hash)
-
+        self.persistence.delete_resource(file_hash)
         return redirect(url_for('index'))
     
     #@app.route('/document_index/delete_source/<source_type>')
@@ -1427,10 +1430,9 @@ class FlaskAppWrapper(object):
         """
         Method to delete all documents of a specific source type
         """
-        self.scraper_manager.delete_with_metadata_filter(metadata_field='source_type',value=source_type)
-
+        
+        self.persistence.delete_by_metadata_filter("source_type", source_type)
         return redirect(url_for('index'))
-
 
     #@app.route('/document_index/upload_url', methods=['POST'])
     def upload_url(self):
@@ -1464,21 +1466,13 @@ class FlaskAppWrapper(object):
     
     #@app.route('/document_index/load_document/<path:file_hash>')
     def load_document(self, file_hash):
-        index = load_index(data_path=self.data_path)
-        if file_hash in index.keys():
-            file_path = index[file_hash]
-            file_path = os.path.join(self.data_path,file_path)
-            metada_path = os.path.join(self.data_path,file_path+'.meta.yaml')
-            with open(file_path, 'r') as file:
-                document = file.read()
 
-            with open(metada_path, 'r') as file:
-                metadata = yaml.safe_load(file)
-
-            logger.info(f"Getting document: {file_path}")
+        index = self.catalog.file_index
+        if file_hash in index.keys():           
+            document = self.catalog.get_document_for_hash(file_hash)
+            metadata = self.catalog.get_metadata_for_hash(file_hash)
 
             title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
-
             return jsonify({'document':document, 
                             'display_name':metadata['display_name'],
                             'source_type':metadata['source_type'],
@@ -1492,4 +1486,3 @@ class FlaskAppWrapper(object):
                             'original_url':"no_url",
                             'title':'Not found'})
     
-
