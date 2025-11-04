@@ -310,11 +310,13 @@ class TemplateManager:
         grafana_dir.mkdir(exist_ok=True)
 
         grafana_pg_password = context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD")
+        postgres_port = context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432)
 
         datasources_template = self.env.get_template(BASE_GRAFANA_DATASOURCES_TEMPLATE)
         datasources = datasources_template.render(
             grafana_pg_password=grafana_pg_password,
             host_mode=context.plan.host_mode,
+            postgres_port=postgres_port,
         )
         with open(grafana_dir / "datasources.yaml", "w") as f:
             f.write(datasources)
@@ -388,6 +390,7 @@ class TemplateManager:
     def _render_compose_file(self, context: TemplateContext) -> None:
         template_vars = context.plan.to_template_vars()
         template_vars.update(self._extract_port_config(context))
+        template_vars.setdefault("postgres_port", context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432))
 
         # Compose template still expects optional lists
         template_vars.setdefault("prompt_files", [])

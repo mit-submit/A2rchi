@@ -116,6 +116,25 @@ class ScraperManager:
             urls.extend(self._extract_urls_from_file(list_path))
 
         return urls
+    
+    def remove_document(self, hash: str, persistence: PersistenceService = None) -> None:
+        """
+        Using a PersistentService, deletes a document based on its hash and flushes the index
+        """
+        if persistence is None:
+            persistence = PersistenceService(self.data_path)
+        persistence.delete_resource(hash)
+        persistence.flush_index()       
+
+    def delete_with_metadata_filter(self, metadata_field: str, value: str) -> None:
+        """
+        Deletes documents that match a given metadata field and value
+        """
+        persistence = PersistenceService(self.data_path)
+        resource_hash_list = persistence.get_resource_hashes_by_metadata_filter(metadata_field,value)
+
+        for resource_hash in resource_hash_list:
+            self.remove_document(resource_hash,persistence)
 
     def _handle_standard_url(
         self, url: str, persistence: PersistenceService, websites_dir: Path

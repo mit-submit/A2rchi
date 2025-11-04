@@ -19,7 +19,6 @@ def main():
     os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
     
     chat_config = load_config()["services"]["chat_app"]
-    global_config = load_config()["global"]
     print(f"Starting Chat Service with (host, port): ({chat_config['host']}, {chat_config['port']})")
     print(f"Accessible externally at (host, port): ({chat_config['hostname']}, {chat_config['external_port']})")
 

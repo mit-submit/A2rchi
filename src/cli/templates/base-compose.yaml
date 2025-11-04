@@ -37,6 +37,9 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
       POSTGRES_USER: a2rchi
       POSTGRES_DB: a2rchi-db
+      {% if host_mode -%}
+      PGPORT: {{ postgres_port }}
+      {% endif %}
     secrets:
       - pg_password
     volumes:
@@ -146,43 +149,6 @@ services:
       - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
       - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini
-    logging:
-      options:
-        max-size: 10m
-    restart: always
-    {% if host_mode -%}
-    network_mode: host
-    {% endif %}
-  {%- endif %}
-
-  {% if uploader_enabled -%}
-  uploader:
-    image: {{ uploader_image }}:{{ uploader_tag }}
-    build:
-      context: .
-      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-uploader
-    depends_on:
-      {% if chromadb_enabled -%}
-      chromadb:
-        condition: service_healthy
-      {% endif -%}
-      {% if postgres_enabled -%}
-      postgres:
-        condition: service_healthy
-      {% endif %}
-    environment:
-      {% for secret in required_secrets | default([]) -%}
-      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
-      {% endfor %}
-    secrets:
-      {% for secret in required_secrets | default([]) -%}
-      - {{ secret.lower() }}
-      {% endfor %}
-    ports:
-      - {{ uploader_port_host }}:{{ uploader_port_container }}
-    volumes:
-      - {{ chromadb_volume_name }}:/root/data/
-      - ./configs:/root/A2rchi/configs
     logging:
       options:
         max-size: 10m

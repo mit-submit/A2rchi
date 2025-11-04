@@ -93,6 +93,7 @@ class GitScraper:
                 source_type="git",
                 metadata={
                     "path": str(markdown_path.relative_to(repo_path)),
+                    "title": str(markdown_path).split('/')[-1].replace('.md','').title()
                 },
             )
             if len(resource.content)>0:

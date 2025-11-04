@@ -76,7 +76,7 @@ runs:
         ENV_FILE: ${{ inputs.env-file }}
       run: |
         set -euo pipefail
-        echo "PG_PASSWORD=$(openssl rand -base64 32)" > "${ENV_FILE}"
+        echo "PG_PASSWORD=$(openssl rand -base64 32)" >> "${ENV_FILE}"
 
     - name: Launch deployment
       shell: bash
