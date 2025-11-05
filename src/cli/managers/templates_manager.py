@@ -41,7 +41,7 @@ def find_repo_root() -> Path:
     doesn't match the repository checkout layout.
     """
     # 1) prefer cwd when it looks like the repo root
-    cwd = Path.cwd()
+    cwd = Path(__file__).resolve()
     if _looks_like_repo_root(cwd):
         return cwd
 

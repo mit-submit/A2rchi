@@ -60,6 +60,7 @@ class PersistenceService:
         logger.info(f"Stored resource {resource_hash} -> {file_path}")
         self.catalog.file_index[resource_hash] = relative_path
         self._index_dirty = True
+
         return file_path
     
     def delete_resource(self, resource_hash:str, flush: bool = True) -> Path:
@@ -129,6 +130,7 @@ class PersistenceService:
         if relative_prefix is not None:
             prefix_parts = relative_prefix.parts
             keys_to_remove = []
+            metadata_keys_to_remove = []
             for key, stored in self.catalog.file_index.items():
                 stored_path = Path(stored)
                 if stored_path.is_absolute():
@@ -143,7 +145,6 @@ class PersistenceService:
                     self.catalog.file_index.pop(key, None)
                 self._index_dirty = True
 
-            metadata_keys_to_remove = []
             for key, stored in self.catalog.metadata_index.items():
                 stored_path = Path(stored)
                 if stored_path.is_absolute():

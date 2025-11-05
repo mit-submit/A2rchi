@@ -477,6 +477,8 @@ services:
     deploy:
       resources:
         reservations:
+          limits:
+            cpus: "10.0"     # Max 2 cores
           devices:
             - driver: nvidia
               count: all

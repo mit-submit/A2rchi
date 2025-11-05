@@ -8,8 +8,6 @@ from typing import Any, Dict, List
 import pandas as pd
 import yaml
 from datasets import Dataset
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatOllama
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from ragas import RunConfig, evaluate
@@ -20,7 +18,6 @@ from ragas.metrics import (answer_relevancy, context_precision, context_recall,
 
 from src.a2rchi.a2rchi import A2rchi
 from src.a2rchi.models import HuggingFaceOpenLLM
-from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
@@ -168,11 +165,13 @@ class Benchmarker:
             case "openai":
                 return ChatOpenAI(model=model_name)
             case "ollama":
+                from langchain_community.chat_models import ChatOllama
                 base_url = provider_settings['base_url']
                 return ChatOllama(model=model_name, base_url=base_url)
             case "huggingface":
                 return HuggingFaceOpenLLM(base_model=model_name)
             case "anthropic":
+                from langchain_anthropic import ChatAnthropic
                 return ChatAnthropic(model=model_name)
             case _:
                 return ChatOpenAI(model=model_name)
@@ -201,7 +200,7 @@ class Benchmarker:
         expanded to cover all provided sources. Returns summary information and whether all
         reference sources were found.
         """
-        sources = result.get('documents', [])
+        sources = result.get('source_documents', [])
 
         # Clean and prepare reference sources
         raw_references: List[str] = []
@@ -242,55 +241,43 @@ class Benchmarker:
                 raise ValueError("Mismatch between number of match fields and reference sources.")
         else:
             match_fields_list = []
-        fields_to_capture: List[str] = []
-        seen_fields = set()
-        for field in match_fields_list:
-            if field not in seen_fields:
-                seen_fields.add(field)
-                fields_to_capture.append(field)
-        logger.debug("Fields to capture from metadata: %s", fields_to_capture)
 
         sources_returned: List[Dict[str, Any]] = []
         for document in sources:
             metadata = getattr(document, 'metadata', {}) or {}
-            if fields_to_capture:
-                record = {field: metadata.get(field) for field in fields_to_capture}
-            else:
-                record = dict(metadata)
-            sources_returned.append(record)
+            sources_returned.append(metadata)
         logger.debug("Sources returned: %s", sources_returned)
 
         matched_sources: List[str] = []
+        formatted_reference_sources: List[dict] = []
         for reference, field in zip(reference_sources_list, match_fields_list):
             logger.debug("Checking for reference source '%s' in field '%s'", reference, field)
+            formatted_reference_sources.append({field: reference})
             for document in sources:
                 metadata = getattr(document, 'metadata', {}) or {}
                 value = metadata.get(field)
-                logger.debug("Checking against document metadata field '%s': %s", field, value)
                 if value is None:
                     continue
                 if isinstance(value, list):
                     values = [str(v).strip() for v in value if v is not None]
                 else:
                     values = [str(value).strip()]
+                logger.info("Source metadata field '%s' values: %s", field, values)
+                logger.debug("Checking reference '%s' against document metadata field '%s': %s", reference, field, values)
                 if reference in values:
+                    logger.debug("Matched reference source '%s' in document metadata.", reference)
                     matched_sources.append(reference)
                     break
 
-        match = bool(reference_sources_list) and len(matched_sources) == len(reference_sources_list)
+        # match is determined if at least once source is found
+        match = bool(reference_sources_list) and len(matched_sources) > 0
         logger.debug("Source matching result: %s", match)
 
-        result_dict = {
-            True: 'SOURCE FOUND',
-            False: 'SOURCE NOT FOUND'
-        }
-
         res = {
-            'correct_source': reference_sources,
+            'correct_source': formatted_reference_sources,
             'sources_returned': sources_returned,
-            'matched_reference_sources': matched_sources,
-            'match_fields_used': match_fields_list,
-            'source_result': result_dict[match],
+            'fields_for_matching': match_fields_list,
+            'source_result': str(match),
         }
 
         return res, match
@@ -341,6 +328,11 @@ class Benchmarker:
     def run(self):
         modes_being_run = set(self.benchmarking_configs['modes'])
 
+        logger.info("\n")
+        logger.info("====== Starting benchmark: %s ======", self.benchmark_name)
+        logger.info("Modes being run: %s", modes_being_run)
+        logger.info("\n")
+
         while self.all_config_files: 
             question_id = 0
 
@@ -356,6 +348,10 @@ class Benchmarker:
 
             for question_item in self.queries_to_answers:
 
+                logger.info("\n")
+                logger.info("====================================")
+                logger.info(f"Answering question: {question_id + 1}")
+
                 if type(question_item) is not dict:
                     logger.error(f"Each item in the question to answer list must be a dictionary, but got {type(question_item)}")
                     continue
@@ -368,6 +364,10 @@ class Benchmarker:
                 reference_answer = question_item.get('answer', 'N/A')
                 reference_sources = question_item.get('sources', 'N/A')
 
+                logger.info(f"Question: {question}")
+                logger.info(f"Reference Answer: {reference_answer}")
+                logger.info(f"Reference Sources: {reference_sources}")
+
                 question_id +=1
                 formatted_question = [("User", question)]
                 start = time.perf_counter()
@@ -375,7 +375,7 @@ class Benchmarker:
                 end = time.perf_counter()
                 to_add = {}
 
-                sources =  result['documents']
+                sources =  result['source_documents']
                 contexts = [s.page_content for s in sources]
 
                 if "RAGAS" in modes_being_run:
@@ -388,10 +388,10 @@ class Benchmarker:
                     all_results.append(dataset_result)
 
                 to_add["question"] = question
-                to_add["contexts"] = [str(source) for source in sources]
+                to_add["contexts"] = contexts
                 to_add["chat_answer"] = result['answer']
                 to_add["time_elapsed"] = end - start
-                to_add['document_scores'] = result['documents_scores']
+                to_add['document_scores'] = result.get('documents_scores', [])
                 to_add['ground_truth'] = reference_answer
 
                 if "SOURCES" in modes_being_run: 
@@ -407,6 +407,9 @@ class Benchmarker:
 
                 question_wise_results[f"question_{question_id}"] = to_add
                 logger.info(f"Finished answering question: {question_id}")
+                logger.info(f"Current accuracy: {source_accuracy / question_id if question_id > 0 else 0.0}")
+                logger.info("====================================")
+                logger.info("\n")
 
             if "RAGAS" in modes_being_run:
                 logger.info(f"Starting to collect RAGAS results")

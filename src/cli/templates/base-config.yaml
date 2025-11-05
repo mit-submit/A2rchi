@@ -118,6 +118,8 @@ data_manager:
       query_embedding_instructions: {{ data_manager.embedding_class_map.HuggingFaceEmbeddings.query_embedding_instructions | default("null", true) }}
   chunk_size: {{ data_manager.chunk_size | default(1000, true) }}
   chunk_overlap: {{ data_manager.chunk_overlap | default(0, true) }}
+  chunk_cache_path: {{ data_manager.chunk_cache_path | default('chunk_cache', true) }}
+  parallel_workers: {{ data_manager.parallel_workers | default(32, true) }}
   reset_collection: {{ data_manager.reset_collection | default(true, true) }}
   num_documents_to_retrieve: {{ data_manager.num_documents_to_retrieve | default(5, true) }}
   stemming:
@@ -163,7 +165,7 @@ data_manager:
         {%- for project in data_manager.sources.jira.projects | default([], true) %}
         - {{ project }}
         {%- endfor %}
-      anonymize_data: {{ data_manager.sources.jira.anonymize_data | default(true, true) }}
+      anonymize_data: {{ data_manager.sources.jira.anonymize_data | default(false, true) }}
       max_tickets: {{ data_manager.sources.jira.max_tickets | default(1e10, true) }}
     redmine:
       enabled: {{ data_manager.sources.redmine.enabled | default(false, true) }}
