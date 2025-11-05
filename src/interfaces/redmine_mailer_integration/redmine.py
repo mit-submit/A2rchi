@@ -8,8 +8,7 @@ import psycopg2.extras
 from redminelib import Redmine as RedmineClient
 
 from src.a2rchi.a2rchi import A2rchi
-from src.data_manager.collectors.utils.index_utils import \
-    load_sources_catalog
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.data_manager.data_manager import DataManager
 from src.interfaces.redmine_mailer_integration.utils import sender
 from src.utils.config_loader import load_config
@@ -56,7 +55,7 @@ class RedmineAIWrapper:
     def prepare_context_for_storage(self, source_documents):
         
         # load the present list of sources
-        sources = load_sources_catalog(self.data_path)
+        sources = CatalogService.load_sources_catalog(self.data_path)
 
         num_retrieved_docs = len(source_documents)
         context = ""
@@ -113,11 +112,11 @@ class RedmineAIWrapper:
 
         # execute chain and get answer
         result = self.a2rchi(history=reformatted_history)
-        answer = result["answer"]
+        answer = result.answer
 
         # prepare other information for storage
         history = "Question: " + reformatted_history[-1][1] + "\n\n\n\nHistory:\n\n" + "\n\n".join(post[0] + ": " + post[1] for post in reversed(reformatted_history[:-1]))
-        link, context = self.prepare_context_for_storage(result['documents'])
+        link, context = self.prepare_context_for_storage(result.source_documents)
         ts = datetime.datetime.now()
 
         self.insert_conversation(issue_id, history, answer, link, context, ts)

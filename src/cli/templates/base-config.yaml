@@ -65,6 +65,7 @@ services:
     database: {{ services.postgres.database | default('a2rchi-db', true) }}
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
   chat_app:
+    pipeline: {{ services.chat_app.pipeline | default("QAPipeline", true) }}
     trained_on: {{ services.chat_app.trained_on | default("", true) }}
     port: {{ services.chat_app.port | default(7861, true) }}
     external_port: {{ services.chat_app.external_port | default(7861, true) }}
@@ -223,7 +224,14 @@ a2rchi:
       models:
         required:
           image_processing_model: {{ a2rchi.pipeline_map.ImageProcessingPipeline.models.required.image_processing_model | default('HuggingFaceImageLLM', true) }}
-    
+    CMSCompOpsAgent:
+      prompts:
+        required:
+          agent_prompt: {% if a2rchi.pipeline_map.CMSCompOpsAgent.prompts.required.agent_prompt %}"{{ a2rchi.pipeline_map.CMSCompOpsAgent.prompts.required.agent_prompt }}"{% else %}null{% endif %}
+      models:
+        required:
+          agent_model: {{ a2rchi.pipeline_map.CMSCompOpsAgent.models.required.agent_model | default('OllamaInterface', true) }}
+
   model_class_map:
     AnthropicLLM:
       class: AnthropicLLM

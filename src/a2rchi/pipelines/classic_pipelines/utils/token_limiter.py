@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.prompts.base import BasePromptTemplate
 
-from src.a2rchi.utils import history_utils
+from src.a2rchi.pipelines.classic_pipelines.utils import history_utils
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

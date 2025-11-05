@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, TYPE_CHECKING, Union, Any, List
+from typing import Dict, TYPE_CHECKING, Union, Any
 
 import yaml
 
-from src.data_manager.collectors.utils.index_utils import (load_index,
-                                                           write_index)
+from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.utils.logging import get_logger
 from src.data_manager.collectors.utils.metadata import ResourceMetadata
 
@@ -22,12 +21,8 @@ class PersistenceService:
     def __init__(self, data_path: Path | str) -> None:
         self.data_path = Path(data_path)
 
-        self._index: Dict[str, str] = load_index(self.data_path)
+        self.catalog = CatalogService(self.data_path)
         self._index_dirty = False
-
-        self._metadata_index: Dict[str, str] = load_index(
-            self.data_path, filename="metadata_index.yaml"
-        )
         self._metadata_index_dirty = False
 
     def persist_resource(self, resource: "BaseResource", target_dir: Path) -> Path:
@@ -53,7 +48,7 @@ class PersistenceService:
                 metadata_relative_path = str(metadata_path)
 
             resource_hash = resource.get_hash()
-            self._metadata_index[resource_hash] = metadata_relative_path
+            self.catalog.metadata_index[resource_hash] = metadata_relative_path
             self._metadata_index_dirty = True
 
         try:
@@ -63,11 +58,11 @@ class PersistenceService:
 
         resource_hash = resource.get_hash()
         logger.info(f"Stored resource {resource_hash} -> {file_path}")
-        self._index[resource_hash] = relative_path
+        self.catalog.file_index[resource_hash] = relative_path
         self._index_dirty = True
         return file_path
     
-    def delete_resource(self, resource_hash:str) -> Path:
+    def delete_resource(self, resource_hash:str, flush: bool = True) -> Path:
         """
         Delete a resource and its metadata from disk,
         updating both indices accordingly: with the unique hash of the file as key for both,
@@ -75,22 +70,45 @@ class PersistenceService:
         """
         
         try:
-            file_path = self.data_path / self._index[resource_hash]
-            metadata_path = self.data_path /self._metadata_index[resource_hash]
-        except Exception as e:
-            raise ValueError(f"Resource hash {resource_hash} not found. {e}")
+            stored_file = self.catalog.file_index[resource_hash]
+            stored_metadata = self.catalog.metadata_index[resource_hash]
+        except KeyError as exc:
+            raise ValueError(f"Resource hash {resource_hash} not found. {exc}") from exc
+
+        file_path = Path(stored_file)
+        if not file_path.is_absolute():
+            file_path = (self.data_path / file_path).resolve()
+
+        metadata_path = Path(stored_metadata)
+        if not metadata_path.is_absolute():
+            metadata_path = (self.data_path / metadata_path).resolve()
 
         self._delete_content(file_path)
-        self._index.pop(resource_hash)
+        self.catalog.file_index.pop(resource_hash, None)
         self._index_dirty = True
 
         self._delete_metadata(metadata_path)
-        self._metadata_index.pop(resource_hash)
+        self.catalog.metadata_index.pop(resource_hash, None)
         self._metadata_index_dirty = True
 
-        
+        if flush:
+            self.flush_index()
+
         logger.info(f"Deleted resource {resource_hash} -> {file_path}")  
         return file_path
+    
+    def delete_by_metadata_filter(self, key: str, value: str) -> None:
+        """
+        Remove any resource matching the given metadata key-value pair.
+        Removes the resource, metadata files, and wipes both indices accordingly.
+        """
+        to_remove = self.catalog.get_resource_hashes_by_metadata_filter(key, value)
+        deleted = False
+        for resource_hash in to_remove:
+            self.delete_resource(resource_hash, flush=False)
+            deleted = True
+        if deleted:
+            self.flush_index()
 
     def reset_directory(self, directory: Path) -> None:
         """Remove all files and folders within the specified directory."""
@@ -111,7 +129,7 @@ class PersistenceService:
         if relative_prefix is not None:
             prefix_parts = relative_prefix.parts
             keys_to_remove = []
-            for key, stored in self._index.items():
+            for key, stored in self.catalog.file_index.items():
                 stored_path = Path(stored)
                 if stored_path.is_absolute():
                     try:
@@ -122,11 +140,11 @@ class PersistenceService:
                     keys_to_remove.append(key)
             if keys_to_remove:
                 for key in keys_to_remove:
-                    self._index.pop(key, None)
+                    self.catalog.file_index.pop(key, None)
                 self._index_dirty = True
 
             metadata_keys_to_remove = []
-            for key, stored in self._metadata_index.items():
+            for key, stored in self.catalog.metadata_index.items():
                 stored_path = Path(stored)
                 if stored_path.is_absolute():
                     try:
@@ -137,33 +155,21 @@ class PersistenceService:
                     metadata_keys_to_remove.append(key)
             if metadata_keys_to_remove:
                 for key in metadata_keys_to_remove:
-                    self._metadata_index.pop(key, None)
+                    self.catalog.metadata_index.pop(key, None)
                 self._metadata_index_dirty = True
 
     def flush_index(self) -> None:
         if self._index_dirty:
-            write_index(self.data_path, self._index)
+            self.catalog.write_index(self.data_path, self.catalog.file_index, filename=self.catalog.filename)
             self._index_dirty = False
 
         if self._metadata_index_dirty:
-            write_index(
+            self.catalog.write_index(
                 self.data_path,
-                self._metadata_index,
-                filename="metadata_index.yaml",
+                self.catalog.metadata_index,
+                filename=self.catalog.metadata_filename,
             )
             self._metadata_index_dirty = False
-
-    def get_resource_hashes_by_metadata_filter(self, metadata_field, value) -> List[str]:
-
-        filtered_hashes = []
-        for resource_hash, metadata_path in self._metadata_index.items():
-            with open(self.data_path / metadata_path) as metadata_file:
-                metadata = yaml.safe_load(metadata_file)
-            if metadata_field in metadata.keys() and metadata[metadata_field]==value:
-                filtered_hashes.append(resource_hash)
-
-
-        return filtered_hashes
 
     def _remove_tree(self, path: Path) -> None:
         for item in path.iterdir():
