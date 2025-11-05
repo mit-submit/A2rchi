@@ -113,6 +113,7 @@ class CatalogService:
             path = (self.data_path / path).resolve()
         return path if path.exists() else None
 
+    # TODO this should probably be in the persistence service (?)
     def get_document_for_hash(self, hash: str) -> Optional[Document]:
         """
         Reconstruct a Document for the given resource hash, combining content and metadata.

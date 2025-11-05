@@ -19,7 +19,7 @@ class JiraClient:
         self.jira_projects: list = []
         self.anonymize_data = True
         self.anonymizer: Optional[Anonymizer] = None
-        self._anonymizer_lock: Optional[Lock] = None
+        self._anonymizer_lock: Optional[Lock] = None # TODO can remove this since we aren't parallelizing?
         self.visible: bool = True
 
         jira_config: Dict[str, Any] = dict(config or {})
