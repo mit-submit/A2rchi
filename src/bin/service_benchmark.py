@@ -10,6 +10,7 @@ import yaml
 from datasets import Dataset
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_core.messages import AIMessage
 from ragas import RunConfig, evaluate
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.llms import LangchainLLMWrapper
@@ -157,9 +158,7 @@ class Benchmarker:
         ragas_configs = self.config['services']['benchmarking']['mode_settings']['ragas_settings']
         provider = ragas_configs['provider']
         provider_settings = ragas_configs['evaluation_model_settings']
-
         model_name = provider_settings['model_name']
-
 
         match provider.lower():
             case "openai":
@@ -176,6 +175,7 @@ class Benchmarker:
             case _:
                 return ChatOpenAI(model=model_name)
 
+
     def get_ragas_embedding_model(self):
         ragas_configs = self.config['services']['benchmarking']['mode_settings']['ragas_settings']
         embedding_model = ragas_configs['embedding_model']
@@ -187,20 +187,38 @@ class Benchmarker:
                 return HuggingFaceEmbeddings()
             case _:
                 return OpenAIEmbeddings()
+            
 
-    def get_source_results(
-            self,
-            result: Dict,
-            reference_sources: List[str] | str,
-            match_field: List[str] | str = 'display_name',
-        ):
-        """
-        For each reference source, check the specified metadata field in the retrieved documents.
-        The reference sources and match fields are paired one-to-one; a single string field is
-        expanded to cover all provided sources. Returns summary information and whether all
-        reference sources were found.
-        """
-        sources = result.get('source_documents', [])
+    def prepare_match_fields(self, question_item):
+
+        # either grab the match field(s) from the question item or use the default
+        match_fields = question_item.get('source_match_field')
+        if not match_fields:
+            match_fields = self.benchmarking_configs['mode_settings']['sources_settings']['default_match_field']
+
+        # make it to a list if it's passed as a string
+        if isinstance(match_fields, str):
+            match_fields = [match_fields] if match_fields else []
+
+        n_sources = len(question_item.get('sources', []))
+        if not match_fields:
+            # hardcode a default if nothing is provided
+            match_fields = ['display_name'] * n_sources
+        elif len(match_fields) == 1 and n_sources > 1:
+            # expand single field to all sources
+            match_fields = match_fields * n_sources
+        elif len(match_fields) != n_sources:
+            logger.error(
+                "Number of match fields (%s) does not align with number of reference sources (%s); reusing the last field for the remaining references.",
+                len(match_fields),
+                n_sources,
+            )
+            raise ValueError("Mismatch between number of match fields and reference sources.")
+        
+        return match_fields
+
+
+    def prepare_reference_sources(self, reference_sources, match_fields):
 
         # Clean and prepare reference sources
         raw_references: List[str] = []
@@ -220,39 +238,53 @@ class Benchmarker:
             if ref_str and ref_str != 'N/A':
                 reference_sources_list.append(ref_str)
 
-        # Prepare match fields
-        if isinstance(match_field, str):
-            match_fields_list = [match_field] if match_field else []
-        elif match_field is None:
-            match_fields_list = []
-        else:
-            match_fields_list = [field for field in match_field if field]
-        if reference_sources_list:
-            if not match_fields_list:
-                match_fields_list = ['display_name'] * len(reference_sources_list)
-            elif len(match_fields_list) == 1 and len(reference_sources_list) > 1:
-                match_fields_list = match_fields_list * len(reference_sources_list)
-            elif len(match_fields_list) != len(reference_sources_list):
-                logger.error(
-                    "Number of match fields (%s) does not align with number of reference sources (%s); reusing the last field for the remaining references.",
-                    len(match_fields_list),
-                    len(reference_sources_list),
-                )
-                raise ValueError("Mismatch between number of match fields and reference sources.")
-        else:
-            match_fields_list = []
+        formatted_reference_sources = []
+        for field, reference in zip(match_fields, reference_sources_list):
+            formatted_reference_sources.append({field: reference})
 
-        sources_returned: List[Dict[str, Any]] = []
-        for document in sources:
-            metadata = getattr(document, 'metadata', {}) or {}
-            sources_returned.append(metadata)
-        logger.debug("Sources returned: %s", sources_returned)
+        return formatted_reference_sources
+
+
+    def prepare_messages(self, raw_messages):
+        """Format the langchain Messages into something we can store and view later."""
+        formatted_messages = []
+        for msg in raw_messages:
+            print(msg)
+            if type(msg) is AIMessage:
+                # there are two types of AI messages, content and tool calls
+                # e.g. tool_calls=[{'name': 'search_vectorstore', 'args': {'query': 'CMSTRANSF-1078'}, 'id': '4a73724f-db40-41eb-9843-7f325df76f58', 'type': 'tool_call'}]
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    for tool_call in msg.tool_calls:
+                        formatted_messages.append({
+                            'type': 'tool_call',
+                            'tool_name': tool_call.get('name'),
+                            'tool_args': tool_call.get('args',{}).get('query', 'No query found.'),
+                        })
+                elif hasattr(msg, 'content'):
+                    formatted_messages.append({
+                        'type': 'ai_message',
+                        'content': msg.content,
+                    })
+        return formatted_messages
+
+
+    def get_source_results(
+            self,
+            result: Dict,
+            formatted_reference_sources: List[Dict[str, str]],
+        ):
+        """
+        For each reference source, check the specified metadata field in the retrieved documents.
+        The reference sources and match fields are paired one-to-one; a single string field is
+        expanded to cover all provided sources. Returns summary information and whether all
+        reference sources were found.
+        """
+        sources = result.get('source_documents', [])
 
         matched_sources: List[str] = []
-        formatted_reference_sources: List[dict] = []
-        for reference, field in zip(reference_sources_list, match_fields_list):
+        for source in formatted_reference_sources:
+            field, reference = list(source.items())[0]
             logger.debug("Checking for reference source '%s' in field '%s'", reference, field)
-            formatted_reference_sources.append({field: reference})
             for document in sources:
                 metadata = getattr(document, 'metadata', {}) or {}
                 value = metadata.get(field)
@@ -262,7 +294,7 @@ class Benchmarker:
                     values = [str(v).strip() for v in value if v is not None]
                 else:
                     values = [str(value).strip()]
-                logger.info("Source metadata field '%s' values: %s", field, values)
+                logger.info("Returned source '%s': %s", field, values)
                 logger.debug("Checking reference '%s' against document metadata field '%s': %s", reference, field, values)
                 if reference in values:
                     logger.debug("Matched reference source '%s' in document metadata.", reference)
@@ -270,17 +302,11 @@ class Benchmarker:
                     break
 
         # match is determined if at least once source is found
-        match = bool(reference_sources_list) and len(matched_sources) > 0
-        logger.debug("Source matching result: %s", match)
+        match = len(formatted_reference_sources) > 0 and len(matched_sources) > 0
+        logger.info("Source matching result: %s", match)
 
-        res = {
-            'correct_source': formatted_reference_sources,
-            'sources_returned': sources_returned,
-            'fields_for_matching': match_fields_list,
-            'source_result': str(match),
-        }
+        return match
 
-        return res, match
 
     def get_ragas_results(self, data, to_add):
         """WARNING: this method modifies the to_add dictionary to add the relevant scores to the relevant questions"""
@@ -325,37 +351,41 @@ class Benchmarker:
 
         return res
 
+
     def run(self):
         modes_being_run = set(self.benchmarking_configs['modes'])
 
-        logger.info("\n")
+        logger.info("")
         logger.info("====== Starting benchmark: %s ======", self.benchmark_name)
         logger.info("Modes being run: %s", modes_being_run)
-        logger.info("\n")
+        logger.info(f"Processing {len(self.queries_to_answers)} questions and {len(self.all_config_files)} configuration(s).")
+        logger.info("")
 
         while self.all_config_files: 
+
             question_id = 0
 
-            all_results = []
-
-            source_accuracy = 0.0 
-
-            # results for each questions
+            # results for each question
             question_wise_results = {}
 
-            #results for all of the questions in this config
+            # results for all of the questions in this config
             total_results = {}
+
+            # RAGAS mode: ragas inputs
+            ragas_input = []
+
+            # SOUCES mode: sources accuracy
+            source_accuracy = 0.0 
 
             for question_item in self.queries_to_answers:
 
-                logger.info("\n")
+                logger.info("")
                 logger.info("====================================")
                 logger.info(f"Answering question: {question_id + 1}")
 
                 if type(question_item) is not dict:
                     logger.error(f"Each item in the question to answer list must be a dictionary, but got {type(question_item)}")
                     continue
-
                 if not all(field in question_item for field in self.required_fields):
                     logger.error(f"Each item in the question to answer list must contain the following fields: {self.required_fields}, but got {question_item.keys()}")
                     continue
@@ -373,47 +403,66 @@ class Benchmarker:
                 start = time.perf_counter()
                 result = self.chain(history=formatted_question)
                 end = time.perf_counter()
-                to_add = {}
+                logger.info(f"Finished answering question: {question_id} ({end - start:.2f}s)")
+                q_results = {}
 
-                sources =  result['source_documents']
-                contexts = [s.page_content for s in sources]
+                # prepare info to store for this question
+                q_results["time_elapsed"] = end - start
+                q_results["question"] = question
+                q_results["reference_answer"] = reference_answer
+                q_results["answer"] = result['answer']
+
+                # format the messages
+                q_results['messages'] = self.prepare_messages(result.get("messages", []))
+
+                # format the reference sources
+                match_fields_list = self.prepare_match_fields(question_item)
+                formatted_reference_sources = self.prepare_reference_sources(reference_sources, match_fields_list)
+                q_results["reference_sources_metadata"] = formatted_reference_sources
 
                 if "RAGAS" in modes_being_run:
+                    # we collect the necessary info for ragas evaluation
+                    # TODO need to clean this up
+                    contexts = [s.page_content for s in result['source_documents']]
                     dataset_result = {
                             "question": question,
                             "contexts": contexts,
                             "answer": result['answer'],
                             "ground_truth": reference_answer,
                             }
-                    all_results.append(dataset_result)
-
-                to_add["question"] = question
-                to_add["contexts"] = contexts
-                to_add["chat_answer"] = result['answer']
-                to_add["time_elapsed"] = end - start
-                to_add['document_scores'] = result.get('documents_scores', [])
-                to_add['ground_truth'] = reference_answer
+                    ragas_input.append(dataset_result)
 
                 if "SOURCES" in modes_being_run: 
-                    reference_sources_match_field = question_item.get('source_match_field', self.benchmarking_configs['mode_settings'].get('sources_settings', {'display_name'}).get('default_match_field', 'display_name'))
-                    source_info, match = self.get_source_results(
+                    # sources evaluation is done on the fly                    
+                    match = self.get_source_results(
                         result,
-                        reference_sources,
-                        match_field=reference_sources_match_field
+                        formatted_reference_sources,
                     )
-                    to_add.update(source_info)
                     if match: 
                         source_accuracy += 1.0
+                    q_results['source_match'] = match
+                    logger.info(f"Current accuracy: {source_accuracy / question_id if question_id > 0 else 0.0}")
 
-                question_wise_results[f"question_{question_id}"] = to_add
-                logger.info(f"Finished answering question: {question_id}")
-                logger.info(f"Current accuracy: {source_accuracy / question_id if question_id > 0 else 0.0}")
+                # store the sources metadata and truncated content
+                sources_metadata: List[Dict[str, Any]] = []
+                sources_trunc_content: List[str] = []
+                for document in result['source_documents']:
+                    metadata = getattr(document, 'metadata', {}) or {}
+                    sources_metadata.append(metadata)
+                    sources_trunc_content.append(getattr(document, 'page_content', '')[:300])  # first 300 chars
+                q_results['source_metadata'] = sources_metadata
+                q_results['sources_trunc_content'] = sources_trunc_content
+                logger.debug("Sources returned: %s", sources_metadata)
+
+                # store the results for this question
+                question_wise_results[f"question_{question_id}"] = q_results
+                
                 logger.info("====================================")
-                logger.info("\n")
+                logger.info("")
 
             if "RAGAS" in modes_being_run:
                 logger.info(f"Starting to collect RAGAS results")
-                data = Dataset.from_list(all_results)
+                data = Dataset.from_list(ragas_input)
                 # were modifying final_addition here to add ragas results by question
                 ragas_results = self.get_ragas_results(data, question_wise_results)
 
@@ -422,7 +471,6 @@ class Benchmarker:
                 context_precision = ragas_results['context_precision'].mean()
                 context_recall = ragas_results['context_recall'].mean()
 
-                
                 total_results['aggregate_answer_relevancy'] = answer_relevancy
                 total_results['aggregate_faithfulness'] = faithfulness
                 total_results['aggregate_context_precision'] = context_precision
