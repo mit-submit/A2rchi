@@ -1,6 +1,5 @@
 from typing import Any, Dict, List
 
-import nltk
 from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
@@ -38,18 +37,26 @@ class HybridRetriever(BaseRetriever):
         )
         self._initialize_retrievers()
     
+    def _load_corpus_documents(self) -> List[Document]:
+        documents = self._get_all_documents_from_vectorstore()
+        if documents:
+            logger.debug("Loaded %s documents for BM25 corpus from vectorstore.", len(documents))
+        else:
+            logger.warning("Vectorstore returned no documents for BM25 corpus.")
+        return documents
+
     def _initialize_retrievers(self):
         """
         Initialize BM25 and ensemble retrievers with documents from the vectorstore.
         """
         try:
             # Get all documents from the vectorstore to build BM25 corpus
-            all_docs = self._get_all_documents_from_vectorstore()
+            all_docs = self._load_corpus_documents()
             
             if all_docs:
                 
                 self._bm25_retriever = BM25Retriever.from_documents(all_docs)
-                logger.info(f"BM25Retriever created successfully with {len(all_docs)} documents")
+                logger.debug(f"BM25Retriever created successfully with {len(all_docs)} documents")
 
                 # k is the number of documents to retrieve from the BM25 retriever
                 self._bm25_retriever.k = self.search_kwargs.get('k', 3)
@@ -58,10 +65,10 @@ class HybridRetriever(BaseRetriever):
                 try:
                     if hasattr(self._bm25_retriever, 'k1'):
                         self._bm25_retriever.k1 = self.bm25_k1  # Use configured k1
-                        logger.info(f"Set BM25 k1 parameter to {self.bm25_k1} for better rare term retrieval")
+                        logger.debug(f"Set BM25 k1 parameter to {self.bm25_k1} for better rare term retrieval")
                     if hasattr(self._bm25_retriever, 'b'):
                         self._bm25_retriever.b = self.bm25_b  # Use configured b
-                        logger.info(f"Set BM25 b parameter to {self.bm25_b}")
+                        logger.debug(f"Set BM25 b parameter to {self.bm25_b}")
                 except Exception as param_error:
                     logger.warning(f"Could not set custom BM25 parameters: {param_error}")
                 
@@ -80,7 +87,7 @@ class HybridRetriever(BaseRetriever):
                 
         except Exception as e:
             logger.error(f"Failed to initialize hybrid retriever: {e}")
-            logger.info("Falling back to semantic search only")
+            logger.error("Falling back to semantic search only")
             self._ensemble_retriever = None
     
     def _get_all_documents_from_vectorstore(self) -> List[Document]:
@@ -115,7 +122,7 @@ class HybridRetriever(BaseRetriever):
                         )
                         documents.append(document)
                     
-                    logger.info(f"Retrieved {len(documents)} documents for BM25 corpus")
+                    logger.debug(f"Retrieved {len(documents)} documents for BM25 corpus")
                     return documents
                 else:
                     logger.warning("No documents found in ChromaDB collection")
@@ -126,43 +133,38 @@ class HybridRetriever(BaseRetriever):
                 
         except Exception as e:
             logger.error(f"Error getting documents from ChromaDB: {e}")
+        return []
     
     def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun = None) -> List[Document]:
         """
         Retrieve relevant documents using hybrid search (BM25 + semantic).
         Falls back to semantic search only if hybrid search is not available.
         """
+        logger.debug(f"Query: {query}")
         if self._ensemble_retriever is not None:
-            logger.info(f"Using hybrid search (BM25 + semantic) to retrieve top-{self.search_kwargs.get('k')} docs")
+            logger.debug(f"Using hybrid search (BM25 + semantic) to retrieve top-{self.search_kwargs.get('k')} docs")
             
             try:                
                 bm25_docs = self._bm25_retriever._get_relevant_documents(query, run_manager=run_manager)
                 logger.debug(f"BM25 retrieved {len(bm25_docs)} documents")
                 
-                logger.debug("=== BM25 Results ===")
-                for i, doc in enumerate(bm25_docs[:3]):
-                    logger.debug(f"BM25 doc {i+1}: {doc.page_content[:150]}...")
-                
                 semantic_docs = self.vectorstore.similarity_search_with_score(query, k=self.search_kwargs.get('k', 3))
                 logger.debug(f"Semantic retrieved {len(semantic_docs)} documents")
-                logger.debug("=== Semantic Results ===")
-                for i, (doc, score) in enumerate(semantic_docs[:3]):
-                    logger.debug(f"Semantic doc {i+1} (score: {score:.4f}): {doc.page_content[:150]}...")
                 
             except Exception as e:
                 logger.error(f"Error getting individual retriever results: {e}")
             
             # Get combined results from ensemble
             ensemble_docs = self._ensemble_retriever._get_relevant_documents(query, run_manager=run_manager)
-            logger.error(f"Ensemble returned {len(ensemble_docs)} final documents")
+            logger.debug(f"Ensemble returned {len(ensemble_docs)} final documents")
             
             # Return placeholder scores for hybrid search
-            logger.info("Using placeholder score (-1) for hybrid search results")
+            logger.debug("Using placeholder score (-1) for hybrid search results")
             docs_with_scores = self._compute_hybrid_scores(ensemble_docs, query)
             
             return docs_with_scores
         else:
-            logger.info(f"Falling back to semantic search only, retrieving top-{self.search_kwargs.get('k')} docs")
+            logger.warning(f"Falling back to semantic search only, retrieving top-{self.search_kwargs.get('k')} docs")
             return self.vectorstore.similarity_search_with_score(query, **self.search_kwargs)
     
     def _compute_hybrid_scores(self, ensemble_docs, query):

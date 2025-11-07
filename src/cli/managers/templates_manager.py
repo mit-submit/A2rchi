@@ -14,50 +14,6 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _looks_like_repo_root(path: Path) -> bool:
-    """Return True if the given path looks like the project root.
-
-    We consider a directory a repo root when it contains common marker files
-    such as 'pyproject.toml', 'LICENSE' or a '.git' directory. This is more
-    robust than assuming a fixed number of parent hops from __file__.
-    """
-    markers = ("pyproject.toml", "LICENSE", ".git")
-    for m in markers:
-        if (path / m).exists():
-            return True
-    return False
-
-
-def find_repo_root() -> Path:
-    """Locate the repository root directory.
-
-    Strategy:
-    - Prefer the current working directory if it contains repo markers.
-    - Otherwise try walking up from this file's location and look for markers.
-    - Fall back to cwd if nothing else matched.
-
-    This handles cases where the module is executed from an installed package
-    (site-packages) or from a temporary test harness where the file layout
-    doesn't match the repository checkout layout.
-    """
-    # 1) prefer cwd when it looks like the repo root
-    cwd = Path.cwd()
-    if _looks_like_repo_root(cwd):
-        return cwd
-
-    # 2) try walking up from this file's location (guarded)
-    try:
-        p = Path(__file__).resolve()
-        for parent in [p] + list(p.parents):
-            if _looks_like_repo_root(parent):
-                return parent
-    except Exception:
-        # if anything goes wrong, we'll fall back to cwd below
-        pass
-
-    # 3) final fallback: return cwd even if it doesn't contain markers
-    return cwd
-
 # Template file constants
 BASE_CONFIG_TEMPLATE = "base-config.yaml"
 BASE_COMPOSE_TEMPLATE = "base-compose.yaml"
@@ -469,7 +425,14 @@ class TemplateManager:
         # doesn't look like the repo root, fall back to walking up from this
         # file's location. Avoid assuming a fixed number of parent hops which
         # breaks in PR-preview, installed-package, or temporary test layouts.
-        repo_root = find_repo_root()
+
+        try:
+            import src.cli.utils._repository_info
+            repo_root = Path(src.cli.utils._repository_info.REPO_PATH)
+        except Exception as e:
+            logger.warning(f"Could not import repository path information. {str(e)}",
+                            "Falling back to current working directory.")
+            repo_root = Path(__file__).resolve()
 
         source_files = [
             ("src", "a2rchi_code"),

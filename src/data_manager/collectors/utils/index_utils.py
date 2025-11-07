@@ -113,11 +113,19 @@ class CatalogService:
             path = (self.data_path / path).resolve()
         return path if path.exists() else None
 
+    # TODO this should probably be in the persistence service (?)
     def get_document_for_hash(self, hash: str) -> Optional[Document]:
+        """
+        Reconstruct a Document for the given resource hash, combining content and metadata.
+        """
         path = self.get_filepath_for_hash(hash)
         if not path:
             return None
-        return load_doc_from_path(path)
+        doc = load_doc_from_path(path)
+        metadata = self.get_metadata_for_hash(hash)
+        if doc and metadata:
+            doc.metadata.update(metadata)
+        return doc
 
     @classmethod
     def load_index(cls, data_path: Path | str, filename: Optional[str] = None) -> Dict[str, str]:

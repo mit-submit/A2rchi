@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import os
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List
 
@@ -65,6 +64,21 @@ class VectorStoreManager:
         if stemming_cfg.get("enabled", False):
             nltk.download("punkt_tab")
             self.stemmer = nltk.stem.PorterStemmer()
+
+        default_workers = min(64, (os.cpu_count() or 1) + 4)
+        parallel_workers_config = self._data_manager_config.get("parallel_workers")
+        if parallel_workers_config is None:
+            self.parallel_workers = default_workers
+        else:
+            try:
+                self.parallel_workers = int(parallel_workers_config)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Invalid 'parallel_workers' value %r. Falling back to default.",
+                    parallel_workers_config,
+                )
+                self.parallel_workers = default_workers
+        self.parallel_workers = max(1, self.parallel_workers)
 
     def delete_existing_collection_if_reset(self) -> None:
         """Delete the collection if reset_collection is enabled."""
@@ -150,7 +164,16 @@ class VectorStoreManager:
         collection,
         files_to_add: Dict[str, str],
     ):
-        for filehash, file_path in files_to_add.items():
+        if not files_to_add:
+            return collection
+
+        files_to_add_items = list(files_to_add.items())
+        apply_stemming = self._data_manager_config.get("stemming", {}).get("enabled", False)
+        if apply_stemming:
+            tokenize = nltk.tokenize.word_tokenize
+            stem = self.stemmer.stem
+
+        def process_file(filehash: str, file_path: str):
             filename = Path(file_path).name
             logger.info(f"Processing file: {filename} (hash: {filehash})")
 
@@ -160,57 +183,86 @@ class VectorStoreManager:
                 logger.error(
                     f"Failed to load file: {file_path}. Skipping. Exception: {exc}"
                 )
-                loader = None
+                return None
 
             if loader is None:
-                continue
+                return None
+
+            file_level_metadata = self._load_file_metadata(file_path)
+            try:
+                docs = loader.load()
+            except Exception as exc:
+                logger.error(
+                    "Failed to read file %s. Skipping. Exception: %s",
+                    file_path,
+                    exc,
+                )
+                return None
+
+            split_docs = self.text_splitter.split_documents(docs)
 
             chunks: List[str] = []
             metadatas: List[Dict] = []
 
-            file_level_metadata = self._load_file_metadata(file_path)
+            for index, split_doc in enumerate(split_docs):
+                chunk = split_doc.page_content or ""
+                if apply_stemming:
+                    words = tokenize(chunk)
+                    chunk = " ".join(stem(word) for word in words)
 
-            docs = loader.load()
-            for doc in docs:
-                new_chunks = [
-                    document.page_content
-                    for document in self.text_splitter.split_documents([doc])
-                ]
+                if not chunk.strip():
+                    continue
 
-                for chunk in new_chunks:
-                    if self._data_manager_config.get("stemming", {}).get("enabled", False):
-                        words = nltk.tokenize.word_tokenize(chunk)
-                        stemmed_words = [self.stemmer.stem(word) for word in words]
-                        chunk = " ".join(stemmed_words)
-                    chunks.append(chunk)
-                    entry_metadata = dict(doc.metadata)
-                    if file_level_metadata:
-                        for key, value in file_level_metadata.items():
-                            entry_metadata.setdefault(key, value)
-                    metadatas.append(entry_metadata)
+                chunks.append(chunk)
 
+                doc_metadata = getattr(split_doc, "metadata", {}) or {}
+                if not isinstance(doc_metadata, dict):
+                    doc_metadata = dict(doc_metadata)
+                entry_metadata = {**file_level_metadata, **doc_metadata}
+                entry_metadata["chunk_index"] = index
+                metadatas.append(entry_metadata)
+
+            if not chunks:
+                logger.info(f"No chunks generated for {filename}; skipping.")
+                return None
+
+            return filename, chunks, metadatas
+
+        processed_results: Dict[str, tuple] = {}
+        max_workers = max(1, self.parallel_workers)
+        logger.info(f"Processing files with up to {max_workers} parallel workers")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(process_file, filehash, file_path): filehash
+                for filehash, file_path in files_to_add_items
+            }
+            for future in as_completed(futures):
+                filehash = futures[future]
+                try:
+                    result = future.result()
+                except Exception as exc:  # Defensive: log unexpected failures
+                    logger.error(
+                        "Unexpected error while processing %s: %s",
+                        files_to_add.get(filehash),
+                        exc,
+                    )
+                    continue
+                if result:
+                    processed_results[filehash] = result
+
+        for filehash, file_path in files_to_add_items:
+            processed = processed_results.get(filehash)
+            if not processed:
+                continue
+
+            filename, chunks, metadatas = processed
             embeddings = self.embedding_model.embed_documents(chunks)
 
             for metadata in metadatas:
                 metadata["filename"] = filename
                 metadata["resource_hash"] = filehash
 
-            ids: List[str] = []
-            for chunk in chunks:
-                identifier = hashlib.md5()
-                identifier.update(chunk.encode("utf-8"))
-                chunk_hash = str(int(identifier.hexdigest(), 16))[0:6]
-                time_identifier = hashlib.md5()
-                time_identifier.update(str(time.time()).encode("utf-8"))
-                time_hash = str(int(time_identifier.hexdigest(), 16))[0:6]
-                composed_id = f"{filehash}{chunk_hash}{time_hash}"
-                while composed_id in ids:
-                    logger.info(
-                        f"Found conflict with hash: {composed_id}. Trying again"
-                    )
-                    time_hash = str(int(time_hash) + 1)
-                    composed_id = f"{filehash}{chunk_hash}{time_hash}"
-                ids.append(composed_id)
+            ids = [f"{filehash}-{idx:06d}" for idx in range(len(chunks))]
 
             logger.debug(f"Ids: {ids}")
 
@@ -220,8 +272,6 @@ class VectorStoreManager:
                 documents=chunks,
                 metadatas=metadatas,
             )
-
-            logger.info(f"Successfully added file {filename} (hash: {filehash})")
 
         return collection
 

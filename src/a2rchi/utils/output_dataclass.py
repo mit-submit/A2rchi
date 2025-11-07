@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Iterator
 from langchain_core.documents import Document
+from langchain_core.messages import BaseMessage
 
 
 @dataclass
@@ -15,8 +16,8 @@ class PipelineOutput:
     source_documents: List[Document] = field(default_factory=list)
     """The source documents used to generate the answer."""
 
-    intermediate_steps: List[str] = field(default_factory=list)
-    """The intermediate steps taken by the pipeline or agent to arrive at the final answer."""
+    messages: List[BaseMessage] = field(default_factory=list)
+    """The sequence of messages exchanged during the pipeline or agent execution."""
 
     metadata: Dict[str, Any] = field(default_factory=dict)
     """Additional metadata or structured payloads returned by the pipeline."""
