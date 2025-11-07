@@ -10,7 +10,7 @@ import yaml
 from datasets import Dataset
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from ragas import RunConfig, evaluate
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.llms import LangchainLLMWrapper
@@ -37,7 +37,8 @@ os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 
 
 class ResultHandler:
-    results = {} 
+    results = [] # store the results for each config
+    metadata = {} # store the metadata about the benchmark run 
 
     @staticmethod
     def map_prompts(config: Dict[str, Any]):
@@ -54,22 +55,20 @@ class ResultHandler:
 
 
     @staticmethod
-    def handle_results(benchmark_name: str, config_path: Path, results: Dict, total_results: Dict):
-        config_name = config_path.name
+    def handle_results(config_path: Path, results: Dict, total_results: Dict):
         with open(config_path, "r") as f: 
             config = yaml.load(f, Loader=yaml.FullLoader)
 
         ResultHandler.map_prompts(config)
 
         current_results = { 
-            f"{benchmark_name} - {config_name}" : { 
-                "single question results": results, 
-                "total_results": total_results, 
-                "configuration used": config, 
-            }
+            "single_question_results": results, 
+            "total_results": total_results, 
+            "configuration_file": str(config_path),
+            "configuration": config, 
         }
 
-        ResultHandler.results.update(current_results)
+        ResultHandler.results.append(current_results)
 
     @staticmethod
     def add_metadata():
@@ -78,10 +77,10 @@ class ResultHandler:
 
         meta_data = {
             "time": str(datetime.now()),
-            "git info": additional_info, 
+            "git_info": additional_info, 
         }
 
-        ResultHandler.results.update(meta_data)
+        ResultHandler.metadata.update(meta_data)
 
 
     @staticmethod 
@@ -91,8 +90,12 @@ class ResultHandler:
         logger.info(f"Dumping results to {file_path}")
         logger.debug(f"Full results: {ResultHandler.results}")
         os.makedirs(OUTPUT_DIR, exist_ok=True)
+        output = {
+            "benchmarking_results": ResultHandler.results,
+            "metadata": ResultHandler.metadata,
+        }
         with open(file_path, "w") as f:
-            json.dump(ResultHandler.results, f, indent=4)
+            json.dump(output, f, indent=4)
 
 
 class Benchmarker: 
@@ -249,7 +252,6 @@ class Benchmarker:
         """Format the langchain Messages into something we can store and view later."""
         formatted_messages = []
         for msg in raw_messages:
-            print(msg)
             if type(msg) is AIMessage:
                 # there are two types of AI messages, content and tool calls
                 # e.g. tool_calls=[{'name': 'search_vectorstore', 'args': {'query': 'CMSTRANSF-1078'}, 'id': '4a73724f-db40-41eb-9843-7f325df76f58', 'type': 'tool_call'}]
@@ -265,6 +267,11 @@ class Benchmarker:
                         'type': 'ai_message',
                         'content': msg.content,
                     })
+            elif type(msg) is HumanMessage:
+                # we don't store these...
+                pass
+            else:
+                logger.warning(f"Unexpected message type: {type(msg)}")
         return formatted_messages
 
 
@@ -272,7 +279,7 @@ class Benchmarker:
             self,
             result: Dict,
             formatted_reference_sources: List[Dict[str, str]],
-        ):
+        ) -> List[bool]:
         """
         For each reference source, check the specified metadata field in the retrieved documents.
         The reference sources and match fields are paired one-to-one; a single string field is
@@ -281,7 +288,7 @@ class Benchmarker:
         """
         sources = result.get('source_documents', [])
 
-        matched_sources: List[str] = []
+        matches: List[bool] = []
         for source in formatted_reference_sources:
             field, reference = list(source.items())[0]
             logger.debug("Checking for reference source '%s' in field '%s'", reference, field)
@@ -298,14 +305,14 @@ class Benchmarker:
                 logger.debug("Checking reference '%s' against document metadata field '%s': %s", reference, field, values)
                 if reference in values:
                     logger.debug("Matched reference source '%s' in document metadata.", reference)
-                    matched_sources.append(reference)
+                    matches.append(True)
                     break
+            else:
+                matches.append(False)
 
         # match is determined if at least once source is found
-        match = len(formatted_reference_sources) > 0 and len(matched_sources) > 0
-        logger.info("Source matching result: %s", match)
-
-        return match
+        logger.info("Source matching result: %s", matches)
+        return matches
 
 
     def get_ragas_results(self, data, to_add):
@@ -418,11 +425,12 @@ class Benchmarker:
                 # format the reference sources
                 match_fields_list = self.prepare_match_fields(question_item)
                 formatted_reference_sources = self.prepare_reference_sources(reference_sources, match_fields_list)
+                q_results["reference_sources_match_fields"] = match_fields_list
                 q_results["reference_sources_metadata"] = formatted_reference_sources
 
                 if "RAGAS" in modes_being_run:
                     # we collect the necessary info for ragas evaluation
-                    # TODO need to clean this up
+                    # TODO this is likely broken now
                     contexts = [s.page_content for s in result['source_documents']]
                     dataset_result = {
                             "question": question,
@@ -433,14 +441,17 @@ class Benchmarker:
                     ragas_input.append(dataset_result)
 
                 if "SOURCES" in modes_being_run: 
-                    # sources evaluation is done on the fly                    
-                    match = self.get_source_results(
+                    # sources evaluation is done on the fly -- check if each of the given sources was found                  
+                    matches = self.get_source_results(
                         result,
                         formatted_reference_sources,
                     )
-                    if match: 
+                    # we count accuracy via any of the sources matching
+                    if any(matches): 
                         source_accuracy += 1.0
-                    q_results['source_match'] = match
+                    # but we still store the match of each reference source in its metadata
+                    for idx, source in enumerate(q_results["reference_sources_metadata"]):
+                        source['matched'] = matches[idx]
                     logger.info(f"Current accuracy: {source_accuracy / question_id if question_id > 0 else 0.0}")
 
                 # store the sources metadata and truncated content
@@ -450,7 +461,7 @@ class Benchmarker:
                     metadata = getattr(document, 'metadata', {}) or {}
                     sources_metadata.append(metadata)
                     sources_trunc_content.append(getattr(document, 'page_content', '')[:300])  # first 300 chars
-                q_results['source_metadata'] = sources_metadata
+                q_results['sources_metadata'] = sources_metadata
                 q_results['sources_trunc_content'] = sources_trunc_content
                 logger.debug("Sources returned: %s", sources_metadata)
 
@@ -461,6 +472,7 @@ class Benchmarker:
                 logger.info("")
 
             if "RAGAS" in modes_being_run:
+                # TODO this is likely broken now
                 logger.info(f"Starting to collect RAGAS results")
                 data = Dataset.from_list(ragas_input)
                 # were modifying final_addition here to add ragas results by question
@@ -479,7 +491,7 @@ class Benchmarker:
             if "SOURCES" in modes_being_run:
                 total_results['source_accuracy'] = source_accuracy / len(self.queries_to_answers)
 
-            ResultHandler.handle_results(self.benchmark_name, Path(self.current_config), question_wise_results, total_results)
+            ResultHandler.handle_results(Path(self.current_config), question_wise_results, total_results)
             self.load_new_configuration()
 
         ResultHandler.add_metadata()
