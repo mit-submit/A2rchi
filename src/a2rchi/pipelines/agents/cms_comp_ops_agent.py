@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Sequence
 
 from langchain_core.documents import Document
 
@@ -127,15 +126,6 @@ class CMSCompOpsAgent(BaseAgent):
         if self.dm_config.get("use_hybrid_search", False):
             from src.data_manager.vectorstore.retrievers import HybridRetriever
 
-            chunk_cache_path = self.dm_config.get("chunk_cache_path")
-            if chunk_cache_path:
-                cache_path = Path(chunk_cache_path)
-                if not cache_path.is_absolute():
-                    data_root = (self.config.get("global") or {}).get("DATA_PATH")
-                    if data_root:
-                        cache_path = Path(data_root) / cache_path
-                chunk_cache_path = str(cache_path)
-
             retriever = HybridRetriever(
                 vectorstore=vectorstore,
                 search_kwargs=search_kwargs,
@@ -143,7 +133,6 @@ class CMSCompOpsAgent(BaseAgent):
                 semantic_weight=self.dm_config.get("semantic_weight", 0.4),
                 bm25_k1=self.dm_config.get("bm25", {}).get("k1", 0.5),
                 bm25_b=self.dm_config.get("bm25", {}).get("b", 0.75),
-                chunk_cache_path=chunk_cache_path,
             )
         else:
             retriever = SemanticRetriever(

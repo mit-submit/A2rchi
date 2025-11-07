@@ -17,7 +17,6 @@ from .loader_utils import select_loader
 from langchain_text_splitters.character import CharacterTextSplitter
 
 from src.data_manager.collectors.utils.index_utils import CatalogService
-from src.data_manager.vectorstore.chunk_cache import ChunkCache
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -66,13 +65,6 @@ class VectorStoreManager:
             nltk.download("punkt_tab")
             self.stemmer = nltk.stem.PorterStemmer()
 
-        cache_path_cfg = self._data_manager_config.get("chunk_cache_path", "chunk_cache")
-        cache_path = Path(cache_path_cfg)
-        if not cache_path.is_absolute():
-            cache_path = Path(self.data_path) / cache_path
-        self.chunk_cache_path = str(cache_path)
-        self.chunk_cache = ChunkCache(cache_path)
-
         default_workers = min(64, (os.cpu_count() or 1) + 4)
         parallel_workers_config = self._data_manager_config.get("parallel_workers")
         if parallel_workers_config is None:
@@ -97,7 +89,6 @@ class VectorStoreManager:
 
         if self.collection_name in [c.name for c in client.list_collections()]:
             client.delete_collection(self.collection_name)
-            self.chunk_cache.reset()
 
     def fetch_collection(self):
         """Return the active Chroma collection."""
@@ -143,8 +134,6 @@ class VectorStoreManager:
             collection = self._add_to_vectorstore(collection, files_to_add)
             logger.info("Vectorstore update has been completed")
 
-        self.chunk_cache.prune(files_in_data.keys())
-
         logger.info(f"N Collection: {collection.count()}")
         del collection
 
@@ -168,7 +157,6 @@ class VectorStoreManager:
     def _remove_from_vectorstore(self, collection, hashes_to_remove: List[str]):
         for resource_hash in hashes_to_remove:
             collection.delete(where={"resource_hash": resource_hash})
-            self.chunk_cache.remove(resource_hash)
         return collection
 
     def _add_to_vectorstore(
@@ -273,8 +261,6 @@ class VectorStoreManager:
             for metadata in metadatas:
                 metadata["filename"] = filename
                 metadata["resource_hash"] = filehash
-
-            self.chunk_cache.upsert(filehash, chunks, metadatas, filename=filename)
 
             ids = [f"{filehash}-{idx:06d}" for idx in range(len(chunks))]
 

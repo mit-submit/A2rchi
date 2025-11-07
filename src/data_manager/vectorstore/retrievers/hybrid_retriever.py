@@ -1,7 +1,5 @@
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-import nltk
 from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
@@ -9,7 +7,6 @@ from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores.base import VectorStore
 
-from src.data_manager.vectorstore.chunk_cache import ChunkCache
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,13 +23,10 @@ class HybridRetriever(BaseRetriever):
     bm25_b: float = 0.75
     _bm25_retriever: BM25Retriever = None
     _ensemble_retriever: EnsembleRetriever = None
-    chunk_cache_path: Optional[str] = None
-    chunk_cache: Optional[ChunkCache] = None
     
     def __init__(self, vectorstore: VectorStore, search_kwargs: dict = None, 
                  bm25_weight: float = 0.6, semantic_weight: float = 0.4,
-                 bm25_k1: float = 0.5, bm25_b: float = 0.75,
-                 chunk_cache_path: Optional[str] = None):
+                 bm25_k1: float = 0.5, bm25_b: float = 0.75):
         super().__init__(
             vectorstore=vectorstore, 
             search_kwargs=search_kwargs or {'k': 3},
@@ -41,25 +35,15 @@ class HybridRetriever(BaseRetriever):
             bm25_k1=bm25_k1,
             bm25_b=bm25_b
         )
-        self.chunk_cache_path = chunk_cache_path
-        if self.chunk_cache_path:
-            cache_path = Path(self.chunk_cache_path)
-            try:
-                self.chunk_cache = ChunkCache(cache_path)
-                logger.debug("Initialised chunk cache at %s for HybridRetriever.", cache_path)
-            except Exception as exc:
-                logger.warning("Failed to initialise chunk cache at %s: %s", cache_path, exc)
-                self.chunk_cache = None
         self._initialize_retrievers()
     
     def _load_corpus_documents(self) -> List[Document]:
-        if self.chunk_cache:
-            cached_docs = self.chunk_cache.load_all_documents()
-            if cached_docs:
-                logger.debug("Loaded %s documents for BM25 corpus from chunk cache.", len(cached_docs))
-                return cached_docs
-            logger.info("Chunk cache at %s is empty; falling back to vectorstore.", self.chunk_cache_path)
-        return self._get_all_documents_from_vectorstore()
+        documents = self._get_all_documents_from_vectorstore()
+        if documents:
+            logger.debug("Loaded %s documents for BM25 corpus from vectorstore.", len(documents))
+        else:
+            logger.warning("Vectorstore returned no documents for BM25 corpus.")
+        return documents
 
     def _initialize_retrievers(self):
         """
