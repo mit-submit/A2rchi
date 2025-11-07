@@ -19,7 +19,6 @@ class JiraClient:
         self.jira_projects: list = []
         self.anonymize_data = True
         self.anonymizer: Optional[Anonymizer] = None
-        self._anonymizer_lock: Optional[Lock] = None # TODO can remove this since we aren't parallelizing?
         self.visible: bool = True
 
         jira_config: Dict[str, Any] = dict(config or {})
@@ -60,7 +59,6 @@ class JiraClient:
         if self.anonymize_data:
             try:
                 self.anonymizer = Anonymizer()
-                self._anonymizer_lock = Lock()
             except Exception as error:
                 logger.warning('Failed to initialise JIRA anonymizer; continuing without anonymization.', exc_info=error)
                 self.anonymize_data = False
@@ -175,15 +173,9 @@ class JiraClient:
 
         anonymize_duration = 0.0
         if self.anonymize_data and self.anonymizer:
-            if self._anonymizer_lock:
-                with self._anonymizer_lock:
-                    anonymize_start = perf_counter()
-                    issue_text = self.anonymizer.anonymize(issue_text)
-                    anonymize_duration = perf_counter() - anonymize_start
-            else:
-                anonymize_start = perf_counter()
-                issue_text = self.anonymizer.anonymize(issue_text)
-                anonymize_duration = perf_counter() - anonymize_start
+            anonymize_start = perf_counter()
+            issue_text = self.anonymizer.anonymize(issue_text)
+            anonymize_duration = perf_counter() - anonymize_start
 
         total_duration = perf_counter() - build_start
         logger.debug(
