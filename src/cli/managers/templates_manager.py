@@ -40,12 +40,22 @@ def find_repo_root() -> Path:
     (site-packages) or from a temporary test harness where the file layout
     doesn't match the repository checkout layout.
     """
-    # 1) prefer cwd when it looks like the repo root
+
+    # 1) get the REPO_PATH variable from the script defined in the setup.py
+    try:
+        import src.cli.utils._repo_path
+        repo_path = Path(src.cli.utils._repository_info.REPO_PATH)
+        return repo_path
+    except ImportError as e:
+        logger.warning(f"Could not import repository path information. {str(e)}")
+        pass
+
+    # 2) prefer cwd when it looks like the repo root
     cwd = Path(__file__).resolve()
     if _looks_like_repo_root(cwd):
         return cwd
 
-    # 2) try walking up from this file's location (guarded)
+    # 3) try walking up from this file's location (guarded)
     try:
         p = Path(__file__).resolve()
         for parent in [p] + list(p.parents):
@@ -55,7 +65,7 @@ def find_repo_root() -> Path:
         # if anything goes wrong, we'll fall back to cwd below
         pass
 
-    # 3) final fallback: return cwd even if it doesn't contain markers
+    # 4) final fallback: return cwd even if it doesn't contain markers
     return cwd
 
 # Template file constants
