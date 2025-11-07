@@ -124,14 +124,13 @@ class QAPipeline(BasePipeline):
             'retriever_output': documents if documents else "",
         })
 
-        intermediate_steps = [condense_output['answer']] if condense_output.get('answer') else []
-
         return PipelineOutput(
             answer=answer_output['answer'],
             source_documents=documents,
-            intermediate_steps=intermediate_steps,
+            messages=[],
             metadata={
                 "retriever_scores": scores,
+                "condensed_output": condense_output['answer'],
                 "question": inputs.get("question", ""),
             },
         )

@@ -111,7 +111,7 @@ class BaseAgent:
                         answer=content,
                         memory=self.active_memory,
                         messages=messages,
-                        metadata={"event": self._summarize_event(event)},
+                        metadata={},
                         final=False,
                     )
         yield self._build_output_from_messages(latest_messages)
@@ -134,7 +134,7 @@ class BaseAgent:
                         answer=content,
                         memory=self.active_memory,
                         messages=messages,
-                        metadata={"event": self._summarize_event(event)},
+                        metadata={},
                         final=False,
                     )
         yield self._build_output_from_messages(latest_messages)
@@ -279,19 +279,6 @@ class BaseAgent:
         if len(content) > 400:
             content = f"{content[:397]}..."
         return f"{role}: {content}"
-
-    def _summarize_event(self, event: Any) -> Dict[str, Any]:
-        """Return a lightweight representation of a streaming event."""
-        if isinstance(event, dict):
-            summary: Dict[str, Any] = {}
-            if "node" in event:
-                summary["node"] = event["node"]
-            if "step" in event:
-                summary["step"] = event["step"]
-            if "messages" in event:
-                summary["messages"] = [self._format_message(msg) for msg in self._extract_messages(event)]
-            return summary
-        return {"repr": repr(event)}
 
     def _build_output_from_messages(
         self,
