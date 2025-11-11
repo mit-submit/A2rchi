@@ -6,6 +6,7 @@ from src.data_manager.collectors.scrapers.integrations.sso_scraper import \
     SSOCollector
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
+
 from src.data_manager.collectors.scrapers.scraper import WebScraper
 from src.utils.config_loader import load_global_config, load_utils_config
 from src.utils.logging import get_logger
@@ -121,7 +122,7 @@ class ScraperManager:
         self, url: str, persistence: PersistenceService, websites_dir: Path
     ) -> None:
         try:
-            for resource in self.web_scraper.scrape(url):
+            for resource in self.web_scraper.crawl(url, max_depth =  3):
                 persistence.persist_resource(
                     resource, websites_dir
                 )
