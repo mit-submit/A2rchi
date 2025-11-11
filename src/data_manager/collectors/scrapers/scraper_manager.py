@@ -29,6 +29,7 @@ class ScraperManager:
         links_config = sources_config.get("links", {}) if isinstance(sources_config, dict) else {}
         git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
         sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
+        self.base_depth = global_config.get('data_manager', {}).get('base_source_depth', 1)
 
         scraper_config = {}
         if isinstance(links_config, dict):
@@ -138,7 +139,7 @@ class ScraperManager:
                     continue
                 # check if a depth was specified  for crawling if not make it 1
                 url_depth = stripped.split(",")
-                depth = 1 # default
+                depth = self.base_depth # default
                 if len(url_depth) > 1  and len(url_depth) < 3: 
                     stripped = url_depth[0]
                     depth = url_depth[1]
