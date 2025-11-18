@@ -16,7 +16,7 @@ services:
     out_dir: {{ services.benchmarking.out_dir | default(".", true) }}
     queries_path: {{ services.benchmarking.queries_path | default("queries", true) }}
     modes: 
-      {%- for mode in services.benchmarking.modes | default(["LINKS", "RAGAS"]) %}
+      {%- for mode in services.benchmarking.modes | default(["SOURCES", "RAGAS"]) %}
       - {{ mode }}
       {%- endfor %}
     mode_settings: 

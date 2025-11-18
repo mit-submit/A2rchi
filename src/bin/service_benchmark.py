@@ -382,7 +382,8 @@ class Benchmarker:
             ragas_input = []
 
             # SOUCES mode: sources accuracy
-            source_accuracy = 0.0 
+            relative_source_accuracy = 0.0 
+            source_accuracy = 0.0
 
             for question_item in self.queries_to_answers:
 
@@ -448,11 +449,14 @@ class Benchmarker:
                     )
                     # we count accuracy via any of the sources matching
                     if any(matches): 
+                        relative_source_accuracy += 1.0
+                    if len(matches) == len(formatted_reference_sources) and all(matches):
                         source_accuracy += 1.0
                     # but we still store the match of each reference source in its metadata
                     for idx, source in enumerate(q_results["reference_sources_metadata"]):
                         source['matched'] = matches[idx]
-                    logger.info(f"Current accuracy: {source_accuracy / question_id if question_id > 0 else 0.0}")
+                    logger.info(f"Current relative accuracy: {relative_source_accuracy / question_id if question_id > 0 else 0.0}")
+                    logger.info(f"Current strict accuracy: {source_accuracy / question_id if question_id > 0 else 0.0}")
 
                 # store the sources metadata and truncated content
                 sources_metadata: List[Dict[str, Any]] = []
@@ -489,6 +493,7 @@ class Benchmarker:
                 total_results['aggregate_context_recall'] = context_recall
 
             if "SOURCES" in modes_being_run:
+                total_results['relative_source_accuracy'] = relative_source_accuracy / len(self.queries_to_answers)
                 total_results['source_accuracy'] = source_accuracy / len(self.queries_to_answers)
 
             ResultHandler.handle_results(Path(self.current_config), question_wise_results, total_results)

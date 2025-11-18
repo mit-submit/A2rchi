@@ -29,21 +29,6 @@ def load_benchmark_results(filepath):
 
     return data['benchmarking_results'], data['metadata']
 
-
-def calculate_retrieval_accuracy(questions):
-    """Calculate how many questions retrieved the correct document(s)"""
-    total = len(questions)
-    correct = 0
-    
-    for q_data in questions.values():
-        match = q_data['source_result']
-        if match.lower() == 'true':
-            correct += 1
-    
-    accuracy = (correct / total * 100) if total > 0 else 0
-    return accuracy, correct, total
-
-
 def format_html_output(result):
     """Format results as HTML for easier reading"""
 
@@ -161,6 +146,9 @@ def format_html_output(result):
     if 'SOURCES' in config.get('services', {}).get('benchmarking', {}).get('modes', []):
         ret_accuracy = total_results.get('source_accuracy', None)
         if ret_accuracy: ret_accuracy *= 100
+        ret_partial = total_results.get('relative_source_accuracy', None)
+        if ret_partial: ret_partial *= 100
+
         html_parts.append('<div class="metrics">')
         html_parts.append('<h2>🎯 Retrieval Accuracy</h2>')
         html_parts.append('<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; max-width: 900px; margin: 0 auto;">')
@@ -173,6 +161,13 @@ def format_html_output(result):
                 <div class="metric-label">Retrieval Accuracy (at least one source found)</div>
             </div>
         """)
+        html_parts.append(f"""
+            <div class="metric-item">
+                <div class="metric-value score-medium">{ret_partial:.1f}%</div>
+                <div class="metric-label">Partially Correct (some sources found)</div>
+            </div>
+        """)
+
         html_parts.append('</div></div>')
     
     # ragas metrics

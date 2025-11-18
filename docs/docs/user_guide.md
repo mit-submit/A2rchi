@@ -827,7 +827,7 @@ services:
     out_dir: bench_out
     modes:
       - "RAGAS"
-      - "LINKS"
+      - "SOURCES"
     mode_settings:
       sources:
         default_match_field: ["display_name"] # default field to match sources against, can be overridden in the queries file
