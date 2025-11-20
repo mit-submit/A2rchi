@@ -164,10 +164,27 @@ class ChatWrapper:
         """
         Build a list of top reference entries (link or ticket id).
         """
+        # TODO: It's better to ensure in token limiter that scores and documents are pruned together and have the same length
         if scores:
-            sorted_indices = np.argsort(scores)
-            scores = [scores[i] for i in sorted_indices]
-            documents = [documents[i] for i in sorted_indices]
+            # Ensure scores and documents have the same length
+            min_length = min(len(scores), len(documents))
+            if min_length == 0:
+                scores = []
+                documents = []
+            else:
+                # Truncate both lists to the minimum length
+                # This assumes scores[i] pairs with documents[i] (true if items were removed from end)
+                # If lists are misaligned, this could create incorrect pairings
+                scores = scores[:min_length]
+                documents = documents[:min_length]
+                
+                # Sort both lists by score value while preserving pairing
+                # Create pairs, sort by score, then unzip - this ensures pairing is maintained
+                paired = list(zip(scores, documents))
+                paired.sort(key=lambda x: x[0])  # Sort by score (first element of pair)
+                scores, documents = zip(*paired) if paired else ([], [])
+                scores = list(scores)
+                documents = list(documents)
 
         top_sources = []
         seen_refs = set()
