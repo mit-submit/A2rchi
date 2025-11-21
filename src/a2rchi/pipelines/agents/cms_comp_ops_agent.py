@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 
 from src.utils.logging import get_logger
 from src.a2rchi.pipelines.agents.base import BaseAgent
-from src.data_manager.vectorstore.retrievers import SemanticRetriever
+from src.data_manager.vectorstore.retrievers import SemanticRetriever, BM25LexicalRetriever
 from src.a2rchi.pipelines.agents.tools import (
     create_file_search_tool,
     create_metadata_search_tool,
@@ -32,7 +32,7 @@ class CMSCompOpsAgent(BaseAgent):
         self.catalog_service = CatalogService(
             data_path=self.config["global"]["DATA_PATH"]
         )
-        self._vector_retriever = None
+        self._vector_retrievers = None
         self._vector_tool = None
 
         self.rebuild_static_tools()
@@ -96,11 +96,11 @@ class CMSCompOpsAgent(BaseAgent):
         # refresh vs connection
         vectorstore = kwargs.get("vectorstore")
         if vectorstore:
-            self._update_vector_retriever(vectorstore)
+            self._update_vector_retrievers(vectorstore)
         else:
-            self._vector_retriever = None
-            self._vector_tool = None
-        extra_tools = [self._vector_tool] if self._vector_tool else None
+            self._vector_retrievers = None
+            self._vector_tools = None
+        extra_tools = self._vector_tools if self._vector_tools else None
 
         # ensure the latest files are indexed for the tools' use
         self.catalog_service.refresh()
@@ -119,38 +119,56 @@ class CMSCompOpsAgent(BaseAgent):
                 memory.note(f"Latest user message: {snippet}")
         return {"messages": history_messages}
 
-    def _update_vector_retriever(self, vectorstore: Any) -> None:
+    def _update_vector_retrievers(self, vectorstore: Any) -> None:
         """Instantiate or refresh the vectorstore retriever tool."""
-        search_kwargs = {"k": self.dm_config.get("num_documents_to_retrieve", 3)}
+        retrievers_cfg = self.dm_config.get("retrievers", {})
+        default_k = 5
 
-        if self.dm_config.get("use_hybrid_search", False):
-            from src.data_manager.vectorstore.retrievers import HybridRetriever
+        semantic_cfg = retrievers_cfg.get("semantic_retriever", {})
+        bm25_cfg = retrievers_cfg.get("bm25_retriever", {})
 
-            retriever = HybridRetriever(
-                vectorstore=vectorstore,
-                search_kwargs=search_kwargs,
-                bm25_weight=self.dm_config.get("bm25_weight", 0.6),
-                semantic_weight=self.dm_config.get("semantic_weight", 0.4),
-                bm25_k1=self.dm_config.get("bm25", {}).get("k1", 0.5),
-                bm25_b=self.dm_config.get("bm25", {}).get("b", 0.75),
-            )
-        else:
-            retriever = SemanticRetriever(
-                vectorstore=vectorstore,
-                search_kwargs=search_kwargs,
-                dm_config=self.dm_config,
-            )
+        semantic_k = semantic_cfg.get("num_documents_to_retrieve", default_k)
+        bm25_k = bm25_cfg.get("num_documents_to_retrieve", default_k)
 
-        description = (
-            "Vectorstore search tool over the CMS CompOps knowledge base. State the core intent and concepts (issue type, component, desired action) "
-            "and, when available, include sharp identifiers like ticket IDs, filenames, or error snippets. "
-            "This helps the hybrid BM25 + semantic search lock onto precise keywords while embeddings bring in related context."
+        semantic_retriever = SemanticRetriever(
+            vectorstore=vectorstore,
+            k=semantic_k,
+            dm_config=self.dm_config,
         )
 
-        self._vector_retriever = retriever
-        self._vector_tool = create_retriever_tool(
-            retriever,
-            name="search_vectorstore",
-            description=description,
-            store_docs=self._store_documents,
+        bm25_retriever = BM25LexicalRetriever(
+            vectorstore=vectorstore,
+            k=bm25_k,
+            bm25_k1=bm25_cfg.get("k1", 0.5),
+            bm25_b=bm25_cfg.get("b", 0.75),
+        )
+
+        semantic_description = (
+            "Semantic vector search over the CMS CompOps knowledge base. Use when you want concept-level matches, "
+            "related procedures, or paraphrased content. Include the task, component, and any identifiers (ticket IDs, "
+            "filenames, services) so embedding search can pull in closely related context."
+        )
+        bm25_description = (
+            "Lexical BM25 search over the CMS CompOps knowledge base. Use when you have sharp keywords: exact error messages, log lines, "
+            "config flags, ticket IDs, filenames, or function/class names. Provide the precise tokens as they appear to "
+            "maximize keyword matching."
+        )
+
+        self._vector_retrievers = [semantic_retriever, bm25_retriever]
+        self._vector_tools = []
+        self._vector_tools.append(
+            create_retriever_tool(
+                semantic_retriever,
+                name="search_vectorstore_semantic",
+                description=semantic_description,
+                store_docs=self._store_documents,
+            )
+        )
+        self._vector_tools.append(
+            create_retriever_tool(
+                bm25_retriever,
+                name="search_vectorstore_lexical",
+                description=bm25_description,
+                store_docs=self._store_documents,
+            )
         )
