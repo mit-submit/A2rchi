@@ -13,8 +13,6 @@ from src.data_manager.collectors.scrapers.scraped_resource import \
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-j
-        
 
 class WebScraper:
     """Simple HTTP scraper that fetches raw content from public URLs."""
