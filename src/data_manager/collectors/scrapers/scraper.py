@@ -114,7 +114,7 @@ class WebScraper:
                         try:
                             # note that we could expect two errors, 1) antoher http error 2) selenium wasnt able to get auth so cookies is None
                             for cookie in cookies: 
-                                s.cookies.set_cookie(cookie['name'], cookie['vaule'])
+                                s.cookies.set_cookie(cookie['name'], cookie['value'])
                             response = s.get(current_url, verify = self.verify_urls)
                             response.raise_for_status()
                             new_links = self.reap(response, current_url)

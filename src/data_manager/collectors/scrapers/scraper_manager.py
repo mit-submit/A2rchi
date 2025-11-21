@@ -139,7 +139,6 @@ class ScraperManager:
         except Exception as exc:
             logger.error(f"Failed to scrape {url}: {exc}")
 
-
     def _extract_urls_from_file(self, path: Path) -> List[tuple[str, int]]:
         urls: List[str] = []
         with path.open("r") as file:
@@ -186,7 +185,8 @@ class ScraperManager:
 
     def _get_git_scraper(self) -> "GitScraper":
         if self._git_scraper is None:
-            from src.data_manager.collectors.scrapers.integrations.git_scraper import \ GitScraper
+            from src.data_manager.collectors.scrapers.integrations.git_scraper import \
+                    GitScraper
 
             self._git_scraper = GitScraper(manager=self)
         return self._git_scraper
