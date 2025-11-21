@@ -31,5 +31,5 @@ services:
     out_dir: bench_out
     modes: 
       - "RAGAS"
-      - "LINKS"
+      - "SOURCES"
 

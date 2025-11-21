@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Sequence
 
 from langchain_core.documents import Document
 
@@ -42,12 +42,27 @@ class CMSCompOpsAgent(BaseAgent):
         """Initialise static tools that are always available to the agent."""
         file_search_tool = create_file_search_tool(
             self.catalog_service,
-            description="Search local source files collected in the catalog.",
+            description= (
+                "Scan raw file contents for an exact regex match. Provide a distinctive snippet or error message exactly "
+                "as it appears in the file (escape regex metacharacters if needed) so the matcher can zero in on the right lines."
+                "Returns the matching files and their metadata."
+            ),
             store_docs=self._store_documents,
         )
         metadata_search_tool = create_metadata_search_tool(
             self.catalog_service,
-            description="Search metadata associated with local source files.",
+            description=(
+                "Query the files' metadata catalog (ticket IDs, source URLs, resource types, etc.). "
+                "Supply the specific identifier or keyword you expect to find in metadata."
+                "Returns the matching files and their metadata."
+                "Example metadata:"
+                "{created_at: 2023-03-08T11:43:18.000+0100"
+                "display_name: https://its.cern.ch/jira/browse/CMSTRANSF-527"
+                "project: CMSTRANSF"
+                "source_type: jira"
+                "ticket_id: CMSTRANSF-527"
+                "url: https://its.cern.ch/jira/browse/CMSTRANSF-527}"
+            ),
             store_docs=self._store_documents,
         )
         return [file_search_tool, metadata_search_tool]
@@ -109,7 +124,7 @@ class CMSCompOpsAgent(BaseAgent):
         search_kwargs = {"k": self.dm_config.get("num_documents_to_retrieve", 3)}
 
         if self.dm_config.get("use_hybrid_search", False):
-            from src.data_manager.vectorstore.retrievers.utils import HybridRetriever
+            from src.data_manager.vectorstore.retrievers import HybridRetriever
 
             retriever = HybridRetriever(
                 vectorstore=vectorstore,
@@ -126,10 +141,16 @@ class CMSCompOpsAgent(BaseAgent):
                 dm_config=self.dm_config,
             )
 
+        description = (
+            "Vectorstore search tool over the CMS CompOps knowledge base. State the core intent and concepts (issue type, component, desired action) "
+            "and, when available, include sharp identifiers like ticket IDs, filenames, or error snippets. "
+            "This helps the hybrid BM25 + semantic search lock onto precise keywords while embeddings bring in related context."
+        )
+
         self._vector_retriever = retriever
         self._vector_tool = create_retriever_tool(
             retriever,
             name="search_vectorstore",
-            description="Query the vectorstore built from local documents.",
+            description=description,
             store_docs=self._store_documents,
         )
