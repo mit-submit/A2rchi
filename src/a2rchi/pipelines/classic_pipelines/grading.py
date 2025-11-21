@@ -63,11 +63,12 @@ class GradingPipeline(BasePipeline):
         )
 
     def update_retriever(self, vectorstore):
+        retrievers_cfg = self.dm_config.get("retrievers", {})
+        semantic_cfg = retrievers_cfg.get("semantic_retriever", {})
+        default_k = self.dm_config.get("num_documents_to_retrieve", 4)
         self.retriever = SemanticRetriever(
             vectorstore=vectorstore,
-            search_kwargs={
-                "k": self.dm_config.get("num_documents_to_retrieve", 4),
-            },
+            k=semantic_cfg.get("num_documents_to_retrieve", default_k),
             dm_config=self.dm_config,
         )
 

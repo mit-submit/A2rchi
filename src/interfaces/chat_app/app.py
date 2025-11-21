@@ -177,6 +177,7 @@ class ChatWrapper:
             # Skip threshold filtering for placeholder scores (-1)
             # Otherwise, filter out documents with score > threshold
             if score is not None and score != -1.0 and score > self.similarity_score_reference:
+                logger.debug(f"Skipping document with score {score} above threshold {self.similarity_score_reference}")
                 break
 
             metadata = document.metadata or {}
@@ -186,6 +187,7 @@ class ChatWrapper:
                 continue
 
             if not self._get_doc_visibility(self, metadata):
+                logger.debug(f"Document {display_name} marked as not visible; skipping.")
                 continue
 
             link = self._extract_link(metadata)
@@ -205,6 +207,7 @@ class ChatWrapper:
             if len(top_sources) >= 5:
                 break
 
+        logger.debug(f"Top sources: {top_sources}")
         return top_sources
 
     @staticmethod
@@ -228,14 +231,12 @@ class ChatWrapper:
                 score = entry["score"]
                 link = entry["link"]
                 display_name = entry["display"]
-
-                # Format score: show "N/A" for -1 (placeholder), otherwise show numeric value
-                if isinstance(score, str):
-                    score_str = score
-                elif score == -1.0:
-                    score_str = "N/A"
+                
+                # Format score: show nothing for -1 (placeholder), otherwise show numeric value
+                if score == -1.0 or score == "N/A":
+                    score_str = ""
                 else:
-                    score_str = f"{score:.2f}"
+                    score_str = f"({score:.2f})"
 
                 if link:
                     reference_html = f"<a href=\"{link}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #66b3ff; text-decoration: none;\" onmouseover=\"this.style.textDecoration='underline'\" onmouseout=\"this.style.textDecoration='none'\">{display_name}</a>"
@@ -246,7 +247,7 @@ class ChatWrapper:
                     <div style="margin: 0.15em 0; display: flex; align-items: center; gap: 0.4em;">
                         <span>•</span>
                         {reference_html}
-                        <span style="color: #6c757d; font-size: 0.9em;">({score_str})</span>
+                        <span style="color: #6c757d; font-size: 0.9em;">{score_str}</span>
                     </div>
                 '''
 

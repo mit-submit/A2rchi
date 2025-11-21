@@ -10,7 +10,7 @@ from langchain_core.output_parsers import StrOutputParser
 from src.a2rchi.pipelines.classic_pipelines.utils.chain_wrappers import ChainWrapper
 from src.a2rchi.pipelines.classic_pipelines.base import BasePipeline
 from src.a2rchi.utils.output_dataclass import PipelineOutput
-from src.data_manager.vectorstore.retrievers import SemanticRetriever
+from src.data_manager.vectorstore.retrievers import SemanticRetriever, HybridRetriever
 from src.a2rchi.pipelines.classic_pipelines.utils import history_utils
 from src.utils.logging import get_logger
 
@@ -66,31 +66,20 @@ class QAPipeline(BasePipeline):
         }
 
     def update_retriever(self, vectorstore):
-        use_hybrid = self.dm_config.get("use_hybrid_search", False)
+        retrievers_cfg = self.dm_config.get("retrievers", {})
+        hybrid_cfg = retrievers_cfg.get("hybrid_retriever", {})
+        bm25_cfg = retrievers_cfg.get("bm25_retriever", {})
+        default_k = 5
 
-        if use_hybrid:
-            from src.data_manager.vectorstore.retrievers import HybridRetriever
-
-            logger.info("Initializing HybridRetriever with BM25 + semantic search")
-            self.retriever = HybridRetriever(
-                vectorstore=vectorstore,
-                search_kwargs={
-                    "k": self.dm_config["num_documents_to_retrieve"],
-                },
-                bm25_weight=self.dm_config.get("bm25_weight", 0.6),
-                semantic_weight=self.dm_config.get("semantic_weight", 0.4),
-                bm25_k1=self.dm_config.get("bm25", {}).get("k1", 0.5),
-                bm25_b=self.dm_config.get("bm25", {}).get("b", 0.75),
-            )
-        else:
-            logger.info("Using SemanticRetriever (vector search only)")
-            self.retriever = SemanticRetriever(
-                vectorstore=vectorstore,
-                search_kwargs={
-                    "k": self.dm_config["num_documents_to_retrieve"],
-                },
-                dm_config=self.dm_config,
-            )
+        logger.info("Initializing HybridRetriever with BM25 + semantic search")
+        self.retriever = HybridRetriever(
+            vectorstore=vectorstore,
+            k=hybrid_cfg.get("num_documents_to_retrieve", default_k),
+            bm25_weight=hybrid_cfg.get("bm25_weight", 0.6),
+            semantic_weight=hybrid_cfg.get("semantic_weight", 0.4),
+            bm25_k1=bm25_cfg.get("k1", 0.5),
+            bm25_b=bm25_cfg.get("b", 0.75),
+        )
 
     def invoke(self, **kwargs) -> PipelineOutput:
         vectorstore = kwargs.get("vectorstore")

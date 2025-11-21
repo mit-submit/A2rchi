@@ -10,17 +10,17 @@ logger = get_logger(__name__)
 
 class GradingRetriever(BaseRetriever):
     vectorstore: VectorStore = None
-    search_kwargs: Dict[str, Any] = None
+    k: int
     
-    def __init__(self, vectorstore: VectorStore, search_kwargs: dict = None):
+    def __init__(self, vectorstore: VectorStore, k: int = 3):
         super().__init__()
         self.vectorstore = vectorstore
-        self.search_kwargs = search_kwargs or {'k': 3}
+        self.k = k
 
     def _get_relevant_documents(self, query: str) -> List[Document]:
         """
         Retrieve relevant documents based on the query.
         """
-        logger.info(f"Retrieving top-{self.search_kwargs.get('k')} docs")
-        return self.vectorstore.similarity_search(query, **self.search_kwargs)
+        logger.info(f"Retrieving top-{self.k} docs")
+        return self.vectorstore.similarity_search(query, k=self.k)
     
