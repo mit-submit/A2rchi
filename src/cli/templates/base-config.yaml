@@ -130,6 +130,7 @@ data_manager:
     k1: {{ data_manager.bm25.k1 | default(0.5, true) }}
     b: {{ data_manager.bm25.b | default(0.75, true) }}
   sources:
+    base_source_depth: {{ datamanager.sources.base_source_depth | default(1, true) }}
     links:
       enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
       visible: {{ data_manager.sources.links.visible | default(true, true) }}
@@ -139,7 +140,6 @@ data_manager:
         - {{ input_list }}
         {%- endfor %}
       scraper:
-        base_source_depth: {{ datamanager.sources.links.base_source_depth | default(1, true) }}
         reset_data: {{ data_manager.sources.links.scraper.reset_data | default(true, true) }}
         verify_urls: {{ data_manager.sources.links.scraper.verify_urls | default(false, true) }}
         enable_warnings: {{ data_manager.sources.links.scraper.enable_warnings | default(false, true) }}
