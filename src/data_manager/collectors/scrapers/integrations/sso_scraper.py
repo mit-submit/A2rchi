@@ -227,9 +227,6 @@ class SSOScraper(ABC):
         logger.info(f"Crawling complete. Visited {pages_visited} pages.")
         return list(self.page_data)
 
-    def _():
-        pass
-
     def _clear_url(self, url: str) -> bool:
         """Basic filtering for duplicate or fragment-only URLs."""
         if not url:
