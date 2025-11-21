@@ -8,8 +8,6 @@ from typing import Optional, Dict
 
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
-from src.data_manager.collectors.scrapers.scraped_resource import \
-    ScrapedResource
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -17,7 +15,7 @@ logger = get_logger(__name__)
 class WebScraper:
     """Simple HTTP scraper that fetches raw content from public URLs."""
 
-    def __init__(self, verify_urls: bool = True, authenticator: Optional(SSOAuthenticator) = None, enable_warnings: bool = True) -> None:
+    def __init__(self, verify_urls: bool = True, authenticator = None, enable_warnings: bool = True) -> None:
         self.verify_urls = verify_urls
         self.enable_warnings = enable_warnings
         self.authenticator = None
@@ -89,7 +87,6 @@ class WebScraper:
             if current_url in self.visited_urls:
                 continue
                 
-
             logger.info(f"Crawling page {depth + 1}/{max_depth}: {current_url}")
 
             try:
@@ -157,5 +154,3 @@ class WebScraper:
             if urlparse(full).netloc == base:
                 links.add(full)
         return list(links)
-
-

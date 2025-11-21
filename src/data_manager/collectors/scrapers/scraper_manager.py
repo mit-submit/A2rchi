@@ -29,7 +29,7 @@ class ScraperManager:
         links_config = sources_config.get("links", {}) if isinstance(sources_config, dict) else {}
         git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
         sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
-        self.base_depth = links_config.get("scraper", {}).get('base_source_depth', 1)
+        self.base_depth = sources_config.get('base_source_depth', 1)
 
         scraper_config = {}
         if isinstance(links_config, dict):
@@ -84,12 +84,12 @@ class ScraperManager:
                     continue
                 else:
                     url = raw_url.split("sso-", 1)[1]
-                    authenticator = self.sso_collector
-                    if self.sso_enabled: 
-                        self._soup_handle_sso_url(url, persistence, websites_dir, depth)
+                    if self.sso_enabled:  
+                        authenticator = self.sso_collector
 
-            if self.links_enabled:
-                self._handle_standard_url(url, persistence, websites_dir, depth)
+            # both sso and regular links can now use the Webscraper class (depth must be defined the same way on SSO links)
+            if self.links_enabled or not authenticator is None:
+                self._handle_standard_url(url, persistence, websites_dir, depth, authenticator)
 
         if self.sso_enabled and sso_urls:
             sso_resources = self._collect_sso_resources(sso_urls)
@@ -129,29 +129,15 @@ class ScraperManager:
         return urls
 
     def _handle_standard_url(
-        self, url: str, persistence: PersistenceService, websites_dir: Path, max_depth
+            self, url: str, persistence: PersistenceService, websites_dir: Path, max_depth: int, authenticator: SSOCollector | None =None
     ) -> None:
         try:
-            for resource in self.web_scraper.crawl(url, max_depth=max_depth):
+            for resource in self.web_scraper.crawl(url, authenticator=authenticator, max_depth=max_depth):
                 persistence.persist_resource(
                     resource, websites_dir
                 )
         except Exception as exc:
             logger.error(f"Failed to scrape {url}: {exc}")
-
-    def _soup_handle_sso_url(
-            self, url: str, persistence: PersistenceService, websites_dir: Path, max_depth
-    ) -> None:
-        try:
-            for resource in self.web_scraper.crawl(url, authenticator=self.sso_collector, max_depth=max_depth):
-                persistence.persist_resource(
-                    resource, websites_dir
-                )
-        except Exception as exc:
-            logger.error(f"Failed to scrape SSO {url}: {exc}")
-
-
-        
 
     def _extract_urls_from_file(self, path: Path) -> List[tuple[str, int]]:
         urls: List[str] = []
@@ -162,6 +148,7 @@ class ScraperManager:
                     continue
                 # check if a depth was specified  for crawling if not make it 1
                 url_depth = stripped.split(",")
+
                 depth = self.base_depth # default
                 if len(url_depth) == 2 : 
                     stripped = url_depth[0]
@@ -198,8 +185,7 @@ class ScraperManager:
 
     def _get_git_scraper(self) -> "GitScraper":
         if self._git_scraper is None:
-            from src.data_manager.collectors.scrapers.integrations.git_scraper import \
-                GitScraper
+            from src.data_manager.collectors.scrapers.integrations.git_scraper import \ GitScraper
 
             self._git_scraper = GitScraper(manager=self)
         return self._git_scraper
