@@ -158,6 +158,7 @@ data_manager:
         - {{ input_list }}
         {%- endfor %}
       scraper:
+        base_source_depth: {{ datamanager.sources.links.base_source_depth | default(1, true) }}
         reset_data: {{ data_manager.sources.links.scraper.reset_data | default(true, true) }}
         verify_urls: {{ data_manager.sources.links.scraper.verify_urls | default(false, true) }}
         enable_warnings: {{ data_manager.sources.links.scraper.enable_warnings | default(false, true) }}
@@ -220,7 +221,7 @@ a2rchi:
           condense_prompt: {% if a2rchi.pipeline_map.QAPipeline.prompts.required.condense_prompt %}"{{ a2rchi.pipeline_map.QAPipeline.prompts.required.condense_prompt }}"{% else %}null{% endif %}
           chat_prompt: {% if a2rchi.pipeline_map.QAPipeline.prompts.required.chat_prompt %}"{{ a2rchi.pipeline_map.QAPipeline.prompts.required.chat_prompt }}"{% else %}null{% endif %}
       models:
-        required:
+        requiredcr
           condense_model: {{ a2rchi.pipeline_map.QAPipeline.models.required.condense_model | default('DumbLLM', true) }}
           chat_model: {{ a2rchi.pipeline_map.QAPipeline.models.required.chat_model | default('DumbLLM', true) }}
     GradingPipeline:

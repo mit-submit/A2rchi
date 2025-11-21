@@ -8,6 +8,8 @@ from typing import Optional, Dict
 
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
+from src.data_manager.collectors.scrapers.scraped_resource import \
+    ScrapedResource
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +89,7 @@ class WebScraper:
             if current_url in self.visited_urls:
                 continue
                 
+
             logger.info(f"Crawling page {depth + 1}/{max_depth}: {current_url}")
 
             try:
@@ -154,3 +157,5 @@ class WebScraper:
             if urlparse(full).netloc == base:
                 links.add(full)
         return list(links)
+
+
