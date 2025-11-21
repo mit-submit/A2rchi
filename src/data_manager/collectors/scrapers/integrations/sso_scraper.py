@@ -6,7 +6,7 @@ import re
 import time
 import urllib.parse
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -227,6 +227,9 @@ class SSOScraper(ABC):
         logger.info(f"Crawling complete. Visited {pages_visited} pages.")
         return list(self.page_data)
 
+    def _():
+        pass
+
     def _clear_url(self, url: str) -> bool:
         """Basic filtering for duplicate or fragment-only URLs."""
         if not url:
@@ -259,6 +262,25 @@ class SSOScraper(ABC):
                 # Navigate back to target page
                 title = self.navigate_to(url)
                 return title
+            else:
+                return None
+        except Exception as e:
+            logger.warning(f"Error during authentication: {e}")
+            return None
+
+    def authenticate(self, url):
+        """Complete authentication flow and navigate to target URL."""
+        try:
+            if not self.driver:
+                self.setup_driver()
+                
+            # First navigate to trigger SSO
+            self.driver.get(url)
+            
+            # Login
+            if self.login():
+                # Navigate back to target page
+                return self.driver.get_cookies()
             else:
                 return None
         except Exception as e:
@@ -341,6 +363,24 @@ class SSOCollector:
         except Exception as exc:  # pragma: no cover - defensive catch
             logger.error(f"SSO scraping failed for {url}: {exc}")
             return []
+    
+    def get_auth(self, url: str) -> Dict | None:
+        if not self._enabled: 
+            logger.error("SSO is disabled or not configured")
+            return None
+
+        scraper_class, scraper_kwargs = self._resolve_scraper()
+        if scraper_class is None: 
+            return None
+
+        try: 
+            with scraper_class(**scraper_kwargs) as scraper:
+                res = scraper.authenticate
+                pass
+        except Exception as e:
+            logger.error("Something went wrong getting authentication for {url}")
+            return None
+        
 
     def _resolve_scraper(self):
         entry = self._class_map.get(self._class_name)
