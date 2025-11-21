@@ -53,6 +53,7 @@ services:
   mattermost:
     update_time: {{ services.mattermost.update_time | default(60, true) }}
   redmine_mailbox: 
+    pipeline: {{ services.redmine_mailbox.pipeline | default('CMSCompOpsAgent', true) }}
     url: {{ services.redmine_mailbox.url | default('', true) }}
     project: {{ services.redmine_mailbox.project | default('', true) }}
     redmine_update_time: {{ services.redmine_mailbox.redmine_update_time | default(10, true) }}
