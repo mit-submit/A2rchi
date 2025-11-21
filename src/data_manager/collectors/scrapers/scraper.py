@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 class WebScraper:
     """Simple HTTP scraper that fetches raw content from public URLs."""
 
-    def __init__(self, verify_urls: bool = True, authenticator: Optional(SSOAuthenticator) = None, enable_warnings: bool = True) -> None:
+    def __init__(self, verify_urls: bool = True, authenticator = None, enable_warnings: bool = True) -> None:
         self.verify_urls = verify_urls
         self.enable_warnings = enable_warnings
         self.authenticator = None
