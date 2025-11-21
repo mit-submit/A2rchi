@@ -221,7 +221,7 @@ a2rchi:
           condense_prompt: {% if a2rchi.pipeline_map.QAPipeline.prompts.required.condense_prompt %}"{{ a2rchi.pipeline_map.QAPipeline.prompts.required.condense_prompt }}"{% else %}null{% endif %}
           chat_prompt: {% if a2rchi.pipeline_map.QAPipeline.prompts.required.chat_prompt %}"{{ a2rchi.pipeline_map.QAPipeline.prompts.required.chat_prompt }}"{% else %}null{% endif %}
       models:
-        requiredcr
+        required:
           condense_model: {{ a2rchi.pipeline_map.QAPipeline.models.required.condense_model | default('DumbLLM', true) }}
           chat_model: {{ a2rchi.pipeline_map.QAPipeline.models.required.chat_model | default('DumbLLM', true) }}
     GradingPipeline:
