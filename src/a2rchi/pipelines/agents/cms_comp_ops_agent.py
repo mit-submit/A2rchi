@@ -144,12 +144,12 @@ class CMSCompOpsAgent(BaseAgent):
         )
 
         semantic_description = (
-            "Semantic vector search over the CMS CompOps knowledge base. Use when you want concept-level matches, "
+            "Semantic vector search over the knowledge base. Use when you want concept-level matches, "
             "related procedures, or paraphrased content. Include the task, component, and any identifiers (ticket IDs, "
             "filenames, services) so embedding search can pull in closely related context."
         )
         bm25_description = (
-            "Lexical BM25 search over the CMS CompOps knowledge base. Use when you have sharp keywords: exact error messages, log lines, "
+            "Lexical BM25 search over the knowledge base. Use when you have sharp keywords: exact error messages, log lines, "
             "config flags, ticket IDs, filenames, or function/class names. Provide the precise tokens as they appear to "
             "maximize keyword matching."
         )
