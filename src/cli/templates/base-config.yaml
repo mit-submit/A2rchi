@@ -159,7 +159,7 @@ data_manager:
     jira:
       enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}
       url: {{ data_manager.sources.jira.url | default('', true) }}
-      visible: {{ data_manager.sources.jira.visible | default(false, true) }}
+      visible: {{ data_manager.sources.jira.visible | default(true, true) }}
       projects:
         {%- for project in data_manager.sources.jira.projects | default([], true) %}
         - {{ project }}
