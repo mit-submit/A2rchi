@@ -361,9 +361,11 @@ class ChatWrapper:
         service = "Chatbot"
         title = first_message[:20] + ("..." if len(first_message) > 20 else "")
         now = datetime.now()
+        
+        version = os.getenv("APP_VERSION", "unknown")
 
-        # title, created_at, last_message_at
-        insert_tup = (title, now, now)
+        # title, created_at, last_message_at, version
+        insert_tup = (title, now, now, version)
 
         # create connection to database
         self.conn = psycopg2.connect(**self.pg_config)
