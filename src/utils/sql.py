@@ -49,21 +49,22 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
 
 SQL_CREATE_CONVERSATION = """
 INSERT INTO conversation_metadata (
-    title, created_at, last_message_at, a2rchi_version
+    title, created_at, last_message_at, client_id, a2rchi_version
 )
-VALUES (%s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s)
 RETURNING conversation_id;
 """
 
 SQL_UPDATE_CONVERSATION_TIMESTAMP = """
 UPDATE conversation_metadata
 SET last_message_at = %s
-WHERE conversation_id = %s;
+WHERE conversation_id = %s AND client_id = %s;
 """
 
 SQL_LIST_CONVERSATIONS = """
 SELECT conversation_id, title, created_at, last_message_at
 FROM conversation_metadata
+WHERE client_id = %s
 ORDER BY last_message_at DESC
 LIMIT %s;
 """
@@ -71,10 +72,10 @@ LIMIT %s;
 SQL_GET_CONVERSATION_METADATA = """
 SELECT conversation_id, title, created_at, last_message_at
 FROM conversation_metadata
-WHERE conversation_id = %s;
+WHERE conversation_id = %s AND client_id = %s;
 """
 
 SQL_DELETE_CONVERSATION = """
 DELETE FROM conversation_metadata
-WHERE conversation_id = %s;
+WHERE conversation_id = %s AND client_id = %s;
 """
