@@ -362,7 +362,6 @@ class ChatWrapper:
         title = first_message[:20] + ("..." if len(first_message) > 20 else "")
         now = datetime.now()
         
-        # Retrieve version from environment
         version = os.getenv("APP_VERSION", "unknown")
 
         # title, created_at, last_message_at, version
