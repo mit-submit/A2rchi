@@ -66,6 +66,8 @@ services:
     build:
       context: .
       dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-chat{{ '-gpu' if gpu_ids else '' }}
+      args:
+        APP_VERSION: {{ app_version }}
     container_name: {{ chatbot_container_name }}
     depends_on:
       {% if chromadb_enabled -%}

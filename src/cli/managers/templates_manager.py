@@ -344,9 +344,22 @@ class TemplateManager:
         logger.debug(f"Wrote PostgreSQL init script to {dest}")
 
     def _render_compose_file(self, context: TemplateContext) -> None:
+        import subprocess
+
         template_vars = context.plan.to_template_vars()
         template_vars.update(self._extract_port_config(context))
         template_vars.setdefault("postgres_port", context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432))
+
+        try:
+            # Capture git version
+            app_version = subprocess.check_output(
+                ["git", "describe", "--tags", "--always", "--dirty"], 
+                stderr=subprocess.DEVNULL
+            ).strip().decode("utf-8")
+        except Exception:
+            app_version = "unknown"
+
+        template_vars["app_version"] = app_version
 
         # Compose template still expects optional lists
         template_vars.setdefault("prompt_files", [])
