@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS conversation_metadata (
     title TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    a2rchi_version TEXT,
+    a2rchi_version VARCHAR(50),
     PRIMARY KEY (conversation_id)
 );
 CREATE TABLE IF NOT EXISTS conversations (
