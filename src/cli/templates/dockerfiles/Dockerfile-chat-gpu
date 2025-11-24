@@ -76,4 +76,7 @@ RUN pip install --upgrade pip && pip install .
 
 ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
 
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 CMD ["python", "-u", "src/bin/service_chat.py"]

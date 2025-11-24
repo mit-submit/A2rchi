@@ -53,6 +53,7 @@ services:
   mattermost:
     update_time: {{ services.mattermost.update_time | default(60, true) }}
   redmine_mailbox: 
+    pipeline: {{ services.redmine_mailbox.pipeline | default('CMSCompOpsAgent', true) }}
     url: {{ services.redmine_mailbox.url | default('', true) }}
     project: {{ services.redmine_mailbox.project | default('', true) }}
     redmine_update_time: {{ services.redmine_mailbox.redmine_update_time | default(10, true) }}
@@ -120,16 +121,20 @@ data_manager:
   chunk_overlap: {{ data_manager.chunk_overlap | default(0, true) }}
   parallel_workers: {{ data_manager.parallel_workers | default(32, true) }}
   reset_collection: {{ data_manager.reset_collection | default(true, true) }}
-  num_documents_to_retrieve: {{ data_manager.num_documents_to_retrieve | default(5, true) }}
   stemming:
     enabled: {{ data_manager.stemming.enabled | default(false, true) }}
   distance_metric: {{ data_manager.distance_metric | default('cosine', true) }}
-  use_hybrid_search: {{ data_manager.use_hybrid_search | default(false, true) }}
-  bm25_weight: {{ data_manager.bm25_weight | default(0.6, true) }}
-  semantic_weight: {{ data_manager.semantic_weight | default(0.4, true) }}
-  bm25:
-    k1: {{ data_manager.bm25.k1 | default(0.5, true) }}
-    b: {{ data_manager.bm25.b | default(0.75, true) }}
+  retrievers:
+    semantic_retriever:
+      num_documents_to_retrieve: {{ data_manager.retrievers.semantic_retriever.num_documents_to_retrieve | default(5, true) }}
+    bm25_retriever:
+      num_documents_to_retrieve: {{ data_manager.retrievers.bm25_retriever.num_documents_to_retrieve | default(5, true) }}
+      k1: {{ data_manager.retrievers.bm25_retriever.k1 | default(0.5, true) }}
+      b: {{ data_manager.retrievers.bm25_retriever.b | default(0.75, true) }}
+    hybrid_retriever:
+      num_documents_to_retrieve: {{ data_manager.retrievers.hybrid_retriever.num_documents_to_retrieve | default(5, true) }}
+      bm25_weight: {{ data_manager.retrievers.hybrid_retriever.bm25_weight | default(0.6, true) }}
+      semantic_weight: {{ data_manager.retrievers.hybrid_retriever.semantic_weight | default(0.4, true) }}
   sources:
     links:
       enabled: {{ data_manager.sources.links.enabled | default(true, true) }}

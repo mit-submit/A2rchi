@@ -36,4 +36,7 @@ RUN pip install --upgrade pip && pip install .
 
 RUN chmod g+rx /root; chmod -R g+w /root/A2rchi/src/interfaces
 
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 CMD ["python", "-u", "src/bin/service_chat.py"]
