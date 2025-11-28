@@ -86,12 +86,65 @@ class BaseAgent:
         if self.agent is None:
             self.refresh_agent(force=True)
         logger.debug("Agent refreshed, invoking now")
-        answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": 50})
-        logger.debug("Agent invocation completed")
-        messages = self._extract_messages(answer_output)
-        metadata = self._metadata_from_agent_output(answer_output)
+        
+        # Use streaming internally with "values" mode to capture agent thinking
+        # Each event contains the full state after a node executes
+        final_state = None
+        step_count = 0
+        prev_message_count = 0
+        
+        for state in self.agent.stream(agent_inputs, stream_mode="values", config={"recursion_limit": 50}):
+            step_count += 1
+            messages = state.get("messages", [])
+            
+            # Log only new messages since last step
+            new_messages = messages[prev_message_count:]
+            for msg in new_messages:
+                self._log_agent_message(step_count, msg)
+            
+            prev_message_count = len(messages)
+            final_state = state
+        
+        logger.debug("Agent invocation completed after %d steps", step_count)
+        
+        # Extract messages from final state
+        messages = self._extract_messages(final_state) if final_state else []
+        metadata = self._metadata_from_agent_output(final_state) if final_state else {}
         output = self._build_output_from_messages(messages, metadata=metadata)
         return output
+    
+    def _log_agent_message(self, step: int, message: Any) -> None:
+        """Log a single agent message for debugging thinking process."""
+        msg_type = type(message).__name__
+        
+        # Log based on message type
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            # AIMessage with tool calls - this is the "thinking" about which tool to use
+            tool_names = [tc.get('name', 'unknown') for tc in message.tool_calls]
+            logger.info("[Step %d] %s deciding to call tools: %s", step, msg_type, tool_names)
+            for tc in message.tool_calls:
+                tool_name = tc.get('name', 'unknown')
+                tool_args = tc.get('args', {})
+                logger.debug("[Step %d]   Tool '%s' args: %s", step, tool_name, tool_args)
+        elif hasattr(message, 'name') and message.name:
+            # ToolMessage - result from a tool
+            content_preview = self._truncate_content(getattr(message, 'content', ''))
+            logger.info("[Step %d] %s from tool '%s': %s", step, msg_type, message.name, content_preview)
+        elif hasattr(message, 'content'):
+            # Regular message (AIMessage response, HumanMessage, etc.)
+            content = getattr(message, 'content', '')
+            if content:
+                content_preview = self._truncate_content(content)
+                logger.info("[Step %d] %s: %s", step, msg_type, content_preview)
+    
+    def _truncate_content(self, content: str, max_length: int = 200) -> str:
+        """Truncate content for logging."""
+        if not content:
+            return ""
+        content_str = str(content)
+        if len(content_str) <= max_length:
+            return content_str
+        return f"{content_str[:max_length]}..."
 
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
         """Stream agent updates synchronously."""
