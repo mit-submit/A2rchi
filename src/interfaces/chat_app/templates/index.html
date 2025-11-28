@@ -27,6 +27,26 @@
           <!-- Conversations will be loaded here dynamically -->
           <div class="loading-conversations">Loading conversations...</div>
         </div>
+        <!-- User info section at bottom of sidebar -->
+        <div class="sidebar-footer" id="user-section" style="display: none;">
+          <div class="user-info">
+            <span class="material-symbols-rounded user-icon">account_circle</span>
+            <div class="user-details">
+              <div class="user-name" id="user-name"></div>
+              <div class="user-email" id="user-email"></div>
+            </div>
+          </div>
+          <button id="logout-btn" class="logout-button" title="Logout">
+            <span class="material-symbols-rounded">logout</span>
+          </button>
+        </div>
+        <!-- Login button when not authenticated -->
+        <div class="sidebar-footer" id="login-section">
+          <a href="/login" class="login-button">
+            <span class="material-symbols-rounded">login</span>
+            <span>Login</span>
+          </a>
+        </div>
       </aside>
 
       <!-- Main content area -->

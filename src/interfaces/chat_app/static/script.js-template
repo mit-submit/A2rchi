@@ -41,6 +41,14 @@ async function fetchWithTimeout(resource, options = {}) {
     try {
         const response = await fetch(resource, { ...options, signal: controller.signal });
         console.log("API response received");
+        
+        // Check for 401 Unauthorized response
+        if (response.status === 401) {
+            console.log("Unauthorized - redirecting to landing page");
+            window.location.href = '/';
+            throw new Error('Unauthorized');
+        }
+        
         return response;
     } catch (error) {
         console.error("Fetch error:", error);
@@ -55,10 +63,19 @@ async function populateDropdown() {
     const API_URL = "/api/get_configs"
 
     try {
-        const response = await (await fetch(API_URL)).json();
+        const response = await fetch(API_URL);
+        
+        // Check for 401 Unauthorized response
+        if (response.status === 401) {
+            console.log("Unauthorized - redirecting to landing page");
+            window.location.href = '/';
+            return;
+        }
+        
+        const data = await response.json();
 
-        if (response.error) {
-            console.error("API Error fetching configs",response.error);
+        if (data.error) {
+            console.error("API Error fetching configs", data.error);
             return;
         }
 
@@ -66,7 +83,7 @@ async function populateDropdown() {
         configDropdown.innerHTML = '';
 
         // Populate the dropdown with options from the API response
-        response.options.forEach(optionText => {
+        data.options.forEach(optionText => {
             const option = document.createElement("option");
             option.textContent = optionText;
             option.value = optionText;
@@ -82,10 +99,19 @@ async function loadConversations() {
     const API_URL = "/api/list_conversations?limit=100";
     
     try {
-        const response = await (await fetch(API_URL)).json();
+        const response = await fetch(API_URL);
         
-        if (response.error) {
-            console.error("API Error fetching conversations", response.error);
+        // Check for 401 Unauthorized response
+        if (response.status === 401) {
+            console.log("Unauthorized - redirecting to landing page");
+            window.location.href = '/';
+            return;
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error("API Error fetching conversations", data.error);
             conversationsList.innerHTML = '<div class="loading-conversations">Error loading conversations</div>';
             return;
         }
@@ -94,12 +120,12 @@ async function loadConversations() {
         conversationsList.innerHTML = '';
         
         // fill with conversations
-        if (response.conversations.length === 0) {
+        if (data.conversations.length === 0) {
             conversationsList.innerHTML = '<div class="loading-conversations">No conversations yet</div>';
             return;
         }
         
-        response.conversations.forEach(conv => {
+        data.conversations.forEach(conv => {
             const convElement = document.createElement("div");
             convElement.classList.add("conversation-item");
             convElement.dataset.conversationId = conv.conversation_id;
@@ -142,16 +168,25 @@ async function loadConversation(convId) {
     const API_URL = "/api/load_conversation";
     
     try {
-        const response = await (await fetch(API_URL, {
+        const response = await fetch(API_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({ conversation_id: convId }),
-        })).json();
+        });
         
-        if (response.error) {
-            console.error("Error loading conversation:", response.error);
+        // Check for 401 Unauthorized response
+        if (response.status === 401) {
+            console.log("Unauthorized - redirecting to landing page");
+            window.location.href = '/';
+            return;
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error("Error loading conversation:", data.error);
             return;
         }
         
@@ -162,7 +197,7 @@ async function loadConversation(convId) {
         chatContainer.innerHTML = '';
         
         // message format
-        response.messages.forEach(msg => {
+        data.messages.forEach(msg => {
             const className = msg.sender === "User" ? "outgoing" : "incoming";
             const html = className === "outgoing" 
                 ? `<div class="chat-content">
@@ -594,6 +629,7 @@ chatInput.addEventListener("keydown", (e) => {
 loadDataFromLocalstorage();
 populateDropdown();
 loadConversations();
+loadUserInfo();
 
 // Event listeners for new conversation
 newChatButton.addEventListener("click", startNewConversation);
@@ -614,3 +650,39 @@ toggleSidebarButton.addEventListener("click", () => {
 });
 
 sendButton.addEventListener("click", handleOutgoingChat);
+
+// User authentication functions
+async function loadUserInfo() {
+    try {
+        const response = await fetch('/auth/user');
+        const data = await response.json();
+        
+        const userSection = document.getElementById('user-section');
+        const loginSection = document.getElementById('login-section');
+        
+        if (data.logged_in) {
+            // Show user info
+            document.getElementById('user-name').textContent = data.name || 'User';
+            document.getElementById('user-email').textContent = data.email || '';
+            userSection.style.display = 'flex';
+            loginSection.style.display = 'none';
+        } else {
+            // Show login button
+            userSection.style.display = 'none';
+            loginSection.style.display = 'flex';
+        }
+    } catch (error) {
+        console.error('Error loading user info:', error);
+        // Default to showing login button on error
+        document.getElementById('user-section').style.display = 'none';
+        document.getElementById('login-section').style.display = 'flex';
+    }
+}
+
+// Logout handler
+const logoutButton = document.getElementById('logout-btn');
+if (logoutButton) {
+    logoutButton.addEventListener('click', () => {
+        window.location.href = '/logout';
+    });
+}

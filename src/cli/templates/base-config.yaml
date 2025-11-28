@@ -78,6 +78,16 @@ services:
     enable_debug_chroma_endpoints: {{ services.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ services.chat_app.flask_debug_mode | default(true, false) }}
     verify_urls: {{ services.uploader_app.verify_urls | default(true, false) }}
+    auth:
+      enabled: {{ services.chat_app.auth.enabled | default(false, true) }}
+      sso:
+        enabled: {{ services.chat_app.auth.sso.enabled | default(false, true) }}
+        server_metadata_url: {{ services.chat_app.auth.sso.server_metadata_url | default("", true) }}
+        authorize_url: {{ services.chat_app.auth.sso.authorize_url | default("", true) }}
+        client_kwargs:
+          scope: {{ services.chat_app.auth.sso.client_kwargs.scope | default("openid profile email", true) }}
+      basic:
+        enabled: {{ services.chat_app.auth.basic.enabled | default(false, true) }}
   grader_app:
     port: {{ services.grader_app.port | default(7861, true) }}
     external_port: {{ services.grader_app.external_port | default(7862, true) }}
