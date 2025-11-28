@@ -30,7 +30,7 @@ from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION
+from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.utils.index_utils import CatalogService
@@ -509,6 +509,59 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    def insert_tool_calls(self, conversation_id: int, message_id: int, tool_calls: List) -> None:
+        """
+        Store agent tool calls to understand the agent's thinking process.
+        """
+        if not tool_calls:
+            return
+            
+        logger.debug("Inserting %d tool calls for message %d", len(tool_calls), message_id)
+
+        # construct insert_tups: (conversation_id, message_id, step_number, tool_name, tool_args, tool_result, ts)
+        insert_tups = []
+        for tc in tool_calls:
+            # Handle both ToolCallRecord objects and dicts (from serialization)
+            if isinstance(tc, dict):
+                step_number = tc.get('step_number')
+                tool_name = tc.get('tool_name')
+                tool_args = tc.get('tool_args')
+                tool_result = tc.get('tool_result')
+                ts = tc.get('ts')
+                # Parse ts if it's an ISO string
+                if isinstance(ts, str):
+                    try:
+                        ts = datetime.fromisoformat(ts)
+                    except (ValueError, TypeError):
+                        ts = datetime.now()
+            else:
+                step_number = tc.step_number
+                tool_name = tc.tool_name
+                tool_args = tc.tool_args
+                tool_result = tc.tool_result
+                ts = tc.ts
+            
+            insert_tups.append((
+                conversation_id,
+                message_id,
+                step_number,
+                tool_name,
+                json.dumps(tool_args) if tool_args else None,
+                tool_result,
+                ts or datetime.now(),
+            ))
+
+        # create connection to database
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
+        self.conn.commit()
+
+        # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
     def __call__(self, message: List[str], conversation_id: int|None, client_id: str, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
@@ -612,6 +665,12 @@ class ChatWrapper:
                 is_refresh
             )
             timestamps['insert_convo_ts'] = datetime.now()
+            
+            # insert tool calls for the A2rchi response (last message_id)
+            tool_calls = result.get("tool_calls", [])
+            if tool_calls and message_ids:
+                a2rchi_message_id = message_ids[-1]  # A2rchi's response is the last message
+                self.insert_tool_calls(conversation_id, a2rchi_message_id, tool_calls)
 
         except ConversationAccessError as e:
             logger.warning(f"Unauthorized conversation access attempt: {e}")

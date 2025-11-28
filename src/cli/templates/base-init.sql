@@ -55,6 +55,19 @@ CREATE TABLE IF NOT EXISTS timing (
     PRIMARY KEY (mid),
     FOREIGN KEY (mid) REFERENCES conversations(message_id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS agent_tool_calls (
+    id SERIAL,
+    conversation_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    step_number INTEGER NOT NULL,
+    tool_name VARCHAR(100) NOT NULL,
+    tool_args JSONB,
+    tool_result TEXT,
+    ts TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id),
+    FOREIGN KEY (conversation_id) REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES conversations(message_id) ON DELETE CASCADE
+);
 
 -- create grafana user if it does not exist
 {% if use_grafana -%}
@@ -69,6 +82,7 @@ BEGIN
         GRANT SELECT ON public.conversation_metadata TO grafana;
         GRANT SELECT ON public.feedback TO grafana;
         GRANT SELECT ON public.configs TO grafana;
+        GRANT SELECT ON public.agent_tool_calls TO grafana;
     END IF;
 END
 $do$;
