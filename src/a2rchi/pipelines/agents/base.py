@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator
 
 from langchain.agents import create_agent
@@ -5,7 +6,7 @@ from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from src.a2rchi.pipelines.agents.utils.prompt_utils import read_prompt
-from src.a2rchi.utils.output_dataclass import PipelineOutput
+from src.a2rchi.utils.output_dataclass import PipelineOutput, ToolCallRecord
 from src.a2rchi.pipelines.agents.utils.document_memory import DocumentMemory
 from src.utils.logging import get_logger
 
@@ -67,6 +68,7 @@ class BaseAgent:
         memory: Optional[DocumentMemory] = None,
         messages: Optional[Sequence[BaseMessage]] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        tool_calls: Optional[List[ToolCallRecord]] = None,
         final: bool = True,
     ) -> PipelineOutput:
         """Compose a PipelineOutput from the provided components."""
@@ -76,6 +78,7 @@ class BaseAgent:
             source_documents=documents,
             messages=messages or [],
             metadata=metadata or {},
+            tool_calls=tool_calls or [],
             final=final,
         )
 
@@ -92,25 +95,54 @@ class BaseAgent:
         final_state = None
         step_count = 0
         prev_message_count = 0
+        tool_calls: List[ToolCallRecord] = []
+        pending_tool_calls: Dict[str, ToolCallRecord] = {}  # tool_call_id -> record
         
         for state in self.agent.stream(agent_inputs, stream_mode="values", config={"recursion_limit": 50}):
             step_count += 1
             messages = state.get("messages", [])
             
-            # Log only new messages since last step
+            # Log only new messages since last step and collect tool calls
             new_messages = messages[prev_message_count:]
             for msg in new_messages:
                 self._log_agent_message(step_count, msg)
+                
+                # Collect tool call decisions (AIMessage with tool_calls)
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tool_call_id = tc.get('id', '')
+                        record = ToolCallRecord(
+                            step_number=step_count,
+                            tool_name=tc.get('name', 'unknown'),
+                            tool_args=tc.get('args', {}),
+                            tool_result=None,
+                            ts=datetime.now(),
+                        )
+                        pending_tool_calls[tool_call_id] = record
+                
+                # Collect tool results (ToolMessage)
+                if hasattr(msg, 'tool_call_id') and msg.tool_call_id:
+                    tool_call_id = msg.tool_call_id
+                    if tool_call_id in pending_tool_calls:
+                        record = pending_tool_calls.pop(tool_call_id)
+                        # Truncate result for storage
+                        result = getattr(msg, 'content', '')
+                        record.tool_result = self._truncate_content(str(result), max_length=2000)
+                        tool_calls.append(record)
             
             prev_message_count = len(messages)
             final_state = state
         
-        logger.debug("Agent invocation completed after %d steps", step_count)
+        # Add any pending tool calls that didn't get results
+        for record in pending_tool_calls.values():
+            tool_calls.append(record)
+        
+        logger.debug("Agent invocation completed after %d steps with %d tool calls", step_count, len(tool_calls))
         
         # Extract messages from final state
         messages = self._extract_messages(final_state) if final_state else []
         metadata = self._metadata_from_agent_output(final_state) if final_state else {}
-        output = self._build_output_from_messages(messages, metadata=metadata)
+        output = self._build_output_from_messages(messages, metadata=metadata, tool_calls=tool_calls)
         return output
     
     def _log_agent_message(self, step: int, message: Any) -> None:
@@ -338,6 +370,7 @@ class BaseAgent:
         messages: Sequence[BaseMessage],
         *,
         metadata: Optional[Dict[str, Any]] = None,
+        tool_calls: Optional[List[ToolCallRecord]] = None,
         final: bool = True,
     ) -> PipelineOutput:
         """Create a PipelineOutput from the agent's message history."""
@@ -351,5 +384,6 @@ class BaseAgent:
             memory=self.active_memory,
             messages=messages,
             metadata=safe_metadata,
+            tool_calls=tool_calls,
             final=final,
         )
