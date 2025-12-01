@@ -193,230 +193,6 @@ def extract_ticket_id(text):
             return match.group(1) if match.lastindex == 1 else match.group(1).replace('jira_', '')
     return None
 
-def calculate_retrieval_accuracy(questions):
-    """Calculate how many questions retrieved the correct document(s)"""
-    total = 0
-    correct = 0
-    partial = 0
-    
-    for q_data in questions.values():
-        reference_sources_metadata = q_data.get('reference_sources_metadata', [])
-        reference_sources_match_fields = q_data.get('reference_sources_match_fields', [])
-        expected_sources = []
-        for ref_source, match_field in zip(reference_sources_metadata, reference_sources_match_fields):
-            expected_sources.append(ref_source[match_field])
-        found_sources = [source for i, source in enumerate(expected_sources) if reference_sources_metadata[i]['matched']]
-
-        # retrieved sources
-        sources_metadata = q_data.get('sources_metadata', [])
-        sources_trunc_content = q_data.get('sources_trunc_content', [])
-        retrieved_sources = [s['display_name'] for s in sources_metadata]
-        
-        # Check if any expected source was retrieved
-        expected_sources_set = set(expected_sources) 
-
-        #expected_link = q_data.get('expected_link', '')
-        #expected_sources = q_data.get('expected_sources', [])
-        contexts = q_data.get('contexts', [])
-        
-        # Get expected tickets from both formats
-        expected_tickets = set()
-        if expected_sources:
-            expected_tickets.update(expected_sources)
-        #elif expected_link:
-        #    ticket = extract_ticket_id(expected_link)
-        #    if ticket:
-        #        expected_tickets.add(ticket)
-        
-        if not expected_tickets:
-            continue
-            
-        total += 1
-        
-        # Get retrieved tickets
-        retrieved_tickets = set()
-        for ctx in contexts:
-            retrieved_ticket = extract_ticket_id(str(ctx))
-            if retrieved_ticket:
-                retrieved_tickets.add(retrieved_ticket)
-        
-        # Check how many expected tickets were retrieved
-        found_tickets = expected_tickets & retrieved_tickets
-        if len(found_tickets) == len(expected_tickets):
-            correct += 1
-        elif len(found_tickets) > 0:
-            partial += 1
-    
-    accuracy = (correct / total * 100) if total > 0 else 0
-    return accuracy, correct, total, partial
-
-def format_text_output(config_data, config_name, timestamp, question_num=None):
-    """Format results as readable text"""
-    questions = get_single_question_results(config_data)
-    total_results = get_total_results(config_data)
-    
-    output = []
-    output.append("=" * 100)
-    output.append(f"BENCHMARK RESULTS COMPARISON")
-    output.append("=" * 100)
-    output.append(f"Configuration: {config_name}")
-    output.append(f"Timestamp: {timestamp}")
-    output.append(f"Total Questions: {len(questions)}")
-    output.append("")
-    
-    # Calculate and show retrieval accuracy
-    ret_accuracy, ret_correct, ret_total, ret_partial = calculate_retrieval_accuracy(questions)
-    output.append("🎯 RETRIEVAL ACCURACY:")
-    output.append(f"  • Fully Correct: {ret_correct}/{ret_total} ({ret_accuracy:.1f}%)")
-    if ret_partial > 0:
-        output.append(f"  • Partially Correct: {ret_partial}/{ret_total}")
-    output.append("")
-    
-    # Show aggregate metrics
-    if total_results:
-        output.append("📊 AGGREGATE RAGAS METRICS:")
-        for metric, value in total_results.items():
-            if 'aggregate' in metric:
-                clean_name = metric.replace('aggregate_', '').replace('_', ' ').title()
-                output.append(f"  • {clean_name}: {value:.3f}")
-        output.append("")
-    
-    output.append("=" * 100)
-    output.append("")
-    
-    # Filter to specific question if requested
-    question_items = list(questions.items())
-    if question_num is not None:
-        if 1 <= question_num <= len(question_items):
-            question_items = [question_items[question_num - 1]]
-        else:
-            output.append(f"⚠️  Question {question_num} not found. Showing all questions.")
-            output.append("")
-    
-    # Show each question
-    for i, (qid, q_data) in enumerate(question_items, 1):
-        output.append("─" * 100)
-        output.append(f"QUESTION {i}/{len(questions)}: {qid}")
-        output.append("─" * 100)
-        output.append("")
-        
-        # Question
-        output.append("❓ QUESTION:")
-        output.append(q_data['question'])
-        output.append("")
-        
-        # Retrieval Check
-        expected_link = q_data.get('expected_link', '')
-        expected_ticket = extract_ticket_id(expected_link)
-        expected_sources = q_data.get('expected_sources', [])
-        contexts = q_data.get('contexts', [])
-        
-        retrieved_tickets = []
-        for ctx in contexts:
-            ticket_id = extract_ticket_id(str(ctx))
-            if ticket_id and ticket_id not in retrieved_tickets:
-                retrieved_tickets.append(ticket_id)
-        
-        # Calculate retrieval status
-        expected_tickets_set = set(expected_sources) if expected_sources else ({expected_ticket} if expected_ticket else set())
-        retrieved_tickets_set = set(retrieved_tickets)
-        found_tickets = expected_tickets_set & retrieved_tickets_set
-        
-        if expected_tickets_set:
-            output.append("🎯 RETRIEVAL CHECK:")
-            if expected_sources:
-                output.append(f"  Expected Documents: {', '.join(expected_sources)}")
-            else:
-                output.append(f"  Expected Document: {expected_ticket}")
-            output.append(f"  Retrieved Documents: {', '.join(retrieved_tickets) if retrieved_tickets else 'None'}")
-            
-            if len(found_tickets) == len(expected_tickets_set):
-                output.append(f"  Status: ✅ FULLY CORRECT - All expected documents retrieved")
-            elif len(found_tickets) > 0:
-                output.append(f"  Status: ⚠️  PARTIALLY CORRECT - {len(found_tickets)}/{len(expected_tickets_set)} expected documents retrieved")
-                output.append(f"  Found: {', '.join(found_tickets)}")
-                missing = expected_tickets_set - found_tickets
-                output.append(f"  Missing: {', '.join(missing)}")
-            else:
-                output.append(f"  Status: ❌ INCORRECT - No expected documents retrieved")
-            output.append("")
-        
-        # A2rchi's Answer
-        output.append("🤖 A2RCHI'S ANSWER:")
-        output.append(q_data.get('chat_answer', 'N/A'))
-        output.append("")
-        
-        # Expected Answer
-        output.append("✅ EXPECTED ANSWER:")
-        output.append(q_data.get('ground_truth', 'N/A'))
-        output.append("")
-        
-        # Retrieved Contexts
-        contexts = q_data.get('contexts', [])
-        if contexts:
-            output.append(f"📚 RETRIEVED CONTEXTS ({len(contexts)} documents):")
-            for j, ctx in enumerate(contexts, 1):
-                # Try to parse if it's a string representation of a Document
-                if ctx.startswith('page_content='):
-                    # Extract just the content part
-                    try:
-                        content_start = ctx.find("page_content='") + len("page_content='")
-                        content_end = ctx.find("' metadata=", content_start)
-                        if content_end != -1:
-                            ctx_text = ctx[content_start:content_end]
-                        else:
-                            ctx_text = ctx
-                    except:
-                        ctx_text = ctx
-                else:
-                    ctx_text = ctx
-                
-                # Truncate if too long
-                if len(ctx_text) > 300:
-                    ctx_text = ctx_text[:300] + "... [truncated]"
-                
-                output.append(f"  [{j}] {ctx_text}")
-            output.append("")
-        
-        # Document Scores
-        doc_scores = q_data.get('document_scores', [])
-        if doc_scores:
-            output.append(f"🎯 DOCUMENT SIMILARITY SCORES:")
-            for j, score in enumerate(doc_scores, 1):
-                output.append(f"  [{j}] {score:.4f}")
-            output.append("")
-        
-        # RAGAS Metrics
-        ragas_metrics = {
-            'answer_relevancy': 'Answer Relevancy',
-            'faithfulness': 'Faithfulness',
-            'context_precision': 'Context Precision',
-            'context_recall': 'Context Recall'
-        }
-        
-        has_ragas = any(metric in q_data for metric in ragas_metrics.keys())
-        if has_ragas:
-            output.append("📊 RAGAS EVALUATION SCORES:")
-            for metric_key, metric_name in ragas_metrics.items():
-                if metric_key in q_data:
-                    value = q_data[metric_key]
-                    if value is not None:
-                        output.append(f"  • {metric_name}: {value:.3f}")
-                    else:
-                        output.append(f"  • {metric_name}: N/A (evaluation failed)")
-            output.append("")
-        
-        # Timing
-        time_elapsed = q_data.get('time_elapsed')
-        if time_elapsed:
-            output.append(f"⏱️  Time Elapsed: {time_elapsed:.2f}s")
-            output.append("")
-        
-        output.append("")
-    
-    return "\n".join(output)
-
-
 
 def format_html_output(config_data, config_name, timestamp):
     """Format results as HTML for easier reading"""
@@ -532,7 +308,15 @@ def format_html_output(config_data, config_name, timestamp):
 """)
 
     # Retrieval Accuracy
-    ret_accuracy, ret_correct, ret_total, ret_partial = calculate_retrieval_accuracy(questions)
+
+    ret_accuracy = total_results.get('source_accuracy', None)
+    if ret_accuracy: ret_accuracy *= 100
+    ret_partial = total_results.get('relative_source_accuracy', None)
+    if ret_partial: ret_partial *= 100
+
+    ret_correct =  int(ret_total*ret_accuracy)
+    ret_total = len(questions)
+
     html_parts.append('<div class="metrics">')
     html_parts.append('<h2>🎯 Retrieval Accuracy</h2>')
     html_parts.append('<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; max-width: 900px; margin: 0 auto;">')
@@ -607,7 +391,6 @@ def format_html_output(config_data, config_name, timestamp):
 
         # retrieved sources
         sources_metadata = q_data.get('sources_metadata', [])
-        sources_trunc_content = q_data.get('sources_trunc_content', [])
         retrieved_sources = [s['display_name'] for s in sources_metadata]
         
         # Check if any expected source was retrieved
@@ -785,22 +568,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # View all results in terminal
+  # Generate HTML report to default results.html
   python generate_benchmark_report.py results.json
   
   # View specific question
   python generate_benchmark_report.py results.json --question 3
   
-  # Generate HTML report
+  # Save HTML report to specific path
   python generate_benchmark_report.py results.json --html report.html
-  
-  # Save text output to file
-  python generate_benchmark_report.py results.json > report.txt
         """
     )
     
     parser.add_argument('results_file', help='Path to benchmark results JSON file')
-    parser.add_argument('--html', help='Generate HTML output file')
+    parser.add_argument('--html_output', help='Generate HTML output file')
     parser.add_argument('--question', '-q', type=int, help='Show only specific question number')
     
     args = parser.parse_args()
@@ -810,6 +590,12 @@ Examples:
         print(f"Error: File '{args.results_file}' not found", file=sys.stderr)
         sys.exit(1)
     
+    if not args.html_output:
+        print(f"HTML output path not found, using default.")
+        html_path = Path(args.results_file).stem + '.html'
+    else:
+        html_path = args.html_output
+
     # Load results
     try:
         config_data, config_name, timestamp = load_benchmark_results(args.results_file)
@@ -817,17 +603,11 @@ Examples:
         print(f"Error loading results: {e}", file=sys.stderr)
         sys.exit(1)
     
-    # Generate output
-    if args.html:
-        # HTML output
-        html_content = format_html_output(config_data, config_name, timestamp)
-        with open(args.html, 'w') as f:
-            f.write(html_content)
-        print(f"✅ HTML report generated: {args.html}")
-    else:
-        # Text output
-        text_content = format_text_output(config_data, config_name, timestamp, args.question)
-        print(text_content)
+    # Generates HTML output
+    html_content = format_html_output(config_data, config_name, timestamp)
+    with open(html_path, 'w') as f:
+        f.write(html_content)
+    print(f"✅ HTML report generated: {args.html}")
 
 
 if __name__ == '__main__':
