@@ -511,14 +511,13 @@ class ChatWrapper:
 
     def insert_tool_calls(self, conversation_id: int, message_id: int, tool_calls: List) -> None:
         """
-        Store agent tool calls to understand the agent's thinking process.
+        Store agent tool calls
         """
         if not tool_calls:
             return
             
         logger.debug("Inserting %d tool calls for message %d", len(tool_calls), message_id)
 
-        # construct insert_tups: (conversation_id, message_id, step_number, tool_name, tool_args, tool_result, ts)
         insert_tups = []
         for tc in tool_calls:
             # Handle both ToolCallRecord objects and dicts (from serialization)
@@ -551,13 +550,11 @@ class ChatWrapper:
                 ts or datetime.now(),
             ))
 
-        # create connection to database
         self.conn = psycopg2.connect(**self.pg_config)
         self.cursor = self.conn.cursor()
         psycopg2.extras.execute_values(self.cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
         self.conn.commit()
 
-        # clean up database connection state
         self.cursor.close()
         self.conn.close()
         self.cursor, self.conn = None, None
