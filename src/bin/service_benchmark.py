@@ -22,7 +22,7 @@ from src.a2rchi.models import HuggingFaceOpenLLM
 from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
-from src.utils.html_format import parse_benchmark_results, format_html_output
+from A2rchi.A2rchi.src.utils.benchmarking_html_report import parse_benchmark_results, format_html_output
 
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 OUTPUT_PATH = "/root/A2rchi/benchmarks"
