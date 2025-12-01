@@ -29,7 +29,6 @@ class RedmineAIWrapper:
     """
 
     def __init__(self):
-        self.a2rchi = A2rchi(pipeline="QAPipeline")
 
         # initialize data manager
         self.data_manager = DataManager()
@@ -40,7 +39,11 @@ class RedmineAIWrapper:
         self.global_config = self.config["global"]
         self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
+        self.redmine_config = self.services_config.get("redmine_mailbox", {})
         self.data_path = self.global_config["DATA_PATH"]
+
+        # agent
+        self.a2rchi = A2rchi(pipeline=self.redmine_config.get("pipeline", "CMSCompOpsAgent"))
 
         # postgres connection info
         self.pg_config = {

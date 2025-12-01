@@ -7,9 +7,11 @@ CREATE TABLE IF NOT EXISTS configs (
 );
 CREATE TABLE IF NOT EXISTS conversation_metadata (
     conversation_id SERIAL,
+    client_id TEXT,
     title TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    a2rchi_version VARCHAR(50),
     PRIMARY KEY (conversation_id)
 );
 CREATE TABLE IF NOT EXISTS conversations (

@@ -95,6 +95,11 @@ class AnswerRenderer(mt.HTMLRenderer):
         return f"""<code class="code-snippet">{text}</code>"""
 
 
+class ConversationAccessError(Exception):
+    """Raised when a client attempts to access a conversation it does not own."""
+    pass
+
+
 class ChatWrapper:
     """
     Wrapper which holds functionality for the chatbot
@@ -179,6 +184,7 @@ class ChatWrapper:
             # Skip threshold filtering for placeholder scores (-1)
             # Otherwise, filter out documents with score > threshold
             if score is not None and score != -1.0 and score > self.similarity_score_reference:
+                logger.debug(f"Skipping document with score {score} above threshold {self.similarity_score_reference}")
                 break
 
             metadata = document.metadata or {}
@@ -188,6 +194,7 @@ class ChatWrapper:
                 continue
 
             if not self._get_doc_visibility(self, metadata):
+                logger.debug(f"Document {display_name} marked as not visible; skipping.")
                 continue
 
             link = self._extract_link(metadata)
@@ -207,6 +214,7 @@ class ChatWrapper:
             if len(top_sources) >= 5:
                 break
 
+        logger.debug(f"Top sources: {top_sources}")
         return top_sources
 
     @staticmethod
@@ -230,14 +238,12 @@ class ChatWrapper:
                 score = entry["score"]
                 link = entry["link"]
                 display_name = entry["display"]
-
-                # Format score: show "N/A" for -1 (placeholder), otherwise show numeric value
-                if isinstance(score, str):
-                    score_str = score
-                elif score == -1.0:
-                    score_str = "N/A"
+                
+                # Format score: show nothing for -1 (placeholder), otherwise show numeric value
+                if score == -1.0 or score == "N/A":
+                    score_str = ""
                 else:
-                    score_str = f"{score:.2f}"
+                    score_str = f"({score:.2f})"
 
                 if link:
                     reference_html = f"<a href=\"{link}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #66b3ff; text-decoration: none;\" onmouseover=\"this.style.textDecoration='underline'\" onmouseout=\"this.style.textDecoration='none'\">{display_name}</a>"
@@ -248,7 +254,7 @@ class ChatWrapper:
                     <div style="margin: 0.15em 0; display: flex; align-items: center; gap: 0.4em;">
                         <span>•</span>
                         {reference_html}
-                        <span style="color: #6c757d; font-size: 0.9em;">({score_str})</span>
+                        <span style="color: #6c757d; font-size: 0.9em;">{score_str}</span>
                     </div>
                 '''
 
@@ -330,7 +336,7 @@ class ChatWrapper:
         self.cursor, self.conn = None, None
 
 
-    def query_conversation_history(self, conversation_id):
+    def query_conversation_history(self, conversation_id, client_id):
         """
         Return the conversation history as an ordered list of tuples. The order
         is determined by ascending message_id. Each tuple contains the sender and
@@ -339,6 +345,15 @@ class ChatWrapper:
         # create connection to database
         self.conn = psycopg2.connect(**self.pg_config)
         self.cursor = self.conn.cursor()
+
+        # ensure conversation belongs to client before querying
+        self.cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
+        metadata = self.cursor.fetchone()
+        if metadata is None:
+            self.cursor.close()
+            self.conn.close()
+            self.cursor, self.conn = None, None
+            raise ConversationAccessError("Conversation does not exist for this client")
 
         # query conversation history
         self.cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
@@ -351,7 +366,7 @@ class ChatWrapper:
 
         return history
 
-    def create_conversation(self, first_message: str) -> int:
+    def create_conversation(self, first_message: str, client_id: str) -> int:
         """
         Gets first message (activates a new conversation), and generates a title w/ first msg.
         (TODO: commercial ones use one-sentence summarizer to make the title)
@@ -362,9 +377,11 @@ class ChatWrapper:
         service = "Chatbot"
         title = first_message[:20] + ("..." if len(first_message) > 20 else "")
         now = datetime.now()
+        
+        version = os.getenv("APP_VERSION", "unknown")
 
-        # title, created_at, last_message_at
-        insert_tup = (title, now, now)
+        # title, created_at, last_message_at, version
+        insert_tup = (title, now, now, client_id, version)
 
         # create connection to database
         self.conn = psycopg2.connect(**self.pg_config)
@@ -381,7 +398,7 @@ class ChatWrapper:
         logger.info(f"Created new conversation with ID: {conversation_id}")
         return conversation_id
 
-    def update_conversation_timestamp(self, conversation_id: int):
+    def update_conversation_timestamp(self, conversation_id: int, client_id: str):
         """
         Update the last_message_at timestamp for a conversation.
         last_message_at is used to reorder conversations in the UI (on vertical sidebar).
@@ -393,7 +410,7 @@ class ChatWrapper:
         self.cursor = self.conn.cursor()
 
         # update timestamp
-        self.cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id))
+        self.cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id, client_id))
         self.conn.commit()
 
         # clean up database connection state
@@ -494,7 +511,7 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
-    def __call__(self, message: List[str], conversation_id: int|None, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
+    def __call__(self, message: List[str], conversation_id: int|None, client_id: str, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
         """
@@ -526,14 +543,16 @@ class ChatWrapper:
             # convert the message to native A2rchi form (because javascript does not have tuples)
             sender, content = tuple(message[0])
 
+            if not client_id:
+                raise ValueError("client_id is required to process chat messages")
+
             # new conversation if conversation_id is None, otherwise use existing
-            # But since now we don't use the random id system, maybe fixing conversation_id input as int type works?
             if conversation_id is None:
-                conversation_id = self.create_conversation(content)
+                conversation_id = self.create_conversation(content, client_id)
                 history = []
             else:
-                history = self.query_conversation_history(conversation_id)
-                self.update_conversation_timestamp(conversation_id)
+                history = self.query_conversation_history(conversation_id, client_id)
+                self.update_conversation_timestamp(conversation_id, client_id)
 
             timestamps['query_convo_history_ts'] = datetime.now()
 
@@ -596,6 +615,9 @@ class ChatWrapper:
             )
             timestamps['insert_convo_ts'] = datetime.now()
 
+        except ConversationAccessError as e:
+            logger.warning(f"Unauthorized conversation access attempt: {e}")
+            return None, None, None, timestamps, 403
         except Exception as e:
             # NOTE: we log the error message and return here
             logger.error(f"Failed to produce response: {e}", exc_info=True)
@@ -999,18 +1021,23 @@ class FlaskAppWrapper(object):
         is_refresh = request.json.get('is_refresh')
         client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
         client_timeout = request.json.get('client_timeout') / 1000
+        client_id = request.json.get('client_id')
+
+        if not client_id:
+            return jsonify({'error': 'client_id missing'}), 400
 
         # query the chat and return the results.
         logger.debug("Calling the ChatWrapper()")
-        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout,config_name)
+        response, conversation_id, message_ids, timestamps, error_code = self.chat(message, conversation_id, client_id, is_refresh, server_received_msg_ts, client_sent_msg_ts, client_timeout,config_name)
 
         # handle errors
         if error_code is not None:
-            output = (
-                jsonify({'error': 'client timeout'})
-                if error_code == 408
-                else jsonify({'error': 'server error; see chat logs for message'})
-            )
+            if error_code == 408:
+                output = jsonify({'error': 'client timeout'})
+            elif error_code == 403:
+                output = jsonify({'error': 'conversation not found'})
+            else:
+                output = jsonify({'error': 'server error; see chat logs for message'})
             return output, error_code
 
         # compute timestamp at which message was returned to client
@@ -1343,12 +1370,15 @@ class FlaskAppWrapper(object):
             JSON with list of conversations with fields: (conversation_id, title, created_at, last_message_at).
         """
         try:
+            client_id = request.args.get('client_id')
+            if not client_id:
+                return jsonify({'error': 'client_id missing'}), 400
             limit = min(int(request.args.get('limit', 50)), 500)
 
             # create connection to database
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
-            cursor.execute(SQL_LIST_CONVERSATIONS, (limit,))
+            cursor.execute(SQL_LIST_CONVERSATIONS, (client_id, limit))
             rows = cursor.fetchall()
 
             conversations = []
@@ -1385,16 +1415,19 @@ class FlaskAppWrapper(object):
         try:
             data = request.json
             conversation_id = data.get('conversation_id')
+            client_id = data.get('client_id')
 
             if not conversation_id:
                 return jsonify({'error': 'conversation_id missing'}), 400
+            if not client_id:
+                return jsonify({'error': 'client_id missing'}), 400
 
             # create connection to database
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
 
             # get conversation metadata
-            cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id,))
+            cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
             meta_row = cursor.fetchone()
 
             # if no metadata found, return error
@@ -1459,16 +1492,19 @@ class FlaskAppWrapper(object):
         try:
             data = request.json
             conversation_id = data.get('conversation_id')
+            client_id = data.get('client_id')
 
             if not conversation_id:
                 return jsonify({'error': 'conversation_id missing when deleting.'}), 400
+            if not client_id:
+                return jsonify({'error': 'client_id missing when deleting.'}), 400
 
             # create connection to database
             conn = psycopg2.connect(**self.pg_config)
             cursor = conn.cursor()
 
             # Delete conversation metadata (SQL CASCADE will delete all child messages)
-            cursor.execute(SQL_DELETE_CONVERSATION, (conversation_id,))
+            cursor.execute(SQL_DELETE_CONVERSATION, (conversation_id, client_id))
             deleted_count = cursor.rowcount
             conn.commit()
 
