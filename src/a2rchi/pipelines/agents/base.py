@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator
 
 from langchain.agents import create_agent
@@ -6,7 +5,7 @@ from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from src.a2rchi.pipelines.agents.utils.prompt_utils import read_prompt
-from src.a2rchi.utils.output_dataclass import PipelineOutput, ToolCallRecord
+from src.a2rchi.utils.output_dataclass import PipelineOutput
 from src.a2rchi.pipelines.agents.utils.document_memory import DocumentMemory
 from src.utils.logging import get_logger
 
@@ -68,7 +67,6 @@ class BaseAgent:
         memory: Optional[DocumentMemory] = None,
         messages: Optional[Sequence[BaseMessage]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        tool_calls: Optional[List[ToolCallRecord]] = None,
         final: bool = True,
     ) -> PipelineOutput:
         """Compose a PipelineOutput from the provided components."""
@@ -78,7 +76,6 @@ class BaseAgent:
             source_documents=documents,
             messages=messages or [],
             metadata=metadata or {},
-            tool_calls=tool_calls or [],
             final=final,
         )
 
@@ -90,94 +87,21 @@ class BaseAgent:
             self.refresh_agent(force=True)
         logger.debug("Agent refreshed, invoking now")
         
-        # Use streaming internally with "values" mode to capture agent thinking
-        # Each event contains the full state after a node executes
-        final_state = None
-        step_count = 0
-        prev_message_count = 0
-        tool_calls: List[ToolCallRecord] = []
-        pending_tool_calls: Dict[str, ToolCallRecord] = {}  # tool_call_id -> record
+        answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": 50})
+        logger.debug("Agent invocation completed")
         
-        for state in self.agent.stream(agent_inputs, stream_mode="values", config={"recursion_limit": 50}):
-            step_count += 1
-            messages = state.get("messages", [])
-            
-            # Log only new messages since last step and collect tool calls
-            new_messages = messages[prev_message_count:]
-            for msg in new_messages:
-                self._log_agent_message(step_count, msg)
-                
-                # Collect tool call decisions (AIMessage with tool_calls)
-                if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        tool_call_id = tc.get('id', '')
-                        record = ToolCallRecord(
-                            step_number=step_count,
-                            tool_name=tc.get('name', 'unknown'),
-                            tool_args=tc.get('args', {}),
-                            tool_result=None,
-                            ts=datetime.now(),
-                        )
-                        pending_tool_calls[tool_call_id] = record
-                
-                # Collect tool results (ToolMessage)
-                if hasattr(msg, 'tool_call_id') and msg.tool_call_id:
-                    tool_call_id = msg.tool_call_id
-                    if tool_call_id in pending_tool_calls:
-                        record = pending_tool_calls.pop(tool_call_id)
-                        # Truncate result for storage
-                        result = getattr(msg, 'content', '')
-                        record.tool_result = self._truncate_content(str(result), max_length=2000)
-                        tool_calls.append(record)
-            
-            prev_message_count = len(messages)
-            final_state = state
+        messages = self._extract_messages(answer_output)
+        logger.debug("Extracted %d messages from agent output", len(messages))
+        for i, msg in enumerate(messages):
+            msg_type = type(msg).__name__
+            content_preview = str(getattr(msg, 'content', ''))[:100]
+            has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
+            logger.debug("  [%d] %s: content=%r... tool_calls=%s", i, msg_type, content_preview, has_tool_calls)
         
-        # Add any pending tool calls that didn't get results
-        for record in pending_tool_calls.values():
-            tool_calls.append(record)
-        
-        logger.debug("Agent invocation completed after %d steps with %d tool calls", step_count, len(tool_calls))
-        
-        # Extract messages from final state
-        messages = self._extract_messages(final_state) if final_state else []
-        metadata = self._metadata_from_agent_output(final_state) if final_state else {}
-        output = self._build_output_from_messages(messages, metadata=metadata, tool_calls=tool_calls)
+        metadata = self._metadata_from_agent_output(answer_output)
+        output = self._build_output_from_messages(messages, metadata=metadata)
         return output
     
-    def _log_agent_message(self, step: int, message: Any) -> None:
-        """Log a single agent message for debugging thinking process."""
-        msg_type = type(message).__name__
-        
-        # Log based on message type
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            # AIMessage with tool calls - this is the "thinking" about which tool to use
-            tool_names = [tc.get('name', 'unknown') for tc in message.tool_calls]
-            logger.info("[Step %d] %s deciding to call tools: %s", step, msg_type, tool_names)
-            for tc in message.tool_calls:
-                tool_name = tc.get('name', 'unknown')
-                tool_args = tc.get('args', {})
-                logger.debug("[Step %d]   Tool '%s' args: %s", step, tool_name, tool_args)
-        elif hasattr(message, 'name') and message.name:
-            # ToolMessage - result from a tool
-            content_preview = self._truncate_content(getattr(message, 'content', ''))
-            logger.info("[Step %d] %s from tool '%s': %s", step, msg_type, message.name, content_preview)
-        elif hasattr(message, 'content'):
-            # Regular message (AIMessage response, HumanMessage, etc.)
-            content = getattr(message, 'content', '')
-            if content:
-                content_preview = self._truncate_content(content)
-                logger.info("[Step %d] %s: %s", step, msg_type, content_preview)
-    
-    def _truncate_content(self, content: str, max_length: int = 200) -> str:
-        """Truncate content for logging."""
-        if not content:
-            return ""
-        content_str = str(content)
-        if len(content_str) <= max_length:
-            return content_str
-        return f"{content_str[:max_length]}..."
-
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
         """Stream agent updates synchronously."""
         logger.debug("Streaming %s", self.__class__.__name__)
@@ -370,7 +294,6 @@ class BaseAgent:
         messages: Sequence[BaseMessage],
         *,
         metadata: Optional[Dict[str, Any]] = None,
-        tool_calls: Optional[List[ToolCallRecord]] = None,
         final: bool = True,
     ) -> PipelineOutput:
         """Create a PipelineOutput from the agent's message history."""
@@ -384,6 +307,5 @@ class BaseAgent:
             memory=self.active_memory,
             messages=messages,
             metadata=safe_metadata,
-            tool_calls=tool_calls,
             final=final,
         )

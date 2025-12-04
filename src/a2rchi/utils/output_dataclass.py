@@ -1,39 +1,9 @@
 """Dataclass to standardize the output of the classic pipelines and the pipelines / agents."""
 
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
-from typing import Any, Dict, List, Iterator, Optional
+from typing import Any, Dict, List, Iterator
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
-
-
-@dataclass
-class ToolCallRecord:
-    """Record of a single tool call made by an agent."""
-    
-    step_number: int
-    """The step number in the agent's execution sequence."""
-    
-    tool_name: str
-    """The name of the tool that was called."""
-    
-    tool_args: Dict[str, Any] = field(default_factory=dict)
-    """The arguments passed to the tool."""
-    
-    tool_result: Optional[str] = None
-    """The result returned by the tool (may be truncated)."""
-    
-    ts: Optional[datetime] = None
-    """Timestamp when the tool was called."""
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "step_number": self.step_number,
-            "tool_name": self.tool_name,
-            "tool_args": self.tool_args,
-            "tool_result": self.tool_result,
-            "ts": self.ts.isoformat() if self.ts else None,
-        }
 
 
 @dataclass
@@ -51,9 +21,6 @@ class PipelineOutput:
 
     metadata: Dict[str, Any] = field(default_factory=dict)
     """Additional metadata or structured payloads returned by the pipeline."""
-
-    tool_calls: List[ToolCallRecord] = field(default_factory=list)
-    """The sequence of tool calls made by the agent during execution."""
 
     final: bool = True
     """Indicates whether this object represents the terminal payload in a stream of outputs."""
