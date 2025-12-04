@@ -27,6 +27,7 @@ let last_response_is_feedback_request = false;
 const CLIENT_ID_STORAGE_KEY = "a2rchi_client_id";
 const ACTIVE_CONVERSATION_STORAGE_KEY = "a2rchi_active_conversation_id";
 const CLEARED_CONVERSATIONS_KEY = "a2rchi_cleared_conversation_ids";
+const MAX_CONVERSATION_ID_KEY = "a2rchi_max_conversation_id";
 
 const generateClientId = () => {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -93,7 +94,47 @@ const persistClearedConversations = () => {
     }
 };
 
+const loadMaxConversationId = () => {
+    const stored = localStorage.getItem(MAX_CONVERSATION_ID_KEY);
+    if (stored === null || stored === undefined) {
+        return null;
+    }
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const persistMaxConversationId = (value) => {
+    if (value === null || value === undefined) {
+        localStorage.removeItem(MAX_CONVERSATION_ID_KEY);
+        return;
+    }
+    localStorage.setItem(MAX_CONVERSATION_ID_KEY, value);
+};
+
 const clearedConversationIds = new Set(loadClearedConversations());
+let maxConversationIdSeen = loadMaxConversationId();
+const LIKE_ICON = "/static/images/thumbs_up.png";
+const LIKE_ICON_FILLED = "/static/images/thumbs_up_filled.png";
+const DISLIKE_ICON = "/static/images/thumbs_down.png";
+const DISLIKE_ICON_FILLED = "/static/images/thumbs_down_filled.png";
+
+function updateFeedbackVisualState(chatElement, feedbackState) {
+    if (!chatElement) return;
+    const buttonImages = chatElement.querySelectorAll(".button-container button img");
+    const likeImg = buttonImages[0];
+    const dislikeImg = buttonImages[1];
+    if (likeImg) {
+        likeImg.src = feedbackState === "like" ? LIKE_ICON_FILLED : LIKE_ICON;
+    }
+    if (dislikeImg) {
+        dislikeImg.src = feedbackState === "dislike" ? DISLIKE_ICON_FILLED : DISLIKE_ICON;
+    }
+    if (feedbackState) {
+        chatElement.dataset.feedbackState = feedbackState;
+    } else {
+        delete chatElement.dataset.feedbackState;
+    }
+}
 
 async function fetchWithTimeout(resource, options = {}) {
     // extracts `timeout` field from options dict;
@@ -164,8 +205,31 @@ async function loadConversations() {
         
         // fill with conversations
         if (response.conversations.length === 0) {
+            if (maxConversationIdSeen !== null) {
+                maxConversationIdSeen = null;
+                persistMaxConversationId(null);
+            }
+            if (clearedConversationIds.size > 0) {
+                clearedConversationIds.clear();
+                persistClearedConversations();
+            }
             conversationsList.innerHTML = '<div class="loading-conversations">No conversations yet</div>';
             return;
+        }
+        const conversationIds = response.conversations.map(conv => conv.conversation_id);
+        const currentMaxConversationId = conversationIds.length > 0 ? Math.max(...conversationIds) : null;
+        if (
+            clearedConversationIds.size > 0 &&
+            maxConversationIdSeen !== null &&
+            currentMaxConversationId !== null &&
+            currentMaxConversationId < maxConversationIdSeen
+        ) {
+            clearedConversationIds.clear();
+            persistClearedConversations();
+        }
+        if (currentMaxConversationId !== maxConversationIdSeen) {
+            maxConversationIdSeen = currentMaxConversationId;
+            persistMaxConversationId(maxConversationIdSeen);
         }
         let hasVisibleConversations = false;
         
@@ -262,6 +326,14 @@ async function loadConversation(convId) {
                     </div>`;
             
             const chatDiv = createChatElement(html, className);
+            if (className === "incoming") {
+                if (msg.message_id) {
+                    chatDiv.dataset.messageId = msg.message_id;
+                } else {
+                    delete chatDiv.dataset.messageId;
+                }
+                updateFeedbackVisualState(chatDiv, msg.feedback || null);
+            }
             chatContainer.appendChild(chatDiv);
             conversation.push([msg.sender, msg.content]);
         });
@@ -412,6 +484,12 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
         conversation.push(["A2rchi", response.response]);
         updateActiveConversationId(response.conversation_id);
         last_response_is_feedback_request = false;
+        if (response.a2rchi_msg_id !== undefined && response.a2rchi_msg_id !== null) {
+            incomingChatDiv.dataset.messageId = response.a2rchi_msg_id.toString();
+        } else {
+            delete incomingChatDiv.dataset.messageId;
+        }
+        updateFeedbackVisualState(incomingChatDiv, null);
     } catch (error) {
         console.error("Fetch Error:", error);
         pElement.classList.add("error");
@@ -447,13 +525,13 @@ const copyResponse = (copyBtn) => {
 const likeResponse = (likeBtn) => {
     num_responses_since_last_rating = 0;
 
-    // fill the image
-    const image = likeBtn.querySelector("img");
-    image.src = "/static/images/thumbs_up_filled.png"
-
-    // make sure other image is not filled
-    const other_image = likeBtn.nextElementSibling.querySelector("img");
-    other_image.src = "/static/images/thumbs_down.png";
+    const chatElement = likeBtn.closest(".chat");
+    const messageId = chatElement?.dataset?.messageId;
+    if (!messageId) {
+        console.warn("Cannot submit like feedback without a message id.");
+        return;
+    }
+    updateFeedbackVisualState(chatElement, "like");
 
     const API_URL = "/api/like";
 
@@ -466,7 +544,7 @@ const likeResponse = (likeBtn) => {
                 "Access-Control-Allow-Origin": "*",
             },
             body: JSON.stringify({
-                message_id: likeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+                message_id: Number(messageId),
             }),
         })
      } catch (error) {
@@ -477,13 +555,13 @@ const likeResponse = (likeBtn) => {
 const dislikeResponse = (dislikeBtn) => {
     num_responses_since_last_rating = 0;
 
-    // fill the image
-    const image = dislikeBtn.querySelector("img");
-    image.src = "/static/images/thumbs_down_filled.png";
-
-    // make sure other image is not filled
-    const other_image = dislikeBtn.previousElementSibling.querySelector("img");
-    other_image.src = "/static/images/thumbs_up.png";
+    const chatElement = dislikeBtn.closest(".chat");
+    const messageId = chatElement?.dataset?.messageId;
+    if (!messageId) {
+        console.warn("Cannot submit dislike feedback without a message id.");
+        return;
+    }
+    updateFeedbackVisualState(chatElement, "dislike");
 
     const API_URL = "/api/dislike";
 
@@ -502,7 +580,7 @@ const dislikeResponse = (dislikeBtn) => {
                     "Access-Control-Allow-Origin": "*",
                 },
                 body: JSON.stringify({ 
-                    message_id: dislikeBtn.parentElement.previousElementSibling.querySelector("p").parentElement.id,
+                    message_id: Number(messageId),
                     feedback_msg: additionalThoughts,
                     incorrect: correct_checkbox.checked,
                     unhelpful: helpful_checkbox.checked,

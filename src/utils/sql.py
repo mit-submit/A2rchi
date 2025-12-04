@@ -29,6 +29,24 @@ WHERE conversation_id = %s
 ORDER BY message_id ASC;
 """
 
+SQL_QUERY_CONVO_WITH_FEEDBACK = """
+SELECT c.sender,
+       c.content,
+       c.message_id,
+       lf.feedback
+FROM conversations c
+LEFT JOIN (
+    SELECT DISTINCT ON (mid)
+        mid,
+        feedback,
+        feedback_ts
+    FROM feedback
+    ORDER BY mid, feedback_ts DESC
+) lf ON lf.mid = c.message_id
+WHERE c.conversation_id = %s
+ORDER BY c.message_id ASC;
+"""
+
 SQL_INSERT_TIMING = """
 INSERT INTO timing (
     mid,

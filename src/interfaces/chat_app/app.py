@@ -30,11 +30,12 @@ from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS
+from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.interfaces.chat_app.document_utils import *
+from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
 
 logger = get_logger(__name__)
@@ -433,6 +434,7 @@ class ChatWrapper:
         # query conversation history
         self.cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
         history = self.cursor.fetchall()
+        history = collapse_assistant_sequences(history)
 
         # clean up database connection state
         self.cursor.close()
@@ -699,7 +701,7 @@ class ChatWrapper:
 
             # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
             if is_refresh:
-                while history[-1][0] == "A2rchi":
+                while history and history[-1][0] == "A2rchi":
                     _ = history.pop(-1)
 
             # guard call to LLM; if timestamp from message is more than timeout secs in the past;
@@ -756,6 +758,7 @@ class ChatWrapper:
                 is_refresh
             )
             timestamps['insert_convo_ts'] = datetime.now()
+            history.append(("A2rchi", result["answer"]))
             
             # insert tool calls extracted from messages
             agent_messages = getattr(result, 'messages', []) or []
@@ -1368,6 +1371,32 @@ class FlaskAppWrapper(object):
             print(f"ERROR in list_conversations: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
+    def _collapse_assistant_sequences(self, history_rows, sender_index=0):
+        """
+        Keep only the last assistant response within any contiguous block.
+        Works for both simple history tuples and extended rows with metadata.
+        """
+        if not history_rows:
+            return history_rows
+
+        collapsed = []
+        assistant_run = []
+
+        for row in history_rows:
+            sender = row[sender_index]
+            if sender == "A2rchi":
+                assistant_run.append(row)
+            else:
+                if assistant_run:
+                    collapsed.append(assistant_run[-1])
+                    assistant_run = []
+                collapsed.append(row)
+
+        if assistant_run:
+            collapsed.append(assistant_run[-1])
+
+        return collapsed
+
     def load_conversation(self):
         """
         Load a specific conversation's full history.
@@ -1402,9 +1431,10 @@ class FlaskAppWrapper(object):
                 conn.close()
                 return jsonify({'error': 'conversation not found'}), 404
 
-            # get history of the conversation
-            cursor.execute(SQL_QUERY_CONVO, (conversation_id, ))
+            # get history of the conversation along with latest feedback state
+            cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
             history_rows = cursor.fetchall()
+            history_rows = collapse_assistant_sequences(history_rows, sender_index=0)
 
             conversation = {
                 'conversation_id': meta_row[0],
@@ -1412,7 +1442,12 @@ class FlaskAppWrapper(object):
                 'created_at': meta_row[2].isoformat() if meta_row[2] else None,
                 'last_message_at': meta_row[3].isoformat() if meta_row[3] else None,
                 'messages': [
-                    {'sender': row[0], 'content': row[1]}
+                    {
+                        'sender': row[0],
+                        'content': row[1],
+                        'message_id': row[2],
+                        'feedback': row[3]
+                    }
                     for row in history_rows
                 ]
             }

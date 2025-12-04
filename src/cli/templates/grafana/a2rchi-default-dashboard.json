@@ -269,7 +269,7 @@
               "options": {
                 "pattern": "like_with_context_{{ prod_config_name }}",
                 "result": {
-                  "color": "green",
+                  "color": "#1f9d55",
                   "index": 0
                 }
               },
@@ -279,7 +279,7 @@
               "options": {
                 "pattern": "like_no_context_{{ prod_config_name }}",
                 "result": {
-                  "color": "light-green",
+                  "color": "#6ed39f",
                   "index": 1
                 }
               },
@@ -289,7 +289,7 @@
               "options": {
                 "pattern": "dislike_with_context_{{ prod_config_name }}",
                 "result": {
-                  "color": "red",
+                  "color": "#d03535",
                   "index": 2
                 }
               },
@@ -299,7 +299,7 @@
               "options": {
                 "pattern": "dislike_no_context_{{ prod_config_name }}",
                 "result": {
-                  "color": "light-red",
+                  "color": "#f28f8f",
                   "index": 3
                 }
               },
