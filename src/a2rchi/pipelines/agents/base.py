@@ -86,14 +86,13 @@ class BaseAgent:
         if self.agent is None:
             self.refresh_agent(force=True)
         logger.debug("Agent refreshed, invoking now")
-        
         answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": 50})
         logger.debug("Agent invocation completed")
         messages = self._extract_messages(answer_output)
         metadata = self._metadata_from_agent_output(answer_output)
         output = self._build_output_from_messages(messages, metadata=metadata)
         return output
-    
+
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
         """Stream agent updates synchronously."""
         logger.debug("Streaming %s", self.__class__.__name__)

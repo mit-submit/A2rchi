@@ -519,7 +519,6 @@ class ChatWrapper:
         if not messages:
             return
         
-        # Build a map of tool_call_id -> tool result from ToolMessages
         tool_results = {}
         for msg in messages:
             if hasattr(msg, 'tool_call_id') and msg.tool_call_id:
@@ -547,11 +546,10 @@ class ChatWrapper:
                     tool_call_id = tc.get('id', '')
                     tool_name = tc.get('name', 'unknown')
                     tool_args = tc.get('args', {})
-                    # Get the result from the corresponding ToolMessage
                     tool_result = tool_results.get(tool_call_id, '')
-                    # Truncate result for storage (max 2000 chars)
-                    if len(tool_result) > 2000:
-                        tool_result = tool_result[:2000] + '...'
+                    # Truncate result for storage (max 500 chars)
+                    if len(tool_result) > 500:
+                        tool_result = tool_result[:500] + '...'
                     
                     insert_tups.append((
                         conversation_id,
@@ -682,7 +680,6 @@ class ChatWrapper:
             timestamps['insert_convo_ts'] = datetime.now()
             
             # insert tool calls extracted from messages
-            # Access messages directly (not via get() which goes through asdict())
             agent_messages = getattr(result, 'messages', []) or []
             logger.debug("Agent messages count: %d", len(agent_messages))
             for i, msg in enumerate(agent_messages):
