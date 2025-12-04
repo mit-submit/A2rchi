@@ -206,17 +206,12 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT server_received_msg_ts as time, extract(seconds from msg_duration) as all_gpt4\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = 'all_gpt4_config'\nORDER BY time",
+          "rawSql": "SELECT\n  t.server_received_msg_ts AS time,\n  cfg.config_name AS metric,\n  EXTRACT(EPOCH FROM t.msg_duration) AS value\nFROM timing t\nJOIN conversations c ON t.mid = c.message_id\nJOIN configs cfg ON c.conf_id = cfg.config_id\nWHERE $__timeFilter(t.server_received_msg_ts)\nORDER BY time",
           "refId": "A",
           "sql": {
             "columns": [
               {
-                "parameters": [
-                  {
-                    "name": "msg_duration",
-                    "type": "functionParameter"
-                  }
-                ],
+                "parameters": [],
                 "type": "function"
               }
             ],
@@ -231,93 +226,6 @@
             "limit": 50
           },
           "table": "timing"
-        },
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "P44368ADAD746BC27"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "hide": false,
-          "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT server_received_msg_ts as time, extract(seconds from msg_duration) as all_gpt35\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = 'all_gpt35_config'\nORDER BY time",
-          "refId": "B",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
-          }
-        },
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "P44368ADAD746BC27"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "hide": false,
-          "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT server_received_msg_ts as time, extract(seconds from msg_duration) as mgpt35_sgpt4\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = 'mgpt35_sgpt4_config'\nORDER BY time",
-          "refId": "C",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
-          }
-        },
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "P44368ADAD746BC27"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "hide": false,
-          "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT extract(seconds from msg_duration) as {{ prod_model_name }}\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = '{{ prod_config_name }}'",
-          "refId": "D",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
-          }
         }
       ],
       "title": "A2rchi Response Time Histogram",
