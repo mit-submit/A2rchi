@@ -47,7 +47,7 @@ def load_benchmark_results(filepath):
 
     return data['benchmarking_results'], data['metadata']
 
-def parse_benchmark_results(results):
+def parse_benchmark_results(results, metadata):
     """Parse benchmark results JSON"""
 
     result = results[0]
@@ -56,26 +56,9 @@ def parse_benchmark_results(results):
     total_results = result.get('total_results', {})
     config_name = result.get('configuration_file', 'Unknown configuration')
     config_data = result.get('configuration', {})
-    timestamp = result.get("metadata", {}).get("time", "Unknown time")
+    timestamp = metadata.get("time", "Unknown time")
     
     return config_data, config_name, timestamp, questions, total_results
-
-
-def extract_ticket_id(text):
-    """Extract JIRA ticket ID from various formats"""
-    import re
-    # Match patterns like CMSTRANSF-1078, jira_CMSTRANSF-1078, jira_CMSTRANSF-1078.txt
-    patterns = [
-        r'(\w+-\d+)',
-        r'(\w+-\d+)',
-        r'jira_(\w+-\d+)',
-        r'jira_(\w+-\d+)'
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(1) if match.lastindex == 1 else match.group(1).replace('jira_', '')
-    return None
 
 
 def format_html_output(config_data, config_name, timestamp,questions, total_results):
@@ -315,13 +298,13 @@ def format_html_output(config_data, config_name, timestamp,questions, total_resu
         # A2rchi's Answer
         html_parts.append(f'<div class="section">')
         html_parts.append(f'<div class="section-title">🤖 A2rchi\'s Answer</div>')
-        html_parts.append(f'<div class="answer-box">{q_data.get("chat_answer", "N/A")}</div>')
+        html_parts.append(f'<div class="answer-box">{q_data.get("answer", "N/A")}</div>')
         html_parts.append(f'</div>')
         
         # Expected Answer
         html_parts.append(f'<div class="section">')
         html_parts.append(f'<div class="section-title">✅ Expected Answer</div>')
-        html_parts.append(f'<div class="answer-box expected-box">{q_data.get("ground_truth", "N/A")}</div>')
+        html_parts.append(f'<div class="answer-box expected-box">{q_data.get("reference_answer", "N/A")}</div>')
         html_parts.append(f'</div>')
 
         # Expected Documents/Sources
@@ -343,7 +326,7 @@ def format_html_output(config_data, config_name, timestamp,questions, total_resu
             html_parts.append(f'<div class="section-title">📚 Retrieved Documents ({len(contexts)})</div>')
             for j, ctx in enumerate(contexts, 1):
                 # Extract ticket ID from context
-                ticket_id = extract_ticket_id(str(ctx))
+                ticket_id = retrieved_sources[j-1]
                 ticket_badge = f'<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.85em; margin-left: 10px;">{ticket_id}</span>' if ticket_id else ''
                 
                 # Parse context if it's a Document representation
@@ -479,13 +462,14 @@ Examples:
 
     # Load results
     try:
-        config_data, config_name, timestamp = load_benchmark_results(args.results_file)
+        results, metadata = load_benchmark_results(args.results_file)
+        config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(results, metadata)
     except Exception as e:
         print(f"Error loading results: {e}", file=sys.stderr)
         sys.exit(1)
     
     # Generates HTML output
-    html_content = format_html_output(config_data, config_name, timestamp)
+    html_content = format_html_output(config_data, config_name, timestamp,questions, total_results)
     with open(html_path, 'w') as f:
         f.write(html_content)
     print(f"✅ HTML report generated: {args.html}")

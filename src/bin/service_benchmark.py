@@ -87,7 +87,7 @@ class ResultHandler:
     @staticmethod 
     def dump_html(benchmark_name: Path):
 
-        config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(ResultHandler.results)
+        config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(ResultHandler.results, ResultHandler.metadata)
 
         logger.info(config_data)
 
