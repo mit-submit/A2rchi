@@ -79,3 +79,17 @@ SQL_DELETE_CONVERSATION = """
 DELETE FROM conversation_metadata
 WHERE conversation_id = %s AND client_id = %s;
 """
+
+SQL_INSERT_TOOL_CALLS = """
+INSERT INTO agent_tool_calls (
+    conversation_id, message_id, step_number, tool_name, tool_args, tool_result, ts
+)
+VALUES %s;
+"""
+
+SQL_QUERY_TOOL_CALLS = """
+SELECT step_number, tool_name, tool_args, tool_result, ts
+FROM agent_tool_calls
+WHERE message_id = %s
+ORDER BY step_number ASC;
+"""
