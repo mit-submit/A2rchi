@@ -89,15 +89,7 @@ class BaseAgent:
         
         answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": 50})
         logger.debug("Agent invocation completed")
-        
         messages = self._extract_messages(answer_output)
-        logger.debug("Extracted %d messages from agent output", len(messages))
-        for i, msg in enumerate(messages):
-            msg_type = type(msg).__name__
-            content_preview = str(getattr(msg, 'content', ''))[:100]
-            has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
-            logger.debug("  [%d] %s: content=%r... tool_calls=%s", i, msg_type, content_preview, has_tool_calls)
-        
         metadata = self._metadata_from_agent_output(answer_output)
         output = self._build_output_from_messages(messages, metadata=metadata)
         return output
