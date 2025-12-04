@@ -47,134 +47,18 @@ def load_benchmark_results(filepath):
 
     return data['benchmarking_results'], data['metadata']
 
-def parse_benchmark_results(data):
+def parse_benchmark_results(results):
     """Parse benchmark results JSON"""
+
+    result = results[0]
     
-    # Extract timestamp from either legacy or new metadata location
-    timestamp = data.get('time') or data.get('metadata', {}).get('time', 'Unknown')
+    questions = result.get('single_question_results', {})
+    total_results = result.get('total_results', {})
+    config_name = result.get('configuration_file', 'Unknown configuration')
+    config_data = result.get('configuration', {})
+    timestamp = result.get("metadata", {}).get("time", "Unknown time")
     
-    config_data = None
-    config_name = None
-    
-    # New schema: benchmarking_results is a list of result objects
-    benchmarking_results = data.get('benchmarking_results')
-    if isinstance(benchmarking_results, list):
-        for entry in benchmarking_results:
-            if not isinstance(entry, dict):
-                continue
-            if any(key in entry for key in ('single_question_results', 'single question results')):
-                config_data = entry
-                config_name = (
-                    entry.get('configuration', {}).get('name')
-                    or entry.get('configuration_file')
-                    or entry.get('configuration_name')
-                )
-                break
-    
-    # Legacy schema: look for dict keys containing "benchmarking"
-    if not config_data:
-        for key, value in data.items():
-            if not isinstance(value, dict):
-                continue
-            if 'benchmarking' in key and any(
-                result_key in value for result_key in ('single question results', 'single_question_results')
-            ):
-                config_data = value
-                config_name = key
-                break
-    
-    if not config_data:
-        raise ValueError("No benchmarking results found in JSON file")
-    
-    if not config_name:
-        config_name = 'benchmarking_results'
-    
-    questions = get_single_question_results(config_data)
-    
-    # Try to find and load the queries file to get expected links and sources
-    config_section = (
-        config_data.get('configuration used')
-        or config_data.get('configuration')
-        or {}
-    )
-    queries_path = (
-        config_section
-        .get('services', {})
-        .get('benchmarking', {})
-        .get('queries_path')
-    )
-    expected_links = {}
-    expected_sources_map = {}
-    
-    if queries_path:
-        queries_file = Path(queries_path)
-        if queries_file.exists():
-            try:
-                with open(queries_file, 'r') as f:
-                    queries_data = json.load(f)
-                    for q in queries_data:
-                        question_text = q.get('question', '')
-                        if 'link' in q:
-                            expected_links[question_text] = q.get('link', '')
-                        if 'sources' in q:
-                            expected_sources_map[question_text] = q.get('sources', [])
-            except:
-                pass
-    
-    # Add expected links and sources to question results
-    for q_data in questions.values():
-        question_text = q_data.get('question', '')
-        if question_text in expected_links:
-            q_data['expected_link'] = expected_links[question_text]
-        if question_text in expected_sources_map:
-            q_data['expected_sources'] = expected_sources_map[question_text]
-        
-        # Normalise field names between legacy and new schemas
-        if 'chat_answer' not in q_data and 'answer' in q_data:
-            q_data['chat_answer'] = q_data['answer']
-        if 'ground_truth' not in q_data and 'reference_answer' in q_data:
-            q_data['ground_truth'] = q_data['reference_answer']
-        
-        if 'contexts' not in q_data:
-            contexts = []
-            trunc_contents = q_data.get('sources_trunc_content') or []
-            sources_metadata = q_data.get('sources_metadata') or []
-            max_len = max(len(trunc_contents), len(sources_metadata))
-            if max_len > 0:
-                for idx in range(max_len):
-                    meta = sources_metadata[idx] if idx < len(sources_metadata) else {}
-                    content = trunc_contents[idx] if idx < len(trunc_contents) else ''
-                    meta_parts = []
-                    if meta:
-                        display_name = meta.get('display_name') or meta.get('ticket_id') or meta.get('url')
-                        if display_name:
-                            meta_parts.append(str(display_name))
-                        ticket_id = meta.get('ticket_id')
-                        if ticket_id and ticket_id not in meta_parts:
-                            meta_parts.append(ticket_id)
-                    combined_parts = []
-                    if meta_parts:
-                        combined_parts.append(" | ".join(meta_parts))
-                    if content:
-                        combined_parts.append(content)
-                    if combined_parts:
-                        contexts.append("\n".join(combined_parts))
-                if contexts:
-                    q_data['contexts'] = contexts
-        if 'document_scores' not in q_data and 'sources_metadata' in q_data:
-            # If similarity scores exist in metadata, surface them
-            scores = []
-            for meta in q_data.get('sources_metadata', []):
-                score = meta.get('score') or meta.get('similarity') or meta.get('distance')
-                if score is not None:
-                    try:
-                        scores.append(float(score))
-                    except (TypeError, ValueError):
-                        continue
-            if scores:
-                q_data['document_scores'] = scores
-    
-    return config_data, config_name, timestamp
+    return config_data, config_name, timestamp, questions, total_results
 
 
 def extract_ticket_id(text):
@@ -194,11 +78,8 @@ def extract_ticket_id(text):
     return None
 
 
-def format_html_output(config_data, config_name, timestamp):
+def format_html_output(config_data, config_name, timestamp,questions, total_results):
     """Format results as HTML for easier reading"""
-    questions = get_single_question_results(config_data)
-    total_results = get_total_results(config_data)
-
 
     html_parts = ["""
     <!DOCTYPE html>
@@ -307,49 +188,51 @@ def format_html_output(config_data, config_name, timestamp):
     </div>
 """)
 
-    # Retrieval Accuracy
+    # sources (retrieval accuracy) metrics
+    if 'SOURCES' in config_data.get('services', {}).get('benchmarking', {}).get('modes', []):
 
-    ret_accuracy = total_results.get('source_accuracy', None)
-    if ret_accuracy: ret_accuracy *= 100
-    ret_partial = total_results.get('relative_source_accuracy', None)
-    if ret_partial: ret_partial *= 100
+        # Retrieval Accuracy
+        ret_accuracy = total_results.get('source_accuracy', None)
+        ret_total = len(questions)
+        ret_correct =  int(ret_total*ret_accuracy)
 
-    ret_correct =  int(ret_total*ret_accuracy)
-    ret_total = len(questions)
+        if ret_accuracy: ret_accuracy *= 100
+        ret_partial = total_results.get('relative_source_accuracy', None)
+        ret_partial =  int(ret_total*ret_partial)-ret_correct
 
-    html_parts.append('<div class="metrics">')
-    html_parts.append('<h2>🎯 Retrieval Accuracy</h2>')
-    html_parts.append('<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; max-width: 900px; margin: 0 auto;">')
+        html_parts.append('<div class="metrics">')
+        html_parts.append('<h2>🎯 Retrieval Accuracy</h2>')
+        html_parts.append('<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; max-width: 900px; margin: 0 auto;">')
 
-    # Fully Correct
-    score_class = 'score-low' if ret_accuracy < 50 else 'score-medium' if ret_accuracy < 80 else 'score-high'
-    html_parts.append(f"""
-        <div class="metric-item">
-            <div class="metric-value {score_class}">{ret_accuracy:.1f}%</div>
-            <div class="metric-label">Fully Correct: {ret_correct}/{ret_total}</div>
-        </div>
-    """)
-
-     # Partially Correct
-    if ret_partial > 0:
+        # Fully Correct
+        score_class = 'score-low' if ret_accuracy < 50 else 'score-medium' if ret_accuracy < 80 else 'score-high'
         html_parts.append(f"""
             <div class="metric-item">
-                <div class="metric-value score-medium">{ret_partial}</div>
-                <div class="metric-label">Partially Correct (some sources found)</div>
+                <div class="metric-value {score_class}">{ret_accuracy:.1f}%</div>
+                <div class="metric-label">Fully Correct: {ret_correct}/{ret_total}</div>
             </div>
         """)
 
-    # Incorrect
-    ret_incorrect = ret_total - ret_correct - ret_partial
-    if ret_incorrect > 0:
-        html_parts.append(f"""
-            <div class="metric-item">
-                <div class="metric-value score-low">{ret_incorrect}</div>
-                <div class="metric-label">Incorrect (no sources found)</div>
-            </div>
-        """)
+        # Partially Correct
+        if ret_partial > 0:
+            html_parts.append(f"""
+                <div class="metric-item">
+                    <div class="metric-value score-medium">{ret_partial}</div>
+                    <div class="metric-label">Partially Correct (some sources found)</div>
+                </div>
+            """)
 
-    html_parts.append('</div></div>')
+        # Incorrect
+        ret_incorrect = ret_total - ret_correct - ret_partial
+        if ret_incorrect > 0:
+            html_parts.append(f"""
+                <div class="metric-item">
+                    <div class="metric-value score-low">{ret_incorrect}</div>
+                    <div class="metric-label">Incorrect (no sources found)</div>
+                </div>
+            """)
+
+        html_parts.append('</div></div>')
 
     if 'RAGAS' in config_data.get('services', {}).get('benchmarking', {}).get('modes', []):
 
@@ -539,9 +422,7 @@ def format_html_output(config_data, config_name, timestamp):
             'context_recall': 'Context Recall'
         }
 
-        has_ragas = any(metric in q_data for metric in ragas_metrics.keys())
-
-        if has_ragas:
+        if 'RAGAS' in config_data.get('services', {}).get('benchmarking', {}).get('modes', []):
             html_parts.append(f'<div class="section">')
             html_parts.append(f'<div class="section-title">📊 RAGAS Scores</div>')
             html_parts.append(f'<div class="metrics-grid">')

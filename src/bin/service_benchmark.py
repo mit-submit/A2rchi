@@ -22,7 +22,7 @@ from src.a2rchi.models import HuggingFaceOpenLLM
 from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
-from A2rchi.A2rchi.src.utils.benchmarking_html_report import parse_benchmark_results, format_html_output
+from src.utils.generate_benchmark_report import parse_benchmark_results, format_html_output
 
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 OUTPUT_PATH = "/root/A2rchi/benchmarks"
@@ -87,14 +87,11 @@ class ResultHandler:
     @staticmethod 
     def dump_html(benchmark_name: Path):
 
-        data = {
-            "benchmarking_results": ResultHandler.results,
-            "metadata": ResultHandler.metadata,
-        }
+        config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(ResultHandler.results)
 
-        config_data, config_name, timestamp = parse_benchmark_results(data)
+        logger.info(config_data)
 
-        html_content = format_html_output(config_data, config_name, timestamp)
+        html_content = format_html_output(config_data, config_name, timestamp,questions, total_results)
 
         filename = f"{benchmark_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}_report.html"
         file_path = OUTPUT_DIR / filename
@@ -192,9 +189,9 @@ class Benchmarker:
             case "openai":
                 return ChatOpenAI(model=model_name)
             case "ollama":
-                from langchain_community.chat_models import ChatOllama
+                from langchain_ollama import ChatOllama
                 base_url = provider_settings['base_url']
-                return ChatOllama(model=model_name, base_url=base_url)
+                return ChatOllama(model=model_name, base_url=base_url,num_predict=-2,model_kwargs={'format': 'json'})
             case "huggingface":
                 return HuggingFaceOpenLLM(base_model=model_name)
             case "anthropic":
