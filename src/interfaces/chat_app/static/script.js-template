@@ -26,6 +26,7 @@ let num_responses_since_last_rating = 0;
 let last_response_is_feedback_request = false;
 const CLIENT_ID_STORAGE_KEY = "a2rchi_client_id";
 const ACTIVE_CONVERSATION_STORAGE_KEY = "a2rchi_active_conversation_id";
+const CLEARED_CONVERSATIONS_KEY = "a2rchi_cleared_conversation_ids";
 
 const generateClientId = () => {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -71,6 +72,28 @@ const updateActiveConversationId = (newId) => {
 
 const clientId = getStoredClientId();
 let conversation_id = getStoredConversationId();
+
+const loadClearedConversations = () => {
+    try {
+        const raw = localStorage.getItem(CLEARED_CONVERSATIONS_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        console.warn("Failed to parse cleared conversation ids:", error);
+        return [];
+    }
+};
+
+const persistClearedConversations = () => {
+    try {
+        localStorage.setItem(CLEARED_CONVERSATIONS_KEY, JSON.stringify(Array.from(clearedConversationIds)));
+    } catch (error) {
+        console.warn("Failed to persist cleared conversation ids:", error);
+    }
+};
+
+const clearedConversationIds = new Set(loadClearedConversations());
 
 async function fetchWithTimeout(resource, options = {}) {
     // extracts `timeout` field from options dict;
@@ -144,8 +167,13 @@ async function loadConversations() {
             conversationsList.innerHTML = '<div class="loading-conversations">No conversations yet</div>';
             return;
         }
+        let hasVisibleConversations = false;
         
         response.conversations.forEach(conv => {
+            if (clearedConversationIds.has(conv.conversation_id)) {
+                return;
+            }
+            hasVisibleConversations = true;
             const convElement = document.createElement("div");
             convElement.classList.add("conversation-item");
             convElement.dataset.conversationId = conv.conversation_id;
@@ -177,6 +205,9 @@ async function loadConversations() {
             convElement.addEventListener("click", () => loadConversation(conv.conversation_id));
             conversationsList.appendChild(convElement);
         });
+        if (!hasVisibleConversations) {
+            conversationsList.innerHTML = '<div class="loading-conversations">No conversations yet</div>';
+        }
         
     } catch (error) {
         console.error("Failed to load conversations:", error);
@@ -254,11 +285,17 @@ async function loadConversation(convId) {
     }
 }
 
-function startNewConversation() {
+function startNewConversation(options = {}) {
+    const { hideActiveConversation = false } = options;
     // reset conversation state
+    const previousConversationId = conversation_id;
     conversation = [];
     updateActiveConversationId(null);
     num_responses_since_last_rating = 0;
+    if (hideActiveConversation && previousConversationId !== null) {
+        clearedConversationIds.add(previousConversationId);
+        persistClearedConversations();
+    }
     
     // clear localStorage and show default welcome text
     localStorage.removeItem("all-chats");
@@ -593,28 +630,11 @@ const handleOutgoingChat = () => {
     setTimeout(showTypingAnimation, 500);
 }
 
-deleteButton.addEventListener("click", async () => {
-    // Remove the chats via api/delete_conversation
-    if(confirm("Are you sure you want to delete this chat?")) {
-        if (conversation_id !== null) {
-            try {
-                const response = await fetch("/api/delete_conversation", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ conversation_id: conversation_id, client_id: clientId }),
-                });
-                
-                const result = await response.json();
-            } catch (error) {
-                console.error("Error deleting conversation:", error);
-            }
-        }
-        
-        localStorage.removeItem("all-chats");
-        startNewConversation();
+deleteButton.addEventListener("click", () => {
+    if(!confirm("Clear this chat window? A2rchi will no longer be able to reference it for context.")) {
+        return;
     }
+    startNewConversation({ hideActiveConversation: true });
 });
 
 refreshButton.addEventListener("click", () => {
@@ -660,7 +680,7 @@ const initializeChatState = async () => {
 initializeChatState();
 
 // Event listeners for new conversation
-newChatButton.addEventListener("click", startNewConversation);
+newChatButton.addEventListener("click", () => startNewConversation());
 
 toggleSidebarButton.addEventListener("click", () => {
     const sidebar = document.querySelector(".sidebar");

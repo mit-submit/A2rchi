@@ -130,12 +130,89 @@ class ChatWrapper:
         self.a2rchi = A2rchi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
-        # initialize config_id to be None
+        # track configs and active config state
+        self.default_config_name = self.config.get("name")
+        self.current_config_name = None
         self.config_id = None
+        self.config_name_to_id = {}
+        self._config_cache = {}
+        if self.default_config_name:
+            self._config_cache[self.default_config_name] = self.config
 
-    def update_config(self, config_id, config_name=None):
+        # ensure all supplied configs are registered in Postgres and activate default
+        self._store_config_ids()
+        if self.default_config_name:
+            self.update_config(config_name=self.default_config_name)
+
+    def update_config(self, config_id=None, config_name=None):
+        """
+        Update the active config by ensuring it exists in thje postgres and applying it to the pipeline.
+        """
+        target_config_name = config_name or self.current_config_name or self.default_config_name
+        if not target_config_name:
+            raise ValueError("Config name must be provided to update the chat configuration.")
+
+        config_payload = self._get_config_payload(target_config_name)
+        if config_id is None:
+            config_id = self._get_or_create_config_id(target_config_name, config_payload)
+        else:
+            self.config_name_to_id[target_config_name] = config_id
+
+        if self.config_id == config_id and self.current_config_name == target_config_name:
+            return
+
+        pipeline_name = config_payload["services"]["chat_app"]["pipeline"]
         self.config_id = config_id
-        self.a2rchi.update(pipeline=self.config["services"]["chat_app"]["pipeline"], config_name=config_name)
+        self.current_config_name = target_config_name
+        self.a2rchi.update(pipeline=pipeline_name, config_name=target_config_name)
+
+    def _get_config_payload(self, config_name):
+        if config_name not in self._config_cache:
+            self._config_cache[config_name] = load_config(name=config_name)
+        return self._config_cache[config_name]
+
+    def _get_or_create_config_id(self, config_name, config_payload=None):
+        if config_name in self.config_name_to_id:
+            return self.config_name_to_id[config_name]
+
+        payload = config_payload or self._get_config_payload(config_name)
+        serialized = yaml.dump(payload)
+
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT config_id FROM configs WHERE config_name = %s ORDER BY config_id DESC LIMIT 1", (config_name,))
+            row = cursor.fetchone()
+            if row:
+                config_id = row[0]
+            else:
+                insert_tup = [(serialized, config_name)]
+                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONFIG, insert_tup)
+                config_id = list(map(lambda tup: tup[0], cursor.fetchall()))[0]
+            conn.commit()
+            self.config_name_to_id[config_name] = config_id
+            return config_id
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _store_config_ids(self):
+        for config_name in get_config_names():
+            try:
+                payload = self._get_config_payload(config_name)
+                self._get_or_create_config_id(config_name, payload)
+            except FileNotFoundError:
+                logger.warning(f"Config file {config_name} missing.")
+            except Exception as exc:
+                logger.warning(f"Failed to register config {config_name}: {exc}")
+
+    def get_config_id(self, config_name):
+        """
+        Helper for external callers needing the config_id for a given config name.
+        """
+        if config_name in self.config_name_to_id:
+            return self.config_name_to_id[config_name]
+        return self._get_or_create_config_id(config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -567,7 +644,8 @@ class ChatWrapper:
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 history = history + [(sender, content)] if not is_refresh else history
-                self.update_config(config_id=self.config_id,config_name=config_name)
+                requested_config = config_name or self.current_config_name or self.default_config_name
+                self.update_config(config_name=requested_config)
                 result = self.a2rchi(history=history, conversation_id=conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
@@ -671,12 +749,9 @@ class FlaskAppWrapper(object):
         self.conn = None
         self.cursor = None
 
-        # insert config
-        self.config_id = self.insert_config(self.config)
-
-        # create the chat from the wrapper
+        # create the chat from the wrapper and ensure default config is active
         self.chat = ChatWrapper()
-        self.chat.update_config(self.config_id)
+        self.chat.update_config(config_name=self.config["name"])
 
         # enable CORS:
         CORS(self.app)
@@ -799,14 +874,12 @@ class FlaskAppWrapper(object):
         self.conn = None
         self.cursor = None
 
-        # insert config
-        self.config_id = self.insert_config(self.config)
-
-        # create the chat from the wrapper
+        # recreate chat wrapper so all dependent services reload the new config
         self.chat = ChatWrapper()
-        self.chat.update_config(self.config_id)
+        self.chat.update_config(config_name=self.config["name"])
+        new_config_id = self.chat.get_config_id(self.config["name"])
 
-        return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
+        return jsonify({'response': f'config updated successfully w/config_id: {new_config_id}'}), 200
 
     def get_configs(self):
         """
