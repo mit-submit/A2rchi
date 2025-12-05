@@ -3,12 +3,12 @@ import getpass
 import imaplib
 import os
 
-from src.utils.config_loader import load_utils_config
 from src.utils.logging import get_logger
+from src.utils.config_loader import load_services_config
 
 logger = get_logger(__name__)
 
-mailbox_config = load_utils_config()["mailbox"]
+mailbox_config = load_services_config()["redmine_mailbox"]
 
 def get_charsets(msg):
     charsets = set({})
