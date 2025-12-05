@@ -10,6 +10,7 @@ from jinja2 import Environment
 
 from src.cli.service_registry import service_registry
 from src.cli.utils.service_builder import DeploymentPlan
+from src.cli.utils.grafana_styling import assign_feedback_palette
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -296,7 +297,8 @@ class TemplateManager:
         with open(grafana_dir / "dashboards.yaml", "w") as f:
             f.write(dashboards)
 
-        a2rchi_config = context.config_manager.get_configs()[0]
+        configs = context.config_manager.get_configs()
+        a2rchi_config = configs[0]
         pipeline_name = a2rchi_config.get("a2rchi", {}).get("pipeline")
         pipeline_config = (
             a2rchi_config.get("a2rchi", {})
@@ -305,11 +307,12 @@ class TemplateManager:
         )
         models_config = pipeline_config.get("models", {})
         model_name = next(iter(models_config.values())) if models_config else "DumbLLM"
+        palette = assign_feedback_palette(configs)
 
         dashboard_template = self.env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
         dashboard = dashboard_template.render(
-            prod_config_name=context.plan.name,
             prod_model_name=model_name,
+            feedback_palette=palette,
         )
         with open(grafana_dir / "a2rchi-default-dashboard.json", "w") as f:
             f.write(dashboard)

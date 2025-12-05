@@ -198,6 +198,10 @@ ol {
 .config-option:hover {
   background: var(--icon-hover-bg);
 }
+.config-option.selected {
+  outline: 2px solid #3B82F6;
+  background: var(--incoming-chat-bg);
+}
 
 .config-option-name {
   font-weight: 600;

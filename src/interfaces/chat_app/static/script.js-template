@@ -178,6 +178,19 @@ const updateConfigMenuLabel = (value) => {
     configMenuBtn.setAttribute("title", `${details.name}${description}`);
 };
 
+const highlightConfigOption = (value) => {
+    if (!configMenuOptions) return;
+    const buttons = configMenuOptions.querySelectorAll(".config-option");
+    buttons.forEach(button => {
+        const buttonName = button.dataset.configName;
+        if (value && buttonName === value) {
+            button.classList.add("selected");
+        } else {
+            button.classList.remove("selected");
+        }
+    });
+};
+
 const closeConfigMenu = () => {
     if (configMenuOverlay) {
         configMenuOverlay.style.display = "none";
@@ -198,6 +211,7 @@ const selectConfigOption = (name) => {
     if (!available) return;
     configDropdown.value = name;
     updateConfigMenuLabel(name);
+    highlightConfigOption(name);
     closeConfigMenu();
 };
 
@@ -278,6 +292,7 @@ async function populateDropdown() {
                 const optionBtn = document.createElement("button");
                 optionBtn.type = "button";
                 optionBtn.className = "config-option";
+                optionBtn.dataset.configName = optionData.name;
                 const nameSpan = document.createElement("span");
                 nameSpan.className = "config-option-name";
                 nameSpan.textContent = optionData.name;
@@ -305,6 +320,7 @@ async function populateDropdown() {
             }
         }
         updateConfigMenuLabel(appliedValue);
+        highlightConfigOption(appliedValue);
     }catch (error) {
         console.error("Failed to fetch dropdown options:", error);
     }
