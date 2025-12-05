@@ -1,7 +1,11 @@
 name: pr_preview_config
 
 services:
+  postgres:
+    port: 34567
   chat_app:
+    port: 27861
+    external_port: 27861
     trained_on: "Dummy data for preview"
 
 data_manager:

@@ -4,13 +4,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+
 concurrency:
   group: pr-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   # formatting:
-  #   runs-on: ubuntu-latest
+  #   runs-on: [submit76-runner]
   #   steps:
   #     - name: Checkout
   #       uses: actions/checkout@v4
@@ -29,12 +30,12 @@ jobs:
   #       run: black --check .
 
   build-base-images:
-    runs-on: ubuntu-latest
+    runs-on: [submit76-runner]
     permissions:
       contents: read
     env:
-      A2RCHI_DIR: /home/runner/work/a2rchi-local
-      HOME: /home/runner
+      A2RCHI_DIR: ${{ github.workspace }}/a2rchi-local
+ 
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       tag: ${{ steps.detect.outputs.tag }}
@@ -68,11 +69,19 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Python
-        if: steps.detect.outputs.changed == 'true'
+      - name: Set up Python (GitHub runner)
+        if: ${{ !contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Set up Python (Self-hosted)
+        if: ${{ contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }} 
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          python3 --version
 
       - name: Install a2rchi CLI
         if: steps.detect.outputs.changed == 'true'
@@ -97,24 +106,32 @@ jobs:
         run: scripts/dev/push_docker_images.sh "${{ steps.detect.outputs.tag }}"
 
   preview:
-    runs-on: ubuntu-latest
+    runs-on: [submit76-runner]
     needs: build-base-images
     permissions:
       contents: read
       pull-requests: write
     env:
-      A2RCHI_DIR: /home/runner/work/a2rchi-local
-      HOME: /home/runner
+      A2RCHI_DIR: ${{ github.workspace }}/a2rchi-local
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python
+      - name: Set up Python (GitHub runner)
+        if: ${{ !contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Set up Python (Self-hosted)
+        if: ${{ contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }}
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          python3 --version
 
       - name: Install a2rchi CLI
         run: |
@@ -140,9 +157,10 @@ jobs:
           env-file: .env
           services: chatbot
           hostmode: "true"
-          wait-url: http://localhost:7861/api/health
-          base-url: http://localhost:7861
-          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull always
+          wait-url: http://localhost:27861/api/health
+          base-url: http://localhost:27861
+          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull
+          use-podman: "true"
 
       - name: Delete PR preview Docker tags
         if: ${{ always() && needs.build-base-images.outputs.changed == 'true' }}
