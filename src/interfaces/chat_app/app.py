@@ -1443,32 +1443,6 @@ class FlaskAppWrapper(object):
             print(f"ERROR in list_conversations: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
-    def _collapse_assistant_sequences(self, history_rows, sender_index=0):
-        """
-        Keep only the last assistant response within any contiguous block.
-        Works for both simple history tuples and extended rows with metadata.
-        """
-        if not history_rows:
-            return history_rows
-
-        collapsed = []
-        assistant_run = []
-
-        for row in history_rows:
-            sender = row[sender_index]
-            if sender == "A2rchi":
-                assistant_run.append(row)
-            else:
-                if assistant_run:
-                    collapsed.append(assistant_run[-1])
-                    assistant_run = []
-                collapsed.append(row)
-
-        if assistant_run:
-            collapsed.append(assistant_run[-1])
-
-        return collapsed
-
     def load_conversation(self):
         """
         Load a specific conversation's full history.
