@@ -43,21 +43,15 @@ class TicketManager:
 
         if self.jira_config.get('enabled', False):
             jira_frequency = self.jira_config.get('frequency')
-            if jira_frequency:
-                date_last_collected_at = self.last_collected_at["JIRA"]
-                if (date_last_collected_at-now).days>=jira_frequency:
-                    self._collect_from_client(self.jira_client, "JIRA", persistence, date_last_collected_at)
-            else:
-                logger.info("No frequency for JIRA established - skipping update.")
+            date_last_collected_at = self.last_collected_at["JIRA"]
+            if (date_last_collected_at-now).days>=jira_frequency or jira_frequency==0:
+                self._collect_from_client(self.jira_client, "JIRA", persistence, date_last_collected_at)
 
         if self.redmine_config.get('enabled', False):
             redmine_frequency = self.redmine_config.get('frequency')
-            if redmine_frequency:
-                date_last_collected_at = self.last_collected_at["Redmine"]
-                if (date_last_collected_at-now).days>=redmine_frequency:
-                    self._collect_from_client(self.redmine_client, "Redmine", persistence, date_last_collected_at)
-            else:
-                logger.info("No frequency for Redmine established - skipping update.")
+            date_last_collected_at = self.last_collected_at["Redmine"]
+            if (date_last_collected_at-now).days>=redmine_frequency:
+                self._collect_from_client(self.redmine_client, "Redmine", persistence, date_last_collected_at)
 
 
 

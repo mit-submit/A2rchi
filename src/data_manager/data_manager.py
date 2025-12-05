@@ -72,5 +72,4 @@ class DataManager():
 
     def update_tickets(self):
         """Proxy to the ticket manager"""
-        #TODO: Should this also point to the vector manager????
         self.ticket_manager.update_tickets(self.persistence)
