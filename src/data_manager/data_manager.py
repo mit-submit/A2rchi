@@ -22,7 +22,7 @@ class DataManager():
         self.persistence = PersistenceService(self.data_path)
 
         scraper_manager = ScraperManager(dm_config=self.config["data_manager"])
-        ticket_manager = TicketManager(dm_config=self.config["data_manager"])
+        self.ticket_manager = TicketManager(dm_config=self.config["data_manager"])      
 
         source_aggregation = [
             (
@@ -31,7 +31,7 @@ class DataManager():
             ),
             (
                 "Fetching ticket data onto filesystem",
-                lambda: ticket_manager.collect(self.persistence),
+                lambda: self.ticket_manager.collect(self.persistence),
             ),
         ]
 
@@ -69,3 +69,8 @@ class DataManager():
     def update_vectorstore(self):
         """Proxy to the underlying vector manager."""
         self.vector_manager.update_vectorstore()
+
+    def update_tickets(self):
+        """Proxy to the ticket manager"""
+        #TODO: Should this also point to the vector manager????
+        self.ticket_manager.update_tickets(self.persistence)

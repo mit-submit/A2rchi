@@ -686,6 +686,8 @@ class ChatWrapper:
             # update vector store through data manager; will only do something if newwhere files have been added
             logger.info("Acquired lock file update vectorstore")
 
+            #TODO: Should this happen on call? Or when?
+            self.data_manager.update_tickets() 
             self.data_manager.update_vectorstore()
             timestamps['vectorstore_update_ts'] = datetime.now()
 

@@ -1,5 +1,6 @@
 from threading import Lock
 from typing import Any, Dict, Iterator, Optional
+from datetime import datetime
 from time import perf_counter
 
 import jira
@@ -70,17 +71,17 @@ class JiraClient:
             logger.error(f"Failed to log in to JIRA: {error}")
             return None
 
-    def collect(self) -> Iterator[TicketResource]:
+    def collect(self, collect_since: datetime) -> Iterator[TicketResource]:
         """Return an iterator of tickets pulled from JIRA."""
         if not self.client or not self.jira_projects:
             logger.warning("Skipping JIRA collection; client not initialized or projects missing.")
             return iter(())
 
-        return self._fetch_ticket_resources()
+        return self._fetch_ticket_resources(collect_since)
 
-    def _fetch_ticket_resources(self) -> Iterator[TicketResource]:
+    def _fetch_ticket_resources(self, collect_since: datetime) -> Iterator[TicketResource]:
         trimmed_url = self.jira_url.rstrip('/') if self.jira_url else None
-        for issue in self.get_all_issues():
+        for issue in self.get_all_issues(collect_since):
             fields = getattr(issue, "fields", None)
             issue_key = getattr(issue, "key", str(issue))
             created_at = getattr(fields, "created", "") if fields else ""
@@ -108,13 +109,16 @@ class JiraClient:
             logger.debug(f"Collected JIRA ticket {issue_key}")
             yield record
 
-    def get_all_issues(self) -> Iterator[jira.Issue]:
+    def get_all_issues(self, collect_since: datetime) -> Iterator[jira.Issue]:
         """Fetch all issues from the configured JIRA projects."""
         max_batch_results = min(100, self.max_tickets)  # You can adjust this up to 1000 for JIRA Cloud
         logger.info(self.jira_config)
         for project in self.jira_projects:
             logger.debug(f"Fetching maximum of {int(self.max_tickets)} issues in batches of {max_batch_results} for project: {project}")
             query = f"project={project}"
+            if collect_since:
+                jql_date_string = collect_since.strftime("%Y-%m-%d %H:%M")
+                query += f" AND (updated > '{jql_date_string}' OR created > '{jql_date_string}')"
             start_at = 0
             project_start = perf_counter()
             while True:
