@@ -67,7 +67,7 @@ services:
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
   chat_app:
     pipeline: {{ services.chat_app.pipeline | default("QAPipeline", true) }}
-    trained_on: {{ services.chat_app.trained_on | default("", true) }}
+    trained_on: {{ services.chat_app.trained_on | default("No description provided.", true) }}
     port: {{ services.chat_app.port | default(7861, true) }}
     external_port: {{ services.chat_app.external_port | default(7861, true) }}
     host: {{ services.chat_app.host | default("0.0.0.0", true) }}
