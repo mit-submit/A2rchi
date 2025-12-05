@@ -7,7 +7,7 @@ from src.data_manager.collectors.scrapers.integrations.sso_scraper import \
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
 from src.data_manager.collectors.scrapers.scraper import WebScraper
-from src.utils.config_loader import load_global_config, load_utils_config
+from src.utils.config_loader import load_global_config
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -22,7 +22,6 @@ class ScraperManager:
 
     def __init__(self, dm_config: Optional[Dict[str, Any]] = None) -> None:
         global_config = load_global_config()
-        utils_config = load_utils_config()
 
         sources_config = (dm_config or {}).get("sources", {}) or {}
         links_config = sources_config.get("links", {}) if isinstance(sources_config, dict) else {}
@@ -32,8 +31,6 @@ class ScraperManager:
         scraper_config = {}
         if isinstance(links_config, dict):
             scraper_config = links_config.get("scraper", {}) or {}
-        if not scraper_config:
-            scraper_config = utils_config.get("scraper", {}) or {}
         self.config = scraper_config
 
         self.links_enabled = links_config.get("enabled", True)
