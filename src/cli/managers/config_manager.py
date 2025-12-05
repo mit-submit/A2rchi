@@ -57,16 +57,8 @@ class ConfigurationManager:
                 if static_field in previous_config.keys():
                     if not static_field in config.keys():
                         raise ValueError(f"The field {static_field} must be present in all configurations.")
-                    
-                    prev_val = previous_config[static_field]
-                    curr_val = config[static_field]
 
-                    # exclude services.chat_app.trained_on from comparison to use as field to describe different configs in chatbot UI
-                    if static_field == 'services':
-                        prev_val = {**prev_val, 'chat_app': {k: v for k, v in prev_val.get('chat_app', {}).items() if k != 'trained_on'}}
-                        curr_val = {**curr_val, 'chat_app': {k: v for k, v in curr_val.get('chat_app', {}).items() if k != 'trained_on'}}
-                    
-                    if prev_val != curr_val:
+                    if previous_config[static_field] != config[static_field]:
                         raise ValueError(f"The field {static_field} must be consistent across all configurations.")
 
             self.configs.append(config)

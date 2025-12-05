@@ -45,6 +45,7 @@ QUERY_LIMIT = 10000 # max queries per conversation
 MAIN_PROMPT_FILE = "/root/A2rchi/main.prompt"
 CONDENSE_PROMPT_FILE = "/root/A2rchi/condense.prompt"
 SUMMARY_PROMPT_FILE = "/root/A2rchi/summary.prompt"
+A2RCHI_SENDER = "A2rchi"
 
 
 class AnswerRenderer(mt.HTMLRenderer):
@@ -448,7 +449,7 @@ class ChatWrapper:
         # query conversation history
         self.cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
         history = self.cursor.fetchall()
-        history = collapse_assistant_sequences(history)
+        history = collapse_assistant_sequences(history, sender_name=A2RCHI_SENDER)
 
         # clean up database connection state
         self.cursor.close()
@@ -715,7 +716,7 @@ class ChatWrapper:
 
             # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
             if is_refresh:
-                while history and history[-1][0] == "A2rchi":
+                while history and history[-1][0] == A2RCHI_SENDER:
                     _ = history.pop(-1)
 
             # guard call to LLM; if timestamp from message is more than timeout secs in the past;
@@ -762,7 +763,7 @@ class ChatWrapper:
 
             # and now finally insert the conversation
             user_message = (sender, content, server_received_msg_ts)
-            a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
+            a2rchi_message = (A2RCHI_SENDER, output, timestamps['a2rchi_message_ts'])
             message_ids = self.insert_conversation(
                 conversation_id,
                 user_message,
@@ -772,7 +773,7 @@ class ChatWrapper:
                 is_refresh
             )
             timestamps['insert_convo_ts'] = datetime.now()
-            history.append(("A2rchi", result["answer"]))
+            history.append((A2RCHI_SENDER, result["answer"]))
             
             # insert tool calls extracted from messages
             agent_messages = getattr(result, 'messages', []) or []
@@ -993,7 +994,7 @@ class FlaskAppWrapper(object):
             description = ""
             try:
                 payload = load_config(name=name)
-                description = payload.get("services", {}).get("chat_app", {}).get("trained_on", "") or ""
+                description = payload.get("a2rchi", {}).get("agent_description", {})
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
             options.append({"name": name, "description": description})
@@ -1480,7 +1481,7 @@ class FlaskAppWrapper(object):
             # get history of the conversation along with latest feedback state
             cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
             history_rows = cursor.fetchall()
-            history_rows = collapse_assistant_sequences(history_rows, sender_index=0)
+            history_rows = collapse_assistant_sequences(history_rows, sender_name=A2RCHI_SENDER, sender_index=0)
 
             conversation = {
                 'conversation_id': meta_row[0],
