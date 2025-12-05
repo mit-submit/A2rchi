@@ -11,12 +11,24 @@ const closeButton = document.getElementById("dislike-close-button");
 const correct_checkbox= document.getElementById("correct_checkbox");
 const helpful_checkbox = document.getElementById("helpful_checkbox");
 const appropriate_checkbox = document.getElementById("appropriate_checkbox");
+const textFeedbackForm = document.getElementById("text-feedback-form");
+const textFeedbackTextarea = document.getElementById("text-feedback-textarea");
+const textFeedbackSubmitButton = document.getElementById("text-feedback-submit-button");
+const textFeedbackCloseButton = document.getElementById("text-feedback-close-button");
+const textFeedbackCountLabel = document.getElementById("text-feedback-count");
+const configMenuBtn = document.getElementById("config-menu-btn");
+const configMenuOverlay = document.getElementById("config-menu-overlay");
+const configMenuCloseButton = document.getElementById("config-menu-close");
+const configMenuOptions = document.getElementById("config-menu-options");
 const configDropdown = document.getElementById("config-dropdown");
 const newChatButton = document.getElementById("new-chat-btn");
 const conversationsList = document.getElementById("conversations-list");
 const toggleSidebarButton = document.getElementById("toggle-sidebar-btn");
 
 popupForm.style.display = "none";
+if (textFeedbackForm) {
+    textFeedbackForm.style.display = "none";
+}
 
 // DEFINITIONS
 let DEFAULT_TIMEOUT_SECS = 300
@@ -113,10 +125,14 @@ const persistMaxConversationId = (value) => {
 
 const clearedConversationIds = new Set(loadClearedConversations());
 let maxConversationIdSeen = loadMaxConversationId();
+let pendingTextFeedbackMessageId = null;
+let pendingTextFeedbackChatElement = null;
 const LIKE_ICON = "/static/images/thumbs_up.png";
 const LIKE_ICON_FILLED = "/static/images/thumbs_up_filled.png";
 const DISLIKE_ICON = "/static/images/thumbs_down.png";
 const DISLIKE_ICON_FILLED = "/static/images/thumbs_down_filled.png";
+const CONFIG_BUTTON_DEFAULT_LABEL = "Choose your agent";
+const configOptionsMeta = new Map();
 
 function updateFeedbackVisualState(chatElement, feedbackState) {
     if (!chatElement) return;
@@ -133,6 +149,70 @@ function updateFeedbackVisualState(chatElement, feedbackState) {
         chatElement.dataset.feedbackState = feedbackState;
     } else {
         delete chatElement.dataset.feedbackState;
+    }
+}
+
+const formatCommentCount = (count) => {
+    const safe = Number.isFinite(count) && count > 0 ? count : 0;
+    return safe === 1 ? "1 comment submitted" : `${safe} comments submitted`;
+};
+
+const updateTextFeedbackCountLabel = (count) => {
+    if (!textFeedbackCountLabel) return;
+    const safe = Number.isFinite(count) && count >= 0 ? count : 0;
+    textFeedbackCountLabel.textContent = formatCommentCount(safe);
+};
+
+const resetTextFeedbackCountLabel = () => updateTextFeedbackCountLabel(0);
+
+resetTextFeedbackCountLabel();
+
+const updateConfigMenuLabel = (value) => {
+    if (!configMenuBtn) return;
+    const details = value ? configOptionsMeta.get(value) : null;
+    if (!details) {
+        configMenuBtn.setAttribute("title", CONFIG_BUTTON_DEFAULT_LABEL);
+        return;
+    }
+    const description = details.description ? ` — trained on ${details.description}` : "";
+    configMenuBtn.setAttribute("title", `${details.name}${description}`);
+};
+
+const closeConfigMenu = () => {
+    if (configMenuOverlay) {
+        configMenuOverlay.style.display = "none";
+    }
+};
+
+const openConfigMenu = () => {
+    if (!configMenuOverlay) return;
+    if (!configMenuOptions || !configMenuOptions.childElementCount) {
+        return;
+    }
+    configMenuOverlay.style.display = "block";
+};
+
+const selectConfigOption = (name) => {
+    if (!configDropdown) return;
+    const available = Array.from(configDropdown.options || []).some(opt => opt.value === name);
+    if (!available) return;
+    configDropdown.value = name;
+    updateConfigMenuLabel(name);
+    closeConfigMenu();
+};
+
+function resetDislikeForm() {
+    if (additionalThoughtsInput) {
+        additionalThoughtsInput.value = "";
+    }
+    if (correct_checkbox) {
+        correct_checkbox.checked = false;
+    }
+    if (helpful_checkbox) {
+        helpful_checkbox.checked = false;
+    }
+    if (appropriate_checkbox) {
+        appropriate_checkbox.checked = false;
     }
 }
 
@@ -161,7 +241,6 @@ async function fetchWithTimeout(resource, options = {}) {
 }
 
 async function populateDropdown() {
-
     const API_URL = "/api/get_configs"
 
     try {
@@ -172,16 +251,60 @@ async function populateDropdown() {
             return;
         }
 
-        // Clear any existing options
-        configDropdown.innerHTML = '';
+        // Preserve the currently selected value, if any
+        const previousValue = configDropdown ? configDropdown.value : null;
+        if (configDropdown) {
+            configDropdown.innerHTML = '';
+        }
+        if (configMenuOptions) {
+            configMenuOptions.innerHTML = '';
+        }
+        configOptionsMeta.clear();
 
-        // Populate the dropdown with options from the API response
-        response.options.forEach(optionText => {
-            const option = document.createElement("option");
-            option.textContent = optionText;
-            option.value = optionText;
-            configDropdown.appendChild(option);
+        response.options.forEach(optionData => {
+            if (!optionData || !optionData.name) return;
+            const normalizedDescription = optionData.description || "";
+            configOptionsMeta.set(optionData.name, {
+                name: optionData.name,
+                description: normalizedDescription
+            });
+            if (configDropdown) {
+                const option = document.createElement("option");
+                option.textContent = optionData.name;
+                option.value = optionData.name;
+                configDropdown.appendChild(option);
+            }
+            if (configMenuOptions) {
+                const optionBtn = document.createElement("button");
+                optionBtn.type = "button";
+                optionBtn.className = "config-option";
+                const nameSpan = document.createElement("span");
+                nameSpan.className = "config-option-name";
+                nameSpan.textContent = optionData.name;
+                const descSpan = document.createElement("span");
+                descSpan.className = "config-option-desc";
+                const descText = normalizedDescription || "custom data";
+                descSpan.textContent = `Trained on: ${descText}`;
+                optionBtn.appendChild(nameSpan);
+                optionBtn.appendChild(descSpan);
+                optionBtn.addEventListener("click", () => selectConfigOption(optionData.name));
+                configMenuOptions.appendChild(optionBtn);
+            }
         });
+
+        let appliedValue = null;
+        if (configDropdown) {
+            const optionsList = Array.from(configDropdown.options);
+            const matchingOption = optionsList.find(opt => opt.value === previousValue);
+            if (matchingOption) {
+                configDropdown.value = previousValue;
+                appliedValue = previousValue;
+            } else if (optionsList.length) {
+                configDropdown.selectedIndex = 0;
+                appliedValue = configDropdown.value;
+            }
+        }
+        updateConfigMenuLabel(appliedValue);
     }catch (error) {
         console.error("Failed to fetch dropdown options:", error);
     }
@@ -322,6 +445,9 @@ async function loadConversation(convId) {
                             <button onclick="dislikeResponse(this)" class="material-button">
                                 <img src="/static/images/thumbs_down.png" alt="Dislike" width="30" height="30">
                             </button>
+                            <button onclick="openWrittenFeedback(this)" class="material-button">
+                                <img src="/static/images/feedback.svg" alt="Feedback" width="30" height="30">
+                            </button>
                         </div>
                     </div>`;
             
@@ -331,6 +457,12 @@ async function loadConversation(convId) {
                     chatDiv.dataset.messageId = msg.message_id;
                 } else {
                     delete chatDiv.dataset.messageId;
+                }
+                const incomingCommentCount = Number(msg.comment_count ?? 0);
+                if (Number.isFinite(incomingCommentCount) && incomingCommentCount >= 0) {
+                    chatDiv.dataset.commentCount = incomingCommentCount;
+                } else {
+                    delete chatDiv.dataset.commentCount;
                 }
                 updateFeedbackVisualState(chatDiv, msg.feedback || null);
             }
@@ -437,7 +569,7 @@ const refreshChat = async () => {
 const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     const API_URL = "/api/get_chat_response";
     const pElement = document.createElement("div");
-    const configName = configDropdown.value;
+    const configName = configDropdown ? configDropdown.value : null;
 
      // Define the properties and data for the API request
      const requestOptions = {
@@ -486,8 +618,10 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
         last_response_is_feedback_request = false;
         if (response.a2rchi_msg_id !== undefined && response.a2rchi_msg_id !== null) {
             incomingChatDiv.dataset.messageId = response.a2rchi_msg_id.toString();
+            incomingChatDiv.dataset.commentCount = "0";
         } else {
             delete incomingChatDiv.dataset.messageId;
+            delete incomingChatDiv.dataset.commentCount;
         }
         updateFeedbackVisualState(incomingChatDiv, null);
     } catch (error) {
@@ -566,6 +700,7 @@ const dislikeResponse = (dislikeBtn) => {
     const API_URL = "/api/dislike";
 
     // Show pop-up form
+    resetDislikeForm();
     popupForm.style.display = "block";
 
     // Function which handles sending the information in the pop up form to the backend API
@@ -592,12 +727,108 @@ const dislikeResponse = (dislikeBtn) => {
         }
 
         //hide pop up form
+        resetDislikeForm();
         popupForm.style.display = "none";
     }
 
     //wait for user to submit response or close the additional feedback window
     submitButton.addEventListener("click", handleSubmitToAPI, {once: true});
     closeButton.addEventListener("click", handleSubmitToAPI, {once: true});
+}
+
+const openWrittenFeedback = (feedbackBtn) => {
+    if (!textFeedbackForm || !textFeedbackTextarea) return;
+    const chatElement = feedbackBtn.closest(".chat");
+    const messageId = chatElement?.dataset?.messageId;
+    if (!messageId) {
+        console.warn("Cannot submit written feedback without a message id.");
+        return;
+    }
+
+    pendingTextFeedbackMessageId = Number(messageId);
+    pendingTextFeedbackChatElement = chatElement;
+    textFeedbackTextarea.value = "";
+    const commentCount = Number(chatElement.dataset.commentCount || 0);
+    updateTextFeedbackCountLabel(commentCount);
+    textFeedbackForm.style.display = "block";
+    textFeedbackTextarea.focus();
+};
+
+const closeTextFeedbackForm = () => {
+    if (!textFeedbackForm) return;
+    textFeedbackForm.style.display = "none";
+    if (textFeedbackTextarea) {
+        textFeedbackTextarea.value = "";
+    }
+    resetTextFeedbackCountLabel();
+    pendingTextFeedbackMessageId = null;
+    pendingTextFeedbackChatElement = null;
+};
+
+const submitTextFeedback = async () => {
+    if (pendingTextFeedbackMessageId === null || !pendingTextFeedbackChatElement || !textFeedbackTextarea) {
+        closeTextFeedbackForm();
+        return;
+    }
+
+    const trimmed = textFeedbackTextarea.value.trim();
+    if (!trimmed) {
+        closeTextFeedbackForm();
+        return;
+    }
+
+    try {
+        const response = await fetch("/api/text_feedback", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({
+                message_id: pendingTextFeedbackMessageId,
+                feedback_msg: trimmed,
+            }),
+        });
+        if (!response.ok) {
+            console.error("Failed to submit written feedback:", response.statusText);
+        } else {
+            const currentCount = Number(pendingTextFeedbackChatElement.dataset.commentCount || 0) + 1;
+            pendingTextFeedbackChatElement.dataset.commentCount = currentCount;
+            updateTextFeedbackCountLabel(currentCount);
+        }
+    } catch (error) {
+        console.error("Failed to submit written feedback:", error);
+    } finally {
+        closeTextFeedbackForm();
+    }
+};
+
+if (textFeedbackSubmitButton) {
+    textFeedbackSubmitButton.addEventListener("click", submitTextFeedback);
+}
+if (textFeedbackCloseButton) {
+    textFeedbackCloseButton.addEventListener("click", closeTextFeedbackForm);
+}
+if (textFeedbackForm) {
+    textFeedbackForm.addEventListener("click", (event) => {
+        if (event.target === textFeedbackForm) {
+            closeTextFeedbackForm();
+        }
+    });
+}
+
+if (configMenuBtn) {
+    configMenuBtn.addEventListener("click", openConfigMenu);
+}
+if (configMenuCloseButton) {
+    configMenuCloseButton.addEventListener("click", closeConfigMenu);
+}
+if (configMenuOverlay) {
+    configMenuOverlay.addEventListener("click", (event) => {
+        if (event.target === configMenuOverlay) {
+            closeConfigMenu();
+        }
+    });
 }
 
 const closeFeedback = (closeBtn) => {
@@ -623,6 +854,9 @@ const showTypingAnimation = (isRefresh = false) => {
                         </button>
                         <button onclick="dislikeResponse(this)" class="material-button">
                             <img src="/static/images/thumbs_down.png" alt="Dislike" width="30" height="30">
+                        </button>
+                        <button onclick="openWrittenFeedback(this)" class="material-button">
+                            <img src="/static/images/feedback.svg" alt="Feedback" width="30" height="30">
                         </button>
                     </div>
                 </div>`;

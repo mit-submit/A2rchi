@@ -22,6 +22,11 @@ INSERT INTO feedback (
 VALUES (%s, %s, %s, %s, %s, %s, %s);
 """
 
+SQL_DELETE_REACTION_FEEDBACK = """
+DELETE FROM feedback
+WHERE mid = %s AND feedback IN ('like', 'dislike');
+"""
+
 SQL_QUERY_CONVO = """
 SELECT sender, content
 FROM conversations
@@ -33,7 +38,8 @@ SQL_QUERY_CONVO_WITH_FEEDBACK = """
 SELECT c.sender,
        c.content,
        c.message_id,
-       lf.feedback
+       lf.feedback,
+       COALESCE(cf.comment_count, 0) AS comment_count
 FROM conversations c
 LEFT JOIN (
     SELECT DISTINCT ON (mid)
@@ -41,8 +47,16 @@ LEFT JOIN (
         feedback,
         feedback_ts
     FROM feedback
+    WHERE feedback IN ('like', 'dislike')
     ORDER BY mid, feedback_ts DESC
 ) lf ON lf.mid = c.message_id
+LEFT JOIN (
+    SELECT mid,
+           COUNT(*) AS comment_count
+    FROM feedback
+    WHERE feedback = 'comment'
+    GROUP BY mid
+) cf ON cf.mid = c.message_id
 WHERE c.conversation_id = %s
 ORDER BY c.message_id ASC;
 """

@@ -30,7 +30,7 @@ from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK
+from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.utils.index_utils import CatalogService
@@ -407,6 +407,20 @@ class ChatWrapper:
         self.conn.commit()
 
         # clean up database connection state
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
+    def delete_reaction_feedback(self, message_id: int):
+        """
+        Remove existing like/dislike records for a message so only one reaction is stored.
+        """
+        if message_id is None:
+            return
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_DELETE_REACTION_FEEDBACK, (message_id,))
+        self.conn.commit()
         self.cursor.close()
         self.conn.close()
         self.cursor, self.conn = None, None
@@ -844,6 +858,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/terms', 'terms', self.terms)
         self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
+        self.add_endpoint('/api/text_feedback', 'text_feedback', self.text_feedback, methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
         self.add_endpoint('/api/get_configs', 'get_configs', self.get_configs, methods=["GET"])
@@ -973,7 +988,16 @@ class FlaskAppWrapper(object):
         """
 
         config_names = get_config_names()
-        return jsonify({'options':config_names}), 200
+        options = []
+        for name in config_names:
+            description = ""
+            try:
+                payload = load_config(name=name)
+                description = payload.get("services", {}).get("chat_app", {}).get("trained_on", "") or ""
+            except Exception as exc:
+                logger.warning(f"Failed to load config {name} for description: {exc}")
+            options.append({"name": name, "description": description})
+        return jsonify({'options': options}), 200
 
 
     def get_chat_response(self):
@@ -1066,6 +1090,8 @@ class FlaskAppWrapper(object):
             # Extract the HTML content and any other data you need
             message_id = data.get('message_id')
 
+            self.chat.delete_reaction_feedback(message_id)
+
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "like",
@@ -1109,6 +1135,8 @@ class FlaskAppWrapper(object):
             unhelpful = data.get('unhelpful')
             inappropriate = data.get('inappropriate')
 
+            self.chat.delete_reaction_feedback(message_id)
+
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "dislike",
@@ -1129,6 +1157,50 @@ class FlaskAppWrapper(object):
 
         # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
         # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()
+            logger.info("Released lock file")
+
+            if self.chat.cursor is not None:
+                self.chat.cursor.close()
+            if self.chat.conn is not None:
+                self.chat.conn.close()
+
+    def text_feedback(self):
+        self.chat.lock.acquire()
+        logger.info("Acquired lock file for text feedback")
+        try:
+            data = request.json
+            message_id = data.get('message_id')
+            feedback_msg = (data.get('feedback_msg') or '').strip()
+
+            if message_id is None:
+                return jsonify({'error': 'message_id missing'}), 400
+            if not feedback_msg:
+                return jsonify({'error': 'feedback_msg missing'}), 400
+            try:
+                message_id = int(message_id)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'message_id must be an integer'}), 400
+
+            feedback = {
+                "message_id"   : message_id,
+                "feedback"     : "comment",
+                "feedback_ts"  : datetime.now(),
+                "feedback_msg" : feedback_msg,
+                "incorrect"    : None,
+                "unhelpful"    : None,
+                "inappropriate": None,
+            }
+            self.chat.insert_feedback(feedback)
+
+            response = {'message': 'Feedback submitted'}
+            return jsonify(response), 200
+
+        except Exception as e:
+            logger.error(f"Request failed: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
         finally:
             self.chat.lock.release()
             logger.info("Released lock file")
@@ -1446,7 +1518,8 @@ class FlaskAppWrapper(object):
                         'sender': row[0],
                         'content': row[1],
                         'message_id': row[2],
-                        'feedback': row[3]
+                        'feedback': row[3],
+                        'comment_count': row[4] if len(row) > 4 else 0,
                     }
                     for row in history_rows
                 ]
