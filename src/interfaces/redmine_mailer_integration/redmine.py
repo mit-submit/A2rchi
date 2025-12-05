@@ -37,7 +37,6 @@ class RedmineAIWrapper:
         # configs
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.redmine_config = self.services_config.get("redmine_mailbox", {})
         self.data_path = self.global_config["DATA_PATH"]

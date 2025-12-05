@@ -106,7 +106,6 @@ class ChatWrapper:
         # load configs
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
@@ -524,7 +523,6 @@ class ChatWrapper:
             # update vector store through data manager; will only do something if newwhere files have been added
             logger.info("Acquired lock file update vectorstore")
 
-            #TODO: Should this happen on call? Or when?
             self.data_manager.update_tickets() 
             self.data_manager.update_vectorstore()
             timestamps['vectorstore_update_ts'] = datetime.now()
@@ -642,7 +640,6 @@ class FlaskAppWrapper(object):
         self.configs(**configs)
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -788,7 +785,6 @@ class FlaskAppWrapper(object):
         # re-read config using load_config and update dependent variables
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -1505,10 +1501,10 @@ class FlaskAppWrapper(object):
 
         index = self.catalog.file_index
         if file_hash in index.keys():
-            document = self.catalog.get_document_for_hash(file_hash)
+            document = str(self.catalog.get_document_for_hash(file_hash))
             metadata = self.catalog.get_metadata_for_hash(file_hash)
 
-            title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
+            title = metadata['title'] if 'title' in metadata.keys() else metadata['ticket_id'] if 'ticket_id' in metadata.keys() else metadata['display_name']
             return jsonify({'document':document,
                             'display_name':metadata['display_name'],
                             'source_type':metadata['source_type'],
