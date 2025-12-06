@@ -905,171 +905,16 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.require_auth(self.delete_conversation), methods=["POST"])
 
         # add endpoints for document_index
-        self.add_endpoint('/document_index/', 'document_index', self.require_auth(self.document_index))
-        self.add_endpoint('/document_index/index', 'document_index_alt', self.require_auth(self.document_index))
-        self.add_endpoint('/document_index/upload', 'upload', self.require_auth(self.upload), methods=['POST'])
-        self.add_endpoint('/document_index/delete/<file_hash>', 'delete', self.require_auth(self.delete))
-        self.add_endpoint('/document_index/delete_source/<source_type>', 'delete_source', self.require_auth(self.delete_source))
-        self.add_endpoint('/document_index/upload_url', 'upload_url', self.require_auth(self.upload_url), methods=['POST'])
-        self.add_endpoint('/document_index/load_document/<path:file_hash>', 'load_document', self.require_auth(self.load_document))
-
-        # add unified auth endpoints
-        if self.auth_enabled:
-            logger.info("Adding unified authentication endpoints")
-            self.add_endpoint('/login', 'login', self.login, methods=['GET', 'POST'])
-            self.add_endpoint('/logout', 'logout', self.logout)
-            self.add_endpoint('/auth/user', 'get_user', self.get_user, methods=['GET'])
-            
-            if self.sso_enabled:
-                self.add_endpoint('/redirect', 'sso_callback', self.sso_callback)
-
-    def _setup_sso(self):
-        """Initialize OAuth client for SSO using OpenID Connect"""
-        auth_config = self.chat_app_config.get('auth', {})
-        sso_config = auth_config.get('sso', {})
-        
-        # Read client credentials from environment
-        client_id = read_secret('SSO_CLIENT_ID')
-        client_secret = read_secret('SSO_CLIENT_SECRET')
-        
-        if not client_id or not client_secret:
-            logger.error("SSO is enabled but SSO_CLIENT_ID or SSO_CLIENT_SECRET environment variables are not set")
-            self.sso_enabled = False
-            return
-        
-        # Initialize OAuth
-        self.oauth = OAuth(self.app)
-        
-        # Get server metadata URL and client kwargs from config
-        server_metadata_url = sso_config.get('server_metadata_url', '')
-        authorize_url = sso_config.get('authorize_url', None)
-        client_kwargs = sso_config.get('client_kwargs', {'scope': 'openid profile email'})
-        
-        # Register the OAuth provider
-        self.oauth.register(
-            name='sso',
-            client_id=client_id,
-            client_secret=client_secret,
-            server_metadata_url=server_metadata_url,
-            authorize_url=authorize_url,
-            client_kwargs=client_kwargs
-        )
-        
-        logger.info(f"SSO configured with server: {server_metadata_url}")
-
-    def login(self):
-        """Unified login endpoint supporting multiple auth methods"""
-        # If user is already logged in, redirect to index
-        if session.get('logged_in'):
-            return redirect(url_for('index'))
-        
-        # Handle SSO login initiation
-        if request.args.get('method') == 'sso' and self.sso_enabled:
-            if not self.oauth:
-                return jsonify({'error': 'SSO not configured'}), 400
-            redirect_uri = url_for('sso_callback', _external=True)
-            logger.info(f"Initiating SSO login with redirect URI: {redirect_uri}")
-            return self.oauth.sso.authorize_redirect(redirect_uri)
-        
-        # Handle basic auth login form submission
-        if request.method == 'POST' and self.basic_auth_enabled:
-            username = request.form.get('username')
-            password = request.form.get('password')
-            
-            if check_credentials(username, password, self.salt, self.app.config['ACCOUNTS_FOLDER']):
-                session['user'] = {
-                    'email': username,
-                    'name': username,
-                    'username': username
-                }
-                session['logged_in'] = True
-                session['auth_method'] = 'basic'
-                logger.info(f"Basic auth login successful for user: {username}")
-                return redirect(url_for('index'))
-            else:
-                flash('Invalid credentials')
-        
-        # Render login page with available auth methods
-        return render_template('login.html', 
-                             sso_enabled=self.sso_enabled, 
-                             basic_auth_enabled=self.basic_auth_enabled)
-
-    def logout(self):
-        """Unified logout endpoint for all auth methods"""
-        auth_method = session.get('auth_method', 'unknown')
-        session.pop('user', None)
-        session.pop('logged_in', None)
-        session.pop('auth_method', None)
-        
-        logger.info(f"User logged out (method: {auth_method})")
-        flash('You have been logged out successfully')
-        return redirect(url_for('landing'))
-
-    def sso_callback(self):
-        """Handle OAuth callback from SSO provider"""
-        if not self.sso_enabled or not self.oauth:
-            return jsonify({'error': 'SSO not enabled'}), 400
-        
-        try:
-            # Get the token from the callback
-            token = self.oauth.sso.authorize_access_token()
-            
-            # Parse the user info from the token
-            user_info = token.get('userinfo')
-            if not user_info:
-                # If userinfo is not in token, fetch it
-                user_info = self.oauth.sso.userinfo(token=token)
-            
-            # Store user information in session (normalized structure)
-            session['user'] = {
-                'email': user_info.get('email', ''),
-                'name': user_info.get('name', user_info.get('preferred_username', '')),
-                'username': user_info.get('preferred_username', user_info.get('email', '')),
-                'id': user_info.get('sub', '')
-            }
-            session['logged_in'] = True
-            session['auth_method'] = 'sso'
-            
-            logger.info(f"SSO login successful for user: {user_info.get('email')}")
-            
-            # Redirect to main page
-            return redirect(url_for('index'))
-            
-        except Exception as e:
-            logger.error(f"SSO callback error: {str(e)}")
-            flash(f"Authentication failed: {str(e)}")
-            return redirect(url_for('login'))
-
-    def get_user(self):
-        """API endpoint to get current user information"""
-        if session.get('logged_in'):
-            user = session.get('user', {})
-            return jsonify({
-                'logged_in': True,
-                'email': user.get('email', ''),
-                'name': user.get('name', ''),
-                'auth_method': session.get('auth_method', 'unknown'),
-                'auth_enabled': self.auth_enabled
-            })
-        return jsonify({
-            'logged_in': False,
-            'auth_enabled': self.auth_enabled
-        })
-
-    def require_auth(self, f):
-        """Decorator to require authentication for routes"""
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if not self.auth_enabled:
-                # If auth is not enabled, allow access
-                return f(*args, **kwargs)
-            
-            if not session.get('logged_in'):
-                # Return 401 Unauthorized response instead of redirecting
-                return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-            
-            return f(*args, **kwargs)
-        return decorated_function
+        self.add_endpoint('/document_index/', 'document_index', self.document_index)
+        self.add_endpoint('/document_index/index', 'index', self.document_index)
+        self.add_endpoint('/document_index/login', 'login', self.login, methods=['GET','POST'])
+        self.add_endpoint('/document_index/create_account', 'create_account', self.create_account, methods=['GET','POST'])
+        self.add_endpoint('/document_index/logout', 'logout', self.logout)
+        self.add_endpoint('/document_index/upload', 'upload', self.upload, methods=['POST'])
+        self.add_endpoint('/document_index/delete/<file_hash>', 'delete', self.delete)
+        self.add_endpoint('/document_index/delete_source/<source_type>', 'delete_source', self.delete_source)
+        self.add_endpoint('/document_index/upload_url', 'upload_url', self.upload_url, methods=['POST'])
+        self.add_endpoint('/document_index/load_document/<path:file_hash>', 'load_document', self.load_document)
 
     def health(self):
         return jsonify({"status": "OK"}, 200)
@@ -1771,6 +1616,65 @@ class FlaskAppWrapper(object):
         Returns true if there has been a correct login authentication and false otherwise.
         """
         return 'logged_in' in session and session['logged_in']
+    
+    #@app.route('/document_index/create_account', methods=['GET','POST'])
+    def create_account(self):
+        """
+        Method which governs account creation into the system. 
+        """
+
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
+            password_2nd_time = request.form['confirm_password']
+
+            if password == password_2nd_time:
+                add_username_password(username, password, self.salt, self.app.config['ACCOUNTS_FOLDER'])
+                flash("Account created")
+                session['logged_in'] = True
+                return redirect(url_for('index'))
+            else:
+                flash("Passwords did not match, please try again")
+
+        return render_template('create_account.html')
+
+    #@app.route('/document_index/login', methods=['GET','POST'])
+    def login(self):
+        """
+        Method which governs the logging into the system. Relies on check_credentials function
+        """
+        if not self.salt:
+            flash("No UPLOADER_SALT secret is set")
+
+        if not self.app.secret_key:
+            flash("No FLASK_UPLOADER_APP_SECRET_KEY secret set.")
+
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
+
+            if check_credentials(username, password, self.salt, self.app.config['ACCOUNTS_FOLDER']):
+                session['logged_in'] = True
+                return redirect(url_for('index'))
+            else:
+                flash('Invalid credentials')
+
+        return render_template('login.html')
+        
+
+
+    #@app.route('/document_index/logout')
+    def logout(self):
+        """
+        Method which is responsible for logout
+
+        This method is never explictly called, login sessions
+        are stored in the cookies.
+        """
+        session.pop('logged_in', None)
+
+        return redirect(url_for('login'))
+
 
     #@app.route('/document_index/')
     def document_index(self):
