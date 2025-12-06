@@ -22,6 +22,7 @@ from src.a2rchi.models import HuggingFaceOpenLLM
 from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
+from src.utils.generate_benchmark_report import parse_benchmark_results, format_html_output
 
 CONFIG_PATH = "/root/A2rchi/config.yaml"
 OUTPUT_PATH = "/root/A2rchi/benchmarks"
@@ -84,8 +85,29 @@ class ResultHandler:
 
 
     @staticmethod 
+    def dump_html(benchmark_name: Path):
+
+        config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(ResultHandler.results, ResultHandler.metadata)
+
+        logger.info(config_data)
+
+        html_content = format_html_output(config_data, config_name, timestamp,questions, total_results)
+
+        filename = f"{benchmark_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}_report.html"
+        file_path = OUTPUT_DIR / filename
+
+        logger.info(f"Dumping results to {file_path}")
+
+        with open(file_path, 'w') as f:
+            f.write(html_content)
+
+        logger.info(f"✅ HTML report generated: {file_path}")
+
+            
+
+    @staticmethod 
     def dump(benchmark_name: Path):
-        filename = f"{benchmark_name}-{datetime.now().strftime('%y%m%d_%H%M%S')}.json"
+        filename = f"{benchmark_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         file_path = OUTPUT_DIR / filename
         logger.info(f"Dumping results to {file_path}")
         logger.debug(f"Full results: {ResultHandler.results}")
@@ -167,9 +189,9 @@ class Benchmarker:
             case "openai":
                 return ChatOpenAI(model=model_name)
             case "ollama":
-                from langchain_community.chat_models import ChatOllama
+                from langchain_ollama import ChatOllama
                 base_url = provider_settings['base_url']
-                return ChatOllama(model=model_name, base_url=base_url)
+                return ChatOllama(model=model_name, base_url=base_url,num_predict=-2,model_kwargs={'format': 'json'})
             case "huggingface":
                 return HuggingFaceOpenLLM(base_model=model_name)
             case "anthropic":
@@ -501,6 +523,7 @@ class Benchmarker:
 
         ResultHandler.add_metadata()
         ResultHandler.dump(self.benchmark_name)
+        ResultHandler.dump_html(self.benchmark_name)
         return
 
 if __name__ == "__main__":

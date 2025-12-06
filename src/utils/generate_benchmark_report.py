@@ -10,7 +10,9 @@ This script helps evaluate benchmarking results by showing:
 - RAGAS scores (if available)
 
 Usage:
-    python compare_benchmark_outputs.py <results.json> -o <output.html>
+    python generate_benchmark_report.py <results.json>
+    python generate_benchmark_report.py <results.json> --html output.html
+    python generate_benchmark_report.py <results.json> --question 1
 """
 
 import json
@@ -21,6 +23,22 @@ from pathlib import Path
 from datetime import datetime
 
 
+def get_single_question_results(config_data):
+    """Return the single question results regardless of key format."""
+    return (
+        config_data.get('single question results')
+        or config_data.get('single_question_results')
+        or {}
+    )
+
+def get_total_results(config_data):
+    """Return the total results regardless of key format."""
+    return (
+        config_data.get('total results')
+        or config_data.get('total_results')
+        or {}
+    )
+
 def load_benchmark_results(filepath):
 
     """Load and parse benchmark results JSON"""
@@ -29,108 +47,119 @@ def load_benchmark_results(filepath):
 
     return data['benchmarking_results'], data['metadata']
 
-def format_html_output(result):
-    """Format results as HTML for easier reading"""
+def parse_benchmark_results(results, metadata):
+    """Parse benchmark results JSON"""
 
+    result = results[0]
+    
     questions = result.get('single_question_results', {})
     total_results = result.get('total_results', {})
     config_name = result.get('configuration_file', 'Unknown configuration')
-    config = result.get('configuration', {})
-    timestamp = result.get("metadata", {}).get("time", "Unknown time")
+    config_data = result.get('configuration', {})
+    timestamp = metadata.get("time", "Unknown time")
     
+    return config_data, config_name, timestamp, questions, total_results
+
+
+def format_html_output(config_data, config_name, timestamp,questions, total_results):
+    """Format results as HTML for easier reading"""
+
     html_parts = ["""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Benchmark Results Comparison</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-        }
-        .metrics {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .question-card {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .section {
-            margin: 20px 0;
-        }
-        .section-title {
-            font-weight: bold;
-            font-size: 1.1em;
-            margin-bottom: 10px;
-            color: #667eea;
-        }
-        .answer-box {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            border-left: 4px solid #667eea;
-            margin: 10px 0;
-            white-space: pre-wrap;
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.9em;
-        }
-        .expected-box {
-            border-left-color: #28a745;
-        }
-        .context-box {
-            background: #fff3cd;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 5px 0;
-            font-size: 0.85em;
-        }
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        .metric-item {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .metric-value {
-            font-size: 2em;
-            font-weight: bold;
-            color: #667eea;
-        }
-        .metric-label {
-            font-size: 0.9em;
-            color: #666;
-            margin-top: 5px;
-        }
-        .score-low { color: #dc3545; }
-        .score-medium { color: #ffc107; }
-        .score-high { color: #28a745; }
-    </style>
-</head>
-<body>
-"""]
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Benchmark Results Comparison</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #f5f5f5;
+            }
+            .header {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px;
+                border-radius: 10px;
+                margin-bottom: 30px;
+            }
+            .metrics {
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .question-card {
+                background: white;
+                padding: 30px;
+                border-radius: 10px;
+                margin-bottom: 30px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .section {
+                margin: 20px 0;
+            }
+            .section-title {
+                font-weight: bold;
+                font-size: 1.1em;
+                margin-bottom: 10px;
+                color: #667eea;
+            }
+            .answer-box {
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                border-left: 4px solid #667eea;
+                margin: 10px 0;
+                white-space: pre-wrap;
+                font-family: 'Monaco', 'Courier New', monospace;
+                font-size: 0.9em;
+            }
+            .expected-box {
+                border-left-color: #28a745;
+            }
+            .context-box {
+                background: #fff3cd;
+                padding: 10px;
+                border-radius: 5px;
+                margin: 5px 0;
+                font-size: 0.85em;
+            }
+            .metrics-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-top: 15px;
+            }
+            .metric-item {
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                text-align: center;
+            }
+            .metric-value {
+                font-size: 2em;
+                font-weight: bold;
+                color: #667eea;
+            }
+            .metric-label {
+                font-size: 0.9em;
+                color: #666;
+                margin-top: 5px;
+            }
+            .score-low { color: #dc3545; }
+            .score-medium { color: #ffc107; }
+            .score-high { color: #28a745; }
+        </style>
+    </head>
+    <body>
+    """]
+
+
+
     
     # Header
     html_parts.append(f"""
@@ -141,55 +170,74 @@ def format_html_output(result):
         <p><strong>Questions Processed:</strong> {len(questions)}</p>
     </div>
 """)
-    
+
     # sources (retrieval accuracy) metrics
-    if 'SOURCES' in config.get('services', {}).get('benchmarking', {}).get('modes', []):
+    if 'SOURCES' in config_data.get('services', {}).get('benchmarking', {}).get('modes', []):
+
+        # Retrieval Accuracy
         ret_accuracy = total_results.get('source_accuracy', None)
+        ret_total = len(questions)
+        ret_correct =  int(ret_total*ret_accuracy)
+
         if ret_accuracy: ret_accuracy *= 100
         ret_partial = total_results.get('relative_source_accuracy', None)
-        if ret_partial: ret_partial *= 100
+        ret_partial =  int(ret_total*ret_partial)-ret_correct
 
         html_parts.append('<div class="metrics">')
         html_parts.append('<h2>🎯 Retrieval Accuracy</h2>')
         html_parts.append('<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; max-width: 900px; margin: 0 auto;">')
-        
+
         # Fully Correct
         score_class = 'score-low' if ret_accuracy < 50 else 'score-medium' if ret_accuracy < 80 else 'score-high'
         html_parts.append(f"""
             <div class="metric-item">
                 <div class="metric-value {score_class}">{ret_accuracy:.1f}%</div>
-                <div class="metric-label">Retrieval Accuracy (at least one source found)</div>
-            </div>
-        """)
-        html_parts.append(f"""
-            <div class="metric-item">
-                <div class="metric-value score-medium">{ret_partial:.1f}%</div>
-                <div class="metric-label">Partially Correct (some sources found)</div>
+                <div class="metric-label">Fully Correct: {ret_correct}/{ret_total}</div>
             </div>
         """)
 
-        html_parts.append('</div></div>')
-    
-    # ragas metrics
-    if 'RAGAS' in config.get('services', {}).get('benchmarking', {}).get('modes', []):
-        html_parts.append('<div class="metrics">')
-        html_parts.append('<h2>Aggregate RAGAS Metrics</h2>')
-        html_parts.append('<div class="metrics-grid">')
-        for metric, value in total_results.items():
-            if 'aggregate' in metric:
-                clean_name = metric.replace('aggregate_', '').replace('_', ' ').title()
-                score_class = 'score-low' if value < 0.5 else 'score-medium' if value < 0.7 else 'score-high'
-                html_parts.append(f"""
+        # Partially Correct
+        if ret_partial > 0:
+            html_parts.append(f"""
                 <div class="metric-item">
-                    <div class="metric-value {score_class}">{value:.3f}</div>
-                    <div class="metric-label">{clean_name}</div>
+                    <div class="metric-value score-medium">{ret_partial}</div>
+                    <div class="metric-label">Partially Correct (some sources found)</div>
                 </div>
-                """)
+            """)
+
+        # Incorrect
+        ret_incorrect = ret_total - ret_correct - ret_partial
+        if ret_incorrect > 0:
+            html_parts.append(f"""
+                <div class="metric-item">
+                    <div class="metric-value score-low">{ret_incorrect}</div>
+                    <div class="metric-label">Incorrect (no sources found)</div>
+                </div>
+            """)
+
         html_parts.append('</div></div>')
-    
+
+    if 'RAGAS' in config_data.get('services', {}).get('benchmarking', {}).get('modes', []):
+
+        # Aggregate RAGAS Metrics
+        if total_results:
+            html_parts.append('<div class="metrics">')
+            html_parts.append('<h2>Aggregate RAGAS Metrics</h2>')
+            html_parts.append('<div class="metrics-grid">')
+            for metric, value in total_results.items():
+                if 'aggregate' in metric:
+                    clean_name = metric.replace('aggregate_', '').replace('_', ' ').title()
+                    score_class = 'score-low' if value < 0.5 else 'score-medium' if value < 0.7 else 'score-high'
+                    html_parts.append(f"""
+                    <div class="metric-item">
+                        <div class="metric-value {score_class}">{value:.3f}</div>
+                        <div class="metric-label">{clean_name}</div>
+                    </div>
+                    """)
+            html_parts.append('</div></div>')
+
     # Each Question
     for i, (qid, q_data) in enumerate(questions.items(), 1):
-
         html_parts.append(f'<div class="question-card">')
         html_parts.append(f'<h2>Question {i}: {qid}</h2>')
         
@@ -198,8 +246,6 @@ def format_html_output(result):
         html_parts.append(f'<div class="section-title">❓ Question</div>')
         html_parts.append(f'<p>{q_data["question"]}</p>')
         html_parts.append(f'</div>')
-        
-        # Retrieval Check
         
         # reference sources
         reference_sources_metadata = q_data.get('reference_sources_metadata', [])
@@ -211,7 +257,6 @@ def format_html_output(result):
 
         # retrieved sources
         sources_metadata = q_data.get('sources_metadata', [])
-        sources_trunc_content = q_data.get('sources_trunc_content', [])
         retrieved_sources = [s['display_name'] for s in sources_metadata]
         
         # Check if any expected source was retrieved
@@ -248,19 +293,20 @@ def format_html_output(result):
             html_parts.append(f'<p><strong class="{status_class}">{status_icon} Status: {status_text}</strong></p>')
             html_parts.append(f'</div>')
             html_parts.append(f'</div>')
-        
+
+
         # A2rchi's Answer
         html_parts.append(f'<div class="section">')
         html_parts.append(f'<div class="section-title">🤖 A2rchi\'s Answer</div>')
-        html_parts.append(f'<div class="answer-box">{q_data["answer"]}</div>')
+        html_parts.append(f'<div class="answer-box">{q_data.get("answer", "N/A")}</div>')
         html_parts.append(f'</div>')
         
         # Expected Answer
         html_parts.append(f'<div class="section">')
         html_parts.append(f'<div class="section-title">✅ Expected Answer</div>')
-        html_parts.append(f'<div class="answer-box expected-box">{q_data["reference_answer"]}</div>')
+        html_parts.append(f'<div class="answer-box expected-box">{q_data.get("reference_answer", "N/A")}</div>')
         html_parts.append(f'</div>')
-        
+
         # Expected Documents/Sources
         if expected_sources:
             html_parts.append(f'<div class="section">')
@@ -272,7 +318,7 @@ def format_html_output(result):
             html_parts.append(f'</ul>')
             html_parts.append(f'</div>')
             html_parts.append(f'</div>')
-        
+
         # Retrieved Contexts/Documents
         contexts = q_data.get('contexts', [])
         if contexts:
@@ -349,18 +395,17 @@ def format_html_output(result):
                 ''')
             html_parts.append(f'</div>')
             html_parts.append(f'</div>')
-
-
-        if 'RAGAS' in config.get('services', {}).get('benchmarking', {}).get('modes', []):
-        
-            # RAGAS Metrics
-            ragas_metrics = {
-                'answer_relevancy': 'Answer Relevancy',
-                'faithfulness': 'Faithfulness',
-                'context_precision': 'Context Precision',
-                'context_recall': 'Context Recall'
-            }
             
+
+        # RAGAS Metrics
+        ragas_metrics = {
+            'answer_relevancy': 'Answer Relevancy',
+            'faithfulness': 'Faithfulness',
+            'context_precision': 'Context Precision',
+            'context_recall': 'Context Recall'
+        }
+
+        if 'RAGAS' in config_data.get('services', {}).get('benchmarking', {}).get('modes', []):
             html_parts.append(f'<div class="section">')
             html_parts.append(f'<div class="section-title">📊 RAGAS Scores</div>')
             html_parts.append(f'<div class="metrics-grid">')
@@ -375,25 +420,32 @@ def format_html_output(result):
                     </div>
                     """)
             html_parts.append(f'</div></div>')
-            
-        html_parts.append(f'</div>')
         
+        html_parts.append(f'</div>')
+
     html_parts.append('</body></html>')
     return '\n'.join(html_parts)
-
 
 def main():
     parser = argparse.ArgumentParser(
         description='Compare expected vs actual outputs from A2rchi benchmarking',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="e.g. python compare_benchmark_outputs.py results.json -o report.html"
+        epilog="""
+Examples:
+  # Generate HTML report to default results.html
+  python generate_benchmark_report.py results.json
+  
+  # View specific question
+  python generate_benchmark_report.py results.json --question 3
+  
+  # Save HTML report to specific path
+  python generate_benchmark_report.py results.json --html report.html
+        """
     )
     
     parser.add_argument('results_file', help='Path to benchmark results JSON file')
+    parser.add_argument('--html_output', help='Generate HTML output file')
     parser.add_argument('--question', '-q', type=int, help='Show only specific question number')
-    parser.add_argument('--config', '-c', type=str, help='Show only specific configuration name')
-    parser.add_argument('-o', '--output', type=str, help="Output directory for HTML report") 
-    parser.add_argument('--oname', type=str, help="Output html file name. (Default: '<results_file>_report.html')")
     
     args = parser.parse_args()
     
@@ -402,33 +454,26 @@ def main():
         print(f"Error: File '{args.results_file}' not found", file=sys.stderr)
         sys.exit(1)
     
+    if not args.html_output:
+        print(f"HTML output path not found, using default.")
+        html_path = Path(args.results_file).stem + '.html'
+    else:
+        html_path = args.html_output
+
     # Load results
     try:
         results, metadata = load_benchmark_results(args.results_file)
+        config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(results, metadata)
     except Exception as e:
         print(f"Error loading results: {e}", file=sys.stderr)
         sys.exit(1)
+    
+    # Generates HTML output
+    html_content = format_html_output(config_data, config_name, timestamp,questions, total_results)
+    with open(html_path, 'w') as f:
+        f.write(html_content)
+    print(f"✅ HTML report generated: {args.html}")
 
-    # iterate over the configurations used to run the benchmark
-    for result in results:
-
-        # Filter by question number
-        config_name = result.get('configuration_file', 'Unknown Configuration')
-        if args.config and args.config != config_name:
-            continue
-
-        # produce the html
-        html_content = format_html_output(result)
-
-        # Save output
-        ofilename = args.oname if args.oname else f"{Path(args.results_file).stem}_report.html"
-        if args.output:
-            out_dir = Path(args.output)
-            out_dir.mkdir(parents=True, exist_ok=True)
-            ofilename = out_dir / ofilename
-        with open(ofilename, 'w') as f:
-            f.write(html_content)
-        print(f"✅ HTML report generated: {ofilename}")
 
 if __name__ == '__main__':
     main()
