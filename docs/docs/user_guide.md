@@ -222,18 +222,32 @@ a2rchi create [...] --services=chatbot --sources jira
 
 There are two main ways to add documents to A2RCHI's vector database. They are:
 
-- Manually adding files via the document index
+- Manually adding files while the service is running via the uploader GUI
 - Directly copying files into the container
 
 These methods are outlined below.
 
-#### Document index
+#### Manual Uploader
 
-In order to upload documents while A2RCHI is running via an easily accessible GUI, make sure to include the `FLASK_UPLOADER_APP_SECRET_KEY` and `UPLOADER_SALT` secrets in the environment file. You will be able to add these documents within the document index endpoint.
+In order to upload documents while A2RCHI is running via an easily accessible GUI, enable the uploader service when creating the deployment:
+```bash
+a2rchi create [...] --services=chatbot,uploader
+```
+The exact port may vary based on configuration (default external port is `5003`).
+A quick `podman ps` or `docker ps` will show which port is exposed.
 
-In order to access the document index, you must first create an admin account. To do this you must access the `/document_index/create_account/` endpoint and create the account.
+In order to access the manager, you must first create an admin account. Grab the container ID with `podman ps`/`docker ps` and then enter the container:
+```
+docker exec -it <CONTAINER-ID> bash
+```
+Run the bundled helper:
+```
+python -u src/bin/service_create_account.py
+```
+from the `/root/A2RCHI` directory inside the container. This script will guide you through creating an account; never reuse sensitive passwords here.
 
-Once you have created an account, visit the `/document_index/` endpoint, log in and you will be able to upload documents. 
+Once you have created an account, visit the outgoing port of the data manager docker service and then log in.
+The GUI will then allow you to upload documents while A2RCHI is still running. Note that it may take a few minutes for all the documents to upload.
 
 #### Directly copying files to the container
 

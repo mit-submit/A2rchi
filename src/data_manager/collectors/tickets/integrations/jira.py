@@ -1,3 +1,5 @@
+from dateutil.parser import parse
+from datetime import time
 from threading import Lock
 from typing import Any, Dict, Iterator, Optional
 from datetime import datetime
@@ -85,7 +87,7 @@ class JiraClient:
             fields = getattr(issue, "fields", None)
             issue_key = getattr(issue, "key", str(issue))
             created_at = getattr(fields, "created", "") if fields else ""
-            issue_text = self._build_issue_text(issue, fields)
+            issue_text = self._build_issue_text(issue, fields, cutoff_date)
 
             content_parts = []
             if created_at:
@@ -160,7 +162,7 @@ class JiraClient:
             project_duration = perf_counter() - project_start
             logger.info("Completed JIRA fetch for project=%s in %.2fs", project, project_duration)
 
-    def _build_issue_text(self, issue: jira.Issue, fields: Optional[Any]) -> str:
+    def _build_issue_text(self, issue: jira.Issue, fields: Optional[Any], cutoff_date: datetime) -> str:
         """Return a formatted representation of a JIRA issue body."""
         issue_key = getattr(issue, "key", str(issue))
         build_start = perf_counter()
@@ -174,9 +176,17 @@ class JiraClient:
         comments = getattr(comments_field, "comments", []) if comments_field else []
         comments_start = perf_counter()
         for comment in comments:
-            body = getattr(comment, "body", "")
-            if body:
-                issue_text += f"Comment: {body}\n"
+            if cutoff_date:
+                comment_created_dt = parse(comment.created)
+                if comment_created_dt.date() < cutoff_date:
+                    body = getattr(comment, "body", "")
+                    if body:
+                        issue_text += f"Comment: {body}\n"
+            else:
+                body = getattr(comment, "body", "")
+                if body:
+                    issue_text += f"Comment: {body}\n"
+
         comments_duration = perf_counter() - comments_start
 
         anonymize_duration = 0.0
