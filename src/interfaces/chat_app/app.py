@@ -30,7 +30,7 @@ from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION
+from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.utils.index_utils import CatalogService
@@ -508,6 +508,72 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    def insert_tool_calls_from_messages(self, conversation_id: int, message_id: int, messages: List) -> None:
+        """
+        Extract and store agent tool calls from the messages list.
+        
+        AIMessage with tool_calls contains the tool name, args, and timestamp.
+        ToolMessage contains the result, matched by tool_call_id.
+        """
+        if not messages:
+            return
+        
+        tool_results = {}
+        for msg in messages:
+            if hasattr(msg, 'tool_call_id') and msg.tool_call_id:
+                tool_results[msg.tool_call_id] = getattr(msg, 'content', '')
+        
+        # Extract tool calls from AIMessages
+        insert_tups = []
+        step_number = 0
+        for msg in messages:
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                # Get timestamp from response_metadata if available
+                response_metadata = getattr(msg, 'response_metadata', {}) or {}
+                created_at = response_metadata.get('created_at')
+                if created_at:
+                    try:
+                        # Parse ISO format timestamp
+                        ts = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    except (ValueError, TypeError):
+                        ts = datetime.now()
+                else:
+                    ts = datetime.now()
+                
+                for tc in msg.tool_calls:
+                    step_number += 1
+                    tool_call_id = tc.get('id', '')
+                    tool_name = tc.get('name', 'unknown')
+                    tool_args = tc.get('args', {})
+                    tool_result = tool_results.get(tool_call_id, '')
+                    # Truncate result for storage (max 500 chars)
+                    if len(tool_result) > 500:
+                        tool_result = tool_result[:500] + '...'
+                    
+                    insert_tups.append((
+                        conversation_id,
+                        message_id,
+                        step_number,
+                        tool_name,
+                        json.dumps(tool_args) if tool_args else None,
+                        tool_result,
+                        ts,
+                    ))
+        
+        if not insert_tups:
+            return
+            
+        logger.debug("Inserting %d tool calls for message %d", len(insert_tups), message_id)
+
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        psycopg2.extras.execute_values(self.cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
+        self.conn.commit()
+
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
     def __call__(self, message: List[str], conversation_id: int|None, client_id: str, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
@@ -612,6 +678,19 @@ class ChatWrapper:
                 is_refresh
             )
             timestamps['insert_convo_ts'] = datetime.now()
+            
+            # insert tool calls extracted from messages
+            agent_messages = getattr(result, 'messages', []) or []
+            logger.debug("Agent messages count: %d", len(agent_messages))
+            for i, msg in enumerate(agent_messages):
+                msg_type = type(msg).__name__
+                has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
+                has_tool_call_id = hasattr(msg, 'tool_call_id') and msg.tool_call_id
+                logger.debug("  Message %d: %s, tool_calls=%s, tool_call_id=%s", 
+                           i, msg_type, has_tool_calls, has_tool_call_id)
+            if agent_messages and message_ids:
+                a2rchi_message_id = message_ids[-1]  # A2rchi's response is the last message
+                self.insert_tool_calls_from_messages(conversation_id, a2rchi_message_id, agent_messages)
 
         except ConversationAccessError as e:
             logger.warning(f"Unauthorized conversation access attempt: {e}")
