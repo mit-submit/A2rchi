@@ -88,22 +88,6 @@ def load_global_config(name: str = None):
 
     return config["global"]
 
-def load_utils_config(name: str = None):
-    """
-    Load the utils part of the config.yaml file.
-    This is assumed to be static.
-    """
-
-    if name is None:
-        default_path = CONFIGS_PATH + os.listdir(CONFIGS_PATH)[0]
-        with open(default_path, "r") as f:
-            config = yaml.load(f, Loader=yaml.FullLoader)
-    else:
-        with open(CONFIGS_PATH+f"{name}.yaml", "r") as f:
-            config = yaml.load(f, Loader=yaml.FullLoader)
-
-    return config.get("utils", {}) or {}
-
 def load_data_manager_config(name: str = None):
     """
     Load the data_manager part of the config.yaml file.

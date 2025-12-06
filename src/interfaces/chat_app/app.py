@@ -106,7 +106,6 @@ class ChatWrapper:
         # load configs
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
@@ -590,6 +589,7 @@ class ChatWrapper:
             # update vector store through data manager; will only do something if newwhere files have been added
             logger.info("Acquired lock file update vectorstore")
 
+            self.data_manager.update_tickets() 
             self.data_manager.update_vectorstore()
             timestamps['vectorstore_update_ts'] = datetime.now()
 
@@ -719,7 +719,6 @@ class FlaskAppWrapper(object):
         self.configs(**configs)
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -788,7 +787,8 @@ class FlaskAppWrapper(object):
         # add endpoints for document_index
         self.add_endpoint('/document_index/', 'document_index', self.document_index)
         self.add_endpoint('/document_index/index', 'index', self.document_index)
-        self.add_endpoint('/document_index/login', 'login', self.login, methods=['GET', 'POST'])
+        self.add_endpoint('/document_index/login', 'login', self.login, methods=['GET','POST'])
+        self.add_endpoint('/document_index/create_account', 'create_account', self.create_account, methods=['GET','POST'])
         self.add_endpoint('/document_index/logout', 'logout', self.logout)
         self.add_endpoint('/document_index/upload', 'upload', self.upload, methods=['POST'])
         self.add_endpoint('/document_index/delete/<file_hash>', 'delete', self.delete)
@@ -865,7 +865,6 @@ class FlaskAppWrapper(object):
         # re-read config using load_config and update dependent variables
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -1424,12 +1423,39 @@ class FlaskAppWrapper(object):
         Returns true if there has been a correct login authentication and false otherwise.
         """
         return 'logged_in' in session and session['logged_in']
+    
+    #@app.route('/document_index/create_account', methods=['GET','POST'])
+    def create_account(self):
+        """
+        Method which governs account creation into the system. 
+        """
 
-    #@app.route('/document_index/login', methods=['GET', 'POST'])
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
+            password_2nd_time = request.form['confirm_password']
+
+            if password == password_2nd_time:
+                add_username_password(username, password, self.salt, self.app.config['ACCOUNTS_FOLDER'])
+                flash("Account created")
+                session['logged_in'] = True
+                return redirect(url_for('index'))
+            else:
+                flash("Passwords did not match, please try again")
+
+        return render_template('create_account.html')
+
+    #@app.route('/document_index/login', methods=['GET','POST'])
     def login(self):
         """
         Method which governs the logging into the system. Relies on check_credentials function
         """
+        if not self.salt:
+            flash("No UPLOADER_SALT secret is set")
+
+        if not self.app.secret_key:
+            flash("No FLASK_UPLOADER_APP_SECRET_KEY secret set.")
+
         if request.method == 'POST':
             username = request.form['username']
             password = request.form['password']
@@ -1441,6 +1467,7 @@ class FlaskAppWrapper(object):
                 flash('Invalid credentials')
 
         return render_template('login.html')
+        
 
 
     #@app.route('/document_index/logout')
@@ -1582,10 +1609,10 @@ class FlaskAppWrapper(object):
 
         index = self.catalog.file_index
         if file_hash in index.keys():
-            document = self.catalog.get_document_for_hash(file_hash)
+            document = str(self.catalog.get_document_for_hash(file_hash))
             metadata = self.catalog.get_metadata_for_hash(file_hash)
 
-            title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
+            title = metadata['title'] if 'title' in metadata.keys() else metadata['ticket_id'] if 'ticket_id' in metadata.keys() else metadata['display_name']
             return jsonify({'document':document,
                             'display_name':metadata['display_name'],
                             'source_type':metadata['source_type'],
