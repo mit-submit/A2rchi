@@ -183,14 +183,15 @@ data_manager:
         {%- endfor %}
       anonymize_data: {{ data_manager.sources.jira.anonymize_data | default(false, true) }}
       max_tickets: {{ data_manager.sources.jira.max_tickets | default(1e10, true) }}
-      frequency: {{ data_manager.sources.jira.frequency | default(7, false) }}
+      frequency: {{ data_manager.sources.jira.frequency | default('', false) }}
+      cutoff_date: {{ data_manager.sources.jira.cutoff_date | default('', true) }}
     redmine:
       enabled: {{ data_manager.sources.redmine.enabled | default(false, true) }}
       url: {{ data_manager.sources.redmine.url | default('', true) }}
       project: {{ data_manager.sources.redmine.project | default('', true) }}
       visible: {{ data_manager.sources.redmine.visible | default(false, true) }}
       anonymize_data: {{ data_manager.sources.redmine.anonymize_data | default(true, true) }}
-      frequency: {{ data_manager.sources.redmine.frequency | default('', true) }}
+      frequency: {{ data_manager.sources.redmine.frequency | default('', false) }}
   utils:
     anonymizer:
       nlp_model: {{ data_manager.utils.anonymizer.nlp_model | default('en_core_web_sm', true) }}

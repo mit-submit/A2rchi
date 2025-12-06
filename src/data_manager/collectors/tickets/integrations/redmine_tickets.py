@@ -1,4 +1,5 @@
 from typing import Any, Dict, Iterator, Optional
+from datetime import datetime
 
 from redminelib import Redmine
 
@@ -74,7 +75,7 @@ class RedmineClient:
             self.redmine = None
             self.project = None
 
-    def collect(self) -> Iterator[TicketResource]:
+    def collect(self, collect_since: datetime, cutoff_date: datetime) -> Iterator[TicketResource]:
         """Return an iterator of Redmine tickets."""
         if not self._verify() or not self.redmine or not self.project:
             logger.debug(
@@ -82,10 +83,10 @@ class RedmineClient:
             )
             return iter(())
 
-        return self._prepare_ticket_resources()
+        return self._prepare_ticket_resources(collect_since, cutoff_date)
 
-    def _prepare_ticket_resources(self) -> Iterator[TicketResource]:
-        closed_issues = self.get_closed_issues()
+    def _prepare_ticket_resources(self,collect_since: datetime, cutoff_date: datetime) -> Iterator[TicketResource]:
+        closed_issues = self.get_closed_issues(collect_since, cutoff_date)
         logger.info(f"Preparing {len(closed_issues)} redmine tickets' data")
         processed_count = 0
 
@@ -172,11 +173,19 @@ class RedmineClient:
         """Load the project that is responsible to deal with email tickets."""
         self.project = self.redmine.project.get(self.redmine_project)
 
-    def get_closed_issues(self) -> Any:
-        return self.redmine.issue.filter(
-            project_id=self.project.id,
-            status_id="closed",
-        )
+    def get_closed_issues(self, collect_since, cutoff_date) -> Any:
+        filters = {
+            'project_id': self.project.id,
+            'status_id': "closed",
+        }
+        if cutoff_date:
+            filters['created_on'] = f'<{cutoff_date.strftime("%Y-%m-%d")}'
+        if collect_since:
+            filters['created_on'] = f'>{collect_since.strftime("%Y-%m-%d")}'
+        if cutoff_date and collect_since:
+            filters['created_on'] = f'><{collect_since.strftime("%Y-%m-%d")}|{cutoff_date.strftime("%Y-%m-%d")}'
+
+        return self.redmine.issue.filter(**filters)
 
     def _extract_answer_from_journals(self, journals: Any) -> str:
         """
