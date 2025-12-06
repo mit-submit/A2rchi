@@ -192,6 +192,7 @@ data_manager:
       visible: {{ data_manager.sources.redmine.visible | default(false, true) }}
       anonymize_data: {{ data_manager.sources.redmine.anonymize_data | default(true, true) }}
       frequency: {{ data_manager.sources.redmine.frequency | default('', false) }}
+      cutoff_date: {{ data_manager.sources.redmine.cutoff_date | default('', true) }}
   utils:
     anonymizer:
       nlp_model: {{ data_manager.utils.anonymizer.nlp_model | default('en_core_web_sm', true) }}
