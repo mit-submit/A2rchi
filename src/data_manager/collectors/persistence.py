@@ -57,7 +57,7 @@ class PersistenceService:
             relative_path = str(file_path)
 
         resource_hash = resource.get_hash()
-        logger.info(f"Stored resource {resource_hash} -> {file_path}")
+        logger.debug(f"Stored resource {resource_hash} -> {file_path}")
         self.catalog.file_index[resource_hash] = relative_path
         self._index_dirty = True
 
