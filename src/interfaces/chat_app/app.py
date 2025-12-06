@@ -708,7 +708,8 @@ class FlaskAppWrapper(object):
         # add endpoints for document_index
         self.add_endpoint('/document_index/', 'document_index', self.document_index)
         self.add_endpoint('/document_index/index', 'index', self.document_index)
-        self.add_endpoint('/document_index/login', 'login', self.login, methods=['GET', 'POST'])
+        self.add_endpoint('/document_index/login', 'login', self.login, methods=['GET','POST'])
+        self.add_endpoint('/document_index/create_account', 'create_account', self.create_account, methods=['GET','POST'])
         self.add_endpoint('/document_index/logout', 'logout', self.logout)
         self.add_endpoint('/document_index/upload', 'upload', self.upload, methods=['POST'])
         self.add_endpoint('/document_index/delete/<file_hash>', 'delete', self.delete)
@@ -1343,12 +1344,39 @@ class FlaskAppWrapper(object):
         Returns true if there has been a correct login authentication and false otherwise.
         """
         return 'logged_in' in session and session['logged_in']
+    
+    #@app.route('/document_index/create_account', methods=['GET','POST'])
+    def create_account(self):
+        """
+        Method which governs account creation into the system. 
+        """
 
-    #@app.route('/document_index/login', methods=['GET', 'POST'])
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
+            password_2nd_time = request.form['confirm_password']
+
+            if password == password_2nd_time:
+                add_username_password(username, password, self.salt, self.app.config['ACCOUNTS_FOLDER'])
+                flash("Account created")
+                session['logged_in'] = True
+                return redirect(url_for('index'))
+            else:
+                flash("Passwords did not match, please try again")
+
+        return render_template('create_account.html')
+
+    #@app.route('/document_index/login', methods=['GET','POST'])
     def login(self):
         """
         Method which governs the logging into the system. Relies on check_credentials function
         """
+        if not self.salt:
+            flash("No UPLOADER_SALT secret is set")
+
+        if not self.app.secret_key:
+            flash("No FLASK_UPLOADER_APP_SECRET_KEY secret set.")
+
         if request.method == 'POST':
             username = request.form['username']
             password = request.form['password']
@@ -1360,6 +1388,7 @@ class FlaskAppWrapper(object):
                 flash('Invalid credentials')
 
         return render_template('login.html')
+        
 
 
     #@app.route('/document_index/logout')
