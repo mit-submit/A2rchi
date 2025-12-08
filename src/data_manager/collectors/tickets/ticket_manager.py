@@ -57,15 +57,17 @@ class TicketManager:
             jira_frequency = self.jira_config.get('frequency')
             date_last_collected_at = self.last_collected_at["JIRA"]
             cutoff_date = self.cutoff_dates['JIRA']
-            if (date_last_collected_at-now).days>=jira_frequency or jira_frequency==0:
-                self._collect_from_client(self.jira_client, "JIRA", persistence, date_last_collected_at, cutoff_date)
+            if jira_frequency:
+                if (date_last_collected_at-now).days>=jira_frequency or jira_frequency==0:
+                    self._collect_from_client(self.jira_client, "JIRA", persistence, date_last_collected_at, cutoff_date)
 
         if self.redmine_config.get('enabled', False):
             redmine_frequency = self.redmine_config.get('frequency')
             date_last_collected_at = self.last_collected_at["Redmine"]
             cutoff_date = self.cutoff_dates['Redmine']
-            if (date_last_collected_at-now).days>=redmine_frequency or redmine_frequency==0:
-                self._collect_from_client(self.redmine_client, "Redmine", persistence, date_last_collected_at, cutoff_date)
+            if redmine_frequency:
+                if (date_last_collected_at-now).days>=redmine_frequency or redmine_frequency==0:
+                    self._collect_from_client(self.redmine_client, "Redmine", persistence, date_last_collected_at, cutoff_date)
 
 
 
