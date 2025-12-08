@@ -4,6 +4,7 @@ import yaml
 from pathlib import Path
 
 from src.utils.logging import get_logger
+from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.scrapers.scraped_resource import \
     ScrapedResource
 
@@ -63,7 +64,6 @@ def get_filename_from_hash(hash_string, data_path, filehashes_yaml_file="manual_
 
 
 def remove_url_from_sources(url: str, sources_path: str):
-    from src.data_manager.collectors.persistence import PersistenceService
     persistence = PersistenceService(sources_path)
     persistence.delete_by_metadata_filter("url", url)
 
