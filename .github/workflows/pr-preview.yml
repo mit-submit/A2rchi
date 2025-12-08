@@ -30,7 +30,7 @@ jobs:
   #       run: black --check .
   # test add label
   build-base-images:
-    runs-on: [submit76]
+    runs-on: [self-hosted]
     permissions:
       contents: read
     env:
@@ -106,7 +106,7 @@ jobs:
         run: scripts/dev/push_docker_images.sh "${{ steps.detect.outputs.tag }}"
 
   preview:
-    runs-on: [submit76]
+    runs-on: [self-hosted]
     needs: build-base-images
     permissions:
       contents: read
