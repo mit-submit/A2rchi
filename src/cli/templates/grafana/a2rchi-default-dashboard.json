@@ -251,9 +251,9 @@
             {% set base = loop.index0 * 4 %}
             {
               "options": {
-                "pattern": "like_with_context_{{ palette.name }}",
+                "pattern": "like_with_config_{{ palette.name }}",
                 "result": {
-                  "color": "{{ palette.like_with_context }}",
+                  "color": "{{ palette.like_with_config }}",
                   "index": {{ base }}
                 }
               },
@@ -271,9 +271,9 @@
             },
             {
               "options": {
-                "pattern": "dislike_with_context_{{ palette.name }}",
+                "pattern": "dislike_with_config_{{ palette.name }}",
                 "result": {
-                  "color": "{{ palette.dislike_with_context }}",
+                  "color": "{{ palette.dislike_with_config }}",
                   "index": {{ base + 2 }}
                 }
               },
@@ -345,7 +345,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n),\nfiltered_feedback AS (\n  SELECT mid, config_name, feedback, \n         MAX(feedback_ts) AS feedback_ts,\n         CASE \n           WHEN feedback = 'like' AND context IS NOT NULL THEN 'like_with_context'\n           WHEN feedback = 'like' AND context IS NULL THEN 'like_no_context'\n           WHEN feedback = 'dislike' AND context IS NOT NULL THEN 'dislike_with_context'\n           WHEN feedback = 'dislike' AND context IS NULL THEN 'dislike_no_context'\n         END AS context_label\n  FROM feedback\n  JOIN msg_to_config ON feedback.mid = msg_to_config.message_id\n  JOIN conversations ON feedback.mid = conversations.message_id\n  GROUP BY mid, config_name, feedback, context\n),\nsummarized AS (\n  SELECT \n    COUNT(*) AS count,\n    context_label || '_' || config_name AS feedback,\n    config_name,\n    CASE context_label\n      WHEN 'like_with_context' THEN 1\n      WHEN 'like_no_context' THEN 2\n      WHEN 'dislike_with_context' THEN 3\n      WHEN 'dislike_no_context' THEN 4\n      ELSE 5\n    END AS sort_key\n  FROM filtered_feedback\n  GROUP BY context_label, config_name\n)\nSELECT count, feedback, config_name\nFROM summarized\nORDER BY config_name, sort_key;\n",
+          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n),\nfiltered_feedback AS (\n  SELECT mid, config_name, feedback, \n         MAX(feedback_ts) AS feedback_ts,\n         CASE \n           WHEN feedback = 'like' AND context IS NOT NULL THEN 'like_with_config'\n           WHEN feedback = 'like' AND context IS NULL THEN 'like_no_context'\n           WHEN feedback = 'dislike' AND context IS NOT NULL THEN 'dislike_with_config'\n           WHEN feedback = 'dislike' AND context IS NULL THEN 'dislike_no_context'\n         END AS context_label\n  FROM feedback\n  JOIN msg_to_config ON feedback.mid = msg_to_config.message_id\n  JOIN conversations ON feedback.mid = conversations.message_id\n  GROUP BY mid, config_name, feedback, context\n),\nsummarized AS (\n  SELECT \n    COUNT(*) AS count,\n    context_label || '_' || config_name AS feedback,\n    config_name,\n    CASE context_label\n      WHEN 'like_with_config' THEN 1\n      WHEN 'like_no_context' THEN 2\n      WHEN 'dislike_with_config' THEN 3\n      WHEN 'dislike_no_context' THEN 4\n      ELSE 5\n    END AS sort_key\n  FROM filtered_feedback\n  GROUP BY context_label, config_name\n)\nSELECT count, feedback, config_name\nFROM summarized\nORDER BY config_name, sort_key;\n",
           "refId": "A",
           "sql": {
             "columns": [

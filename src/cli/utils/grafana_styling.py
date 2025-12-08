@@ -24,10 +24,10 @@ def assign_feedback_palette(configs):
         palette.append(
             {
                 "name": name,
-                "like_with_context": like_colors[0],
-                "like_no_context": like_colors[1],
-                "dislike_with_context": dislike_colors[0],
-                "dislike_no_context": dislike_colors[1],
+                "like_with_config": like_colors[0],
+                "like_no_config": like_colors[1],
+                "dislike_with_config": dislike_colors[0],
+                "dislike_no_config": dislike_colors[1],
             }
         )
     return palette

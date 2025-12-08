@@ -994,7 +994,7 @@ class FlaskAppWrapper(object):
             description = ""
             try:
                 payload = load_config(name=name)
-                description = payload.get("a2rchi", {}).get("agent_description", {})
+                description = payload.get("a2rchi", {}).get("agent_description", "No description provided")
             except Exception as exc:
                 logger.warning(f"Failed to load config {name} for description: {exc}")
             options.append({"name": name, "description": description})

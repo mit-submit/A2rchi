@@ -298,20 +298,10 @@ class TemplateManager:
             f.write(dashboards)
 
         configs = context.config_manager.get_configs()
-        a2rchi_config = configs[0]
-        pipeline_name = a2rchi_config.get("a2rchi", {}).get("pipeline")
-        pipeline_config = (
-            a2rchi_config.get("a2rchi", {})
-            .get("pipeline_map", {})
-            .get(pipeline_name, {}) if pipeline_name else {}
-        )
-        models_config = pipeline_config.get("models", {})
-        model_name = next(iter(models_config.values())) if models_config else "DumbLLM"
         palette = assign_feedback_palette(configs)
 
         dashboard_template = self.env.get_template(BASE_GRAFANA_A2RCHI_DEFAULT_DASHBOARDS_TEMPLATE)
         dashboard = dashboard_template.render(
-            prod_model_name=model_name,
             feedback_palette=palette,
         )
         with open(grafana_dir / "a2rchi-default-dashboard.json", "w") as f:
