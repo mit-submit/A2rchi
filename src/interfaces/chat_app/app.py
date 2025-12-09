@@ -682,10 +682,16 @@ class ChatWrapper:
         self.lock.acquire()
         timestamps['lock_acquisition_ts'] = datetime.now()
         try:
+            self.data_manager.update_tickets() 
+        except Exception as e:
+            #NOTE: Error is logged but a failure to update tickets does not necessarily mean A2rchi cannot process and respond to the message
+            logger.error(f"Failed to update tickets - {str(e)}")
+
+
+        try:
             # update vector store through data manager; will only do something if newwhere files have been added
             logger.info("Acquired lock file update vectorstore")
 
-            self.data_manager.update_tickets() 
             self.data_manager.update_vectorstore()
             timestamps['vectorstore_update_ts'] = datetime.now()
 
