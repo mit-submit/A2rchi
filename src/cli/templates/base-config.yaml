@@ -135,6 +135,8 @@ data_manager:
       num_documents_to_retrieve: {{ data_manager.retrievers.hybrid_retriever.num_documents_to_retrieve | default(5, true) }}
       bm25_weight: {{ data_manager.retrievers.hybrid_retriever.bm25_weight | default(0.6, true) }}
       semantic_weight: {{ data_manager.retrievers.hybrid_retriever.semantic_weight | default(0.4, true) }}
+      bm25_k1: {{ data_manager.retrievers.hybrid_retriever.bm25_k1 | default(0.5, true) }}
+      bm25_b: {{ data_manager.retrievers.hybrid_retriever.bm25_b | default(0.75, true) }}
   sources:
     links:
       enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
