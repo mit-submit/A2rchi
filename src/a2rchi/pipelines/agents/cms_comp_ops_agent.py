@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 
 from src.utils.logging import get_logger
 from src.a2rchi.pipelines.agents.base import BaseAgent
-from src.data_manager.vectorstore.retrievers import SemanticRetriever, BM25LexicalRetriever
+from src.data_manager.vectorstore.retrievers import HybridRetriever
 from src.a2rchi.pipelines.agents.tools import (
     create_file_search_tool,
     create_metadata_search_tool,
@@ -120,55 +120,69 @@ class CMSCompOpsAgent(BaseAgent):
         return {"messages": history_messages}
 
     def _update_vector_retrievers(self, vectorstore: Any) -> None:
-        """Instantiate or refresh the vectorstore retriever tool."""
+        """Instantiate or refresh the vectorstore retriever tool using hybrid retrieval."""
         retrievers_cfg = self.dm_config.get("retrievers", {})
         default_k = 5
 
-        semantic_cfg = retrievers_cfg.get("semantic_retriever", {})
-        bm25_cfg = retrievers_cfg.get("bm25_retriever", {})
+        # Check for hybrid retriever config in retrievers section
+        hybrid_cfg = retrievers_cfg.get("hybrid_retriever", {})
+        
+        # Fallback to data_manager level config for backward compatibility
+        # (some configs have hybrid settings at data_manager level)
+        if not hybrid_cfg:
+            hybrid_cfg = {}
+            hybrid_cfg["num_documents_to_retrieve"] = self.dm_config.get("num_documents_to_retrieve", default_k)
+            hybrid_cfg["bm25_weight"] = self.dm_config.get("bm25_weight", 0.6)
+            hybrid_cfg["semantic_weight"] = self.dm_config.get("semantic_weight", 0.4)
+            # Get BM25 params from bm25 section if available
+            bm25_cfg = self.dm_config.get("bm25", {})
+            hybrid_cfg["bm25_k1"] = bm25_cfg.get("k1", 0.5)
+            hybrid_cfg["bm25_b"] = bm25_cfg.get("b", 0.75)
+        else:
+            # Merge with data_manager level defaults if keys are missing
+            if "num_documents_to_retrieve" not in hybrid_cfg:
+                hybrid_cfg["num_documents_to_retrieve"] = self.dm_config.get("num_documents_to_retrieve", default_k)
+            if "bm25_weight" not in hybrid_cfg:
+                hybrid_cfg["bm25_weight"] = self.dm_config.get("bm25_weight", 0.6)
+            if "semantic_weight" not in hybrid_cfg:
+                hybrid_cfg["semantic_weight"] = self.dm_config.get("semantic_weight", 0.4)
+            if "bm25_k1" not in hybrid_cfg and "k1" not in hybrid_cfg:
+                bm25_cfg = self.dm_config.get("bm25", {})
+                hybrid_cfg["bm25_k1"] = bm25_cfg.get("k1", 0.5)
+            if "bm25_b" not in hybrid_cfg and "b" not in hybrid_cfg:
+                bm25_cfg = self.dm_config.get("bm25", {})
+                hybrid_cfg["bm25_b"] = bm25_cfg.get("b", 0.75)
 
-        semantic_k = semantic_cfg.get("num_documents_to_retrieve", default_k)
-        bm25_k = bm25_cfg.get("num_documents_to_retrieve", default_k)
+        k = hybrid_cfg.get("num_documents_to_retrieve", default_k)
+        bm25_weight = hybrid_cfg.get("bm25_weight", 0.6)
+        semantic_weight = hybrid_cfg.get("semantic_weight", 0.4)
+        bm25_k1 = hybrid_cfg.get("bm25_k1", hybrid_cfg.get("k1", 0.5))
+        bm25_b = hybrid_cfg.get("bm25_b", hybrid_cfg.get("b", 0.75))
 
-        semantic_retriever = SemanticRetriever(
+        hybrid_retriever = HybridRetriever(
             vectorstore=vectorstore,
-            k=semantic_k,
-            dm_config=self.dm_config,
+            k=k,
+            bm25_weight=bm25_weight,
+            semantic_weight=semantic_weight,
+            bm25_k1=bm25_k1,
+            bm25_b=bm25_b,
         )
 
-        bm25_retriever = BM25LexicalRetriever(
-            vectorstore=vectorstore,
-            k=bm25_k,
-            bm25_k1=bm25_cfg.get("k1", 0.5),
-            bm25_b=bm25_cfg.get("b", 0.75),
+        hybrid_description = (
+            "Hybrid search over the knowledge base that combines both lexical (BM25) and semantic (vector) search. "
+            "This automatically finds documents matching exact keywords, error messages, ticket IDs, filenames, "
+            "and function names (via BM25) as well as conceptually related content and paraphrased information "
+            "(via semantic search). Use this for comprehensive retrieval - it handles both precise keyword matches "
+            "and conceptual similarity automatically."
         )
 
-        semantic_description = (
-            "Semantic vector search over the knowledge base. Use when you want concept-level matches, "
-            "related procedures, or paraphrased content. Include the task, component, and any identifiers (ticket IDs, "
-            "filenames, services) so embedding search can pull in closely related context."
-        )
-        bm25_description = (
-            "Lexical BM25 search over the knowledge base. Use when you have sharp keywords: exact error messages, log lines, "
-            "config flags, ticket IDs, filenames, or function/class names. Provide the precise tokens as they appear to "
-            "maximize keyword matching."
-        )
-
-        self._vector_retrievers = [semantic_retriever, bm25_retriever]
+        self._vector_retrievers = [hybrid_retriever]
         self._vector_tools = []
         self._vector_tools.append(
             create_retriever_tool(
-                semantic_retriever,
-                name="search_vectorstore_semantic",
-                description=semantic_description,
-                store_docs=self._store_documents,
-            )
-        )
-        self._vector_tools.append(
-            create_retriever_tool(
-                bm25_retriever,
-                name="search_vectorstore_lexical",
-                description=bm25_description,
+                hybrid_retriever,
+                name="search_vectorstore",
+                description=hybrid_description,
                 store_docs=self._store_documents,
             )
         )
