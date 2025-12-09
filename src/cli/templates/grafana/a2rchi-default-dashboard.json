@@ -248,12 +248,12 @@
           },
           "mappings": [
 {% for palette in feedback_palette %}
-            {% set base = loop.index0 * 4 %}
+            {% set base = loop.index0 * 2 %}
             {
               "options": {
-                "pattern": "like_with_config_{{ palette.name }}",
+                "pattern": "like_{{ palette.name }}",
                 "result": {
-                  "color": "{{ palette.like_with_config }}",
+                  "color": "{{ palette.like }}",
                   "index": {{ base }}
                 }
               },
@@ -261,30 +261,10 @@
             },
             {
               "options": {
-                "pattern": "like_no_context_{{ palette.name }}",
+                "pattern": "dislike_{{ palette.name }}",
                 "result": {
-                  "color": "{{ palette.like_no_context }}",
+                  "color": "{{ palette.dislike }}",
                   "index": {{ base + 1 }}
-                }
-              },
-              "type": "regex"
-            },
-            {
-              "options": {
-                "pattern": "dislike_with_config_{{ palette.name }}",
-                "result": {
-                  "color": "{{ palette.dislike_with_config }}",
-                  "index": {{ base + 2 }}
-                }
-              },
-              "type": "regex"
-            },
-            {
-              "options": {
-                "pattern": "dislike_no_context_{{ palette.name }}",
-                "result": {
-                  "color": "{{ palette.dislike_no_context }}",
-                  "index": {{ base + 3 }}
                 }
               },
               "type": "regex"
@@ -345,7 +325,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n),\nfiltered_feedback AS (\n  SELECT mid, config_name, feedback, \n         MAX(feedback_ts) AS feedback_ts,\n         CASE \n           WHEN feedback = 'like' AND context IS NOT NULL THEN 'like_with_config'\n           WHEN feedback = 'like' AND context IS NULL THEN 'like_no_context'\n           WHEN feedback = 'dislike' AND context IS NOT NULL THEN 'dislike_with_config'\n           WHEN feedback = 'dislike' AND context IS NULL THEN 'dislike_no_context'\n         END AS context_label\n  FROM feedback\n  JOIN msg_to_config ON feedback.mid = msg_to_config.message_id\n  JOIN conversations ON feedback.mid = conversations.message_id\n  GROUP BY mid, config_name, feedback, context\n),\nsummarized AS (\n  SELECT \n    COUNT(*) AS count,\n    context_label || '_' || config_name AS feedback,\n    config_name,\n    CASE context_label\n      WHEN 'like_with_config' THEN 1\n      WHEN 'like_no_context' THEN 2\n      WHEN 'dislike_with_config' THEN 3\n      WHEN 'dislike_no_context' THEN 4\n      ELSE 5\n    END AS sort_key\n  FROM filtered_feedback\n  GROUP BY context_label, config_name\n)\nSELECT count, feedback, config_name\nFROM summarized\nORDER BY config_name, sort_key;\n",
+          "rawSql": "WITH msg_to_config AS (\n  SELECT c.message_id, cfg.config_name\n  FROM conversations c\n  JOIN configs cfg ON c.conf_id = cfg.config_id\n),\nfeedback_by_config AS (\n  SELECT f.feedback,\n         mtc.config_name\n  FROM feedback f\n  JOIN msg_to_config mtc ON f.mid = mtc.message_id\n  WHERE f.feedback IN ('like', 'dislike')\n)\nSELECT \n  COUNT(*) AS count,\n  feedback || '_' || config_name AS feedback,\n  config_name\nFROM feedback_by_config\nGROUP BY feedback, config_name\nORDER BY config_name,\n         CASE feedback WHEN 'like' THEN 1 ELSE 2 END;\n",
           "refId": "A",
           "sql": {
             "columns": [
