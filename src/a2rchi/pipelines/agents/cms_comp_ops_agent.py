@@ -152,7 +152,7 @@ class CMSCompOpsAgent(BaseAgent):
         self._vector_tools.append(
             create_retriever_tool(
                 hybrid_retriever,
-                name="search_vectorstore",
+                name="search_vectorstore_hybrid",
                 description=hybrid_description,
                 store_docs=self._store_documents,
             )
