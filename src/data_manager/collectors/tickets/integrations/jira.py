@@ -1,5 +1,4 @@
 from dateutil.parser import parse
-from datetime import time
 from threading import Lock
 from typing import Any, Dict, Iterator, Optional
 from datetime import datetime
@@ -87,11 +86,16 @@ class JiraClient:
             fields = getattr(issue, "fields", None)
             issue_key = getattr(issue, "key", str(issue))
             created_at = getattr(fields, "created", "") if fields else ""
+            created_at = self._parse_date(created_at) if created_at!="" else ""
+            updated_at = getattr(fields, "updated", "") if fields else ""
+            updated_at = self._parse_date(updated_at) if updated_at!="" else ""
             issue_text = self._build_issue_text(issue, fields, cutoff_date)
 
             content_parts = []
             if created_at:
-                content_parts.append(created_at)
+                content_parts.append(created_at.strftime('%Y-%m-%dT%H:%M:%S.%f%z'))
+            if updated_at:
+                content_parts.append(created_at.strftime('%Y-%m-%dT%H:%M:%S.%f%z'))
             content_parts.append(issue_text)
             content = "\n".join(part for part in content_parts if part)
 
@@ -107,8 +111,17 @@ class JiraClient:
                 created_at=created_at or None,
                 metadata={k: v for k, v in metadata.items() if v},
             )
-
-            logger.debug(f"Collected JIRA ticket {issue_key}")
+            
+            if collect_since:
+                logger.debug(
+                    "Fetched recently updated/created ticket | ticket=%s collect_since=%s created=%s updated=%s",
+                    issue_key,
+                    collect_since.strftime('%Y-%m-%d %H:%M:%S'),
+                    created_at or 'N/A',
+                    updated_at or 'N/A',
+                )
+            else:
+                logger.debug(f"Collected JIRA ticket {issue_key}")
             yield record
 
     def get_all_issues(self, collect_since: datetime, cutoff_date: datetime) -> Iterator[jira.Issue]:
@@ -125,6 +138,7 @@ class JiraClient:
                 jql_date_string = cutoff_date.strftime("%Y-%m-%d %H:%M")
                 query += f' AND created < "{jql_date_string}"'
 
+            logger.debug(query)
             start_at = 0
             project_start = perf_counter()
             while True:
@@ -133,7 +147,7 @@ class JiraClient:
                     query,
                     startAt=start_at,
                     maxResults=max_batch_results,
-                    fields=["summary", "description", "project", "created", "comment"],
+                    fields=["summary", "description", "project", "created","updated", "comment"],
                     expand="renderedFields,comment",
                 )
                 fetch_duration = perf_counter() - fetch_start
@@ -205,3 +219,14 @@ class JiraClient:
         )
 
         return issue_text
+
+    def _parse_date(self,date_string: str) -> datetime:
+        """Return a date object from the JIRA date extracted string."""
+
+        try:
+            dt_object = datetime.strptime(date_string, '%Y-%m-%dT%H:%M:%S.%f%z')
+        except:
+            logger.warning("Error parsing date from JIRA. Reverting to ignoring time zone.")
+            dt_object = datetime.strptime(date_string[:20], '%Y-%m-%dT%H:%M:%S')
+
+        return dt_object
