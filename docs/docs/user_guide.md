@@ -177,11 +177,11 @@ data_manager:
       projects:
         - PROJECT_KEY
       anonymize_data: true
-      frequency: 7 #days (optional)
+      frequency: 15 #minutes (optional)
       cutoff_date: 2025-01-01 # in YYYY-MM-DD (optional)
 ```
 
-You can also include a frequency (in days) in which the tickets will be fetched again, pulling recently updated and created tickets. Additionally, you can specify a cutoff date so that only tickets before that date are fetched.
+You can also include a frequency (in minutes) in which the tickets will be fetched again, pulling recently updated and created tickets. Additionally, you can specify a cutoff date so that only tickets before that date are fetched.
 
 You can further customise anonymisation via the global anonymiser settings.
 ```yaml
@@ -268,11 +268,11 @@ data_manager:
       url: https://redmine.example.com
       project: my-project
       anonymize_data: true
-      frequency: 7 #days (optional)
+      frequency: 15 #minutes (optional)
       cutoff_date: 2025-01-01 # in YYYY-MM-DD (optional)
 ```
 
-As with JIRA tickets, you can include a frequency (in days) in which the tickets will be fetched again. Additionally, you can specify a cutoff date so that only tickets before that date are fetched.
+As with JIRA tickets, you can include a frequency (in minutes) in which the tickets will be fetched again. Additionally, you can specify a cutoff date so that only tickets before that date are fetched.
 
 #### Secrets
 
