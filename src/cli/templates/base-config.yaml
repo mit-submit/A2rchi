@@ -67,7 +67,7 @@ services:
     host: {{ 'localhost' if host_mode else (utils.postgres.host | default('postgres', true)) }}
   chat_app:
     pipeline: {{ services.chat_app.pipeline | default("QAPipeline", true) }}
-    trained_on: {{ services.chat_app.trained_on | default("", true) }}
+    trained_on: {{ services.chat_app.trained_on | default("No description provided.", true) }} # leaving for now for backwards compatibility can remove later
     port: {{ services.chat_app.port | default(7861, true) }}
     external_port: {{ services.chat_app.external_port | default(7861, true) }}
     host: {{ services.chat_app.host | default("0.0.0.0", true) }}
@@ -145,6 +145,8 @@ data_manager:
       num_documents_to_retrieve: {{ data_manager.retrievers.hybrid_retriever.num_documents_to_retrieve | default(5, true) }}
       bm25_weight: {{ data_manager.retrievers.hybrid_retriever.bm25_weight | default(0.6, true) }}
       semantic_weight: {{ data_manager.retrievers.hybrid_retriever.semantic_weight | default(0.4, true) }}
+      bm25_k1: {{ data_manager.retrievers.hybrid_retriever.bm25_k1 | default(0.5, true) }}
+      bm25_b: {{ data_manager.retrievers.hybrid_retriever.bm25_b | default(0.75, true) }}
   sources:
     links:
       enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
@@ -207,6 +209,7 @@ data_manager:
 
 a2rchi:
   pipelines: {{ a2rchi.pipelines | default(['QAPipeline'], true) }}
+  agent_description: {{ a2rchi.agent_description | default('No description provided', true) }}
   pipeline_map:
     QAPipeline:
       max_tokens: {{ a2rchi.pipeline_map.QAPipeline.max_tokens | default(10000, true) }}

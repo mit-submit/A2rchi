@@ -31,7 +31,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "axisBorderShow": false,
@@ -69,16 +69,7 @@
           "noValue": "0",
           "thresholds": {
             "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
+            "steps": []
           }
         },
         "overrides": []
@@ -111,7 +102,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "-- number of messages per 15min window\nWITH msg_timing_info AS (\n  SELECT $__timeGroup(server_received_msg_ts, '1h', 0) as t1, count(mid) as num_msgs\n  FROM timing\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n  ORDER BY $__timeGroup(server_received_msg_ts, '1h', 0)\n), convo_timing_info AS ( -- number of unique conversations per 15 min window\n  SELECT $__timeGroup(server_received_msg_ts, '1h', 0) as t2, count(distinct(conversation_id)) as num_convos\n  FROM timing JOIN conversations ON timing.mid = conversations.message_id\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n  ORDER BY $__timeGroup(server_received_msg_ts, '1h', 0)\n), intervals AS (\n  SELECT $__timeGroupAlias(t, '1h', 0) FROM generate_series($__timeFrom(), $__timeTo(), '1 hour'::interval) AS s(t)\n), msgs_join_convos AS (\n  SELECT * FROM msg_timing_info JOIN convo_timing_info ON t1 = t2\n)\nSELECT time, num_msgs, num_convos FROM intervals LEFT OUTER JOIN msgs_join_convos ON t1 = intervals.time;\n",
+          "rawSql": "-- number of messages per 1h window\nWITH msg_timing_info AS (\n  SELECT $__timeGroup(server_received_msg_ts, '1h', 0) as t1, count(mid) as num_msgs\n  FROM timing\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n), convo_timing_info AS (\n  SELECT $__timeGroup(server_received_msg_ts, '1h', 0) as t2,\n         COUNT(DISTINCT (meta.client_id || '-' || conversations.conversation_id)) as num_convos\n  FROM timing\n  JOIN conversations ON timing.mid = conversations.message_id\n  JOIN conversation_metadata meta ON conversations.conversation_id = meta.conversation_id\n  WHERE $__timeFrom() <= server_received_msg_ts AND server_received_msg_ts <= $__timeTo()\n  GROUP BY 1\n), intervals AS (\n  SELECT $__timeGroupAlias(t, '1h', 0) FROM generate_series($__timeFrom(), $__timeTo(), '1 hour'::interval) AS s(t)\n), msgs_join_convos AS (\n  SELECT * FROM msg_timing_info JOIN convo_timing_info ON t1 = t2\n)\nSELECT time, num_msgs, num_convos FROM intervals LEFT OUTER JOIN msgs_join_convos ON t1 = intervals.time;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -150,7 +141,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "fillOpacity": 80,
@@ -166,16 +157,7 @@
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
+            "steps": []
           },
           "unit": "none"
         },
@@ -206,17 +188,12 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT server_received_msg_ts as time, extract(seconds from msg_duration) as all_gpt4\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = 'all_gpt4_config'\nORDER BY time",
+          "rawSql": "SELECT\n  t.server_received_msg_ts AS time,\n  cfg.config_name AS metric,\n  EXTRACT(EPOCH FROM t.msg_duration) AS value\nFROM timing t\nJOIN conversations c ON t.mid = c.message_id\nJOIN configs cfg ON c.conf_id = cfg.config_id\nWHERE $__timeFilter(t.server_received_msg_ts)\nORDER BY time",
           "refId": "A",
           "sql": {
             "columns": [
               {
-                "parameters": [
-                  {
-                    "name": "msg_duration",
-                    "type": "functionParameter"
-                  }
-                ],
+                "parameters": [],
                 "type": "function"
               }
             ],
@@ -231,93 +208,6 @@
             "limit": 50
           },
           "table": "timing"
-        },
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "P44368ADAD746BC27"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "hide": false,
-          "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT server_received_msg_ts as time, extract(seconds from msg_duration) as all_gpt35\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = 'all_gpt35_config'\nORDER BY time",
-          "refId": "B",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
-          }
-        },
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "P44368ADAD746BC27"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "hide": false,
-          "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT server_received_msg_ts as time, extract(seconds from msg_duration) as mgpt35_sgpt4\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = 'mgpt35_sgpt4_config'\nORDER BY time",
-          "refId": "C",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
-          }
-        },
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "P44368ADAD746BC27"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "hide": false,
-          "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n)\nSELECT extract(seconds from msg_duration) as {{ prod_model_name }}\nFROM timing JOIN msg_to_config on timing.mid = msg_to_config.message_id\nWHERE server_received_msg_ts >= $__timeFrom() AND server_received_msg_ts < $__timeTo() and config_name = '{{ prod_config_name }}'",
-          "refId": "D",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
-          }
         }
       ],
       "title": "A2rchi Response Time Histogram",
@@ -357,46 +247,29 @@
             }
           },
           "mappings": [
+{% for palette in feedback_palette %}
+            {% set base = loop.index0 * 2 %}
             {
               "options": {
-                "pattern": "like_with_context_{{ prod_config_name }}",
+                "pattern": "like_{{ palette.name }}",
                 "result": {
-                  "color": "green",
-                  "index": 0
+                  "color": "{{ palette.like }}",
+                  "index": {{ base }}
                 }
               },
               "type": "regex"
             },
             {
               "options": {
-                "pattern": "like_no_context_{{ prod_config_name }}",
+                "pattern": "dislike_{{ palette.name }}",
                 "result": {
-                  "color": "light-green",
-                  "index": 1
+                  "color": "{{ palette.dislike }}",
+                  "index": {{ base + 1 }}
                 }
               },
               "type": "regex"
-            },
-            {
-              "options": {
-                "pattern": "dislike_with_context_{{ prod_config_name }}",
-                "result": {
-                  "color": "red",
-                  "index": 2
-                }
-              },
-              "type": "regex"
-            },
-            {
-              "options": {
-                "pattern": "dislike_no_context_{{ prod_config_name }}",
-                "result": {
-                  "color": "light-red",
-                  "index": 3
-                }
-              },
-              "type": "regex"
-            }
+            }{% if not loop.last %},{% endif %}
+{% endfor %}
           ],
           "thresholds": {
             "mode": "absolute",
@@ -452,7 +325,7 @@
           "format": "table",
           "hide": false,
           "rawQuery": true,
-          "rawSql": "WITH msg_to_config AS (\n  SELECT message_id, config_name\n  FROM conversations JOIN configs ON conversations.conf_id = configs.config_id\n),\nfiltered_feedback AS (\n  SELECT mid, config_name, feedback, \n         MAX(feedback_ts) AS feedback_ts,\n         CASE \n           WHEN feedback = 'like' AND context IS NOT NULL THEN 'like_with_context'\n           WHEN feedback = 'like' AND context IS NULL THEN 'like_no_context'\n           WHEN feedback = 'dislike' AND context IS NOT NULL THEN 'dislike_with_context'\n           WHEN feedback = 'dislike' AND context IS NULL THEN 'dislike_no_context'\n         END AS context_label\n  FROM feedback\n  JOIN msg_to_config ON feedback.mid = msg_to_config.message_id\n  JOIN conversations ON feedback.mid = conversations.message_id\n  GROUP BY mid, config_name, feedback, context\n)\nSELECT \n  COUNT(*) AS count,\n  context_label || '_' || config_name AS feedback,\n  config_name\nFROM filtered_feedback\nGROUP BY context_label, config_name\nORDER BY context_label;\n",
+          "rawSql": "WITH msg_to_config AS (\n  SELECT c.message_id, cfg.config_name\n  FROM conversations c\n  JOIN configs cfg ON c.conf_id = cfg.config_id\n),\nfeedback_by_config AS (\n  SELECT f.feedback,\n         mtc.config_name\n  FROM feedback f\n  JOIN msg_to_config mtc ON f.mid = mtc.message_id\n  WHERE f.feedback IN ('like', 'dislike')\n)\nSELECT \n  COUNT(*) AS count,\n  feedback || '_' || config_name AS feedback,\n  config_name\nFROM feedback_by_config\nGROUP BY feedback, config_name\nORDER BY config_name,\n         CASE feedback WHEN 'like' THEN 1 ELSE 2 END;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -485,7 +358,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "fillOpacity": 80,
@@ -500,16 +373,7 @@
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
+            "steps": []
           }
         },
         "overrides": []

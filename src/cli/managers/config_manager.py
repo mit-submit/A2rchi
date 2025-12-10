@@ -11,7 +11,7 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-static_fields = ['global','services']
+STATIC_FIELDS = ['global','services']
 
 class ConfigurationManager:
     """Manages A2rchi configuration loading and validation"""
@@ -53,11 +53,11 @@ class ConfigurationManager:
             previous_config = self.configs[-1]
 
             #This does not assume the static_fields to be required 
-            for static_field in static_fields:
+            for static_field in STATIC_FIELDS:
                 if static_field in previous_config.keys():
                     if not static_field in config.keys():
                         raise ValueError(f"The field {static_field} must be present in all configurations.")
-                    
+
                     if previous_config[static_field] != config[static_field]:
                         raise ValueError(f"The field {static_field} must be consistent across all configurations.")
 

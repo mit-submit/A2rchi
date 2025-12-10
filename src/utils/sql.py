@@ -22,11 +22,43 @@ INSERT INTO feedback (
 VALUES (%s, %s, %s, %s, %s, %s, %s);
 """
 
+SQL_DELETE_REACTION_FEEDBACK = """
+DELETE FROM feedback
+WHERE mid = %s AND feedback IN ('like', 'dislike');
+"""
+
 SQL_QUERY_CONVO = """
 SELECT sender, content
 FROM conversations
 WHERE conversation_id = %s
 ORDER BY message_id ASC;
+"""
+
+SQL_QUERY_CONVO_WITH_FEEDBACK = """
+SELECT c.sender,
+       c.content,
+       c.message_id,
+       lf.feedback,
+       COALESCE(cf.comment_count, 0) AS comment_count
+FROM conversations c
+LEFT JOIN (
+    SELECT DISTINCT ON (mid)
+        mid,
+        feedback,
+        feedback_ts
+    FROM feedback
+    WHERE feedback IN ('like', 'dislike')
+    ORDER BY mid, feedback_ts DESC
+) lf ON lf.mid = c.message_id
+LEFT JOIN (
+    SELECT mid,
+           COUNT(*) AS comment_count
+    FROM feedback
+    WHERE feedback = 'comment'
+    GROUP BY mid
+) cf ON cf.mid = c.message_id
+WHERE c.conversation_id = %s
+ORDER BY c.message_id ASC;
 """
 
 SQL_INSERT_TIMING = """
@@ -78,4 +110,18 @@ WHERE conversation_id = %s AND client_id = %s;
 SQL_DELETE_CONVERSATION = """
 DELETE FROM conversation_metadata
 WHERE conversation_id = %s AND client_id = %s;
+"""
+
+SQL_INSERT_TOOL_CALLS = """
+INSERT INTO agent_tool_calls (
+    conversation_id, message_id, step_number, tool_name, tool_args, tool_result, ts
+)
+VALUES %s;
+"""
+
+SQL_QUERY_TOOL_CALLS = """
+SELECT step_number, tool_name, tool_args, tool_result, ts
+FROM agent_tool_calls
+WHERE message_id = %s
+ORDER BY step_number ASC;
 """

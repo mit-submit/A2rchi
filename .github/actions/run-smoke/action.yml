@@ -45,6 +45,10 @@ inputs:
     description: Base URL passed to smoke.sh via BASE_URL.
     required: false
     default: http://localhost:7861
+  use-podman:
+    description: Use podman instead of docker.
+    required: false
+    default: "false"
 
 outputs:
   deployment-name:
@@ -87,6 +91,7 @@ runs:
         SERVICES: ${{ inputs.services }}
         HOSTMODE: ${{ inputs.hostmode }}
         ENV_FILE: ${{ inputs.env-file }}
+        USE_PODMAN: ${{ inputs.use-podman }}
       run: |
         set -euo pipefail
         if [[ -n "${EXTRA_ENV}" ]]; then
@@ -97,6 +102,9 @@ runs:
           done <<< "${EXTRA_ENV}"
         fi
         CMD=(a2rchi create --name "${DEPLOYMENT_NAME}" --config "${CONFIG_DEST}" -v 4 --services "${SERVICES}" --env-file "${ENV_FILE}")
+        if [[ "${USE_PODMAN,,}" == "true" ]]; then
+          CMD+=(--podman)
+        fi
         if [[ "${HOSTMODE,,}" == "true" ]]; then
           CMD+=(--hostmode)
         fi
@@ -163,6 +171,7 @@ runs:
         EXTRA_ENV: ${{ inputs.extra-env }}
         ENV_FILE: ${{ inputs.env-file }}
         CONFIG_DEST: ${{ inputs.config-destination }}
+        USE_PODMAN: ${{ inputs.use-podman }}
       run: |
         set +e
         if [[ -n "${EXTRA_ENV}" ]]; then
@@ -173,7 +182,11 @@ runs:
           done <<< "${EXTRA_ENV}"
         fi
         if [[ -n "${DEPLOYMENT_NAME}" ]]; then
-          a2rchi delete --name "${DEPLOYMENT_NAME}" || true
+          if [[ "${USE_PODMAN,,}" == "true" ]]; then
+            yes | a2rchi delete --name "${DEPLOYMENT_NAME}" --podman --rmi --rmv || true
+          else
+            a2rchi delete --name "${DEPLOYMENT_NAME}" || true
+          fi
+          sleep 2
         fi
         rm -f "${ENV_FILE}"
-        # Leave copied config in place for debugging if needed.

@@ -62,10 +62,15 @@
               <span id="send-btn" class="material-symbols-rounded">send</span>
             </div>
             <div class="typing-controls">
-              <select id="config-dropdown"> </select>
-              <span id="theme-btn" class="material-symbols-rounded">light_mode</span>
-              <span id="refresh-btn" class="material-symbols-rounded">autorenew</span>
-              <span id="delete-btn" class="material-symbols-rounded">delete</span>
+              <span id="refresh-btn" class="material-symbols-rounded" title="Regenerate last answer">autorenew</span>
+              <span id="delete-btn" class="material-symbols-rounded" title="Clear chat window">delete</span>
+              <div class="config-selector">
+                <button id="config-menu-btn" class="config-menu-button" type="button" title="Choose your agent">
+                  <img src="/static/images/agent.svg" alt="Choose your agent" width="28" height="28">
+                </button>
+                <select id="config-dropdown" hidden></select>
+              </div>
+              <span id="theme-btn" class="material-symbols-rounded" title="Toggle theme">light_mode</span>
             </div>
           </div>
         </div>
@@ -91,6 +96,35 @@
         <label for="appropriate_checkbox"> The answer is not appropriate</label><br>
         <br>
         <button id="dislike-submit-button">Submit</button>
+      </div>
+    </div>
+    <!-- Written feedback form -->
+    <div id="text-feedback-form" style="display: none;">
+      <div id="text-feedback-content">
+        <div id="text-feedback-heading-container">
+          <h2>Written Feedback</h2>
+          <button id="text-feedback-close-button">
+            <img src="/static/images/close.png" alt="Close" width="30" height="30">
+          </button>
+        </div>
+        <textarea id="text-feedback-textarea" rows="4" cols="50" placeholder="Share more about this response..."></textarea>
+        <div class="text-feedback-actions">
+          <span id="text-feedback-count" class="text-feedback-count">0 comments submitted</span>
+          <button id="text-feedback-submit-button">Submit</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config selection overlay -->
+    <div id="config-menu-overlay" style="display: none;">
+      <div id="config-menu-content">
+        <div class="config-menu-header">
+          <h2>Choose your agent</h2>
+          <button id="config-menu-close">
+            <img src="/static/images/close.png" alt="Close" width="30" height="30">
+          </button>
+        </div>
+        <div id="config-menu-options"></div>
       </div>
     </div>
 
