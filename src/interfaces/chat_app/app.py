@@ -867,7 +867,7 @@ class FlaskAppWrapper(object):
 
         # insert config
         self.config_id = self.insert_config(self.config)
-ß
+
         # create the chat from the wrapper and ensure default config is active
         self.chat = ChatWrapper()
         self.chat.update_config(config_name=self.config["name"])
