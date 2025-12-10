@@ -39,6 +39,13 @@ async function loadDocument(documentPath) {
     try {
         const response = await fetch(API_URL);
         
+        // Check for 401 Unauthorized response
+        if (response.status === 401) {
+            console.log("Unauthorized - redirecting to landing page");
+            window.location.href = '/';
+            return;
+        }
+        
         if (response.error) {
             console.error("Error loading document:", response.error);
             return;
