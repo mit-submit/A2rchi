@@ -586,7 +586,7 @@ class ChatWrapper:
         self.lock.acquire()
         timestamps['lock_acquisition_ts'] = datetime.now()
         try:
-            self.data_manager.update_tickets() 
+            self.data_manager.update_tickets()
         except Exception as e:
             #NOTE: Error is logged but a failure to update tickets does not necessarily mean A2rchi cannot process and respond to the message
             logger.error(f"Failed to update tickets - {str(e)}")
@@ -1591,7 +1591,7 @@ class FlaskAppWrapper(object):
             document = self.catalog.get_document_for_hash(file_hash)
             metadata = self.catalog.get_metadata_for_hash(file_hash)
 
-            title = metadata['title'] if 'title' in metadata.keys() else metadata['ticket_id'] if 'ticket_id' in metadata.keys() else metadata['display_name']
+            title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
             return jsonify({'document':document,
                             'display_name':metadata['display_name'],
                             'source_type':metadata['source_type'],

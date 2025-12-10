@@ -107,8 +107,11 @@ class JiraClient:
                 created_at=created_at or None,
                 metadata={k: v for k, v in metadata.items() if v},
             )
-
-            logger.debug(f"Collected JIRA ticket {issue_key}")
+            
+            if collect_since:
+                logger.debug(f"Ticket {issue_key} was recently pulled from client as it was updated or created after last collection date {collect_since.strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                logger.debug(f"Collected JIRA ticket {issue_key}")
             yield record
 
     def get_all_issues(self, collect_since: datetime, cutoff_date: datetime) -> Iterator[jira.Issue]:
@@ -125,6 +128,7 @@ class JiraClient:
                 jql_date_string = cutoff_date.strftime("%Y-%m-%d %H:%M")
                 query += f' AND created < "{jql_date_string}"'
 
+            logger.debug(query)
             start_at = 0
             project_start = perf_counter()
             while True:

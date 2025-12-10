@@ -30,21 +30,13 @@ class TicketManager:
         self.jira_client = None
         if self.jira_config.get('enabled', False):
             self.jira_client = self._init_client(lambda: JiraClient(self.jira_config), "JIRA")
-            try:
-                self.cutoff_dates['JIRA'] = self.jira_config.get('cutoff_date') if isinstance(self.jira_config.get('cutoff_date'),date) else datetime.strptime(self.jira_config.get('cutoff_date').strip(),'%Y-%m-%d')
-            except Exception as e:
-                logger.warning(str(e))
-                logger.warning(f"The JIRA cutoff date {self.jira_config.get('cutoff_date')} is not in YYYY-MM-DD format. Skipping attribute.")
+            self.cutoff_dates['JIRA'] = self._parse_cutoff_date(self.jira_config)
 
 
         self.redmine_client = None
         if self.redmine_config.get('enabled', False):
             self.redmine_client = self._init_client(lambda: RedmineClient(self.redmine_config), "Redmine")
-            try:
-                self.cutoff_dates['Redmine'] = self.redmine_config.get('cutoff_date') if isinstance(self.redmine_config.get('cutoff_date'),date) else datetime.strptime(self.redmine_config.get('cutoff_date').strip(),'%Y-%m-%d')
-            except Exception as e:
-                logger.warning(str(e))
-                logger.warning(f"The Redmine cutoff date {self.redmine_config.get('cutoff_date')} is not in YYYY-MM-DD format. Skipping attribute.")
+            self.cutoff_dates['Redmine'] = self._parse_cutoff_date(self.redmine_config)
 
     def collect(self, persistence: PersistenceService) -> None:            
         self._collect_from_client(self.jira_client, "JIRA", persistence, None,self.cutoff_dates['JIRA'])
@@ -57,15 +49,17 @@ class TicketManager:
             jira_frequency = self.jira_config.get('frequency')
             date_last_collected_at = self.last_collected_at["JIRA"]
             cutoff_date = self.cutoff_dates['JIRA']
-            if (date_last_collected_at-now).minutes>=jira_frequency or jira_frequency==0:
-                self._collect_from_client(self.jira_client, "JIRA", persistence, date_last_collected_at, cutoff_date)
+            if date_last_collected_at:
+                if (now-date_last_collected_at).total_seconds()/60>=jira_frequency or jira_frequency==0:
+                    self._collect_from_client(self.jira_client, "JIRA", persistence, date_last_collected_at, cutoff_date)
 
         if self.redmine_config.get('enabled', False):
             redmine_frequency = self.redmine_config.get('frequency')
             date_last_collected_at = self.last_collected_at["Redmine"]
             cutoff_date = self.cutoff_dates['Redmine']
-            if (date_last_collected_at-now).minutes>=redmine_frequency or redmine_frequency==0:
-                self._collect_from_client(self.redmine_client, "Redmine", persistence, date_last_collected_at, cutoff_date)
+            if date_last_collected_at:
+                if (now-date_last_collected_at).total_seconds()/60>=redmine_frequency or redmine_frequency==0:
+                    self._collect_from_client(self.redmine_client, "Redmine", persistence, date_last_collected_at, cutoff_date)
 
 
 
@@ -122,6 +116,24 @@ class TicketManager:
             try:
                 persistence.persist_resource(resource, persistence.data_path / "tickets")
             except Exception as exc:
-                logger.error(
+                logger.warning(
                     f"Failed to persist ticket {resource.ticket_id} from {resource.source}: {exc}"
                 )
+
+    def _parse_cutoff_date(
+            self,
+            ticket_integration_config: dict
+        ) -> date:
+        cutoff_date = ticket_integration_config.get('cutoff_date',None)
+
+        if not isinstance(cutoff_date,date):
+            try:
+                cutoff_date = datetime.strptime(cutoff_date.strip(),'%Y-%m-%d')
+            except Exception as e:
+                logger.warning(str(e))
+
+        if cutoff_date is None:
+            logger.warning(f"The cutoff date: {cutoff_date} is not in YYYY-MM-DD format. Skipping attribute.")
+
+        return cutoff_date
+        
