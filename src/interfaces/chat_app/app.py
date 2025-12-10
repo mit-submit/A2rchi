@@ -851,9 +851,13 @@ class FlaskAppWrapper(object):
                 'logged_in': True,
                 'email': user.get('email', ''),
                 'name': user.get('name', ''),
-                'auth_method': session.get('auth_method', 'unknown')
+                'auth_method': session.get('auth_method', 'unknown'),
+                'auth_enabled': self.auth_enabled
             })
-        return jsonify({'logged_in': False})
+        return jsonify({
+            'logged_in': False,
+            'auth_enabled': self.auth_enabled
+        })
 
     def require_auth(self, f):
         """Decorator to require authentication for routes"""

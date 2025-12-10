@@ -660,6 +660,13 @@ async function loadUserInfo() {
         const userSection = document.getElementById('user-section');
         const loginSection = document.getElementById('login-section');
         
+        // Hide both sections if auth is not enabled
+        if (!data.auth_enabled) {
+            userSection.style.display = 'none';
+            loginSection.style.display = 'none';
+            return;
+        }
+        
         if (data.logged_in) {
             // Show user info
             document.getElementById('user-name').textContent = data.name || 'User';
@@ -673,9 +680,9 @@ async function loadUserInfo() {
         }
     } catch (error) {
         console.error('Error loading user info:', error);
-        // Default to showing login button on error
+        // Default to hiding both sections on error
         document.getElementById('user-section').style.display = 'none';
-        document.getElementById('login-section').style.display = 'flex';
+        document.getElementById('login-section').style.display = 'none';
     }
 }
 
