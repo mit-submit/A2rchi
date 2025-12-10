@@ -878,12 +878,6 @@ class FlaskAppWrapper(object):
         # add endpoints for flask app
         # Public endpoints (no auth required)
         self.add_endpoint('/', 'landing', self.landing)
-        self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.get_chat_response, methods=["POST"])
-        self.add_endpoint('/terms', 'terms', self.terms)
-        self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
-        self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
-        self.add_endpoint('/api/text_feedback', 'text_feedback', self.text_feedback, methods=["POST"])
-        self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
         
         # Protected endpoints (require auth when enabled)
@@ -894,6 +888,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/dislike', 'dislike', self.require_auth(self.dislike),  methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.require_auth(self.update_config), methods=["POST"])
         self.add_endpoint('/api/get_configs', 'get_configs', self.require_auth(self.get_configs), methods=["GET"])
+        self.add_endpoint('/api/text_feedback', 'text_feedback', self.require_auth(self.text_feedback), methods=["POST"])
 
         # conditionally add ChromaDB endpoints based on config
         if self.chat_app_config.get('enable_debug_chroma_endpoints', False):

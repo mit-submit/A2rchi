@@ -370,7 +370,7 @@ async function loadConversations() {
         conversationsList.innerHTML = '';
         
         // fill with conversations
-        if (response.conversations.length === 0) {
+        if (data.conversations.length === 0) {
             if (maxConversationIdSeen !== null) {
                 maxConversationIdSeen = null;
                 persistMaxConversationId(null);
@@ -382,7 +382,7 @@ async function loadConversations() {
             conversationsList.innerHTML = '<div class="loading-conversations">No conversations yet</div>';
             return;
         }
-        const conversationIds = response.conversations.map(conv => conv.conversation_id);
+        const conversationIds = data.conversations.map(conv => conv.conversation_id);
         const currentMaxConversationId = conversationIds.length > 0 ? Math.max(...conversationIds) : null;
         if (
             clearedConversationIds.size > 0 &&
@@ -399,7 +399,7 @@ async function loadConversations() {
         }
         let hasVisibleConversations = false;
         
-        response.conversations.forEach(conv => {
+        data.conversations.forEach(conv => {
             if (clearedConversationIds.has(conv.conversation_id)) {
                 return;
             }
