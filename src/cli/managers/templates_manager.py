@@ -1,6 +1,7 @@
 import copy
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List
@@ -25,7 +26,6 @@ BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 
 
 def get_git_information() -> Dict[str, str]:
-    import subprocess
 
     meta_data: Dict[str, str] = {}
     wd = Path(__file__).parent
@@ -52,6 +52,20 @@ def get_git_information() -> Dict[str, str]:
             diff_comm, encoding="UTF-8", cwd=wd
         )
     return meta_data
+
+
+def get_git_version() -> str:
+    """Get the current git version using 'git describe --tags --always --dirty'."""
+    
+    try:
+        version = subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            stderr=subprocess.DEVNULL,
+            cwd=Path(__file__).parent
+        ).strip().decode("utf-8")
+        return version
+    except Exception:
+        return "unknown"
 
 
 @dataclass
@@ -347,6 +361,8 @@ class TemplateManager:
         template_vars = context.plan.to_template_vars()
         template_vars.update(self._extract_port_config(context))
         template_vars.setdefault("postgres_port", context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432))
+
+        template_vars["app_version"] = get_git_version()
 
         # Compose template still expects optional lists
         template_vars.setdefault("prompt_files", [])
