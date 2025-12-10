@@ -30,11 +30,12 @@ from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS
+from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.interfaces.chat_app.document_utils import *
+from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
 
 logger = get_logger(__name__)
@@ -44,6 +45,7 @@ QUERY_LIMIT = 10000 # max queries per conversation
 MAIN_PROMPT_FILE = "/root/A2rchi/main.prompt"
 CONDENSE_PROMPT_FILE = "/root/A2rchi/condense.prompt"
 SUMMARY_PROMPT_FILE = "/root/A2rchi/summary.prompt"
+A2RCHI_SENDER = "A2rchi"
 
 
 class AnswerRenderer(mt.HTMLRenderer):
@@ -130,12 +132,89 @@ class ChatWrapper:
         self.a2rchi = A2rchi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
-        # initialize config_id to be None
+        # track configs and active config state
+        self.default_config_name = self.config.get("name")
+        self.current_config_name = None
         self.config_id = None
+        self.config_name_to_id = {}
+        self._config_cache = {}
+        if self.default_config_name:
+            self._config_cache[self.default_config_name] = self.config
 
-    def update_config(self, config_id, config_name=None):
+        # ensure all supplied configs are registered in Postgres and activate default
+        self._store_config_ids()
+        if self.default_config_name:
+            self.update_config(config_name=self.default_config_name)
+
+    def update_config(self, config_id=None, config_name=None):
+        """
+        Update the active config by ensuring it exists in thje postgres and applying it to the pipeline.
+        """
+        target_config_name = config_name or self.current_config_name or self.default_config_name
+        if not target_config_name:
+            raise ValueError("Config name must be provided to update the chat configuration.")
+
+        config_payload = self._get_config_payload(target_config_name)
+        if config_id is None:
+            config_id = self._get_or_create_config_id(target_config_name, config_payload)
+        else:
+            self.config_name_to_id[target_config_name] = config_id
+
+        if self.config_id == config_id and self.current_config_name == target_config_name:
+            return
+
+        pipeline_name = config_payload["services"]["chat_app"]["pipeline"]
         self.config_id = config_id
-        self.a2rchi.update(pipeline=self.config["services"]["chat_app"]["pipeline"], config_name=config_name)
+        self.current_config_name = target_config_name
+        self.a2rchi.update(pipeline=pipeline_name, config_name=target_config_name)
+
+    def _get_config_payload(self, config_name):
+        if config_name not in self._config_cache:
+            self._config_cache[config_name] = load_config(name=config_name)
+        return self._config_cache[config_name]
+
+    def _get_or_create_config_id(self, config_name, config_payload=None):
+        if config_name in self.config_name_to_id:
+            return self.config_name_to_id[config_name]
+
+        payload = config_payload or self._get_config_payload(config_name)
+        serialized = yaml.dump(payload)
+
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT config_id FROM configs WHERE config_name = %s ORDER BY config_id DESC LIMIT 1", (config_name,))
+            row = cursor.fetchone()
+            if row:
+                config_id = row[0]
+            else:
+                insert_tup = [(serialized, config_name)]
+                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONFIG, insert_tup)
+                config_id = list(map(lambda tup: tup[0], cursor.fetchall()))[0]
+            conn.commit()
+            self.config_name_to_id[config_name] = config_id
+            return config_id
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _store_config_ids(self):
+        for config_name in get_config_names():
+            try:
+                payload = self._get_config_payload(config_name)
+                self._get_or_create_config_id(config_name, payload)
+            except FileNotFoundError:
+                logger.warning(f"Config file {config_name} missing.")
+            except Exception as exc:
+                logger.warning(f"Failed to register config {config_name}: {exc}")
+
+    def get_config_id(self, config_name):
+        """
+        Helper for external callers needing the config_id for a given config name.
+        """
+        if config_name in self.config_name_to_id:
+            return self.config_name_to_id[config_name]
+        return self._get_or_create_config_id(config_name)
 
     @staticmethod
     def convert_to_app_history(history):
@@ -333,6 +412,20 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    def delete_reaction_feedback(self, message_id: int):
+        """
+        Remove existing like/dislike records for a message so only one reaction is stored.
+        """
+        if message_id is None:
+            return
+        self.conn = psycopg2.connect(**self.pg_config)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute(SQL_DELETE_REACTION_FEEDBACK, (message_id,))
+        self.conn.commit()
+        self.cursor.close()
+        self.conn.close()
+        self.cursor, self.conn = None, None
+
 
     def query_conversation_history(self, conversation_id, client_id):
         """
@@ -356,6 +449,7 @@ class ChatWrapper:
         # query conversation history
         self.cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
         history = self.cursor.fetchall()
+        history = collapse_assistant_sequences(history, sender_name=A2RCHI_SENDER)
 
         # clean up database connection state
         self.cursor.close()
@@ -622,7 +716,7 @@ class ChatWrapper:
 
             # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
             if is_refresh:
-                while history[-1][0] == "A2rchi":
+                while history and history[-1][0] == A2RCHI_SENDER:
                     _ = history.pop(-1)
 
             # guard call to LLM; if timestamp from message is more than timeout secs in the past;
@@ -633,7 +727,8 @@ class ChatWrapper:
             # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
             if len(history) < QUERY_LIMIT:
                 history = history + [(sender, content)] if not is_refresh else history
-                self.update_config(config_id=self.config_id,config_name=config_name)
+                requested_config = config_name or self.current_config_name or self.default_config_name
+                self.update_config(config_name=requested_config)
                 result = self.a2rchi(history=history, conversation_id=conversation_id)
                 timestamps['chain_finished_ts'] = datetime.now()
             else:
@@ -668,7 +763,7 @@ class ChatWrapper:
 
             # and now finally insert the conversation
             user_message = (sender, content, server_received_msg_ts)
-            a2rchi_message = ("A2rchi", output, timestamps['a2rchi_message_ts'])
+            a2rchi_message = (A2RCHI_SENDER, output, timestamps['a2rchi_message_ts'])
             message_ids = self.insert_conversation(
                 conversation_id,
                 user_message,
@@ -678,6 +773,7 @@ class ChatWrapper:
                 is_refresh
             )
             timestamps['insert_convo_ts'] = datetime.now()
+            history.append((A2RCHI_SENDER, result["answer"]))
             
             # insert tool calls extracted from messages
             agent_messages = getattr(result, 'messages', []) or []
@@ -750,12 +846,9 @@ class FlaskAppWrapper(object):
         self.conn = None
         self.cursor = None
 
-        # insert config
-        self.config_id = self.insert_config(self.config)
-
-        # create the chat from the wrapper
+        # create the chat from the wrapper and ensure default config is active
         self.chat = ChatWrapper()
-        self.chat.update_config(self.config_id)
+        self.chat.update_config(config_name=self.config["name"])
 
         # enable CORS:
         CORS(self.app)
@@ -766,6 +859,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/terms', 'terms', self.terms)
         self.add_endpoint('/api/like', 'like', self.like,  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.dislike,  methods=["POST"])
+        self.add_endpoint('/api/text_feedback', 'text_feedback', self.text_feedback, methods=["POST"])
         self.add_endpoint('/api/update_config', 'update_config', self.update_config, methods=["POST"])
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
         self.add_endpoint('/api/get_configs', 'get_configs', self.get_configs, methods=["GET"])
@@ -878,14 +972,12 @@ class FlaskAppWrapper(object):
         self.conn = None
         self.cursor = None
 
-        # insert config
-        self.config_id = self.insert_config(self.config)
-
-        # create the chat from the wrapper
+        # recreate chat wrapper so all dependent services reload the new config
         self.chat = ChatWrapper()
-        self.chat.update_config(self.config_id)
+        self.chat.update_config(config_name=self.config["name"])
+        new_config_id = self.chat.get_config_id(self.config["name"])
 
-        return jsonify({'response': f'config updated successfully w/config_id: {self.config_id}'}), 200
+        return jsonify({'response': f'config updated successfully w/config_id: {new_config_id}'}), 200
 
     def get_configs(self):
         """
@@ -897,7 +989,16 @@ class FlaskAppWrapper(object):
         """
 
         config_names = get_config_names()
-        return jsonify({'options':config_names}), 200
+        options = []
+        for name in config_names:
+            description = ""
+            try:
+                payload = load_config(name=name)
+                description = payload.get("a2rchi", {}).get("agent_description", "No description provided")
+            except Exception as exc:
+                logger.warning(f"Failed to load config {name} for description: {exc}")
+            options.append({"name": name, "description": description})
+        return jsonify({'options': options}), 200
 
 
     def get_chat_response(self):
@@ -990,6 +1091,8 @@ class FlaskAppWrapper(object):
             # Extract the HTML content and any other data you need
             message_id = data.get('message_id')
 
+            self.chat.delete_reaction_feedback(message_id)
+
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "like",
@@ -1033,6 +1136,8 @@ class FlaskAppWrapper(object):
             unhelpful = data.get('unhelpful')
             inappropriate = data.get('inappropriate')
 
+            self.chat.delete_reaction_feedback(message_id)
+
             feedback = {
                 "message_id"   : message_id,
                 "feedback"     : "dislike",
@@ -1053,6 +1158,50 @@ class FlaskAppWrapper(object):
 
         # According to the Python documentation: https://docs.python.org/3/tutorial/errors.html#defining-clean-up-actions
         # this will still execute, before the function returns in the try or except block.
+        finally:
+            self.chat.lock.release()
+            logger.info("Released lock file")
+
+            if self.chat.cursor is not None:
+                self.chat.cursor.close()
+            if self.chat.conn is not None:
+                self.chat.conn.close()
+
+    def text_feedback(self):
+        self.chat.lock.acquire()
+        logger.info("Acquired lock file for text feedback")
+        try:
+            data = request.json
+            message_id = data.get('message_id')
+            feedback_msg = (data.get('feedback_msg') or '').strip()
+
+            if message_id is None:
+                return jsonify({'error': 'message_id missing'}), 400
+            if not feedback_msg:
+                return jsonify({'error': 'feedback_msg missing'}), 400
+            try:
+                message_id = int(message_id)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'message_id must be an integer'}), 400
+
+            feedback = {
+                "message_id"   : message_id,
+                "feedback"     : "comment",
+                "feedback_ts"  : datetime.now(),
+                "feedback_msg" : feedback_msg,
+                "incorrect"    : None,
+                "unhelpful"    : None,
+                "inappropriate": None,
+            }
+            self.chat.insert_feedback(feedback)
+
+            response = {'message': 'Feedback submitted'}
+            return jsonify(response), 200
+
+        except Exception as e:
+            logger.error(f"Request failed: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
         finally:
             self.chat.lock.release()
             logger.info("Released lock file")
@@ -1329,9 +1478,10 @@ class FlaskAppWrapper(object):
                 conn.close()
                 return jsonify({'error': 'conversation not found'}), 404
 
-            # get history of the conversation
-            cursor.execute(SQL_QUERY_CONVO, (conversation_id, ))
+            # get history of the conversation along with latest feedback state
+            cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
             history_rows = cursor.fetchall()
+            history_rows = collapse_assistant_sequences(history_rows, sender_name=A2RCHI_SENDER, sender_index=0)
 
             conversation = {
                 'conversation_id': meta_row[0],
@@ -1339,7 +1489,13 @@ class FlaskAppWrapper(object):
                 'created_at': meta_row[2].isoformat() if meta_row[2] else None,
                 'last_message_at': meta_row[3].isoformat() if meta_row[3] else None,
                 'messages': [
-                    {'sender': row[0], 'content': row[1]}
+                    {
+                        'sender': row[0],
+                        'content': row[1],
+                        'message_id': row[2],
+                        'feedback': row[3],
+                        'comment_count': row[4] if len(row) > 4 else 0,
+                    }
                     for row in history_rows
                 ]
             }
