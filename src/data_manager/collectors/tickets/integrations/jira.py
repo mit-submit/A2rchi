@@ -87,6 +87,7 @@ class JiraClient:
             fields = getattr(issue, "fields", None)
             issue_key = getattr(issue, "key", str(issue))
             created_at = getattr(fields, "created", "") if fields else ""
+            updated_at = getattr(fields, "updated", "") if fields else ""
             issue_text = self._build_issue_text(issue, fields, cutoff_date)
 
             content_parts = []
@@ -109,7 +110,13 @@ class JiraClient:
             )
             
             if collect_since:
-                logger.debug(f"Ticket {issue_key} was recently pulled from client as it was updated or created after last collection date {collect_since.strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.debug(
+                    "Fetched recently updated/created ticket | ticket=%s collect_since=%s created=%s updated=%s",
+                    issue_key,
+                    collect_since.strftime('%Y-%m-%d %H:%M:%S'),
+                    created_at or 'N/A',
+                    updated_at or 'N/A',
+                )
             else:
                 logger.debug(f"Collected JIRA ticket {issue_key}")
             yield record
@@ -137,7 +144,7 @@ class JiraClient:
                     query,
                     startAt=start_at,
                     maxResults=max_batch_results,
-                    fields=["summary", "description", "project", "created", "comment"],
+                    fields=["summary", "description", "project", "created","updated", "comment"],
                     expand="renderedFields,comment",
                 )
                 fetch_duration = perf_counter() - fetch_start
