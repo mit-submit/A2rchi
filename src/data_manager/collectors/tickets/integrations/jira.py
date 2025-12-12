@@ -1,5 +1,4 @@
 from dateutil.parser import parse
-from datetime import time
 from threading import Lock
 from typing import Any, Dict, Iterator, Optional
 from datetime import datetime
@@ -87,12 +86,16 @@ class JiraClient:
             fields = getattr(issue, "fields", None)
             issue_key = getattr(issue, "key", str(issue))
             created_at = getattr(fields, "created", "") if fields else ""
+            created_at = self._parse_date(created_at) if created_at!="" else ""
             updated_at = getattr(fields, "updated", "") if fields else ""
+            updated_at = self._parse_date(updated_at) if updated_at!="" else ""
             issue_text = self._build_issue_text(issue, fields, cutoff_date)
 
             content_parts = []
             if created_at:
-                content_parts.append(created_at)
+                content_parts.append(created_at.strftime('%Y-%m-%dT%H:%M:%S.%f%z'))
+            if updated_at:
+                content_parts.append(created_at.strftime('%Y-%m-%dT%H:%M:%S.%f%z'))
             content_parts.append(issue_text)
             content = "\n".join(part for part in content_parts if part)
 
@@ -216,3 +219,14 @@ class JiraClient:
         )
 
         return issue_text
+
+    def _parse_date(self,date_string: str) -> datetime:
+        """Return a date object from the JIRA date extracted string."""
+
+        try:
+            dt_object = datetime.strptime(date_string, '%Y-%m-%dT%H:%M:%S.%f%z')
+        except:
+            logger.warning("Error parsing date from JIRA. Reverting to ignoring time zone.")
+            dt_object = datetime.strptime(date_string[:20], '%Y-%m-%dT%H:%M:%S')
+
+        return dt_object
