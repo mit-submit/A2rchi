@@ -1,8 +1,8 @@
 name: Test and Build Tag
 
 env:
-  A2RCHI_DIR: /home/runner/work/a2rchi-local
-  HOME: /home/runner
+  A2RCHI_DIR: ${{ github.workspace }}/a2rchi-local
+  REGISTRY_PREFIX: a2rchi
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   build-images:
-    runs-on: ubuntu-latest
+    runs-on: [submit76-runner]
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       clean: ${{ steps.version.outputs.clean }}
@@ -32,9 +32,11 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          python3 --version
 
       - name: Determine release version
         id: version
@@ -67,7 +69,7 @@ jobs:
         run: scripts/dev/push_docker_images.sh "${{ steps.version.outputs.tag }}"
 
   smoke-test:
-    runs-on: ubuntu-latest
+    runs-on: [submit76-runner]
     needs: build-images
     steps:
       - name: Checkout
@@ -76,10 +78,12 @@ jobs:
           ref: ${{ inputs.ref || 'main' }}
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Set up Python 
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          python3 --version
 
       - name: Install CLI dependencies
         run: |
@@ -96,14 +100,15 @@ jobs:
         uses: ./.github/actions/run-smoke
         with:
           deployment-name: release-${{ github.run_id }}
-          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull always
+          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull 
           config-path: tests/pr_preview_config/pr_preview_config.yaml
           config-destination: configs/ci/ci_config.yaml
           env-file: .env
           services: chatbot
           hostmode: "true"
-          wait-url: http://localhost:7861/api/health
-          base-url: http://localhost:7861
+          wait-url: http://localhost:27861/api/health
+          base-url: http://localhost:27861
+          use-podman: "true"
 
       - name: Commit Dockerfile base image updates
         if: success()
@@ -124,12 +129,13 @@ jobs:
           fi
 
       - name: Prune Docker cache
+        if: always()
         run: |
-          docker system prune -af
-          docker volume prune -f
+          docker system prune -af || true
+          docker volume prune -f || true
 
   release:
-    runs-on: ubuntu-latest
+    runs-on: [submit76-runner]
     needs: [build-images, smoke-test]
     steps:
       - name: Checkout
@@ -138,26 +144,30 @@ jobs:
           ref: ${{ inputs.ref || 'main' }}
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Set up Python (Self-hosted)
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          python3 --version
 
       - name: Promote Docker images to latest
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           VERSION_TAG: ${{ needs.build-images.outputs.tag }}
+          REGISTRY_PREFIX: ${{ env.REGISTRY_PREFIX }}
         run: |
           set -euo pipefail
           echo "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
-          for image in a2rchi/a2rchi-python-base a2rchi/a2rchi-pytorch-base; do
-            docker buildx imagetools create --tag "$image:latest" "$image:$VERSION_TAG"
+          for image in ${REGISTRY_PREFIX}/a2rchi-python-base ${REGISTRY_PREFIX}/a2rchi-pytorch-base; do
+            # Pull the versioned image and re-tag as latest
+            docker pull "docker.io/$image:$VERSION_TAG"
+            docker tag "docker.io/$image:$VERSION_TAG" "docker.io/$image:latest"
+            docker push "docker.io/$image:latest"
           done
-
       - name: Update version in project files
         run: python scripts/dev/update_version.py "${{ needs.build-images.outputs.clean }}"
-
       - name: Commit version bump
         env:
           VERSION_CLEAN: ${{ needs.build-images.outputs.clean }}
