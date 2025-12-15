@@ -94,7 +94,7 @@ jobs:
         run: chmod +x scripts/dev/*.sh
 
       - name: Point Dockerfiles to versioned base images
-        run: python scripts/dev/update_service_base_images.py "${{ needs.build-images.outputs.tag }}"
+        run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source dockerhub
 
       - name: Run smoke deployment
         uses: ./.github/actions/run-smoke
