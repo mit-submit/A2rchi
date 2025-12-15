@@ -1,7 +1,7 @@
 from dateutil.parser import parse
 from threading import Lock
 from typing import Any, Dict, Iterator, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from time import perf_counter
 
 import jira
@@ -58,6 +58,7 @@ class JiraClient:
             return
 
         self.client = client
+        self.timezone = None
         if self.anonymize_data:
             try:
                 self.anonymizer = Anonymizer()
@@ -71,6 +72,22 @@ class JiraClient:
         except Exception as error:
             logger.error(f"Failed to log in to JIRA: {error}")
             return None
+        
+    def _get_jira_timezone(self) -> Optional[timezone]:
+        """Infer JIRA server timezone from a test query."""
+        if not self.client or not self.jira_projects:
+            return None
+        try:
+            issues = self.client.search_issues(
+                f"project={self.jira_projects[0]} ORDER BY updated DESC",
+                maxResults=1, fields=["updated"]
+            )
+            if issues and (dt := self._parse_date(getattr(issues[0].fields, "updated", ""))):
+                if dt.tzinfo and (offset := dt.utcoffset()):
+                    return timezone(offset)
+        except Exception:
+            pass
+        return None
 
     def collect(self, collect_since: datetime, cutoff_date: datetime) -> Iterator[TicketResource]:
         """Return an iterator of tickets pulled from JIRA."""
@@ -124,6 +141,20 @@ class JiraClient:
                 logger.debug(f"Collected JIRA ticket {issue_key}")
             yield record
 
+    def _format_date_for_jql(self, dt: datetime) -> str:
+        """Convert UTC datetime to JIRA server timezone and format for JQL."""
+        if not dt:
+            return ""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        elif dt.tzinfo != timezone.utc:
+            dt = dt.astimezone(timezone.utc)
+        if not self.jira_timezone:
+            self.jira_timezone = self._get_jira_timezone()
+        if self.jira_timezone:
+            dt = dt.astimezone(self.jira_timezone)
+        return dt.strftime("%Y-%m-%d %H:%M")
+
     def get_all_issues(self, collect_since: datetime, cutoff_date: datetime) -> Iterator[jira.Issue]:
         """Fetch all issues from the configured JIRA projects."""
         max_batch_results = min(100, self.max_tickets)  # You can adjust this up to 1000 for JIRA Cloud
@@ -131,11 +162,11 @@ class JiraClient:
             logger.debug(f"Fetching maximum of {int(self.max_tickets)} issues in batches of {max_batch_results} for project: {project}")
             query = f"project={project}"
             if collect_since:
-                jql_date_string = collect_since.strftime("%Y-%m-%d %H:%M")
+                jql_date_string = self._format_date_for_jql(collect_since)
                 query += f' AND (updated > "{jql_date_string}" OR created > "{jql_date_string}")'
 
             if cutoff_date:
-                jql_date_string = cutoff_date.strftime("%Y-%m-%d %H:%M")
+                jql_date_string = self._format_date_for_jql(cutoff_date)
                 query += f' AND created < "{jql_date_string}"'
 
             logger.debug(query)
