@@ -58,7 +58,7 @@ class JiraClient:
             return
 
         self.client = client
-        self.timezone = None
+        self.jira_timezone = None
         if self.anonymize_data:
             try:
                 self.anonymizer = Anonymizer()
