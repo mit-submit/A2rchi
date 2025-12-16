@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>A2rchi - AI Assistant</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style_index.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Google Fonts Link For Icons -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  </head>
+  <body>
+    <div class="landing-container">
+      <div class="landing-content">
+        <div class="landing-logo">
+          <img src="{{ url_for('static', filename='images/a2rchi.png') }}" alt="A2rchi Logo">
+        </div>
+        
+        <h1 class="landing-title">Welcome to A2rchi</h1>
+        
+        <p class="landing-description">
+          Your intelligent AI assistant powered by advanced language models. 
+          Get help with documentation, code, and technical questions.
+        </p>
+        
+        <div class="landing-features">
+          <div class="feature-item">
+            <span class="material-symbols-rounded feature-icon">search</span>
+            <span>Search through documentation and resources</span>
+          </div>
+          <div class="feature-item">
+            <span class="material-symbols-rounded feature-icon">chat</span>
+            <span>Interactive conversational AI interface</span>
+          </div>
+          <div class="feature-item">
+            <span class="material-symbols-rounded feature-icon">code</span>
+            <span>Get help with code and technical issues</span>
+          </div>
+          <div class="feature-item">
+            <span class="material-symbols-rounded feature-icon">history</span>
+            <span>Save and revisit conversation history</span>
+          </div>
+        </div>
+        
+        <div class="auth-section">
+          {% if sso_enabled %}
+          <a href="/login?method=sso" class="sso-btn">
+            <span class="material-symbols-rounded">login</span>
+            <span>Login with SSO</span>
+          </a>
+          {% endif %}
+          
+          {% if sso_enabled and basic_auth_enabled %}
+          <div class="auth-divider">or</div>
+          {% endif %}
+          
+          {% if basic_auth_enabled %}
+          <a href="/login" class="basic-auth-btn">
+            <span class="material-symbols-rounded">password</span>
+            <span>Login with Username</span>
+          </a>
+          {% endif %}
+          
+          {% if not sso_enabled and not basic_auth_enabled %}
+          <a href="/chat" class="sso-btn">
+            <span class="material-symbols-rounded">arrow_forward</span>
+            <span>Get Started</span>
+          </a>
+          {% endif %}
+        </div>
+        
+        <div class="footer-links">
+          <a href="/terms" class="footer-link">Terms of Service</a>
+          <a href="/api/health" class="footer-link">System Status</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
