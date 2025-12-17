@@ -25,7 +25,7 @@ class PersistenceService:
         self._index_dirty = False
         self._metadata_index_dirty = False
 
-    def persist_resource(self, resource: "BaseResource", target_dir: Path) -> Path:
+    def persist_resource(self, resource: "BaseResource", target_dir: Path, overwrite:bool = False) -> Path:
         """
         Write a resource and its metadata to disk,
         updating both indices accordingly: with the unique hash of the file as key for both,
@@ -33,6 +33,10 @@ class PersistenceService:
         """
         target_dir.mkdir(parents=True, exist_ok=True)
         file_path = resource.get_file_path(target_dir)
+        if file_path.exists() and not overwrite:
+            logger.info("Skipping existing resource %s -> %s", resource.get_hash(), file_path)
+            # Still update indices/metadata as needed.
+            return file_path
         content = resource.get_content()
         self._write_content(file_path, content)
 

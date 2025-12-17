@@ -61,6 +61,7 @@ class DeploymentPlan:
 
         # Track services in a consistent order for template rendering
         self.services: Dict[str, ServiceState] = {
+            "data-manager": ServiceState(),
             "chromadb": ServiceState(),
             "postgres": ServiceState(),
             "chatbot": ServiceState(),

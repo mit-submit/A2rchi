@@ -4,7 +4,7 @@ from .classic_pipelines.base import BasePipeline
 from .classic_pipelines.grading import GradingPipeline
 from .classic_pipelines.image_processing import ImageProcessingPipeline
 from .classic_pipelines.qa import QAPipeline
-from .agents.base import BaseAgent
+from .agents.base_react import BaseReActAgent
 from .agents.cms_comp_ops_agent import CMSCompOpsAgent
 
 __all__ = [
@@ -12,6 +12,6 @@ __all__ = [
     "GradingPipeline",
     "ImageProcessingPipeline",
     "QAPipeline",
-    "BaseAgent",
+    "BaseReActAgent",
     "CMSCompOpsAgent",
 ]

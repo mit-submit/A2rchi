@@ -35,6 +35,12 @@ class TicketManager:
         self._collect_from_client(self.jira_client, "JIRA", persistence)
         self._collect_from_client(self.redmine_client, "Redmine", persistence)
 
+    def collect_jira(self, persistence: PersistenceService) -> None:
+        self._collect_from_client(self.jira_client, "JIRA", persistence)
+
+    def collect_redmine(self, persistence: PersistenceService) -> None:
+        self._collect_from_client(self.redmine_client, "Redmine", persistence)
+
     def run(self, persistence: Optional[PersistenceService] = None) -> None:
         """Backward-compatible entry point for legacy callers."""
         if persistence is None:

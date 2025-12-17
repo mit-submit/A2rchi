@@ -376,10 +376,11 @@ class TemplateManager:
         port_config: Dict[str, Any] = {}
 
         for service_name, service_def in self.registry.get_all_services().items():
+            key_prefix = service_name.replace("-", "_")
             if service_def.default_host_port:
-                port_config[f"{service_name}_port_host"] = service_def.default_host_port
+                port_config[f"{key_prefix}_port_host"] = service_def.default_host_port
             if service_def.default_container_port:
-                port_config[f"{service_name}_port_container"] = service_def.default_container_port
+                port_config[f"{key_prefix}_port_container"] = service_def.default_container_port
 
             if service_def.port_config_path:
                 try:
@@ -395,9 +396,9 @@ class TemplateManager:
                         container_port = service_def.default_container_port
 
                     if host_port:
-                        port_config[f"{service_name}_port_host"] = host_port
+                        port_config[f"{key_prefix}_port_host"] = host_port
                     if container_port:
-                        port_config[f"{service_name}_port_container"] = container_port
+                        port_config[f"{key_prefix}_port_container"] = container_port
                 except (KeyError, TypeError):
                     continue
 

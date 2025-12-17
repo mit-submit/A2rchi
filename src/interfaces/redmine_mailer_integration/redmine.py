@@ -31,8 +31,7 @@ class RedmineAIWrapper:
     def __init__(self):
 
         # initialize data manager
-        self.data_manager = DataManager()
-        self.data_manager.update_vectorstore()
+        self.data_manager = DataManager(run_ingestion=False)
 
         # configs
         self.config = load_config()
@@ -109,9 +108,6 @@ class RedmineAIWrapper:
             reformatted_history.append((role,message))
         reformatted_history[0] = ("Expert", reformatted_history[0][1])
         reformatted_history[-1] = ("User", reformatted_history[-1][1])
-
-        # update vectorstore
-        self.data_manager.update_vectorstore()
 
         # execute chain and get answer
         result = self.a2rchi(history=reformatted_history)

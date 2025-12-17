@@ -78,7 +78,6 @@ services:
     include_copy_button: {{ services.chat_app.include_copy_button | default(false, true) }}
     enable_debug_chroma_endpoints: {{ services.chat_app.enable_debug_chroma_endpoints | default(false, true) }}
     flask_debug_mode: {{ services.chat_app.flask_debug_mode | default(true, false) }}
-    verify_urls: {{ services.uploader_app.verify_urls | default(true, false) }}
     auth:
       enabled: {{ services.chat_app.auth.enabled | default(false, true) }}
       sso:
@@ -89,6 +88,15 @@ services:
           scope: {{ services.chat_app.auth.sso.client_kwargs.scope | default("openid profile email", true) }}
       basic:
         enabled: {{ services.chat_app.auth.basic.enabled | default(false, true) }}
+  data_manager:
+    enabled: {{ services.data_manager.enabled | default(true, true) }}
+    port: {{ services.data_manager.port | default(7871, true) }}
+    external_port: {{ services.data_manager.external_port | default(7871, true) }}
+    host: {{ services.data_manager.host | default("0.0.0.0", true) }}
+    hostname: {{ services.data_manager.hostname | default("data-manager", true) }}
+    template_folder: "{{ services.data_manager.template_folder | default('/root/A2rchi/src/interfaces/chat_app/templates', true) }}"
+    static_folder: "{{ services.data_manager.static_folder | default('/root/A2rchi/src/interfaces/chat_app/static', true) }}"
+    flask_debug_mode: {{ services.data_manager.flask_debug_mode | default(false, true) }}
   grader_app:
     port: {{ services.grader_app.port | default(7861, true) }}
     external_port: {{ services.grader_app.external_port | default(7862, true) }}
@@ -151,6 +159,7 @@ data_manager:
     links:
       enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
       visible: {{ data_manager.sources.links.visible | default(true, true) }}
+      schedule: {{ data_manager.sources.links.schedule | default("", true) }}
       input_lists:
         {%- set link_lists = data_manager.sources.links.input_lists | default([], true) %}
         {%- for input_list in link_lists %}
@@ -163,9 +172,11 @@ data_manager:
     git:
       enabled: {{ data_manager.sources.git.enabled | default(false, true) }}
       visible: {{ data_manager.sources.git.visible | default(true, true) }}
+      schedule: {{ data_manager.sources.git.schedule | default("", true) }}
     sso:
       enabled: {{ data_manager.sources.sso.enabled | default(false, true) }}
       visible: {{ data_manager.sources.sso.visible | default(true, true) }}
+      schedule: {{ data_manager.sources.sso.schedule | default("", true) }}
       sso_class: {{ data_manager.sources.sso.sso_class | default('CERNSSOScraper', true) }}
       sso_class_map:
         CERNSSOScraper:
@@ -177,6 +188,7 @@ data_manager:
       enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}
       url: {{ data_manager.sources.jira.url | default('', true) }}
       visible: {{ data_manager.sources.jira.visible | default(true, true) }}
+      schedule: {{ data_manager.sources.jira.schedule | default("", true) }}
       projects:
         {%- for project in data_manager.sources.jira.projects | default([], true) %}
         - {{ project }}
@@ -188,6 +200,7 @@ data_manager:
       url: {{ data_manager.sources.redmine.url | default('', true) }}
       project: {{ data_manager.sources.redmine.project | default('', true) }}
       visible: {{ data_manager.sources.redmine.visible | default(false, true) }}
+      schedule: {{ data_manager.sources.redmine.schedule | default("", true) }}
       anonymize_data: {{ data_manager.sources.redmine.anonymize_data | default(true, true) }}
   utils:
     anonymizer:

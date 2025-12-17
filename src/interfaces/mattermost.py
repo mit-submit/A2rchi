@@ -8,7 +8,6 @@ from flask import Flask
 
 from src.a2rchi.a2rchi import A2rchi
 from src.data_manager.data_manager import DataManager
-from src.interfaces.uploader_app.app import FlaskAppWrapper
 from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -18,8 +17,7 @@ logger = get_logger(__name__)
 class MattermostAIWrapper:
     def __init__(self):
         # initialize and update vector store
-        self.data_manager = DataManager()
-        self.data_manager.update_vectorstore()
+        self.data_manager = DataManager(run_ingestion=False)
 
         # intialize chain
         self.a2rchi = A2rchi()
@@ -31,9 +29,6 @@ class MattermostAIWrapper:
 
         post_str = post['message']
         formatted_history.append(("User", post_str)) 
-
-        # update vector store
-        self.data_manager.update_vectorstore()
 
         # call chain
         answer = self.a2rchi(formatted_history)["answer"]

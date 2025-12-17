@@ -4,7 +4,6 @@ import re
 import time
 
 from datetime import datetime
-from threading import Lock
 from typing import List
 from urllib.parse import urlparse
 from functools import wraps
@@ -33,9 +32,6 @@ from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK
-from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
-from src.data_manager.collectors.persistence import PersistenceService
-from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.interfaces.chat_app.document_utils import *
 from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
@@ -114,9 +110,8 @@ class ChatWrapper:
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
-        # initialize data manager
-        self.data_manager = DataManager()
-        self.data_manager.update_vectorstore()
+        # initialize data manager (ingestion handled by data-manager service)
+        self.data_manager = DataManager(run_ingestion=False)
         embedding_name = self.config["data_manager"]["embedding_name"]
         self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
         self.sources_config = self.config["data_manager"]["sources"]
@@ -129,8 +124,7 @@ class ChatWrapper:
         self.conn = None
         self.cursor = None
 
-        # initialize lock and chain
-        self.lock = Lock()
+        # initialize chain
         self.a2rchi = A2rchi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
@@ -540,10 +534,18 @@ class ChatWrapper:
         """
         logger.debug("Entered insert_conversation.")
 
+        def _sanitize(text: str) -> str:
+            return text.replace("\x00", "") if isinstance(text, str) else text
+
         service = "Chatbot"
         # parse user message / a2rchi message
         user_sender, user_content, user_msg_ts = user_message
         a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
+
+        user_content = _sanitize(user_content)
+        a2rchi_content = _sanitize(a2rchi_content)
+        link = _sanitize(link)
+        a2rchi_context = _sanitize(a2rchi_context)
 
         # construct insert_tups
         insert_tups = (
@@ -680,24 +682,8 @@ class ChatWrapper:
 
         timestamps = {}
 
-        self.lock.acquire()
         timestamps['lock_acquisition_ts'] = datetime.now()
-        try:
-            # update vector store through data manager; will only do something if newwhere files have been added
-            logger.info("Acquired lock file update vectorstore")
-
-            self.data_manager.update_vectorstore()
-            timestamps['vectorstore_update_ts'] = datetime.now()
-
-        except Exception as e:
-            # NOTE: we log the error message but do not return here, as a failure
-            # to update the data manager does not necessarily mean A2rchi cannot
-            # process and respond to the message
-            logger.error(f"Failed to update vectorstore - {str(e)}")
-
-        finally:
-            self.lock.release()
-            logger.info("Released lock file update vectorstore")
+        timestamps['vectorstore_update_ts'] = datetime.now()
 
         try:
             # convert the message to native A2rchi form (because javascript does not have tuples)
@@ -821,9 +807,6 @@ class FlaskAppWrapper(object):
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
-        self.persistence = PersistenceService(self.data_path)
-        self.catalog = CatalogService(self.data_path)
-
         self.salt = read_secret("UPLOADER_SALT")
         secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
         if not secret_key:
@@ -831,19 +814,8 @@ class FlaskAppWrapper(object):
             import secrets
             secret_key = secrets.token_hex(32)
         self.app.secret_key = secret_key
-        self.app.config['UPLOAD_FOLDER'] = os.path.join(self.data_path, "manual_uploads")
-        self.app.config['WEBSITE_FOLDER'] = os.path.join(self.data_path, "manual_websites")
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
-        self.app.config['WEBLISTS_FOLDER'] = os.path.join(self.data_path, "websites")
-
-        # create upload and accounts folders if they don't already exist
-        os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
-        os.makedirs(self.app.config['WEBSITE_FOLDER'], exist_ok=True)
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
-
-        # create path specifying URL sources for scraping
-        self.sources_path = os.path.join(self.data_path, 'index.yaml')
-        self.scraper_manager = ScraperManager()
 
         # store postgres connection info
         self.pg_config = {
@@ -904,15 +876,6 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/load_conversation', 'load_conversation', self.require_auth(self.load_conversation), methods=["POST"])
         self.add_endpoint('/api/new_conversation', 'new_conversation', self.require_auth(self.new_conversation), methods=["POST"])
         self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.require_auth(self.delete_conversation), methods=["POST"])
-
-        # add endpoints for document_index
-        self.add_endpoint('/document_index/', 'document_index', self.require_auth(self.document_index))
-        self.add_endpoint('/document_index/index', 'document_index_alt', self.require_auth(self.document_index))
-        self.add_endpoint('/document_index/upload', 'upload', self.require_auth(self.upload), methods=['POST'])
-        self.add_endpoint('/document_index/delete/<file_hash>', 'delete', self.require_auth(self.delete))
-        self.add_endpoint('/document_index/delete_source/<source_type>', 'delete_source', self.require_auth(self.delete_source))
-        self.add_endpoint('/document_index/upload_url', 'upload_url', self.require_auth(self.upload_url), methods=['POST'])
-        self.add_endpoint('/document_index/load_document/<path:file_hash>', 'load_document', self.require_auth(self.load_document))
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -1773,139 +1736,3 @@ class FlaskAppWrapper(object):
         Returns true if there has been a correct login authentication and false otherwise.
         """
         return 'logged_in' in session and session['logged_in']
-
-    #@app.route('/document_index/')
-    def document_index(self):
-        """
-        Methods which gets all the filenames in the UPLOAD_FOLDER and lists them
-        in the UI.
-
-        Note, this method must convert the file hashes (which is the name the files)
-        are stored under in the filesystem) to file names. It uses get_filename_from_hash
-        for this.
-        """
-        sources_index = {}
-
-        for source_hash in self.catalog.metadata_index.keys():
-            metadata_source = self.catalog.get_metadata_for_hash(source_hash)
-            if not isinstance(metadata_source, dict):
-                logger.info("Metadata for hash %s missing or invalid; skipping", source_hash)
-                continue
-
-            source_type = metadata_source.get("source_type")
-            if not source_type:
-                logger.info("Metadata for hash %s missing source_type; skipping", source_hash)
-                continue
-
-            title = metadata_source.get("ticket_id") or metadata_source.get("url")
-            if not title:
-                title = metadata_source.get("display_name") or source_hash
-
-            sources_index.setdefault(source_type, []).append((source_hash, title))
-
-
-        return render_template('document_index.html', sources_index=sources_index.items())
-
-
-    #@app.route('/document_index/upload', methods=['POST'])
-    def upload(self):
-        """
-        Methods which governs uploading.
-
-        Does not allow uploading if the file is not of a valid file type or if the file
-        already exists in the filesystem.
-        """
-        # check that there is a file selected and that the name is not null
-        if 'file' not in request.files:
-            flash('No file part')
-            return redirect(url_for('index'))
-
-        file = request.files['file']
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(url_for('index'))
-
-        # check it is a valid file
-        file_extension = os.path.splitext(file.filename)[1]
-        if file and file_extension in self.global_config["ACCEPTED_FILES"]:
-
-            try:
-                resource = add_uploaded_file(target_dir=self.app.config['UPLOAD_FOLDER'],file=file, file_extension=file_extension)
-                self.scraper_manager.register_resource(target_dir=Path(self.app.config['UPLOAD_FOLDER']),resource=resource)
-                flash('File uploaded successfully')
-            except Exception:
-                flash(f'File under this name already exists. If you would like to upload a new file, please delete the old one.')
-
-        return redirect(url_for('index'))
-
-
-    #@app.route('/document_index/delete/<file_hash>')
-    def delete(self, file_hash):
-        """
-        Method which governs deleting
-
-        Technically can handle edge case where the file which is trying to be deleted
-        is not in the filesystem.
-        """
-        self.persistence.delete_resource(file_hash)
-        return redirect(url_for('index'))
-
-    #@app.route('/document_index/delete_source/<source_type>')
-    def delete_source(self, source_type):
-        """
-        Method to delete all documents of a specific source type
-        """
-
-        self.persistence.delete_by_metadata_filter("source_type", source_type)
-        return redirect(url_for('index'))
-
-    #@app.route('/document_index/upload_url', methods=['POST'])
-    def upload_url(self):
-        url = request.form.get('url')
-        if url:
-            logger.info(f"Uploading the following URL: {url}")
-            try:
-                target_dir = Path(self.app.config['WEBSITE_FOLDER'])
-                resources = self.scraper_manager.web_scraper.scrape(url)
-                for resource in resources:
-                    self.scraper_manager.register_resource(target_dir, resource)
-                self.scraper_manager.persist_sources()
-                added_to_urls = True
-
-            except Exception as e:
-                logger.error(f"Failed to upload URL: {str(e)}")
-                added_to_urls = False
-
-            if added_to_urls:
-                flash('URL uploaded successfully')
-            else:
-                flash('Failed to add URL')
-        else:
-            flash('No URL provided')
-
-        return redirect(url_for('index'))
-
-
-    #@app.route('/document_index/load_document/<path:file_hash>')
-    def load_document(self, file_hash):
-
-        index = self.catalog.file_index
-        if file_hash in index.keys():
-            document = self.catalog.get_document_for_hash(file_hash)
-            metadata = self.catalog.get_metadata_for_hash(file_hash)
-
-            title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
-            return jsonify({'document':document,
-                            'display_name':metadata['display_name'],
-                            'source_type':metadata['source_type'],
-                            'original_url':metadata['url'],
-                            'title':title})
-
-        else:
-            return jsonify({'document':"Document not found",
-                            'display_name':"Error",
-                            'source_type':'null',
-                            'original_url':"no_url",
-                            'title':'Not found'})
-
-

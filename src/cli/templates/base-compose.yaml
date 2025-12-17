@@ -12,7 +12,7 @@ services:
     ports:
       - {{ chromadb_port_host }}:{{ chromadb_port_host }}
     volumes:
-      - {{ chromadb_volume_name }}:/chroma/chroma/
+      - {{ chromadb_volume_name }}:/chroma/
     logging:
       options:
         max-size: 10m
@@ -27,6 +27,43 @@ services:
       retries: 3
       start_period: 10s
       start_interval: 5s
+  {%- endif %}
+
+  {% if data_manager_enabled -%}
+  data-manager:
+    image: {{ data_manager_image }}:{{ data_manager_tag }}
+    build:
+      context: .
+      dockerfile: a2rchi_code/cli/templates/dockerfiles/Dockerfile-data-manager
+      args:
+        APP_VERSION: {{ app_version }}
+    container_name: {{ data_manager_container_name }}
+    depends_on:
+      {% if chromadb_enabled -%}
+      chromadb:
+        condition: service_healthy
+      {% endif %}
+    environment:
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
+    secrets:
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
+      {% endfor %}
+    volumes:
+      - {{ data_manager_volume_name }}:/root/data/
+      - ./configs:/root/A2rchi/configs
+      - ./weblists:/root/A2rchi/weblists
+    logging:
+      options:
+        max-size: 10m
+    ports:
+      - {{ data_manager_port_host }}:{{ data_manager_port_container }}
+    restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
   {%- endif %}
 
   {% if postgres_enabled -%}
@@ -489,7 +526,7 @@ services:
       - {{ secret.lower() }}
       {% endfor %}
     volumes:
-      - {{ benchmarker_volume_name }}:/root/data/
+      - {{ benchmarking_volume_name }}:/root/data/
       - ./queries.txt:/root/A2rchi/QandA.txt
       - {{ benchmarking_dest }}:/root/A2rchi/benchmarks
       {% for prompt_file in prompt_files | default([]) -%}

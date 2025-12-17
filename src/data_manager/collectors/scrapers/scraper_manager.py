@@ -58,8 +58,7 @@ class ScraperManager:
     ) -> None:
         """Run the configured scrapers and persist their output."""
         websites_dir = persistence.data_path / "websites"
-        git_urls: List[str] = []
-        sso_urls: List[str] = []
+        link_urls, git_urls, sso_urls = self._split_urls()
 
         if self.config.get("reset_data", False):
             persistence.reset_directory(websites_dir)
@@ -68,38 +67,78 @@ class ScraperManager:
             logger.info("Links disabled, skipping all scraping")
             return
 
-        for raw_url in self.collect_urls_from_lists():
-            if raw_url.startswith("git-"):
-                git_urls.append(raw_url.split("git-", 1)[1])
-                continue
-
-            if raw_url.startswith("sso-"):
-                sso_urls.append(raw_url.split("sso-", 1)[1])
-                continue
-
-            if self.links_enabled:
-                self._handle_standard_url(raw_url, persistence, websites_dir)
+        if link_urls:
+            self._collect_links_from_urls(link_urls, persistence, websites_dir)
 
         if self.sso_enabled and sso_urls:
-            sso_resources = self._collect_sso_resources(sso_urls)
-            for resource in sso_resources:
-                persistence.persist_resource(
-                    resource, websites_dir
-                )
+            self._collect_sso_from_urls(sso_urls, persistence, websites_dir)
         elif sso_urls:
             logger.warning("SSO URLs detected but SSO source is disabled; skipping SSO scraping")
 
         if self.git_enabled and git_urls:
             if self.config.get("reset_data", False):
                 persistence.reset_directory(self.git_dir)
-            git_resources = self._collect_git_resources(
-                git_urls, persistence
-            )
+            git_resources = self._collect_git_resources(git_urls, persistence)
             logger.debug(f"Git scraping produced {len(git_resources)} resources")
         elif git_urls:
             logger.warning("Git URLs detected but git source is disabled; skipping git scraping")
 
         logger.info("Web scraping was completed successfully")
+
+    def collect_links(self, persistence: PersistenceService) -> None:
+        """Collect only standard link sources."""
+        if not self.links_enabled:
+            logger.info("Links disabled, skipping link scraping")
+            return
+        websites_dir = persistence.data_path / "websites"
+        if self.config.get("reset_data", False):
+            persistence.reset_directory(websites_dir)
+        link_urls, _, _ = self._split_urls()
+        self._collect_links_from_urls(link_urls, persistence, websites_dir)
+
+    def collect_git(self, persistence: PersistenceService) -> None:
+        """Collect only git sources."""
+        if not self.git_enabled:
+            logger.info("Git disabled, skipping git scraping")
+            return
+        _, git_urls, _ = self._split_urls()
+        if not git_urls:
+            return
+        if self.config.get("reset_data", False):
+            persistence.reset_directory(self.git_dir)
+        self._collect_git_resources(git_urls, persistence)
+
+    def collect_sso(self, persistence: PersistenceService) -> None:
+        """Collect only SSO sources."""
+        if not self.sso_enabled:
+            logger.info("SSO disabled, skipping SSO scraping")
+            return
+        websites_dir = persistence.data_path / "websites"
+        if self.config.get("reset_data", False):
+            persistence.reset_directory(websites_dir)
+        _, _, sso_urls = self._split_urls()
+        self._collect_sso_from_urls(sso_urls, persistence, websites_dir)
+
+    def _collect_links_from_urls(
+        self,
+        urls: List[str],
+        persistence: PersistenceService,
+        websites_dir: Path,
+    ) -> None:
+        for url in urls:
+            self._handle_standard_url(url, persistence, websites_dir)
+
+    def _collect_sso_from_urls(
+        self,
+        urls: List[str],
+        persistence: PersistenceService,
+        websites_dir: Path,
+    ) -> None:
+        if not urls:
+            return
+        sso_resources = self._collect_sso_resources(urls)
+        for resource in sso_resources:
+            persistence.persist_resource(resource, websites_dir)
 
     def collect_urls_from_lists(self) -> List[str]:
         """Collect URLs from the configured weblists."""
@@ -116,6 +155,20 @@ class ScraperManager:
             urls.extend(self._extract_urls_from_file(list_path))
 
         return urls
+
+    def _split_urls(self) -> tuple[List[str], List[str], List[str]]:
+        link_urls: List[str] = []
+        git_urls: List[str] = []
+        sso_urls: List[str] = []
+        for raw_url in self.collect_urls_from_lists():
+            if raw_url.startswith("git-"):
+                git_urls.append(raw_url.split("git-", 1)[1])
+                continue
+            if raw_url.startswith("sso-"):
+                sso_urls.append(raw_url.split("sso-", 1)[1])
+                continue
+            link_urls.append(raw_url)
+        return link_urls, git_urls, sso_urls
 
     def _handle_standard_url(
         self, url: str, persistence: PersistenceService, websites_dir: Path
