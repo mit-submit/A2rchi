@@ -447,14 +447,14 @@ async function loadConversations() {
 
 async function loadConversation(convId) {
     const API_URL = "/api/load_conversation";
-    
+    const clientId = getStoredClientId();
     try {
         const response = await fetch(API_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ conversation_id: convId }),
+            body: JSON.stringify({ conversation_id: convId, client_id: clientId }),
         });
         
         // Check for 401 Unauthorized response
