@@ -10,15 +10,17 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: [submit76-runner]
     env:
-      A2RCHI_DIR: /home/runner/work/a2rchi-local
-      HOME: /home/runner
+      A2RCHI_DIR: ${{ github.workspace }}/a2rchi-local
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+
 
       - name: Detect base image changes
         id: base_changes
@@ -43,6 +45,13 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Python (Self-hosted)
+        if: steps.base_changes.outputs.changed == 'true'
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          python3 --version
       - name: Build base images
         if: steps.base_changes.outputs.changed == 'true'
         id: build

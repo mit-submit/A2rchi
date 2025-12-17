@@ -97,14 +97,6 @@ jobs:
         if: steps.detect.outputs.changed == 'true'
         run: scripts/dev/build_docker_images.sh "${{ steps.detect.outputs.tag }}"
 
-      - name: Push updated base images
-        if: steps.detect.outputs.changed == 'true'
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          PUSH_LATEST: "false"
-        run: scripts/dev/push_docker_images.sh "${{ steps.detect.outputs.tag }}"
-
   preview:
     runs-on: [submit76-runner]
     needs: build-base-images
@@ -140,7 +132,7 @@ jobs:
 
       - name: Prepare base image references
         if: needs.build-base-images.outputs.changed == 'true'
-        run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source dockerhub
+        run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source localhost --orig-tag all
 
       - name: Verify MkDocs build
         run: mkdocs build --config-file docs/mkdocs.yml --strict
@@ -162,12 +154,4 @@ jobs:
           extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull
           use-podman: "true"
 
-      - name: Delete PR preview Docker tags
-        if: ${{ always() && needs.build-base-images.outputs.changed == 'true' }}
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          TAG: ${{ needs.build-base-images.outputs.tag }}
-        run: |
-          set -euo pipefail
-          python scripts/dev/manage_docker_tags.py delete-tag --tag "${TAG}"
+
