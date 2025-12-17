@@ -4,7 +4,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-
 concurrency:
   group: pr-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -35,7 +34,7 @@ jobs:
       contents: read
     env:
       A2RCHI_DIR: ${{ github.workspace }}/a2rchi-local
- 
+
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       tag: ${{ steps.detect.outputs.tag }}
@@ -76,7 +75,7 @@ jobs:
           python-version: "3.11"
 
       - name: Set up Python (Self-hosted)
-        if: ${{ contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }} 
+        if: ${{ contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }}
         run: |
           export PYENV_ROOT="$HOME/.pyenv"
           export PATH="$PYENV_ROOT/bin:$PATH"
@@ -151,7 +150,5 @@ jobs:
           hostmode: "true"
           wait-url: http://localhost:27861/api/health
           base-url: http://localhost:27861
-          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull
+          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build
           use-podman: "true"
-
-
