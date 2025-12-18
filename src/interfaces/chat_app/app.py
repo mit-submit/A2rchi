@@ -27,7 +27,7 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
                              TypeScriptLexer)
 
 from src.a2rchi.a2rchi import A2rchi
-from src.data_manager.data_manager import DataManager
+# from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
@@ -111,7 +111,7 @@ class ChatWrapper:
         self.data_path = self.global_config["DATA_PATH"]
 
         # initialize data manager (ingestion handled by data-manager service)
-        self.data_manager = DataManager(run_ingestion=False)
+        # self.data_manager = DataManager(run_ingestion=False)
         embedding_name = self.config["data_manager"]["embedding_name"]
         self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
         self.sources_config = self.config["data_manager"]["sources"]
@@ -863,12 +863,12 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/text_feedback', 'text_feedback', self.require_auth(self.text_feedback), methods=["POST"])
 
         # conditionally add ChromaDB endpoints based on config
-        if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
-            logger.info("Adding ChromaDB API endpoints (list_docs, search_docs)")
-            self.add_endpoint('/api/list_docs', 'list_docs', self.require_auth(self.list_docs), methods=["GET"])
-            self.add_endpoint('/api/search_docs', 'search_docs', self.require_auth(self.search_docs), methods=["POST"])
-        else:
-            logger.info("ChromaDB API endpoints disabled by config")
+        # if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+        #     logger.info("Adding ChromaDB API endpoints (list_docs, search_docs)")
+        #     self.add_endpoint('/api/list_docs', 'list_docs', self.require_auth(self.list_docs), methods=["GET"])
+        #     self.add_endpoint('/api/search_docs', 'search_docs', self.require_auth(self.search_docs), methods=["POST"])
+        # else:
+        #     logger.info("ChromaDB API endpoints disabled by config")
 
         # endpoints for conversations managing
         logger.info("Adding conversations management API endpoints")
@@ -1367,195 +1367,195 @@ class FlaskAppWrapper(object):
             if self.chat.conn is not None:
                 self.chat.conn.close()
 
-    def list_docs(self):
-        """
-        API endpoint to list all documents indexed in ChromaDB with pagination.
-        Query parameters:
-        - page: Page number (1-based, default: 1)
-        - per_page: Documents per page (default: 50, max: 500)
-        - content_length: Max content preview length (default: -1 for full content)
-        Returns a JSON with paginated list of documents and their metadata.
-        """
-        # Check if ChromaDB endpoints are enabled
-        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
-            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+    # def list_docs(self):
+    #     """
+    #     API endpoint to list all documents indexed in ChromaDB with pagination.
+    #     Query parameters:
+    #     - page: Page number (1-based, default: 1)
+    #     - per_page: Documents per page (default: 50, max: 500)
+    #     - content_length: Max content preview length (default: -1 for full content)
+    #     Returns a JSON with paginated list of documents and their metadata.
+    #     """
+    #     # Check if ChromaDB endpoints are enabled
+    #     if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+    #         return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
 
-        try:
-            # Get pagination parameters from query string
-            page = int(request.args.get('page', 1))
-            per_page = min(int(request.args.get('per_page', 50)), 500)  # Cap at 500
-            content_length = int(request.args.get('content_length', -1))  # Default -1 for full content
+    #     try:
+    #         # Get pagination parameters from query string
+    #         page = int(request.args.get('page', 1))
+    #         per_page = min(int(request.args.get('per_page', 50)), 500)  # Cap at 500
+    #         content_length = int(request.args.get('content_length', -1))  # Default -1 for full content
 
-            # Validate parameters
-            if page < 1:
-                return jsonify({'error': 'Page must be >= 1'}), 400
-            if per_page < 1:
-                return jsonify({'error': 'per_page must be >= 1'}), 400
-            if content_length < -1 or content_length == 0:
-                return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
+    #         # Validate parameters
+    #         if page < 1:
+    #             return jsonify({'error': 'Page must be >= 1'}), 400
+    #         if per_page < 1:
+    #             return jsonify({'error': 'per_page must be >= 1'}), 400
+    #         if content_length < -1 or content_length == 0:
+    #             return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
 
-            # Get the collection from ChromaDB
-            collection = self.chat.data_manager.fetch_collection()
+    #         # Get the collection from ChromaDB
+    #         collection = self.chat.data_manager.fetch_collection()
 
-            # Get total count first
-            total_documents = collection.count()
+    #         # Get total count first
+    #         total_documents = collection.count()
 
-            # Calculate pagination
-            offset = (page - 1) * per_page
-            total_pages = (total_documents + per_page - 1) // per_page  # Ceiling division
+    #         # Calculate pagination
+    #         offset = (page - 1) * per_page
+    #         total_pages = (total_documents + per_page - 1) // per_page  # Ceiling division
 
-            # Check if page is valid
-            if page > total_pages and total_documents > 0:
-                return jsonify({'error': f'Page {page} does not exist. Total pages: {total_pages}'}), 400
+    #         # Check if page is valid
+    #         if page > total_pages and total_documents > 0:
+    #             return jsonify({'error': f'Page {page} does not exist. Total pages: {total_pages}'}), 400
 
-            # Get paginated documents from the collection
-            result = collection.get(
-                include=['documents', 'metadatas'],
-                limit=per_page,
-                offset=offset
-            )
+    #         # Get paginated documents from the collection
+    #         result = collection.get(
+    #             include=['documents', 'metadatas'],
+    #             limit=per_page,
+    #             offset=offset
+    #         )
 
-            # Format the response
-            documents = []
-            for i, doc in enumerate(result['documents']):
-                # Truncate content based on content_length parameter (-1 means full content)
-                if content_length == -1:
-                    content = doc  # Return full content
-                else:
-                    content = doc[:content_length] + '...' if len(doc) > content_length else doc
+    #         # Format the response
+    #         documents = []
+    #         for i, doc in enumerate(result['documents']):
+    #             # Truncate content based on content_length parameter (-1 means full content)
+    #             if content_length == -1:
+    #                 content = doc  # Return full content
+    #             else:
+    #                 content = doc[:content_length] + '...' if len(doc) > content_length else doc
 
-                doc_info = {
-                    'id': result['ids'][i],
-                    'content': content,
-                    'content_length': len(doc),  # Original content length
-                    'metadata': result['metadatas'][i] if i < len(result['metadatas']) else {}
-                }
-                documents.append(doc_info)
+    #             doc_info = {
+    #                 'id': result['ids'][i],
+    #                 'content': content,
+    #                 'content_length': len(doc),  # Original content length
+    #                 'metadata': result['metadatas'][i] if i < len(result['metadatas']) else {}
+    #             }
+    #             documents.append(doc_info)
 
-            response_data = {
-                'pagination': {
-                    'page': page,
-                    'per_page': per_page,
-                    'total_documents': total_documents,
-                    'total_pages': total_pages,
-                    'has_next': page < total_pages,
-                    'has_prev': page > 1,
-                    'next_page': page + 1 if page < total_pages else None,
-                    'prev_page': page - 1 if page > 1 else None
-                },
-                'documents': documents
-            }
+    #         response_data = {
+    #             'pagination': {
+    #                 'page': page,
+    #                 'per_page': per_page,
+    #                 'total_documents': total_documents,
+    #                 'total_pages': total_pages,
+    #                 'has_next': page < total_pages,
+    #                 'has_prev': page > 1,
+    #                 'next_page': page + 1 if page < total_pages else None,
+    #                 'prev_page': page - 1 if page > 1 else None
+    #             },
+    #             'documents': documents
+    #         }
 
-            return jsonify(response_data), 200
+    #         return jsonify(response_data), 200
 
-        except ValueError as e:
-            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
-        except Exception as e:
-            print(f"ERROR in list_docs: {str(e)}")
-            return jsonify({'error': str(e)}), 500
+    #     except ValueError as e:
+    #         return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+    #     except Exception as e:
+    #         print(f"ERROR in list_docs: {str(e)}")
+    #         return jsonify({'error': str(e)}), 500
 
-    # TODO should this call a2rchi rather than connect to db directly?
-    # in any case, code-duplication should be elminated here
-    def search_docs(self):
-        """
-        API endpoint to search for the nearest documents to a given query with pagination.
-        Expects JSON input with:
-        - query (required): Search query string
-        - n_results (optional): Number of results to return (default: 5, max: 100)
-        - content_length (optional): Max content length in response (default: -1 for full content, max: 5000)
-        - include_full_content (optional): Whether to include full content (default: false)
-        Returns the most similar documents with their similarity scores.
-        """
-        # Check if ChromaDB endpoints are enabled
-        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
-            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+    # # TODO should this call a2rchi rather than connect to db directly?
+    # # in any case, code-duplication should be elminated here
+    # def search_docs(self):
+    #     """
+    #     API endpoint to search for the nearest documents to a given query with pagination.
+    #     Expects JSON input with:
+    #     - query (required): Search query string
+    #     - n_results (optional): Number of results to return (default: 5, max: 100)
+    #     - content_length (optional): Max content length in response (default: -1 for full content, max: 5000)
+    #     - include_full_content (optional): Whether to include full content (default: false)
+    #     Returns the most similar documents with their similarity scores.
+    #     """
+    #     # Check if ChromaDB endpoints are enabled
+    #     if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+    #         return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
 
-        try:
-            # Get the query from request
-            data = request.json
-            query = data.get('query')
-            n_results = min(int(data.get('n_results', 5)), 100)  # Cap at 100
-            content_length = min(int(data.get('content_length', -1)), 5000) if data.get('content_length', -1) != -1 else -1  # Default -1 for full content
-            include_full_content = data.get('include_full_content', False)
+    #     try:
+    #         # Get the query from request
+    #         data = request.json
+    #         query = data.get('query')
+    #         n_results = min(int(data.get('n_results', 5)), 100)  # Cap at 100
+    #         content_length = min(int(data.get('content_length', -1)), 5000) if data.get('content_length', -1) != -1 else -1  # Default -1 for full content
+    #         include_full_content = data.get('include_full_content', False)
 
-            if not query:
-                return jsonify({'error': 'Query parameter is required'}), 400
+    #         if not query:
+    #             return jsonify({'error': 'Query parameter is required'}), 400
 
-            if n_results < 1:
-                return jsonify({'error': 'n_results must be >= 1'}), 400
+    #         if n_results < 1:
+    #             return jsonify({'error': 'n_results must be >= 1'}), 400
 
-            if content_length < -1 or content_length == 0:
-                return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
+    #         if content_length < -1 or content_length == 0:
+    #             return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
 
-            # Connect to ChromaDB and create vectorstore
-            client = None
-            if self.services_config["chromadb"]["use_HTTP_chromadb_client"]:
-                client = chromadb.HttpClient(
-                    host=self.services_config["chromadb"]["chromadb_host"],
-                    port=self.services_config["chromadb"]["chromadb_port"],
-                    settings=Settings(allow_reset=True, anonymized_telemetry=False),
-                )
-            else:
-                client = chromadb.PersistentClient(
-                    path=self.global_config["LOCAL_VSTORE_PATH"],
-                    settings=Settings(allow_reset=True, anonymized_telemetry=False),
-                )
+    #         # Connect to ChromaDB and create vectorstore
+    #         client = None
+    #         if self.services_config["chromadb"]["use_HTTP_chromadb_client"]:
+    #             client = chromadb.HttpClient(
+    #                 host=self.services_config["chromadb"]["chromadb_host"],
+    #                 port=self.services_config["chromadb"]["port"],
+    #                 settings=Settings(allow_reset=True, anonymized_telemetry=False),
+    #             )
+    #         else:
+    #             client = chromadb.PersistentClient(
+    #                 path=self.global_config["LOCAL_VSTORE_PATH"],
+    #                 settings=Settings(allow_reset=True, anonymized_telemetry=False),
+    #             )
 
-            # Get the collection name and embedding model from chat
-            collection_name = self.chat.chain.collection_name
-            embedding_model = self.chat.chain.embedding_model
+    #         # Get the collection name and embedding model from chat
+    #         collection_name = self.chat.chain.collection_name
+    #         embedding_model = self.chat.chain.embedding_model
 
-            # Create vectorstore
-            vectorstore = Chroma(
-                client=client,
-                collection_name=collection_name,
-                embedding_function=embedding_model,
-            )
+    #         # Create vectorstore
+    #         vectorstore = Chroma(
+    #             client=client,
+    #             collection_name=collection_name,
+    #             embedding_function=embedding_model,
+    #         )
 
-            # Perform similarity search with scores
-            results = vectorstore.similarity_search_with_score(query, k=n_results)
+    #         # Perform similarity search with scores
+    #         results = vectorstore.similarity_search_with_score(query, k=n_results)
 
-            # Format the response
-            documents = []
-            for doc, score in results:
-                # Handle content length based on parameters
-                if include_full_content or content_length == -1:
-                    content = doc.page_content
-                else:
-                    content = (doc.page_content[:content_length] + '...'
-                             if len(doc.page_content) > content_length
-                             else doc.page_content)
+    #         # Format the response
+    #         documents = []
+    #         for doc, score in results:
+    #             # Handle content length based on parameters
+    #             if include_full_content or content_length == -1:
+    #                 content = doc.page_content
+    #             else:
+    #                 content = (doc.page_content[:content_length] + '...'
+    #                          if len(doc.page_content) > content_length
+    #                          else doc.page_content)
 
-                doc_info = {
-                    'content': content,
-                    'content_length': len(doc.page_content),  # Original content length
-                    'metadata': doc.metadata,
-                    'similarity_score': float(score)
-                }
-                documents.append(doc_info)
+    #             doc_info = {
+    #                 'content': content,
+    #                 'content_length': len(doc.page_content),  # Original content length
+    #                 'metadata': doc.metadata,
+    #                 'similarity_score': float(score)
+    #             }
+    #             documents.append(doc_info)
 
-            response_data = {
-                'query': query,
-                'search_params': {
-                    'n_results_requested': n_results,
-                    'n_results_returned': len(documents),
-                    'content_length': content_length,
-                    'include_full_content': include_full_content
-                },
-                'documents': documents
-            }
+    #         response_data = {
+    #             'query': query,
+    #             'search_params': {
+    #                 'n_results_requested': n_results,
+    #                 'n_results_returned': len(documents),
+    #                 'content_length': content_length,
+    #                 'include_full_content': include_full_content
+    #             },
+    #             'documents': documents
+    #         }
 
-            # Clean up
-            del vectorstore
-            del client
+    #         # Clean up
+    #         del vectorstore
+    #         del client
 
-            return jsonify(response_data), 200
+    #         return jsonify(response_data), 200
 
-        except ValueError as e:
-            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
-        except Exception as e:
-            print(f"ERROR in search_docs: {str(e)}")
-            return jsonify({'error': str(e)}), 500
+    #     except ValueError as e:
+    #         return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+    #     except Exception as e:
+    #         print(f"ERROR in search_docs: {str(e)}")
+    #         return jsonify({'error': str(e)}), 500
 
     def list_conversations(self):
         """

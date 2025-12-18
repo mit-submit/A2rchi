@@ -82,7 +82,8 @@ class ServiceRegistry:
             requires_volume=True,
             auto_enable=True,
             default_host_port=8000,
-            port_config_path='services.chromadb.chromadb_external_port',
+            default_container_port=8000,
+            port_config_path='services.chromadb',
             volume_name_pattern="a2rchi-chroma-{name}",
         ))
         
@@ -116,7 +117,8 @@ class ServiceRegistry:
             depends_on=['postgres'],
             required_secrets=['GRAFANA_PG_PASSWORD'],
             default_host_port=3000,
-            port_config_path='services.grafana.external_port',
+            default_container_port=3000,
+            port_config_path='services.grafana',
             volume_name_pattern="a2rchi-grafana-{name}"
         ))
         

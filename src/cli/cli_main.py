@@ -139,7 +139,8 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
         
         volume_manager = VolumeManager(compose_config.use_podman)
-        volume_manager.create_required_volumes(compose_config)
+        volume_manager.create_required_volumes(compose_config, config_manager.config)
+
         template_manager.prepare_deployment_files(compose_config, config_manager, secrets_manager, **other_flags)
         
         deployment_manager = DeploymentManager(compose_config.use_podman)
@@ -307,6 +308,7 @@ def list_deployments():
         except Exception:
             click.echo(f"  {name} (status unknown)")
 
+
 @click.command()
 @click.option('--name', '-n', type=str, required=True, help="Name of the a2rchi deployment")
 @click.option('--config', '-c', 'config_file', type=str, help="Path to .yaml a2rchi configuration")
@@ -401,7 +403,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
 
         volume_manager = VolumeManager(compose_config.use_podman)
-        volume_manager.create_required_volumes(compose_config)
+        volume_manager.create_required_volumes(compose_config, config_manager.config)
         
         template_manager.prepare_deployment_files(compose_config, config_manager, secrets_manager, **other_flags)
 

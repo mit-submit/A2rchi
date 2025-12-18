@@ -80,6 +80,7 @@ class GitScraper:
             return []
 
         resources: List[ScrapedResource] = []
+        parent_repo = repo_path.name
         for markdown_path in docs_dir.rglob("*.md"):
             current_url = base_site_url + \
                 markdown_path.relative_to(docs_dir).with_suffix("").as_posix()
@@ -93,7 +94,8 @@ class GitScraper:
                 source_type="git",
                 metadata={
                     "path": str(markdown_path.relative_to(repo_path)),
-                    "title": str(markdown_path).split('/')[-1].replace('.md','').title()
+                    "title": str(markdown_path).split('/')[-1].replace('.md','').title(),
+                    "parent": parent_repo,
                 },
             )
             if len(resource.content)>0:

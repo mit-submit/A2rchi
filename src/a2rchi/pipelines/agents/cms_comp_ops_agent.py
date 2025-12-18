@@ -30,11 +30,7 @@ class CMSCompOpsAgent(BaseReActAgent):
     ) -> None:
         super().__init__(config, *args, **kwargs)
 
-        dm_cfg = self.config.get("services", {}).get("data_manager", {}) or {}
-        hostname = dm_cfg.get("hostname") or dm_cfg.get("host") or "data-manager"
-        port = dm_cfg.get("port", 7871)
-        base_url = dm_cfg.get("base_url") or f"http://{hostname}:{port}"
-        self.catalog_service = RemoteCatalogClient(base_url)
+        self.catalog_service = RemoteCatalogClient.from_deployment_config(self.config)
         self._vector_retrievers = None
         self._vector_tool = None
 

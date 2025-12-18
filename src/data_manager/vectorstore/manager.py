@@ -144,7 +144,7 @@ class VectorStoreManager:
             logger.debug("Using ChromaDB HTTP client")
             return chromadb.HttpClient(
                 host=chroma_cfg["chromadb_host"],
-                port=chroma_cfg["chromadb_port"],
+                port=chroma_cfg["port"],
                 settings=Settings(allow_reset=False, anonymized_telemetry=False),
             )
 

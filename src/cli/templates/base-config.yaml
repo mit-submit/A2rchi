@@ -93,7 +93,7 @@ services:
     port: {{ services.data_manager.port | default(7871, true) }}
     external_port: {{ services.data_manager.external_port | default(7871, true) }}
     host: {{ services.data_manager.host | default("0.0.0.0", true) }}
-    hostname: {{ services.data_manager.hostname | default("data-manager", true) }}
+    hostname: {{ 'localhost' if host_mode else (services.data_manager.hostname | default('data-manager', true)) }}
     template_folder: "{{ services.data_manager.template_folder | default('/root/A2rchi/src/interfaces/chat_app/templates', true) }}"
     static_folder: "{{ services.data_manager.static_folder | default('/root/A2rchi/src/interfaces/chat_app/static', true) }}"
     flask_debug_mode: {{ services.data_manager.flask_debug_mode | default(false, true) }}
@@ -109,11 +109,12 @@ services:
     flask_debug_mode: {{ services.grader_app.flask_debug_mode | default(true, false) }}
   chromadb:
     use_HTTP_chromadb_client: {{ services.chromadb.use_HTTP_chromadb_client | default(true, true) }}
-    chromadb_host: {{ 'localhost' if host_mode else (services.chromadb.chromadb_host | default('chromadb', true)) }}
-    chromadb_port: {{ services.chromadb.chromadb_port | default(8000, true) }}
-    chromadb_external_port: {{ services.chromadb.chromadb_external_port | default(8000, true) }}
+    chromadb_host: {{ 'localhost' if host_mode else (services.chromadb.host | default('chromadb', true)) }}
+    port: {{ services.chromadb.port | default(8000, true) }}
+    external_port: {{ services.chromadb.external_port | default(8000, true) }}
     local_vstore_path: "{{ services.chromadb.local_vstore_path | default('/root/data/vstore/', true) }}"
   grafana:
+    port: {{ services.grafana.port | default(3000, true) }}
     external_port: {{ services.grafana.external_port | default(3000, true) }}
 
 data_manager:
@@ -156,10 +157,19 @@ data_manager:
       bm25_k1: {{ data_manager.retrievers.hybrid_retriever.bm25_k1 | default(0.5, true) }}
       bm25_b: {{ data_manager.retrievers.hybrid_retriever.bm25_b | default(0.75, true) }}
   sources:
+    local_files:
+      enabled: {{ data_manager.sources.local_files.enabled | default(true, true) }}
+      visible: {{ data_manager.sources.local_files.visible | default(true, true) }}
+      schedule: '{{ data_manager.sources.local_files.schedule | default("", true) }}'
+      paths:
+        {%- set paths = data_manager.sources.local_files.paths | default([], true) %}
+        {%- for path in paths %}
+        - {{ path }}
+        {%- endfor %}
     links:
       enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
       visible: {{ data_manager.sources.links.visible | default(true, true) }}
-      schedule: {{ data_manager.sources.links.schedule | default("", true) }}
+      schedule: '{{ data_manager.sources.links.schedule | default("", true) }}'
       input_lists:
         {%- set link_lists = data_manager.sources.links.input_lists | default([], true) %}
         {%- for input_list in link_lists %}
@@ -172,11 +182,11 @@ data_manager:
     git:
       enabled: {{ data_manager.sources.git.enabled | default(false, true) }}
       visible: {{ data_manager.sources.git.visible | default(true, true) }}
-      schedule: {{ data_manager.sources.git.schedule | default("", true) }}
+      schedule: '{{ data_manager.sources.git.schedule | default("", true) }}'
     sso:
       enabled: {{ data_manager.sources.sso.enabled | default(false, true) }}
       visible: {{ data_manager.sources.sso.visible | default(true, true) }}
-      schedule: {{ data_manager.sources.sso.schedule | default("", true) }}
+      schedule: '{{ data_manager.sources.sso.schedule | default("", true) }}'
       sso_class: {{ data_manager.sources.sso.sso_class | default('CERNSSOScraper', true) }}
       sso_class_map:
         CERNSSOScraper:
@@ -188,7 +198,7 @@ data_manager:
       enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}
       url: {{ data_manager.sources.jira.url | default('', true) }}
       visible: {{ data_manager.sources.jira.visible | default(true, true) }}
-      schedule: {{ data_manager.sources.jira.schedule | default("", true) }}
+      schedule: '{{ data_manager.sources.jira.schedule | default("", true) }}'
       projects:
         {%- for project in data_manager.sources.jira.projects | default([], true) %}
         - {{ project }}
@@ -200,7 +210,7 @@ data_manager:
       url: {{ data_manager.sources.redmine.url | default('', true) }}
       project: {{ data_manager.sources.redmine.project | default('', true) }}
       visible: {{ data_manager.sources.redmine.visible | default(false, true) }}
-      schedule: {{ data_manager.sources.redmine.schedule | default("", true) }}
+      schedule: '{{ data_manager.sources.redmine.schedule | default("", true) }}'
       anonymize_data: {{ data_manager.sources.redmine.anonymize_data | default(true, true) }}
   utils:
     anonymizer:

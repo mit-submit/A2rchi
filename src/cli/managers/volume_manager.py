@@ -1,8 +1,7 @@
-import shlex
-import subprocess
-from typing import Tuple
+from typing import Optional
 
 from src.cli.utils.command_runner import CommandRunner
+from src.cli.utils.local_file_stager import stage_local_files_to_volume
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,12 +13,15 @@ class VolumeManager:
         self.use_podman = use_podman
         self.container_tool = "podman" if use_podman else "docker"
     
-    def create_required_volumes(self, compose_config) -> None:
-        """Create all volumes required by the deployment"""
+    def create_required_volumes(self, compose_config, config: Optional[dict] = None) -> None:
+        """Create all volumes required by the deployment and stage local files when configured."""
         required_volumes = compose_config.get_required_volumes()
         
         for volume_name in required_volumes:
             self._create_volume(volume_name)
+        
+        if config is not None:
+            self._stage_local_files(compose_config, config)
     
     def _create_volume(self, volume_name: str) -> None:
         """Create a single volume if it doesn't exist"""
@@ -91,3 +93,23 @@ class VolumeManager:
             if volume_name in line:
                 return True
         return False
+
+    def _stage_local_files(self, compose_config, config: dict) -> None:
+        """Stage local files into the data-manager volume if configured."""
+        try:
+            data_mgr_service = compose_config.get_service("data-manager")
+        except Exception as exc:
+            logger.warning("Unable to inspect data-manager service for staging: %s", exc)
+            return
+
+        if not data_mgr_service.enabled or not data_mgr_service.volume_name:
+            return
+
+        try:
+            stage_local_files_to_volume(
+                config=config,
+                volume_name=data_mgr_service.volume_name,
+                container_tool=self.container_tool,
+            )
+        except Exception as exc:
+            logger.warning("Failed to stage local_files into volume: %s", exc)

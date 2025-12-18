@@ -206,4 +206,4 @@ def log_deployment_success(name: str, service_only_resolved: List[str], services
     print(f"Services running: {', '.join(service_only_resolved)}")
     #All services are part of static configuration and equal for all configs
     a2rchi_config = config_manager.get_configs()[0]
-    show_service_urls(services, a2rchi_config, host_mode=host_mode)
+    show_service_urls(service_only_resolved, a2rchi_config, host_mode=host_mode)

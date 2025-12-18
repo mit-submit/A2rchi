@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,9 +20,51 @@ logger = get_logger(__name__)
 class RemoteCatalogClient:
     """HTTP client for the data-manager catalog API."""
 
-    def __init__(self, base_url: str, *, timeout: float = 10.0):
-        self.base_url = base_url.rstrip("/")
+    def __init__(
+        self,
+        *,
+        base_url: Optional[str] = None,
+        host_mode: Optional[bool] = None,
+        hostname: Optional[str] = None,
+        port: int = 7871,
+        external_port: Optional[int] = None,
+        timeout: float = 10.0,
+    ):
+        host_mode_flag = self._resolve_host_mode(host_mode)
+
+        if base_url:
+            self.base_url = base_url.rstrip("/")
+        else:
+            host = hostname or ("localhost" if host_mode_flag else "data-manager")
+            final_port = external_port if host_mode_flag and external_port else port
+            self.base_url = f"http://{host}:{final_port}"
         self.timeout = timeout
+
+    @classmethod
+    def from_deployment_config(cls, config: Optional[Dict[str, object]]) -> "RemoteCatalogClient":
+        """Create a client using the standard A2rchi deployment config structure."""
+        cfg = config or {}
+        services_cfg = cfg.get("services", {}) if isinstance(cfg, dict) else {}
+        data_manager_cfg = services_cfg.get("data_manager", {}) if isinstance(services_cfg, dict) else {}
+
+        return cls(
+            base_url=data_manager_cfg.get("base_url"),
+            host_mode=cfg.get("host_mode"),
+            hostname=data_manager_cfg.get("hostname") or data_manager_cfg.get("host"),
+            port=data_manager_cfg.get("port", 7871),
+            external_port=data_manager_cfg.get("external_port"),
+        )
+
+    @staticmethod
+    def _resolve_host_mode(host_mode: Optional[bool]) -> bool:
+        if host_mode is None:
+            env_host_mode = (
+                os.environ.get("HOST_MODE")
+                or os.environ.get("HOSTMODE")
+                or os.environ.get("A2RCHI_HOST_MODE")
+            )
+            return str(env_host_mode).lower() in {"1", "true", "yes", "on"}
+        return bool(host_mode)
 
     def search(
         self, query: str, *, limit: int = 5, search_content: bool = True

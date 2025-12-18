@@ -1,8 +1,10 @@
 import os
+from typing import Callable, Optional
 
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
+from src.data_manager.collectors.localfile_manager import LocalFileManager
 from src.data_manager.vectorstore.manager import VectorStoreManager
 from src.utils.config_loader import load_config
 from src.utils.logging import get_logger
@@ -16,12 +18,13 @@ class DataManager():
         self.config = load_config(map=True)
         self.global_config = self.config["global"]
         self.data_path = self.global_config["DATA_PATH"]
-        self.run_ingestion = run_ingestion
+        self.should_run_ingestion = run_ingestion
 
         os.makedirs(self.data_path, exist_ok=True)
 
         self.persistence = PersistenceService(self.data_path)
 
+        self.localfile_manager = LocalFileManager(dm_config=self.config["data_manager"])
         self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"])
         self.ticket_manager = TicketManager(dm_config=self.config["data_manager"])
 
@@ -39,33 +42,37 @@ class DataManager():
 
         logger.info(f"Using collection: {self.collection_name}")
 
-        if self.run_ingestion:
-            self._run_initial_ingestion()
+        if self.should_run_ingestion:
+            self.run_ingestion()
 
-    def _run_initial_ingestion(self) -> None:
+    def run_ingestion(self, progress_callback: Optional[Callable[[str], None]] = None) -> None:
+        """Execute initial ingestion and vectorstore update."""
         source_aggregation = [
-            (
-                "Scraping documents onto filesystem",
-                lambda: self.scraper_manager.collect(self.persistence),
-            ),
-            (
-                "Fetching ticket data onto filesystem",
-                lambda: self.ticket_manager.collect(self.persistence),
-            ),
+            ("Copying configured local files", lambda: self.localfile_manager.collect_all_from_config(self.persistence)),
+            ("Scraping documents onto filesystem", lambda: self.scraper_manager.collect_all_from_config(self.persistence)),
+            ("Fetching ticket data onto filesystem", lambda: self.ticket_manager.collect_all_from_config(self.persistence)),
         ]
 
         for message, step in source_aggregation:
             logger.info(message)
+            if progress_callback:
+                progress_callback(message)
             step()
 
+        if progress_callback:
+            progress_callback("Flushing indices")
         self.persistence.flush_index()
 
+        if progress_callback:
+            progress_callback("Resetting vectorstore (if configured)")
         self.vector_manager.delete_existing_collection_if_reset()
+        if progress_callback:
+            progress_callback("Updating vectorstore")
         self.vector_manager.update_vectorstore()
 
     def delete_existing_collection_if_reset(self, *, force: bool = False):
         """Proxy to the underlying vector manager."""
-        if not (self.run_ingestion or force):
+        if not (self.should_run_ingestion or force):
             logger.debug("Skipping collection reset check (ingestion disabled).")
             return None
         return self.vector_manager.delete_existing_collection_if_reset()
@@ -76,7 +83,7 @@ class DataManager():
 
     def update_vectorstore(self, *, force: bool = False):
         """Proxy to the underlying vector manager."""
-        if not (self.run_ingestion or force):
+        if not (self.should_run_ingestion or force):
             logger.debug("Skipping vectorstore update (ingestion disabled).")
             return None
         self.vector_manager.update_vectorstore()
@@ -84,28 +91,3 @@ class DataManager():
     def _update_after_collect(self) -> None:
         self.persistence.flush_index()
         self.vector_manager.update_vectorstore()
-
-    def collect_links(self) -> None:
-        logger.info("Collecting link sources")
-        self.scraper_manager.collect_links(self.persistence)
-        self._update_after_collect()
-
-    def collect_git(self) -> None:
-        logger.info("Collecting git sources")
-        self.scraper_manager.collect_git(self.persistence)
-        self._update_after_collect()
-
-    def collect_sso(self) -> None:
-        logger.info("Collecting SSO sources")
-        self.scraper_manager.collect_sso(self.persistence)
-        self._update_after_collect()
-
-    def collect_jira(self) -> None:
-        logger.info("Collecting JIRA tickets")
-        self.ticket_manager.collect_jira(self.persistence)
-        self._update_after_collect()
-
-    def collect_redmine(self) -> None:
-        logger.info("Collecting Redmine tickets")
-        self.ticket_manager.collect_redmine(self.persistence)
-        self._update_after_collect()
