@@ -15,7 +15,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from src.data_manager.collectors.scrapers.scraped_resource import \
-    ScrapedResource
+    ScrapedResource, BrowserIntermediaryResult
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
