@@ -152,3 +152,15 @@ jobs:
           base-url: http://localhost:27861
           extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build
           use-podman: "true"
+
+      - name: Cleanup local base images
+        if: ${{ always() && needs.build-base-images.outputs.changed == 'true' }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.build-base-images.outputs.tag }}"
+          echo "Cleaning up local base images with tag: $TAG"
+          docker rmi "localhost/a2rchi/a2rchi-python-base:${TAG}" || true
+          docker rmi "localhost/a2rchi/a2rchi-pytorch-base:${TAG}" || true
+          docker rmi "localhost/a2rchi/a2rchi-python-base:latest" || true
+          docker rmi "localhost/a2rchi/a2rchi-pytorch-base:latest" || true
+          echo "Cleanup complete"
