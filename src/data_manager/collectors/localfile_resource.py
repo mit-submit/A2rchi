@@ -14,6 +14,7 @@ from src.data_manager.collectors.utils.metadata import ResourceMetadata
 class LocalFileResource(BaseResource):
     """Representation of a file copied from the host filesystem."""
 
+    file_name: str
     source_path: Path
     content: bytes
     source_type: str = "local_files"

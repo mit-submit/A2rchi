@@ -105,6 +105,7 @@ class BaseReActAgent:
 
         latest_messages: List[BaseMessage] = []
         for event in self.agent.stream(agent_inputs, stream_mode="updates"):
+            logger.debug("Received stream event: %s", event)
             messages = self._extract_messages(event)
             if messages:
                 latest_messages = messages
@@ -285,10 +286,21 @@ class BaseReActAgent:
 
     def _extract_messages(self, payload: Any) -> List[BaseMessage]:
         """Pull LangChain messages from a stream/update payload."""
+        def _messages_from_container(container: Any) -> List[BaseMessage]:
+            if isinstance(container, dict):
+                messages = container.get("messages")
+                if isinstance(messages, list) and all(isinstance(msg, BaseMessage) for msg in messages):
+                    return messages
+            return []
+
+        direct = _messages_from_container(payload)
+        if direct:
+            return direct
         if isinstance(payload, dict):
-            messages = payload.get("messages")
-            if isinstance(messages, list) and all(isinstance(msg, BaseMessage) for msg in messages):
-                return messages
+            for value in payload.values():
+                nested = _messages_from_container(value)
+                if nested:
+                    return nested
         return []
 
     def _message_content(self, message: BaseMessage) -> str:

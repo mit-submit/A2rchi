@@ -13,12 +13,13 @@ from src.data_manager.scheduler import CronScheduler
 from src.interfaces.uploader_app.app import FlaskAppWrapper
 from src.utils.config_loader import load_config
 from src.utils.env import read_secret
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
 
 def main() -> None:
+    setup_logging()
     # set API keys in env for downstream clients
     os.environ["ANTHROPIC_API_KEY"] = read_secret("ANTHROPIC_API_KEY")
     os.environ["OPENAI_API_KEY"] = read_secret("OPENAI_API_KEY")

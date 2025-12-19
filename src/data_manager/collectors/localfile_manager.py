@@ -77,7 +77,7 @@ class LocalFileManager:
             logger.warning("Failed to read local file %s: %s", path, exc)
             return
 
-        resource = LocalFileResource(source_path=path, content=content, base_dir=base_dir)
+        resource = LocalFileResource(file_name=path.name, source_path=path, content=content, base_dir=base_dir)
         try:
             persistence.persist_resource(resource, target_dir, overwrite=self.overwrite)
         except Exception as exc:

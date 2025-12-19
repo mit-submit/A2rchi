@@ -25,6 +25,11 @@ DEFAULT_TEXT_EXTENSIONS = {
     ".html",
     ".htm",
     ".log",
+    ".py",
+    ".c",
+    ".cpp",
+    ".C",
+    ".h",
 }
 
 @dataclass
@@ -99,8 +104,10 @@ class CatalogService:
         for resource_hash in self._file_index.keys():
             path = self.get_filepath_for_hash(resource_hash)
             if not path:
+                logger.debug("File for resource hash %s not found; skipping.", resource_hash)
                 continue
             if self.include_extensions and path.suffix.lower() not in self.include_extensions:
+                logger.debug("File %s has excluded extension; skipping.", path)
                 continue
             yield resource_hash, path
 

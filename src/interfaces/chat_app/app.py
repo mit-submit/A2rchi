@@ -3,8 +3,9 @@ import os
 import re
 import time
 
+from dataclasses import dataclass
 from datetime import datetime
-from typing import List
+from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 from functools import wraps
 
@@ -16,7 +17,7 @@ import psycopg2.extras
 import yaml
 from authlib.integrations.flask_client import OAuth
 from chromadb.config import Settings
-from flask import jsonify, render_template, request, session, flash, redirect, url_for
+from flask import jsonify, render_template, request, session, flash, redirect, url_for, Response, stream_with_context
 from flask_cors import CORS
 from langchain_chroma.vectorstores import Chroma
 from pygments import highlight
@@ -98,6 +99,15 @@ class ConversationAccessError(Exception):
     pass
 
 
+@dataclass
+class ChatRequestContext:
+    sender: str
+    content: str
+    conversation_id: int
+    history: List
+    is_refresh: bool
+
+
 class ChatWrapper:
     """
     Wrapper which holds functionality for the chatbot
@@ -106,7 +116,6 @@ class ChatWrapper:
         # load configs
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
@@ -673,108 +682,244 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    def _init_timestamps(self) -> Dict[str, datetime]:
+        return {
+            "lock_acquisition_ts": datetime.now(),
+            "vectorstore_update_ts": datetime.now(),
+        }
+
+    def _resolve_config_name(self, config_name: Optional[str]) -> str:
+        return config_name or self.current_config_name or self.default_config_name
+
+    def _prepare_chat_context(
+        self,
+        message: List[str],
+        conversation_id: int | None,
+        client_id: str,
+        is_refresh: bool,
+        server_received_msg_ts: datetime,
+        client_sent_msg_ts: float,
+        client_timeout: float,
+        timestamps: Dict[str, datetime],
+    ) -> tuple[Optional[ChatRequestContext], Optional[int]]:
+        if not client_id:
+            raise ValueError("client_id is required to process chat messages")
+        sender, content = tuple(message[0])
+
+        if conversation_id is None:
+            conversation_id = self.create_conversation(content, client_id)
+            history = []
+        else:
+            history = self.query_conversation_history(conversation_id, client_id)
+            self.update_conversation_timestamp(conversation_id, client_id)
+
+        timestamps["query_convo_history_ts"] = datetime.now()
+
+        if is_refresh:
+            while history and history[-1][0] == A2RCHI_SENDER:
+                _ = history.pop(-1)
+
+        if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
+            return None, 408
+
+        if not is_refresh:
+            history = history + [(sender, content)]
+
+        if len(history) >= QUERY_LIMIT:
+            return None, 500
+
+        return (
+            ChatRequestContext(
+                sender=sender,
+                content=content,
+                conversation_id=conversation_id,
+                history=history,
+                is_refresh=is_refresh,
+            ),
+            None,
+        )
+
+    def _message_content(self, message) -> str:
+        content = getattr(message, "content", "")
+        if isinstance(content, list):
+            content = " ".join(str(part) for part in content)
+        return str(content)
+
+    def _truncate_text(self, text: str, max_chars: int) -> str:
+        if max_chars and len(text) > max_chars:
+            return text[: max_chars - 3].rstrip() + "..."
+        return text
+
+    def _stream_events_from_output(
+        self,
+        output,
+        *,
+        include_agent_steps: bool,
+        include_tool_steps: bool,
+        conversation_id: int,
+        max_chars: int = 800,
+    ) -> List[Dict[str, Any]]:
+        messages = getattr(output, "messages", []) or []
+        if not messages:
+            return []
+        message = messages[-1]
+        events: List[Dict[str, Any]] = []
+        msg_type = str(getattr(message, "type", "")).lower()
+
+        if include_tool_steps and hasattr(message, "tool_calls") and message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.get("name", "unknown")
+                tool_args = tool_call.get("args", {})
+                events.append(
+                    {
+                        "type": "step",
+                        "step_type": "tool_call",
+                        "tool_name": tool_name,
+                        "tool_args": tool_args,
+                        "tool_call_id": tool_call.get("id", ""),
+                        "content": self._truncate_text(f"{tool_name}({tool_args})", max_chars),
+                        "conversation_id": conversation_id,
+                    }
+                )
+
+        if include_tool_steps and getattr(message, "tool_call_id", None):
+            events.append(
+                {
+                    "type": "step",
+                    "step_type": "tool_result",
+                    "tool_call_id": message.tool_call_id,
+                    "content": self._truncate_text(self._message_content(message), max_chars),
+                    "conversation_id": conversation_id,
+                }
+            )
+
+        content = self._message_content(message) if msg_type in {"ai", "assistant"} else ""
+        handled_tool_call = False
+        if include_tool_steps and content:
+            tool_match = re.match(r"^\s*([\w.-]+)\[ARGS\](.*)$", content, re.DOTALL)
+            if tool_match:
+                tool_name = tool_match.group(1)
+                tool_args_raw = tool_match.group(2).strip()
+                events.append(
+                    {
+                        "type": "step",
+                        "step_type": "tool_call",
+                        "tool_name": tool_name,
+                        "tool_args": tool_args_raw,
+                        "tool_call_id": "",
+                        "content": self._truncate_text(content, max_chars),
+                        "conversation_id": conversation_id,
+                    }
+                )
+                handled_tool_call = True
+
+        if include_agent_steps and content and not handled_tool_call:
+            events.append(
+                {
+                    "type": "step",
+                    "step_type": "agent",
+                    "content": self._truncate_text(content, max_chars),
+                    "conversation_id": conversation_id,
+                }
+            )
+
+        return events
+
+    def _finalize_result(
+        self,
+        result,
+        *,
+        context: ChatRequestContext,
+        server_received_msg_ts: datetime,
+        timestamps: Dict[str, datetime],
+    ) -> tuple[str, List[int]]:
+        output = self.format_code_in_text(result["answer"])
+
+        documents = result.get("source_documents", [])
+        scores = result.get("metadata", {}).get("retriever_scores", [])
+        top_sources = self.get_top_sources(documents, scores)
+        output += self.format_links(top_sources)
+
+        timestamps["a2rchi_message_ts"] = datetime.now()
+        context_data = self.prepare_context_for_storage(documents, scores)
+
+        best_reference = "Link unavailable"
+        if top_sources:
+            primary_source = top_sources[0]
+            best_reference = primary_source["link"] or primary_source["display"]
+
+        user_message = (context.sender, context.content, server_received_msg_ts)
+        a2rchi_message = (A2RCHI_SENDER, output, timestamps["a2rchi_message_ts"])
+        message_ids = self.insert_conversation(
+            context.conversation_id,
+            user_message,
+            a2rchi_message,
+            best_reference,
+            context_data,
+            context.is_refresh,
+        )
+        timestamps["insert_convo_ts"] = datetime.now()
+        context.history.append((A2RCHI_SENDER, result["answer"]))
+
+        agent_messages = getattr(result, "messages", []) or []
+        if agent_messages:
+            logger.debug("Agent messages count: %d", len(agent_messages))
+            for i, msg in enumerate(agent_messages):
+                msg_type = type(msg).__name__
+                has_tool_calls = hasattr(msg, "tool_calls") and msg.tool_calls
+                has_tool_call_id = hasattr(msg, "tool_call_id") and msg.tool_call_id
+                logger.debug(
+                    "  Message %d: %s, tool_calls=%s, tool_call_id=%s",
+                    i,
+                    msg_type,
+                    has_tool_calls,
+                    has_tool_call_id,
+                )
+        if agent_messages and message_ids:
+            a2rchi_message_id = message_ids[-1]
+            self.insert_tool_calls_from_messages(context.conversation_id, a2rchi_message_id, agent_messages)
+
+        return output, message_ids
+
     def __call__(self, message: List[str], conversation_id: int|None, client_id: str, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
         """
-        # store timestamps for code profiling information
-        start_time = time.time()
-
-        timestamps = {}
-
-        timestamps['lock_acquisition_ts'] = datetime.now()
-        timestamps['vectorstore_update_ts'] = datetime.now()
+        timestamps = self._init_timestamps()
+        output = None
+        message_ids = None
+        context = None
 
         try:
-            # convert the message to native A2rchi form (because javascript does not have tuples)
-            sender, content = tuple(message[0])
+            context, error_code = self._prepare_chat_context(
+                message,
+                conversation_id,
+                client_id,
+                is_refresh,
+                server_received_msg_ts,
+                client_sent_msg_ts,
+                client_timeout,
+                timestamps,
+            )
+            if error_code is not None:
+                return None, None, None, timestamps, error_code
 
-            if not client_id:
-                raise ValueError("client_id is required to process chat messages")
+            requested_config = self._resolve_config_name(config_name)
+            self.update_config(config_name=requested_config)
 
-            # new conversation if conversation_id is None, otherwise use existing
-            if conversation_id is None:
-                conversation_id = self.create_conversation(content, client_id)
-                history = []
-            else:
-                history = self.query_conversation_history(conversation_id, client_id)
-                self.update_conversation_timestamp(conversation_id, client_id)
-
-            timestamps['query_convo_history_ts'] = datetime.now()
-
-            # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
-            if is_refresh:
-                while history and history[-1][0] == A2RCHI_SENDER:
-                    _ = history.pop(-1)
-
-            # guard call to LLM; if timestamp from message is more than timeout secs in the past;
-            # return error=True and do not generate response as the client will have timed out
-            if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
-                return None, None, None, timestamps, 408
-
-            # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
-            if len(history) < QUERY_LIMIT:
-                history = history + [(sender, content)] if not is_refresh else history
-                requested_config = config_name or self.current_config_name or self.default_config_name
-                self.update_config(config_name=requested_config)
-                result = self.a2rchi(history=history, conversation_id=conversation_id)
-                timestamps['chain_finished_ts'] = datetime.now()
-            else:
-                # for now let's return a timeout error, as returning a different
-                # error message would require handling new message_ids param. properly
-                return None, None, None, timestamps, 500
+            result = self.a2rchi(history=context.history, conversation_id=context.conversation_id)
+            timestamps["chain_finished_ts"] = datetime.now()
 
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
-            # display answer
-            output = self.format_code_in_text(result["answer"])
-
-
-            # display sources (links or ticket references)
-            documents = result.get("source_documents", [])
-            scores = result.get("metadata", {}).get("retriever_scores", [])
-            top_sources = self.get_top_sources(documents, scores)
-            output += self.format_links(top_sources)
-
-            # message is constructed!
-            timestamps['a2rchi_message_ts'] = datetime.now()
-
-            # formatting context
-            context = self.prepare_context_for_storage(documents, scores)
-
-            best_reference = "Link unavailable"
-            if top_sources:
-                primary_source = top_sources[0]
-                best_reference = primary_source["link"] or primary_source["display"]
-
-            # and now finally insert the conversation
-            user_message = (sender, content, server_received_msg_ts)
-            a2rchi_message = (A2RCHI_SENDER, output, timestamps['a2rchi_message_ts'])
-            message_ids = self.insert_conversation(
-                conversation_id,
-                user_message,
-                a2rchi_message,
-                best_reference,
-                context,
-                is_refresh
+            output, message_ids = self._finalize_result(
+                result,
+                context=context,
+                server_received_msg_ts=server_received_msg_ts,
+                timestamps=timestamps,
             )
-            timestamps['insert_convo_ts'] = datetime.now()
-            history.append((A2RCHI_SENDER, result["answer"]))
-            
-            # insert tool calls extracted from messages
-            agent_messages = getattr(result, 'messages', []) or []
-            logger.debug("Agent messages count: %d", len(agent_messages))
-            for i, msg in enumerate(agent_messages):
-                msg_type = type(msg).__name__
-                has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
-                has_tool_call_id = hasattr(msg, 'tool_call_id') and msg.tool_call_id
-                logger.debug("  Message %d: %s, tool_calls=%s, tool_call_id=%s", 
-                           i, msg_type, has_tool_calls, has_tool_call_id)
-            if agent_messages and message_ids:
-                a2rchi_message_id = message_ids[-1]  # A2rchi's response is the last message
-                self.insert_tool_calls_from_messages(conversation_id, a2rchi_message_id, agent_messages)
 
         except ConversationAccessError as e:
             logger.warning(f"Unauthorized conversation access attempt: {e}")
@@ -792,7 +937,121 @@ class ChatWrapper:
 
         timestamps['finish_call_ts'] = datetime.now()
 
-        return output, conversation_id, message_ids, timestamps, None
+        return output, context.conversation_id if context else None, message_ids, timestamps, None
+
+    def stream(
+        self,
+        message: List[str],
+        conversation_id: int | None,
+        client_id: str,
+        is_refresh: bool,
+        server_received_msg_ts: datetime,
+        client_sent_msg_ts: float,
+        client_timeout: float,
+        config_name: str,
+        *,
+        include_agent_steps: bool = True,
+        include_tool_steps: bool = True,
+        max_step_chars: int = 800,
+    ) -> Iterator[Dict[str, Any]]:
+        timestamps = self._init_timestamps()
+        context = None
+        last_output = None
+        pending_agent_event = None
+
+        try:
+            context, error_code = self._prepare_chat_context(
+                message,
+                conversation_id,
+                client_id,
+                is_refresh,
+                server_received_msg_ts,
+                client_sent_msg_ts,
+                client_timeout,
+                timestamps,
+            )
+            if error_code is not None:
+                error_message = "server error; see chat logs for message"
+                if error_code == 408:
+                    error_message = "client timeout"
+                elif error_code == 403:
+                    error_message = "conversation not found"
+                yield {"type": "error", "status": error_code, "message": error_message}
+                return
+
+            requested_config = self._resolve_config_name(config_name)
+            self.update_config(config_name=requested_config)
+
+            for output in self.a2rchi.stream(history=context.history, conversation_id=context.conversation_id):
+                logger.debug("Recieved streaming output chunk: %s", output)
+                last_output = output
+                if getattr(output, "final", False):
+                    continue
+                if pending_agent_event:
+                    yield pending_agent_event
+                    pending_agent_event = None
+                for event in self._stream_events_from_output(
+                    output,
+                    include_agent_steps=include_agent_steps,
+                    include_tool_steps=include_tool_steps,
+                    conversation_id=context.conversation_id,
+                    max_chars=max_step_chars,
+                ):
+                    if event.get("step_type") == "agent":
+                        pending_agent_event = event
+                    else:
+                        yield event
+
+            timestamps["chain_finished_ts"] = datetime.now()
+
+            if last_output is None:
+                yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
+                return
+            if pending_agent_event:
+                final_preview = self._truncate_text(last_output["answer"] or "", max_step_chars)
+                if pending_agent_event.get("content") != final_preview:
+                    yield pending_agent_event
+                pending_agent_event = None
+
+            # keep track of total number of queries and log this amount
+            self.number_of_queries += 1
+            logger.info(f"Number of queries is: {self.number_of_queries}")
+
+            output, message_ids = self._finalize_result(
+                last_output,
+                context=context,
+                server_received_msg_ts=server_received_msg_ts,
+                timestamps=timestamps,
+            )
+
+            timestamps["finish_call_ts"] = datetime.now()
+            timestamps["server_received_msg_ts"] = server_received_msg_ts
+            timestamps["client_sent_msg_ts"] = datetime.fromtimestamp(client_sent_msg_ts)
+            timestamps["server_response_msg_ts"] = datetime.now()
+
+            if message_ids:
+                self.insert_timing(message_ids[-1], timestamps)
+
+            yield {
+                "type": "final",
+                "response": output,
+                "conversation_id": context.conversation_id,
+                "a2rchi_msg_id": message_ids[-1] if message_ids else None,
+                "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
+                "final_response_msg_ts": datetime.now().timestamp(),
+            }
+
+        except ConversationAccessError as exc:
+            logger.warning("Unauthorized conversation access attempt: %s", exc)
+            yield {"type": "error", "status": 403, "message": "conversation not found"}
+        except Exception as exc:
+            logger.error("Failed to stream response: %s", exc, exc_info=True)
+            yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
+        finally:
+            if self.cursor is not None:
+                self.cursor.close()
+            if self.conn is not None:
+                self.conn.close()
 
 
 class FlaskAppWrapper(object):
@@ -803,7 +1062,6 @@ class FlaskAppWrapper(object):
         self.configs(**configs)
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -855,6 +1113,7 @@ class FlaskAppWrapper(object):
         # Protected endpoints (require auth when enabled)
         self.add_endpoint('/chat', 'index', self.require_auth(self.index))
         self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.require_auth(self.get_chat_response), methods=["POST"])
+        self.add_endpoint('/api/get_chat_response_stream', 'get_chat_response_stream', self.require_auth(self.get_chat_response_stream), methods=["POST"])
         self.add_endpoint('/terms', 'terms', self.require_auth(self.terms))
         self.add_endpoint('/api/like', 'like', self.require_auth(self.like),  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.require_auth(self.dislike),  methods=["POST"])
@@ -1104,7 +1363,6 @@ class FlaskAppWrapper(object):
         # re-read config using load_config and update dependent variables
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -1145,6 +1403,33 @@ class FlaskAppWrapper(object):
             options.append({"name": name, "description": description})
         return jsonify({'options': options}), 200
 
+    def _parse_chat_request(self) -> Dict[str, Any]:
+        payload = request.get_json(silent=True) or {}
+
+        client_sent_msg_ts = payload.get("client_sent_msg_ts")
+        client_timeout = payload.get("client_timeout")
+        client_sent_msg_ts = client_sent_msg_ts / 1000 if client_sent_msg_ts else 0
+        client_timeout = client_timeout / 1000 if client_timeout else 0
+
+        include_agent_steps = payload.get("include_agent_steps", True)
+        include_tool_steps = payload.get("include_tool_steps", True)
+        if isinstance(include_agent_steps, str):
+            include_agent_steps = include_agent_steps.lower() == "true"
+        if isinstance(include_tool_steps, str):
+            include_tool_steps = include_tool_steps.lower() == "true"
+
+        return {
+            "message": payload.get("last_message"),
+            "conversation_id": payload.get("conversation_id"),
+            "config_name": payload.get("config_name"),
+            "is_refresh": payload.get("is_refresh"),
+            "client_sent_msg_ts": client_sent_msg_ts,
+            "client_timeout": client_timeout,
+            "client_id": payload.get("client_id"),
+            "include_agent_steps": include_agent_steps,
+            "include_tool_steps": include_tool_steps,
+        }
+
 
     def get_chat_response(self):
         """
@@ -1165,13 +1450,14 @@ class FlaskAppWrapper(object):
         server_received_msg_ts = datetime.now()
 
         # get user input and conversation_id from the request
-        message = request.json.get('last_message')
-        conversation_id = request.json.get('conversation_id')
-        config_name = request.json.get('config_name')
-        is_refresh = request.json.get('is_refresh')
-        client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
-        client_timeout = request.json.get('client_timeout') / 1000
-        client_id = request.json.get('client_id')
+        request_data = self._parse_chat_request()
+        message = request_data["message"]
+        conversation_id = request_data["conversation_id"]
+        config_name = request_data["config_name"]
+        is_refresh = request_data["is_refresh"]
+        client_sent_msg_ts = request_data["client_sent_msg_ts"]
+        client_timeout = request_data["client_timeout"]
+        client_id = request_data["client_id"]
 
         if not client_id:
             return jsonify({'error': 'client_id missing'}), 400
@@ -1219,6 +1505,52 @@ class FlaskAppWrapper(object):
         logger.info(f"API Response Time: {end_time - start_time:.2f} seconds")
 
         return jsonify(response_data)
+
+    def get_chat_response_stream(self):
+        """
+        Streams agent updates and the final response as NDJSON.
+        """
+        server_received_msg_ts = datetime.now()
+        request_data = self._parse_chat_request()
+
+        message = request_data["message"]
+        conversation_id = request_data["conversation_id"]
+        config_name = request_data["config_name"]
+        is_refresh = request_data["is_refresh"]
+        client_sent_msg_ts = request_data["client_sent_msg_ts"]
+        client_timeout = request_data["client_timeout"]
+        client_id = request_data["client_id"]
+        include_agent_steps = request_data["include_agent_steps"]
+        include_tool_steps = request_data["include_tool_steps"]
+
+        if not client_id:
+            return jsonify({"error": "client_id missing"}), 400
+
+        def _event_stream() -> Iterator[str]:
+            padding = " " * 2048
+            yield json.dumps({"type": "meta", "event": "stream_started", "padding": padding}) + "\n"
+            for event in self.chat.stream(
+                message,
+                conversation_id,
+                client_id,
+                is_refresh,
+                server_received_msg_ts,
+                client_sent_msg_ts,
+                client_timeout,
+                config_name,
+                include_agent_steps=include_agent_steps,
+                include_tool_steps=include_tool_steps,
+            ):
+                logger.debug(f"\n\n\nStreaming event\n\n\n")
+                yield json.dumps(event, default=str) + "\n"
+
+        headers = {
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",
+            "Content-Type": "application/x-ndjson",
+        }
+        return Response(stream_with_context(_event_stream()), headers=headers)
 
     def landing(self):
         """Landing page for unauthenticated users"""

@@ -22,6 +22,7 @@ class JiraClient:
         self.anonymize_data = True
         self.anonymizer: Optional[Anonymizer] = None
         self.visible: bool = True
+        self.cutoff_date: Optional[str] = None
 
         jira_config: Dict[str, Any] = dict(config or {})
 
@@ -48,6 +49,7 @@ class JiraClient:
 
         self.anonymize_data = jira_config.get('anonymize_data', False)
         self.max_tickets = int(jira_config.get('max_tickets', 1e10))
+        self.cutoff_date = jira_config.get("cutoff_date") or jira_config.get("cut_off_date")
 
         client = self._log_in(pat)
         if not client:
@@ -130,10 +132,11 @@ class JiraClient:
         
         logger.debug(f"Fetching maximum of {int(self.max_tickets)} issues in batches of {max_batch_results} for project: {project}")
         query_parts = [f"project={project}"]
-        if since_iso:
-            # convert from ISO to 'yyyy/MM/dd HH:mm'
-            dt = datetime.fromisoformat(since_iso)
-            since_formatted = dt.strftime("%Y/%m/%d %H:%M")
+        cutoff_formatted = self._format_jira_datetime(self.cutoff_date, "cutoff_date")
+        if cutoff_formatted:
+            query_parts.append(f'created >= "{cutoff_formatted}"')
+        since_formatted = self._format_jira_datetime(since_iso, "since_iso")
+        if since_formatted:
             query_parts.append(f'updated >= "{since_formatted}"')
         query = " and ".join(query_parts)
         logger.debug(f"Fetching JIRA issues with query: {query}")
@@ -175,6 +178,22 @@ class JiraClient:
 
         project_duration = perf_counter() - project_start
         logger.info("Completed JIRA fetch for project=%s in %.2fs", project, project_duration)
+
+    @staticmethod
+    def _format_jira_datetime(date_iso: Optional[str], label: str) -> Optional[str]:
+        if not date_iso:
+            return None
+        try:
+            dt = datetime.fromisoformat(date_iso)
+        except (TypeError, ValueError) as error:
+            logger.warning(
+                "Invalid %s %r; expected ISO-8601. Skipping JIRA date filter.",
+                label,
+                date_iso,
+                exc_info=error,
+            )
+            return None
+        return dt.strftime("%Y/%m/%d %H:%M")
 
     def _build_issue_text(self, issue: jira.Issue, fields: Optional[Any]) -> str:
         """Return a formatted representation of a JIRA issue body."""

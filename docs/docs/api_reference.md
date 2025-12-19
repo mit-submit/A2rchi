@@ -168,6 +168,7 @@ Controls ingestion sources and vector store behaviour.
 - **sources.links.scraper:** Behaviour toggles for HTTP scraping (resetting data, URL verification, warning output).
 - **sources.<name>.visible:** Mark whether documents harvested from a source should appear in chat citations and other user-facing listings (`true` by default).
 - **sources.git.enabled / sources.sso.enabled / sources.jira.enabled / sources.redmine.enabled:** Toggle additional collectors when paired with `--sources`.
+- **sources.jira.cutoff_date:** ISO-8601 date; JIRA tickets created before this are ignored.
 - **embedding_name:** Embedding backend (`OpenAIEmbeddings`, `HuggingFaceEmbeddings`, ...).
 - **embedding_class_map:** Backend specific parameters (model name, device, similarity threshold).
 - **chunk_size / chunk_overlap:** Text splitter parameters.

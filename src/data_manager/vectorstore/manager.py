@@ -124,14 +124,18 @@ class VectorStoreManager:
                     hash_value: files_in_vstore.get(hash_value, "<unknown>")
                     for hash_value in hashes_to_remove
                 }
-                logger.info(f"Resources to remove: {files_to_remove}")
+                filed_to_remove_show = {k: files_to_remove[k] for k in list(files_to_remove)[:10]}
+                logger.info(f"Files to remove: {filed_to_remove_show} ...")
+                logger.debug(f"Full files to remove: {files_to_remove}")
                 collection = self._remove_from_vectorstore(collection, hashes_to_remove)
 
             hashes_to_add = hashes_in_data - hashes_in_vstore
             files_to_add = {
                 hash_value: files_in_data[hash_value] for hash_value in hashes_to_add
             }
-            logger.info(f"Files to add: {files_to_add}")
+            filed_to_add_show = {k: files_to_add[k] for k in list(files_to_add)[:10]}
+            logger.info(f"Files to add: {filed_to_add_show} ...")
+            logger.debug(f"Full files to add: {files_to_add}")
             collection = self._add_to_vectorstore(collection, files_to_add)
             logger.info("Vectorstore update has been completed")
 
@@ -177,7 +181,7 @@ class VectorStoreManager:
 
         def process_file(filehash: str, file_path: str):
             filename = Path(file_path).name
-            logger.info(f"Processing file: {filename} (hash: {filehash})")
+            logger.debug(f"Processing file: {filename} (hash: {filehash})")
 
             try:
                 loader = self.loader(file_path)

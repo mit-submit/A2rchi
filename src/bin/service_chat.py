@@ -9,10 +9,11 @@ from src.utils.config_loader import load_config
 from src.utils.env import read_secret
 from src.utils.logging import setup_logging
 
-# set basicConfig for logging
-setup_logging()
 
 def main():
+    
+    setup_logging()
+
     # load secrets
     os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
     os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")

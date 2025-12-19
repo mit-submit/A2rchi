@@ -4,14 +4,133 @@ const modal = document.getElementById("preview-modal");
 const modalClose = document.getElementById("modal-close");
 const modalTitle = document.getElementById("modal-title");
 const modalUrl = document.getElementById("modal-url");
+const DEFAULT_MENU_STATUS = "Ready!";
+
+const ACTION_CONFIG = {
+    links_add: {
+        key: "links_add",
+        title: "Add link",
+        submitLabel: "Add link",
+        help: "Ingest a single URL into the catalog.",
+        endpoint: "/document_index/upload_url",
+        method: "POST",
+        errorMessage: "Failed to add link.",
+        successMessage: "Link submitted. Refreshing list...",
+        fields: [
+            {
+                name: "url",
+                label: "URL",
+                type: "url",
+                placeholder: "https://example.com",
+                required: true,
+            },
+        ],
+    },
+    jira_add: {
+        key: "jira_add",
+        title: "Add JIRA project",
+        submitLabel: "Add project",
+        help: "Provide the JIRA project key to ingest tickets.",
+        endpoint: "/document_index/add_jira_project",
+        method: "POST",
+        errorMessage: "Failed to add JIRA project.",
+        successMessage: "Project submitted. Refreshing list...",
+        fields: [
+            {
+                name: "project_key",
+                label: "Project key",
+                type: "text",
+                placeholder: "CMSPROD",
+                required: true,
+            },
+        ],
+    },
+    git_add: {
+        key: "git_add",
+        title: "Add Git repository",
+        submitLabel: "Add repo",
+        help: "Paste a Git repository URL to ingest.",
+        endpoint: "/document_index/add_git_repo",
+        method: "POST",
+        errorMessage: "Failed to add git repo.",
+        successMessage: "Repo submitted. Refreshing list...",
+        fields: [
+            {
+                name: "repo_url",
+                label: "Repository URL",
+                type: "url",
+                placeholder: "https://github.com/org/repo",
+                required: true,
+            },
+        ],
+    },
+    git_remove: {
+        key: "git_remove",
+        title: "Remove Git repository",
+        submitLabel: "Remove repo",
+        help: "Enter the repo URL or name to remove all ingested files from that repo.",
+        endpoint: "/document_index/remove_git_repo",
+        method: "POST",
+        errorMessage: "Failed to remove git repo.",
+        successMessage: "Repo removed. Refreshing list...",
+        fields: [
+            {
+                name: "repo",
+                label: "Repository URL or name",
+                type: "text",
+                placeholder: "https://github.com/org/repo or repo name",
+                required: true,
+            },
+        ],
+    },
+    local_files_upload: {
+        key: "local_files_upload",
+        title: "Upload file",
+        submitLabel: "Upload file",
+        help: "Upload a local file to ingest.",
+        endpoint: "/document_index/upload",
+        method: "POST",
+        errorMessage: "Failed to upload file.",
+        successMessage: "Upload submitted. Refreshing list...",
+        fields: [
+            {
+                name: "file",
+                label: "Choose file",
+                type: "file",
+                required: true,
+            },
+        ],
+    },
+    schedule_update: {
+        key: "schedule_update",
+        title: "Edit schedule",
+        submitLabel: "Save schedule",
+        help: "Set a cron schedule (e.g. */15 * * * *). Leave blank to disable.",
+        endpoint: "/document_index/update_schedule",
+        method: "POST",
+        errorMessage: "Failed to update schedule.",
+        successMessage: "Schedule updated. Refreshing list...",
+        fields: [
+            {
+                name: "schedule",
+                label: "Cron schedule",
+                type: "text",
+                placeholder: "0 * * * *",
+            },
+        ],
+    },
+};
 
 if (sourcesList) {
+    initializeActionMenus();
     sourcesList.addEventListener("click", (event) => {
         const actionBtn = event.target.closest(".source-action");
         if (actionBtn) {
-            const sourceType = actionBtn.dataset.source || "source";
-            const label = actionBtn.dataset.label || "Add item";
-            handleSourceAction(sourceType, label);
+            if (actionBtn.classList.contains("danger")) {
+                return;
+            }
+            const actionKey = actionBtn.dataset.action || (actionBtn.dataset.source || "").toLowerCase();
+            openActionMenu(actionBtn, actionKey);
             return;
         }
 
@@ -135,6 +254,215 @@ async function loadDocument(documentPath) {
     }
 };
 
+function initializeActionMenus() {
+    const menus = document.querySelectorAll(".action-menu");
+    menus.forEach((menu) => {
+        const closeBtn = menu.querySelector(".action-menu-close");
+        const cancelBtn = menu.querySelector(".action-menu-cancel");
+        const form = menu.querySelector(".action-menu-form");
+
+        if (closeBtn) {
+            closeBtn.addEventListener("click", () => hideActionMenu(menu));
+        }
+        if (cancelBtn) {
+            cancelBtn.addEventListener("click", () => hideActionMenu(menu));
+        }
+        if (form) {
+            form.addEventListener("submit", (event) => {
+                event.preventDefault();
+                submitActionMenu(menu);
+            });
+        }
+    });
+}
+
+function openActionMenu(actionBtn, actionKey) {
+    const key = (actionKey || "").toLowerCase();
+    const config = ACTION_CONFIG[key];
+    if (!config) {
+        console.debug("Unhandled action menu", { actionKey });
+        return;
+    }
+
+    const card = actionBtn.closest(".source-card");
+    const menu = card?.querySelector(".action-menu");
+    if (!menu) {
+        return;
+    }
+
+    if (!menu.classList.contains("hidden") && menu.dataset.action === config.key) {
+        hideActionMenu(menu);
+        return;
+    }
+
+    closeOtherActionMenus(menu);
+    buildActionMenu(menu, config, actionBtn.dataset.label);
+    menu.classList.remove("hidden");
+    menu.dataset.source = actionBtn.dataset.source || "";
+
+    if (config.key === "schedule_update") {
+        const scheduleInput = menu.querySelector('[name="schedule"]');
+        if (scheduleInput) {
+            scheduleInput.value = actionBtn.dataset.schedule || "";
+        }
+    }
+
+    const firstInput = menu.querySelector("input, textarea, select");
+    if (firstInput) {
+        firstInput.focus();
+    }
+}
+
+function closeOtherActionMenus(activeMenu) {
+    const menus = document.querySelectorAll(".action-menu");
+    menus.forEach((menu) => {
+        if (menu !== activeMenu) {
+            hideActionMenu(menu);
+        }
+    });
+}
+
+function hideActionMenu(menu) {
+    menu.classList.add("hidden");
+    menu.classList.remove("is-loading");
+    menu.dataset.action = "";
+    menu.dataset.source = "";
+    setMenuStatus(menu, DEFAULT_MENU_STATUS);
+}
+
+function buildActionMenu(menu, config, labelOverride) {
+    menu.dataset.action = config.key;
+    const titleEl = menu.querySelector(".action-menu-title");
+    const fieldsEl = menu.querySelector(".action-menu-fields");
+    const helpEl = menu.querySelector(".action-menu-help");
+    const submitBtn = menu.querySelector(".action-menu-submit");
+
+    if (titleEl) {
+        titleEl.textContent = labelOverride || config.title || "Action";
+    }
+    if (submitBtn) {
+        submitBtn.textContent = config.submitLabel || "Run";
+    }
+    if (helpEl) {
+        helpEl.textContent = config.help || "";
+    }
+    setMenuStatus(menu, DEFAULT_MENU_STATUS);
+
+    if (fieldsEl) {
+        fieldsEl.innerHTML = "";
+        config.fields.forEach((field) => {
+            const wrapper = document.createElement("label");
+            wrapper.className = "action-menu-field";
+
+            const label = document.createElement("span");
+            label.textContent = field.label || field.name;
+            wrapper.appendChild(label);
+
+            let input;
+            if (field.type === "textarea") {
+                input = document.createElement("textarea");
+            } else {
+                input = document.createElement("input");
+                input.type = field.type || "text";
+            }
+            input.name = field.name;
+            input.className = "action-menu-input";
+            input.required = Boolean(field.required);
+            if (field.placeholder) {
+                input.placeholder = field.placeholder;
+            }
+            if (field.type === "file" && field.accept) {
+                input.accept = field.accept;
+            }
+            wrapper.appendChild(input);
+            fieldsEl.appendChild(wrapper);
+        });
+    }
+}
+
+function setMenuStatus(menu, message, isError = false) {
+    const statusEl = menu.querySelector(".action-menu-status");
+    if (!statusEl) {
+        return;
+    }
+    statusEl.textContent = message || "";
+    statusEl.classList.toggle("is-error", Boolean(isError));
+}
+
+function setMenuLoading(menu, isLoading) {
+    menu.classList.toggle("is-loading", Boolean(isLoading));
+}
+
+async function submitActionMenu(menu) {
+    const actionKey = menu.dataset.action;
+    const config = ACTION_CONFIG[actionKey];
+    if (!config) {
+        return;
+    }
+
+    const form = menu.querySelector(".action-menu-form");
+    if (!form) {
+        return;
+    }
+
+    const formData = new FormData(form);
+    if (config.key === "schedule_update") {
+        const source = (menu.dataset.source || "").trim();
+        if (!source) {
+            setMenuStatus(menu, "Missing source. Refresh and try again.", true);
+            return;
+        }
+        formData.set("source", source);
+    }
+    const missingField = config.fields.find((field) => {
+        if (!field.required) {
+            return false;
+        }
+        const value = formData.get(field.name);
+        if (!value) {
+            return true;
+        }
+        if (typeof File !== "undefined" && value instanceof File) {
+            return !value.name;
+        }
+        return false;
+    });
+    if (missingField) {
+        setMenuStatus(menu, `${missingField.label || "Field"} is required.`, true);
+        return;
+    }
+
+    setMenuLoading(menu, true);
+    setMenuStatus(menu, "Running...");
+
+    try {
+        const response = await fetch(config.endpoint, {
+            method: config.method || "POST",
+            body: formData,
+        });
+
+        if (response.status === 401) {
+            window.location.href = "/login";
+            return;
+        }
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload.detail || payload.error || config.errorMessage || "Request failed.");
+        }
+
+        setMenuStatus(menu, config.successMessage || "Submitted.");
+        setTimeout(() => {
+            hideActionMenu(menu);
+            window.location.reload();
+        }, 700);
+    } catch (err) {
+        setMenuStatus(menu, err.message || config.errorMessage || "Request failed.", true);
+    } finally {
+        setMenuLoading(menu, false);
+    }
+}
+
 function buildPreviewHtml(content, headExtras, sourceType) {
     const safeContent = content || "";
     const type = (sourceType || "").toLowerCase();
@@ -166,102 +494,6 @@ function buildPreviewHtml(content, headExtras, sourceType) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
     return `<html><head>${headExtras}</head><body><pre style="white-space: pre-wrap; font-family: monospace; color: #111; background: #fff; padding: 12px;">${escaped}</pre></body></html>`;
-}
-
-function handleSourceAction(sourceType, label) {
-    const lower = sourceType.toLowerCase();
-    if (lower === "links") {
-        const url = prompt("Enter a URL to ingest:");
-        if (!url) {
-            return;
-        }
-        const formData = new FormData();
-        formData.append("url", url);
-        fetch("/document_index/upload_url", {
-            method: "POST",
-            body: formData,
-        })
-            .then((res) => {
-                if (res.ok) {
-                    return res.json().catch(() => ({}));
-                }
-                return res.json().catch(() => ({})).then((data) => {
-                    throw new Error(data.detail || data.error || "Failed to add link.");
-                });
-            })
-            .then(() => window.location.reload())
-            .catch((err) => alert(err.message || "Failed to add link."));
-    } else if (lower === "jira") {
-        const projectKey = prompt("Enter a JIRA project key (e.g., CMSPROD):");
-        if (!projectKey) {
-            return;
-        }
-        const formData = new FormData();
-        formData.append("project_key", projectKey);
-        fetch("/document_index/add_jira_project", {
-            method: "POST",
-            body: formData,
-        })
-            .then((res) => {
-                if (res.ok) {
-                    window.location.reload();
-                } else {
-                    return res.json().catch(() => ({})).then((data) => {
-                        throw new Error(data.detail || "Failed to add JIRA project.");
-                    });
-                }
-            })
-            .catch((err) => alert(err.message || "Failed to add JIRA project."));
-    } else if (lower === "git") {
-        const repoUrl = prompt("Enter a Git repository URL to ingest (GitHub/GitLab with mkdocs):");
-        if (!repoUrl) {
-            return;
-        }
-        const formData = new FormData();
-        formData.append("repo_url", repoUrl);
-        fetch("/document_index/add_git_repo", {
-            method: "POST",
-            body: formData,
-        })
-            .then((res) => {
-                if (res.ok) {
-                    window.location.reload();
-                } else {
-                    return res.json().catch(() => ({})).then((data) => {
-                        throw new Error(data.detail || "Failed to add git repo.");
-                    });
-                }
-            })
-            .catch((err) => alert(err.message || "Failed to add git repo."));
-    } else if (lower === "local_files") {
-        const fileInput = document.createElement("input");
-        fileInput.type = "file";
-        fileInput.onchange = () => {
-            const file = fileInput.files?.[0];
-            if (!file) {
-                return;
-            }
-            const formData = new FormData();
-            formData.append("file", file);
-            fetch("/document_index/upload", {
-                method: "POST",
-                body: formData,
-            })
-                .then((res) => {
-                    if (res.ok) {
-                        return res.json().catch(() => ({}));
-                    }
-                    return res.json().catch(() => ({})).then((data) => {
-                        throw new Error(data.detail || data.error || "Failed to upload file.");
-                    });
-                })
-                .then(() => window.location.reload())
-                .catch((err) => alert(err.message || "Failed to upload file."));
-        };
-        fileInput.click();
-    } else {
-        console.debug("Unhandled action", { sourceType, label });
-    }
 }
 
 function openModal(title, url, contentLength) {

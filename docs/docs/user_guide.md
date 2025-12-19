@@ -177,6 +177,7 @@ data_manager:
       projects:
         - PROJECT_KEY
       anonymize_data: true
+      cutoff_date: "2023-01-01"
 ```
 
 You can further customise anonymisation via the global anonymiser settings.
@@ -197,6 +198,7 @@ data_manager:
 
 The anonymizer will remove names, emails, usernames, greetings, signoffs, and any other words you specify from the fetched data.
 This is useful if you want to avoid having personal information in the vector store.
+The optional `cutoff_date` can be used to skip tickets created before a specified ISO-8601 date.
 
 #### Secrets
 
