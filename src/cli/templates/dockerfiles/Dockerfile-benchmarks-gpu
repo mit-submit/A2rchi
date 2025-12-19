@@ -80,6 +80,7 @@ COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
 RUN pip install pandas
 RUN pip install ragas==0.3.5
+RUN pip install langchain-openai==1.0.1
 
 RUN chmod g+rx /root; chmod -R g+w /root/A2rchi/src/interfaces
 

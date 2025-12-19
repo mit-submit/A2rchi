@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, List, Optional
 import hashlib
 import re
 from urllib.parse import urlparse
@@ -53,3 +53,14 @@ class ScrapedResource(BaseResource):
             first_path = parsed_link.path.strip('/').split('/')[0]
             display_name += f"/{first_path}"
         return display_name
+
+@dataclass
+class BrowserIntermediaryResult:
+    """ 
+    this class is meant to provide a layer of abstraction for browser based scrapers (i.e selenium)
+    it will format everything into a single class so that more complicated scraping results which may hit 
+    multiple tabs or pages at once can be handled in a uniform way by the LinkScraper class. 
+    """
+
+    artifacts: List[Dict] # list of scraper results for each page produced by a seelnium navigation
+    links: List[str] # links reached

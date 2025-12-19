@@ -149,6 +149,7 @@ data_manager:
       bm25_b: {{ data_manager.retrievers.hybrid_retriever.bm25_b | default(0.75, true) }}
   sources:
     links:
+      base_source_depth: {{ datamanager.sources.links.base_source_depth | default(1, true) }}
       enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
       visible: {{ data_manager.sources.links.visible | default(true, true) }}
       input_lists:
@@ -156,23 +157,23 @@ data_manager:
         {%- for input_list in link_lists %}
         - {{ input_list }}
         {%- endfor %}
-      scraper:
-        reset_data: {{ data_manager.sources.links.scraper.reset_data | default(true, true) }}
-        verify_urls: {{ data_manager.sources.links.scraper.verify_urls | default(false, true) }}
-        enable_warnings: {{ data_manager.sources.links.scraper.enable_warnings | default(false, true) }}
+      html_scraper:
+        reset_data: {{ data_manager.sources.links.html_scraper.reset_data | default(true, true) }}
+        verify_urls: {{ data_manager.sources.links.html_scraper.verify_urls | default(false, true) }}
+        enable_warnings: {{ data_manager.sources.links.html_scraper.enable_warnings | default(false, true) }}
+      selenium_scraper:
+        enabled: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.enabled | default(false, True) }}
+        visible: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.visible | default(false, true) }}
+        use_for_scraping: {{ data_manager.sources.links.selenium_scraper.use_for_scraping | default(false, true) }}
+        selenium_class: {{  data_manager.sources.links.selenium_scraper.selenium_class | default('CERNSSOAuthenticator', true)  }}
+        selenium_class_map: 
+          CERNSSOAuthenticator: 
+            class: {{ data_manager.sources.links.selenium_scraper.selenium_class_map.CERNSSOAuthenticator.class | default('CERNSSOAuthenticator', true) }}
+            kwargs:
+              headless:  {{ data_manager.sources.links.selenium_scraper.selenium_class_map.CERNSSOAuthenticator.kwargs.headless | default(true, true) }}
     git:
       enabled: {{ data_manager.sources.git.enabled | default(false, true) }}
       visible: {{ data_manager.sources.git.visible | default(true, true) }}
-    sso:
-      enabled: {{ data_manager.sources.sso.enabled | default(false, true) }}
-      visible: {{ data_manager.sources.sso.visible | default(true, true) }}
-      sso_class: {{ data_manager.sources.sso.sso_class | default('CERNSSOScraper', true) }}
-      sso_class_map:
-        CERNSSOScraper:
-          class: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.class | default('CERNSSOScraper', true) }}
-          kwargs:
-            headless: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.kwargs.headless | default(true, true) }}
-            max_depth: {{ data_manager.sources.sso.sso_class_map.CERNSSOScraper.kwargs.max_depth | default(2, true) }}
     jira:
       enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}
       url: {{ data_manager.sources.jira.url | default('', true) }}
