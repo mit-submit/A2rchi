@@ -6,6 +6,7 @@ from src.utils.config_loader import load_global_config
 
 # ignore debug logs from these modules, too verbose :)
 ignore_debug_modules = ["urllib3.connectionpool", "filelock", "httpcore", "openai._base_client"]
+ignore_info_modules = ["httpx"]
 
 logging_verboseLevel = [
     logging.CRITICAL,
@@ -35,6 +36,11 @@ def setup_logging():
     if verbosity == 4:
         for module in ignore_debug_modules:
             logging.getLogger(module).setLevel(logging_verboseLevel[3])
+
+    if verbosity == 3:
+        for module in ignore_info_modules:
+            logging.getLogger(module).setLevel(logging_verboseLevel[2])
+
 
 def setup_cli_logging(verbosity):
     

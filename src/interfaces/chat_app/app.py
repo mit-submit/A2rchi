@@ -110,7 +110,6 @@ class ChatWrapper:
         # load configs
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
@@ -683,17 +682,19 @@ class ChatWrapper:
         self.lock.acquire()
         timestamps['lock_acquisition_ts'] = datetime.now()
         try:
+            self.data_manager.update_tickets()
+        except Exception as e:
+            #NOTE: Error is logged but a failure to update tickets does not necessarily mean A2rchi cannot process and respond to the message
+            logger.error(f"Failed to update tickets - {str(e)}")
+
+
+        try:
             # update vector store through data manager; will only do something if newwhere files have been added
             logger.info("Acquired lock file update vectorstore")
 
             self.data_manager.update_vectorstore()
             timestamps['vectorstore_update_ts'] = datetime.now()
 
-        except Exception as e:
-            # NOTE: we log the error message but do not return here, as a failure
-            # to update the data manager does not necessarily mean A2rchi cannot
-            # process and respond to the message
-            logger.error(f"Failed to update vectorstore - {str(e)}")
 
         finally:
             self.lock.release()
@@ -817,7 +818,6 @@ class FlaskAppWrapper(object):
         self.configs(**configs)
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -1141,7 +1141,6 @@ class FlaskAppWrapper(object):
         # re-read config using load_config and update dependent variables
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -1907,5 +1906,4 @@ class FlaskAppWrapper(object):
                             'source_type':'null',
                             'original_url':"no_url",
                             'title':'Not found'})
-
 

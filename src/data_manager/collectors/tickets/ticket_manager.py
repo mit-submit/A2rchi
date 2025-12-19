@@ -1,4 +1,5 @@
 from typing import Any, Dict, Iterable, Optional
+from datetime import datetime, date, timezone
 
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.tickets.integrations.jira import JiraClient
@@ -20,20 +21,47 @@ class TicketManager:
         raw_sources = (dm_config or {}).get('sources', {}) if isinstance(dm_config, dict) else {}
         sources_config = dict(raw_sources) if isinstance(raw_sources, dict) else {}
 
-        jira_config = dict(sources_config.get('jira', {}))
-        redmine_config = dict(sources_config.get('redmine', {}))
+        self.jira_config = dict(sources_config.get('jira', {}))
+        self.redmine_config = dict(sources_config.get('redmine', {}))
+
+        self.last_collected_at = {}
+        self.cutoff_dates = {'JIRA':None,'Redmine':None}
 
         self.jira_client = None
-        if jira_config.get('enabled', False):
-            self.jira_client = self._init_client(lambda: JiraClient(jira_config), "JIRA")
+        if self.jira_config.get('enabled', False):
+            self.jira_client = self._init_client(lambda: JiraClient(self.jira_config), "JIRA")
+            self.cutoff_dates['JIRA'] = self._parse_cutoff_date(self.jira_config)
+
 
         self.redmine_client = None
-        if redmine_config.get('enabled', False):
-            self.redmine_client = self._init_client(lambda: RedmineClient(redmine_config), "Redmine")
+        if self.redmine_config.get('enabled', False):
+            self.redmine_client = self._init_client(lambda: RedmineClient(self.redmine_config), "Redmine")
+            self.cutoff_dates['Redmine'] = self._parse_cutoff_date(self.redmine_config)
 
-    def collect(self, persistence: PersistenceService) -> None:
-        self._collect_from_client(self.jira_client, "JIRA", persistence)
-        self._collect_from_client(self.redmine_client, "Redmine", persistence)
+    def collect(self, persistence: PersistenceService) -> None:            
+        self._collect_from_client(self.jira_client, "JIRA", persistence, None,self.cutoff_dates['JIRA'])
+        self._collect_from_client(self.redmine_client, "Redmine", persistence, None, self.cutoff_dates['Redmine'])
+
+    def update_tickets(self, persistence: PersistenceService) -> None:
+        now_utc = datetime.now(timezone.utc)
+
+        if self.jira_config.get('enabled', False):
+            jira_frequency = self.jira_config.get('frequency')
+            date_last_collected_at = self.last_collected_at["JIRA"]
+            cutoff_date = self.cutoff_dates['JIRA']
+            if date_last_collected_at:
+                if (now_utc-date_last_collected_at).total_seconds()/60>=jira_frequency or jira_frequency==0:
+                    self._collect_from_client(self.jira_client, "JIRA", persistence, date_last_collected_at, cutoff_date)
+
+        if self.redmine_config.get('enabled', False):
+            redmine_frequency = self.redmine_config.get('frequency')
+            date_last_collected_at = self.last_collected_at["Redmine"]
+            cutoff_date = self.cutoff_dates['Redmine']
+            if date_last_collected_at:
+                if (now_utc-date_last_collected_at).total_seconds()/60>=redmine_frequency or redmine_frequency==0:
+                    self._collect_from_client(self.redmine_client, "Redmine", persistence, date_last_collected_at, cutoff_date)
+
+
 
     def run(self, persistence: Optional[PersistenceService] = None) -> None:
         """Backward-compatible entry point for legacy callers."""
@@ -57,12 +85,14 @@ class TicketManager:
         client,
         name: str,
         persistence: PersistenceService,
+        collect_since: datetime,
+        cutoff_date: datetime
     ) -> None:
         if client is None:
             return
 
         try:
-            resources = client.collect()
+            resources = client.collect(collect_since, cutoff_date)
         except Exception as exc:
             logger.warning(
                 f"{name} collection failed; skipping remaining tickets from this source.",
@@ -71,6 +101,8 @@ class TicketManager:
             return
 
         self._persist_resources(resources, persistence)
+
+        self.last_collected_at[name] = datetime.now(timezone.utc)
 
     def _persist_resources(
         self,
@@ -84,6 +116,26 @@ class TicketManager:
             try:
                 persistence.persist_resource(resource, persistence.data_path / "tickets")
             except Exception as exc:
-                logger.error(
+                logger.warning(
                     f"Failed to persist ticket {resource.ticket_id} from {resource.source}: {exc}"
                 )
+
+    def _parse_cutoff_date(
+            self,
+            ticket_integration_config: dict
+        ) -> date:
+        cutoff_date = ticket_integration_config.get('cutoff_date',None)
+
+        if not isinstance(cutoff_date,date):
+            try:
+                cutoff_date = datetime.strptime(cutoff_date.strip(),'%Y-%m-%d')
+            except Exception as e:
+                logger.warning(str(e))
+
+        if cutoff_date is None:
+            logger.warning(f"The cutoff date: {cutoff_date} is not in YYYY-MM-DD format. Skipping attribute.")
+        else:
+            cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
+
+        return cutoff_date
+        

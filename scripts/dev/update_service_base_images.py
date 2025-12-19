@@ -83,7 +83,7 @@ def _update_line(line: str, base_name: str, options: UpdateOptions) -> Tuple[str
     if not stripped.startswith("FROM "):
         return line, False
 
-    match = re.match(r"(?P<intro>\s*FROM\s+)(?P<image>\S+)(?P<suffix>.*)", core)
+    match = re.match(r"(?P<intro>\s*FROM\s+)(?P<platform>--platform=\S+\s)?(?P<image>\S+)(?P<suffix>.*)", core)
     if not match:
         return line, False
 

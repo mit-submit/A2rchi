@@ -130,7 +130,7 @@ class VectorStoreManager:
             files_to_add = {
                 hash_value: files_in_data[hash_value] for hash_value in hashes_to_add
             }
-            logger.info(f"Files to add: {files_to_add}")
+            logger.debug(f"Files to add: {files_to_add}")
             collection = self._add_to_vectorstore(collection, files_to_add)
             logger.info("Vectorstore update has been completed")
 
@@ -175,7 +175,7 @@ class VectorStoreManager:
 
         def process_file(filehash: str, file_path: str):
             filename = Path(file_path).name
-            logger.info(f"Processing file: {filename} (hash: {filehash})")
+            logger.debug(f"Processing file: {filename} (hash: {filehash})")
 
             try:
                 loader = self.loader(file_path)
