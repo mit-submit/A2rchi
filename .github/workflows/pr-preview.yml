@@ -4,7 +4,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-
 concurrency:
   group: pr-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -35,7 +34,7 @@ jobs:
       contents: read
     env:
       A2RCHI_DIR: ${{ github.workspace }}/a2rchi-local
- 
+
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       tag: ${{ steps.detect.outputs.tag }}
@@ -76,7 +75,7 @@ jobs:
           python-version: "3.11"
 
       - name: Set up Python (Self-hosted)
-        if: ${{ contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }} 
+        if: ${{ contains(runner.name, 'submit') && steps.detect.outputs.changed == 'true' }}
         run: |
           export PYENV_ROOT="$HOME/.pyenv"
           export PATH="$PYENV_ROOT/bin:$PATH"
@@ -96,14 +95,6 @@ jobs:
       - name: Build updated base images
         if: steps.detect.outputs.changed == 'true'
         run: scripts/dev/build_docker_images.sh "${{ steps.detect.outputs.tag }}"
-
-      - name: Push updated base images
-        if: steps.detect.outputs.changed == 'true'
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          PUSH_LATEST: "false"
-        run: scripts/dev/push_docker_images.sh "${{ steps.detect.outputs.tag }}"
 
   preview:
     runs-on: [submit76-runner]
@@ -140,7 +131,7 @@ jobs:
 
       - name: Prepare base image references
         if: needs.build-base-images.outputs.changed == 'true'
-        run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source dockerhub
+        run: python scripts/dev/update_service_base_images.py --tag "${{ needs.build-base-images.outputs.tag }}" --switch-source localhost --orig-tag all
 
       - name: Verify MkDocs build
         run: mkdocs build --config-file docs/mkdocs.yml --strict
@@ -159,15 +150,17 @@ jobs:
           hostmode: "true"
           wait-url: http://localhost:27861/api/health
           base-url: http://localhost:27861
-          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build --pull
+          extra-env: A2RCHI_COMPOSE_UP_FLAGS=--build
           use-podman: "true"
 
-      - name: Delete PR preview Docker tags
+      - name: Cleanup local base images
         if: ${{ always() && needs.build-base-images.outputs.changed == 'true' }}
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          TAG: ${{ needs.build-base-images.outputs.tag }}
         run: |
           set -euo pipefail
-          python scripts/dev/manage_docker_tags.py delete-tag --tag "${TAG}"
+          TAG="${{ needs.build-base-images.outputs.tag }}"
+          echo "Cleaning up local base images with tag: $TAG"
+          docker rmi "localhost/a2rchi/a2rchi-python-base:${TAG}" || true
+          docker rmi "localhost/a2rchi/a2rchi-pytorch-base:${TAG}" || true
+          docker rmi "localhost/a2rchi/a2rchi-python-base:latest" || true
+          docker rmi "localhost/a2rchi/a2rchi-pytorch-base:latest" || true
+          echo "Cleanup complete"
