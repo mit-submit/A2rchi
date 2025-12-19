@@ -61,6 +61,43 @@ def parse_benchmark_results(results, metadata):
     return config_data, config_name, timestamp, questions, total_results
 
 
+def format_total_duration(raw_duration):
+    """Convert a raw duration value from LangChain messages into a readable string.
+
+    LangChain providers differ in units; Ollama, for example, reports nanoseconds.
+    Use simple magnitude-based heuristics and keep the raw value available for reference.
+    """
+    try:
+        value = float(raw_duration)
+    except (TypeError, ValueError):
+        return None, None
+
+    if value <= 0:
+        return None, None
+
+    if value >= 1_000_000_000:
+        seconds = value / 1_000_000_000  # assume nanoseconds
+        assumed_unit = "nanoseconds"
+    elif value >= 1_000_000:
+        seconds = value / 1_000_000  # assume microseconds
+        assumed_unit = "microseconds"
+    elif value >= 1_000:
+        seconds = value / 1_000  # assume milliseconds
+        assumed_unit = "milliseconds"
+    else:
+        seconds = value
+        assumed_unit = "seconds"
+
+    if seconds >= 1:
+        friendly = f"{seconds:.2f}s"
+    elif seconds >= 0.001:
+        friendly = f"{seconds * 1000:.0f}ms"
+    else:
+        friendly = f"{seconds * 1_000_000:.0f}µs"
+
+    return friendly, assumed_unit
+
+
 def format_html_output(config_data, config_name, timestamp,questions, total_results):
     """Format results as HTML for easier reading"""
 
@@ -372,24 +409,31 @@ def format_html_output(config_data, config_name, timestamp,questions, total_resu
             html_parts.append(f'<div style="display: flex; flex-direction: column; gap: 12px;">')
             for m_idx, message in enumerate(messages, 1):
                 msg_type = message.get('type', 'message')
+                duration_display, duration_unit = format_total_duration(message.get("total_duration"))
+                duration_suffix = f" ({duration_display})" if duration_display else ""
+                duration_title = ""
+                if duration_display:
+                    raw_duration = html.escape(str(message.get("total_duration")))
+                    unit_hint = f"assumed {duration_unit}" if duration_unit else "raw value"
+                    duration_title = f' title="Raw duration: {raw_duration} ({unit_hint})"'
                 if msg_type == 'tool_call':
-                    title = f'🛠️ Tool Call #{m_idx}: {message.get("tool_name", "Unknown Tool")}'
+                    title = f'🛠️ Tool Call #{m_idx}: {message.get("tool_name", "Unknown Tool")}{duration_suffix}'
                     args = message.get('tool_args')
                     body = f'<strong>Args:</strong> {html.escape(str(args))}' if args is not None else '<em>No arguments provided</em>'
                     border_color = '#17a2b8'
                 elif msg_type == 'ai_message':
-                    title = f'🤖 Assistant Message #{m_idx}'
+                    title = f'🤖 Assistant Message #{m_idx}{duration_suffix}'
                     content = message.get('content', '')
                     body = html.escape(str(content)).replace('\\n', '<br>')
                     border_color = '#6f42c1'
                 else:
-                    title = f'📝 Message #{m_idx}'
+                    title = f'📝 Message #{m_idx}{duration_suffix}'
                     fallback = message.get('content', message)
                     body = html.escape(str(fallback)).replace('\\n', '<br>')
                     border_color = '#343a40'
                 html_parts.append(f'''
                 <div class="answer-box" style="background: #fff; border-left-color: {border_color};">
-                    <div style="font-weight: 600; margin-bottom: 6px;">{title}</div>
+                    <div style="font-weight: 600; margin-bottom: 6px;"{duration_title}>{title}</div>
                     <div style="font-size: 0.9em; white-space: pre-wrap;">{body}</div>
                 </div>
                 ''')

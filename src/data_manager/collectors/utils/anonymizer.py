@@ -7,7 +7,7 @@ from typing import List, Set
 
 import spacy
 
-from src.utils.config_loader import load_data_manager_config, load_utils_config
+from src.utils.config_loader import load_data_manager_config
 
 
 class Anonymizer:
@@ -17,13 +17,9 @@ class Anonymizer:
         Initialize the Anonymizer.
         """
         dm_config = load_data_manager_config()
-        utils_config = load_utils_config()
 
         data_manager_utils = dm_config.get("utils", {}) if isinstance(dm_config, dict) else {}
         anonymizer_config = data_manager_utils.get("anonymizer", {}) if isinstance(data_manager_utils, dict) else {}
-        if not anonymizer_config:
-            anonymizer_config = utils_config.get("anonymizer", {}) if isinstance(utils_config, dict) else {}
-
         if not anonymizer_config:
             raise KeyError(
                 "Anonymizer configuration not found under "

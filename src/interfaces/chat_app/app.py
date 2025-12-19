@@ -3,9 +3,9 @@ import os
 import re
 import time
 
+from dataclasses import dataclass
 from datetime import datetime
-from threading import Lock
-from typing import List
+from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 from functools import wraps
 
@@ -17,7 +17,7 @@ import psycopg2.extras
 import yaml
 from authlib.integrations.flask_client import OAuth
 from chromadb.config import Settings
-from flask import jsonify, render_template, request, session, flash, redirect, url_for
+from flask import jsonify, render_template, request, session, flash, redirect, url_for, Response, stream_with_context
 from flask_cors import CORS
 from langchain_chroma.vectorstores import Chroma
 from pygments import highlight
@@ -28,14 +28,11 @@ from pygments.lexers import (BashLexer, CLexer, CppLexer, FortranLexer,
                              TypeScriptLexer)
 
 from src.a2rchi.a2rchi import A2rchi
-from src.data_manager.data_manager import DataManager
+# from src.data_manager.data_manager import DataManager
 from src.utils.config_loader import CONFIGS_PATH, get_config_names, load_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.sql import SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO, SQL_INSERT_CONFIG, SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP, SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION, SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK
-from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
-from src.data_manager.collectors.persistence import PersistenceService
-from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.interfaces.chat_app.document_utils import *
 from src.interfaces.chat_app.utils import collapse_assistant_sequences
 
@@ -102,6 +99,15 @@ class ConversationAccessError(Exception):
     pass
 
 
+@dataclass
+class ChatRequestContext:
+    sender: str
+    content: str
+    conversation_id: int
+    history: List
+    is_refresh: bool
+
+
 class ChatWrapper:
     """
     Wrapper which holds functionality for the chatbot
@@ -110,13 +116,11 @@ class ChatWrapper:
         # load configs
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
-        # initialize data manager
-        self.data_manager = DataManager()
-        self.data_manager.update_vectorstore()
+        # initialize data manager (ingestion handled by data-manager service)
+        # self.data_manager = DataManager(run_ingestion=False)
         embedding_name = self.config["data_manager"]["embedding_name"]
         self.similarity_score_reference = self.config["data_manager"]["embedding_class_map"][embedding_name]["similarity_score_reference"]
         self.sources_config = self.config["data_manager"]["sources"]
@@ -129,8 +133,7 @@ class ChatWrapper:
         self.conn = None
         self.cursor = None
 
-        # initialize lock and chain
-        self.lock = Lock()
+        # initialize chain
         self.a2rchi = A2rchi(pipeline=self.config["services"]["chat_app"]["pipeline"])
         self.number_of_queries = 0
 
@@ -540,10 +543,18 @@ class ChatWrapper:
         """
         logger.debug("Entered insert_conversation.")
 
+        def _sanitize(text: str) -> str:
+            return text.replace("\x00", "") if isinstance(text, str) else text
+
         service = "Chatbot"
         # parse user message / a2rchi message
         user_sender, user_content, user_msg_ts = user_message
         a2rchi_sender, a2rchi_content, a2rchi_msg_ts = a2rchi_message
+
+        user_content = _sanitize(user_content)
+        a2rchi_content = _sanitize(a2rchi_content)
+        link = _sanitize(link)
+        a2rchi_context = _sanitize(a2rchi_context)
 
         # construct insert_tups
         insert_tups = (
@@ -671,124 +682,244 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
+    def _init_timestamps(self) -> Dict[str, datetime]:
+        return {
+            "lock_acquisition_ts": datetime.now(),
+            "vectorstore_update_ts": datetime.now(),
+        }
+
+    def _resolve_config_name(self, config_name: Optional[str]) -> str:
+        return config_name or self.current_config_name or self.default_config_name
+
+    def _prepare_chat_context(
+        self,
+        message: List[str],
+        conversation_id: int | None,
+        client_id: str,
+        is_refresh: bool,
+        server_received_msg_ts: datetime,
+        client_sent_msg_ts: float,
+        client_timeout: float,
+        timestamps: Dict[str, datetime],
+    ) -> tuple[Optional[ChatRequestContext], Optional[int]]:
+        if not client_id:
+            raise ValueError("client_id is required to process chat messages")
+        sender, content = tuple(message[0])
+
+        if conversation_id is None:
+            conversation_id = self.create_conversation(content, client_id)
+            history = []
+        else:
+            history = self.query_conversation_history(conversation_id, client_id)
+            self.update_conversation_timestamp(conversation_id, client_id)
+
+        timestamps["query_convo_history_ts"] = datetime.now()
+
+        if is_refresh:
+            while history and history[-1][0] == A2RCHI_SENDER:
+                _ = history.pop(-1)
+
+        if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
+            return None, 408
+
+        if not is_refresh:
+            history = history + [(sender, content)]
+
+        if len(history) >= QUERY_LIMIT:
+            return None, 500
+
+        return (
+            ChatRequestContext(
+                sender=sender,
+                content=content,
+                conversation_id=conversation_id,
+                history=history,
+                is_refresh=is_refresh,
+            ),
+            None,
+        )
+
+    def _message_content(self, message) -> str:
+        content = getattr(message, "content", "")
+        if isinstance(content, list):
+            content = " ".join(str(part) for part in content)
+        return str(content)
+
+    def _truncate_text(self, text: str, max_chars: int) -> str:
+        if max_chars and len(text) > max_chars:
+            return text[: max_chars - 3].rstrip() + "..."
+        return text
+
+    def _stream_events_from_output(
+        self,
+        output,
+        *,
+        include_agent_steps: bool,
+        include_tool_steps: bool,
+        conversation_id: int,
+        max_chars: int = 800,
+    ) -> List[Dict[str, Any]]:
+        messages = getattr(output, "messages", []) or []
+        if not messages:
+            return []
+        message = messages[-1]
+        events: List[Dict[str, Any]] = []
+        msg_type = str(getattr(message, "type", "")).lower()
+
+        if include_tool_steps and hasattr(message, "tool_calls") and message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.get("name", "unknown")
+                tool_args = tool_call.get("args", {})
+                events.append(
+                    {
+                        "type": "step",
+                        "step_type": "tool_call",
+                        "tool_name": tool_name,
+                        "tool_args": tool_args,
+                        "tool_call_id": tool_call.get("id", ""),
+                        "content": self._truncate_text(f"{tool_name}({tool_args})", max_chars),
+                        "conversation_id": conversation_id,
+                    }
+                )
+
+        if include_tool_steps and getattr(message, "tool_call_id", None):
+            events.append(
+                {
+                    "type": "step",
+                    "step_type": "tool_result",
+                    "tool_call_id": message.tool_call_id,
+                    "content": self._truncate_text(self._message_content(message), max_chars),
+                    "conversation_id": conversation_id,
+                }
+            )
+
+        content = self._message_content(message) if msg_type in {"ai", "assistant"} else ""
+        handled_tool_call = False
+        if include_tool_steps and content:
+            tool_match = re.match(r"^\s*([\w.-]+)\[ARGS\](.*)$", content, re.DOTALL)
+            if tool_match:
+                tool_name = tool_match.group(1)
+                tool_args_raw = tool_match.group(2).strip()
+                events.append(
+                    {
+                        "type": "step",
+                        "step_type": "tool_call",
+                        "tool_name": tool_name,
+                        "tool_args": tool_args_raw,
+                        "tool_call_id": "",
+                        "content": self._truncate_text(content, max_chars),
+                        "conversation_id": conversation_id,
+                    }
+                )
+                handled_tool_call = True
+
+        if include_agent_steps and content and not handled_tool_call:
+            events.append(
+                {
+                    "type": "step",
+                    "step_type": "agent",
+                    "content": self._truncate_text(content, max_chars),
+                    "conversation_id": conversation_id,
+                }
+            )
+
+        return events
+
+    def _finalize_result(
+        self,
+        result,
+        *,
+        context: ChatRequestContext,
+        server_received_msg_ts: datetime,
+        timestamps: Dict[str, datetime],
+    ) -> tuple[str, List[int]]:
+        output = self.format_code_in_text(result["answer"])
+
+        documents = result.get("source_documents", [])
+        scores = result.get("metadata", {}).get("retriever_scores", [])
+        top_sources = self.get_top_sources(documents, scores)
+        output += self.format_links(top_sources)
+
+        timestamps["a2rchi_message_ts"] = datetime.now()
+        context_data = self.prepare_context_for_storage(documents, scores)
+
+        best_reference = "Link unavailable"
+        if top_sources:
+            primary_source = top_sources[0]
+            best_reference = primary_source["link"] or primary_source["display"]
+
+        user_message = (context.sender, context.content, server_received_msg_ts)
+        a2rchi_message = (A2RCHI_SENDER, output, timestamps["a2rchi_message_ts"])
+        message_ids = self.insert_conversation(
+            context.conversation_id,
+            user_message,
+            a2rchi_message,
+            best_reference,
+            context_data,
+            context.is_refresh,
+        )
+        timestamps["insert_convo_ts"] = datetime.now()
+        context.history.append((A2RCHI_SENDER, result["answer"]))
+
+        agent_messages = getattr(result, "messages", []) or []
+        if agent_messages:
+            logger.debug("Agent messages count: %d", len(agent_messages))
+            for i, msg in enumerate(agent_messages):
+                msg_type = type(msg).__name__
+                has_tool_calls = hasattr(msg, "tool_calls") and msg.tool_calls
+                has_tool_call_id = hasattr(msg, "tool_call_id") and msg.tool_call_id
+                logger.debug(
+                    "  Message %d: %s, tool_calls=%s, tool_call_id=%s",
+                    i,
+                    msg_type,
+                    has_tool_calls,
+                    has_tool_call_id,
+                )
+        if agent_messages and message_ids:
+            a2rchi_message_id = message_ids[-1]
+            self.insert_tool_calls_from_messages(context.conversation_id, a2rchi_message_id, agent_messages)
+
+        return output, message_ids
+
     def __call__(self, message: List[str], conversation_id: int|None, client_id: str, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str):
         """
         Execute the chat functionality.
         """
-        # store timestamps for code profiling information
-        start_time = time.time()
-
-        timestamps = {}
-
-        self.lock.acquire()
-        timestamps['lock_acquisition_ts'] = datetime.now()
-        try:
-            # update vector store through data manager; will only do something if newwhere files have been added
-            logger.info("Acquired lock file update vectorstore")
-
-            self.data_manager.update_vectorstore()
-            timestamps['vectorstore_update_ts'] = datetime.now()
-
-        except Exception as e:
-            # NOTE: we log the error message but do not return here, as a failure
-            # to update the data manager does not necessarily mean A2rchi cannot
-            # process and respond to the message
-            logger.error(f"Failed to update vectorstore - {str(e)}")
-
-        finally:
-            self.lock.release()
-            logger.info("Released lock file update vectorstore")
+        timestamps = self._init_timestamps()
+        output = None
+        message_ids = None
+        context = None
 
         try:
-            # convert the message to native A2rchi form (because javascript does not have tuples)
-            sender, content = tuple(message[0])
+            context, error_code = self._prepare_chat_context(
+                message,
+                conversation_id,
+                client_id,
+                is_refresh,
+                server_received_msg_ts,
+                client_sent_msg_ts,
+                client_timeout,
+                timestamps,
+            )
+            if error_code is not None:
+                return None, None, None, timestamps, error_code
 
-            if not client_id:
-                raise ValueError("client_id is required to process chat messages")
+            requested_config = self._resolve_config_name(config_name)
+            self.update_config(config_name=requested_config)
 
-            # new conversation if conversation_id is None, otherwise use existing
-            if conversation_id is None:
-                conversation_id = self.create_conversation(content, client_id)
-                history = []
-            else:
-                history = self.query_conversation_history(conversation_id, client_id)
-                self.update_conversation_timestamp(conversation_id, client_id)
-
-            timestamps['query_convo_history_ts'] = datetime.now()
-
-            # if this is a chat refresh / message regeneration; remove previous contiuous non-A2rchi message(s)
-            if is_refresh:
-                while history and history[-1][0] == A2RCHI_SENDER:
-                    _ = history.pop(-1)
-
-            # guard call to LLM; if timestamp from message is more than timeout secs in the past;
-            # return error=True and do not generate response as the client will have timed out
-            if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
-                return None, None, None, timestamps, 408
-
-            # run chain to get result; limit users to 1000 queries per conversation; refreshing browser starts new conversation
-            if len(history) < QUERY_LIMIT:
-                history = history + [(sender, content)] if not is_refresh else history
-                requested_config = config_name or self.current_config_name or self.default_config_name
-                self.update_config(config_name=requested_config)
-                result = self.a2rchi(history=history, conversation_id=conversation_id)
-                timestamps['chain_finished_ts'] = datetime.now()
-            else:
-                # for now let's return a timeout error, as returning a different
-                # error message would require handling new message_ids param. properly
-                return None, None, None, timestamps, 500
+            result = self.a2rchi(history=context.history, conversation_id=context.conversation_id)
+            timestamps["chain_finished_ts"] = datetime.now()
 
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
-            # display answer
-            output = self.format_code_in_text(result["answer"])
-
-
-            # display sources (links or ticket references)
-            documents = result.get("source_documents", [])
-            scores = result.get("metadata", {}).get("retriever_scores", [])
-            top_sources = self.get_top_sources(documents, scores)
-            output += self.format_links(top_sources)
-
-            # message is constructed!
-            timestamps['a2rchi_message_ts'] = datetime.now()
-
-            # formatting context
-            context = self.prepare_context_for_storage(documents, scores)
-
-            best_reference = "Link unavailable"
-            if top_sources:
-                primary_source = top_sources[0]
-                best_reference = primary_source["link"] or primary_source["display"]
-
-            # and now finally insert the conversation
-            user_message = (sender, content, server_received_msg_ts)
-            a2rchi_message = (A2RCHI_SENDER, output, timestamps['a2rchi_message_ts'])
-            message_ids = self.insert_conversation(
-                conversation_id,
-                user_message,
-                a2rchi_message,
-                best_reference,
-                context,
-                is_refresh
+            output, message_ids = self._finalize_result(
+                result,
+                context=context,
+                server_received_msg_ts=server_received_msg_ts,
+                timestamps=timestamps,
             )
-            timestamps['insert_convo_ts'] = datetime.now()
-            history.append((A2RCHI_SENDER, result["answer"]))
-            
-            # insert tool calls extracted from messages
-            agent_messages = getattr(result, 'messages', []) or []
-            logger.debug("Agent messages count: %d", len(agent_messages))
-            for i, msg in enumerate(agent_messages):
-                msg_type = type(msg).__name__
-                has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
-                has_tool_call_id = hasattr(msg, 'tool_call_id') and msg.tool_call_id
-                logger.debug("  Message %d: %s, tool_calls=%s, tool_call_id=%s", 
-                           i, msg_type, has_tool_calls, has_tool_call_id)
-            if agent_messages and message_ids:
-                a2rchi_message_id = message_ids[-1]  # A2rchi's response is the last message
-                self.insert_tool_calls_from_messages(conversation_id, a2rchi_message_id, agent_messages)
 
         except ConversationAccessError as e:
             logger.warning(f"Unauthorized conversation access attempt: {e}")
@@ -806,7 +937,121 @@ class ChatWrapper:
 
         timestamps['finish_call_ts'] = datetime.now()
 
-        return output, conversation_id, message_ids, timestamps, None
+        return output, context.conversation_id if context else None, message_ids, timestamps, None
+
+    def stream(
+        self,
+        message: List[str],
+        conversation_id: int | None,
+        client_id: str,
+        is_refresh: bool,
+        server_received_msg_ts: datetime,
+        client_sent_msg_ts: float,
+        client_timeout: float,
+        config_name: str,
+        *,
+        include_agent_steps: bool = True,
+        include_tool_steps: bool = True,
+        max_step_chars: int = 800,
+    ) -> Iterator[Dict[str, Any]]:
+        timestamps = self._init_timestamps()
+        context = None
+        last_output = None
+        pending_agent_event = None
+
+        try:
+            context, error_code = self._prepare_chat_context(
+                message,
+                conversation_id,
+                client_id,
+                is_refresh,
+                server_received_msg_ts,
+                client_sent_msg_ts,
+                client_timeout,
+                timestamps,
+            )
+            if error_code is not None:
+                error_message = "server error; see chat logs for message"
+                if error_code == 408:
+                    error_message = "client timeout"
+                elif error_code == 403:
+                    error_message = "conversation not found"
+                yield {"type": "error", "status": error_code, "message": error_message}
+                return
+
+            requested_config = self._resolve_config_name(config_name)
+            self.update_config(config_name=requested_config)
+
+            for output in self.a2rchi.stream(history=context.history, conversation_id=context.conversation_id):
+                logger.debug("Recieved streaming output chunk: %s", output)
+                last_output = output
+                if getattr(output, "final", False):
+                    continue
+                if pending_agent_event:
+                    yield pending_agent_event
+                    pending_agent_event = None
+                for event in self._stream_events_from_output(
+                    output,
+                    include_agent_steps=include_agent_steps,
+                    include_tool_steps=include_tool_steps,
+                    conversation_id=context.conversation_id,
+                    max_chars=max_step_chars,
+                ):
+                    if event.get("step_type") == "agent":
+                        pending_agent_event = event
+                    else:
+                        yield event
+
+            timestamps["chain_finished_ts"] = datetime.now()
+
+            if last_output is None:
+                yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
+                return
+            if pending_agent_event:
+                final_preview = self._truncate_text(last_output["answer"] or "", max_step_chars)
+                if pending_agent_event.get("content") != final_preview:
+                    yield pending_agent_event
+                pending_agent_event = None
+
+            # keep track of total number of queries and log this amount
+            self.number_of_queries += 1
+            logger.info(f"Number of queries is: {self.number_of_queries}")
+
+            output, message_ids = self._finalize_result(
+                last_output,
+                context=context,
+                server_received_msg_ts=server_received_msg_ts,
+                timestamps=timestamps,
+            )
+
+            timestamps["finish_call_ts"] = datetime.now()
+            timestamps["server_received_msg_ts"] = server_received_msg_ts
+            timestamps["client_sent_msg_ts"] = datetime.fromtimestamp(client_sent_msg_ts)
+            timestamps["server_response_msg_ts"] = datetime.now()
+
+            if message_ids:
+                self.insert_timing(message_ids[-1], timestamps)
+
+            yield {
+                "type": "final",
+                "response": output,
+                "conversation_id": context.conversation_id,
+                "a2rchi_msg_id": message_ids[-1] if message_ids else None,
+                "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
+                "final_response_msg_ts": datetime.now().timestamp(),
+            }
+
+        except ConversationAccessError as exc:
+            logger.warning("Unauthorized conversation access attempt: %s", exc)
+            yield {"type": "error", "status": 403, "message": "conversation not found"}
+        except Exception as exc:
+            logger.error("Failed to stream response: %s", exc, exc_info=True)
+            yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
+        finally:
+            if self.cursor is not None:
+                self.cursor.close()
+            if self.conn is not None:
+                self.conn.close()
 
 
 class FlaskAppWrapper(object):
@@ -817,13 +1062,9 @@ class FlaskAppWrapper(object):
         self.configs(**configs)
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
-        self.persistence = PersistenceService(self.data_path)
-        self.catalog = CatalogService(self.data_path)
-
         self.salt = read_secret("UPLOADER_SALT")
         secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
         if not secret_key:
@@ -831,19 +1072,8 @@ class FlaskAppWrapper(object):
             import secrets
             secret_key = secrets.token_hex(32)
         self.app.secret_key = secret_key
-        self.app.config['UPLOAD_FOLDER'] = os.path.join(self.data_path, "manual_uploads")
-        self.app.config['WEBSITE_FOLDER'] = os.path.join(self.data_path, "manual_websites")
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
-        self.app.config['WEBLISTS_FOLDER'] = os.path.join(self.data_path, "websites")
-
-        # create upload and accounts folders if they don't already exist
-        os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
-        os.makedirs(self.app.config['WEBSITE_FOLDER'], exist_ok=True)
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
-
-        # create path specifying URL sources for scraping
-        self.sources_path = os.path.join(self.data_path, 'index.yaml')
-        self.scraper_manager = ScraperManager()
 
         # store postgres connection info
         self.pg_config = {
@@ -883,6 +1113,7 @@ class FlaskAppWrapper(object):
         # Protected endpoints (require auth when enabled)
         self.add_endpoint('/chat', 'index', self.require_auth(self.index))
         self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.require_auth(self.get_chat_response), methods=["POST"])
+        self.add_endpoint('/api/get_chat_response_stream', 'get_chat_response_stream', self.require_auth(self.get_chat_response_stream), methods=["POST"])
         self.add_endpoint('/terms', 'terms', self.require_auth(self.terms))
         self.add_endpoint('/api/like', 'like', self.require_auth(self.like),  methods=["POST"])
         self.add_endpoint('/api/dislike', 'dislike', self.require_auth(self.dislike),  methods=["POST"])
@@ -891,12 +1122,12 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/text_feedback', 'text_feedback', self.require_auth(self.text_feedback), methods=["POST"])
 
         # conditionally add ChromaDB endpoints based on config
-        if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
-            logger.info("Adding ChromaDB API endpoints (list_docs, search_docs)")
-            self.add_endpoint('/api/list_docs', 'list_docs', self.require_auth(self.list_docs), methods=["GET"])
-            self.add_endpoint('/api/search_docs', 'search_docs', self.require_auth(self.search_docs), methods=["POST"])
-        else:
-            logger.info("ChromaDB API endpoints disabled by config")
+        # if self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+        #     logger.info("Adding ChromaDB API endpoints (list_docs, search_docs)")
+        #     self.add_endpoint('/api/list_docs', 'list_docs', self.require_auth(self.list_docs), methods=["GET"])
+        #     self.add_endpoint('/api/search_docs', 'search_docs', self.require_auth(self.search_docs), methods=["POST"])
+        # else:
+        #     logger.info("ChromaDB API endpoints disabled by config")
 
         # endpoints for conversations managing
         logger.info("Adding conversations management API endpoints")
@@ -904,15 +1135,6 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/load_conversation', 'load_conversation', self.require_auth(self.load_conversation), methods=["POST"])
         self.add_endpoint('/api/new_conversation', 'new_conversation', self.require_auth(self.new_conversation), methods=["POST"])
         self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.require_auth(self.delete_conversation), methods=["POST"])
-
-        # add endpoints for document_index
-        self.add_endpoint('/document_index/', 'document_index', self.require_auth(self.document_index))
-        self.add_endpoint('/document_index/index', 'document_index_alt', self.require_auth(self.document_index))
-        self.add_endpoint('/document_index/upload', 'upload', self.require_auth(self.upload), methods=['POST'])
-        self.add_endpoint('/document_index/delete/<file_hash>', 'delete', self.require_auth(self.delete))
-        self.add_endpoint('/document_index/delete_source/<source_type>', 'delete_source', self.require_auth(self.delete_source))
-        self.add_endpoint('/document_index/upload_url', 'upload_url', self.require_auth(self.upload_url), methods=['POST'])
-        self.add_endpoint('/document_index/load_document/<path:file_hash>', 'load_document', self.require_auth(self.load_document))
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -1141,7 +1363,6 @@ class FlaskAppWrapper(object):
         # re-read config using load_config and update dependent variables
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
@@ -1182,6 +1403,33 @@ class FlaskAppWrapper(object):
             options.append({"name": name, "description": description})
         return jsonify({'options': options}), 200
 
+    def _parse_chat_request(self) -> Dict[str, Any]:
+        payload = request.get_json(silent=True) or {}
+
+        client_sent_msg_ts = payload.get("client_sent_msg_ts")
+        client_timeout = payload.get("client_timeout")
+        client_sent_msg_ts = client_sent_msg_ts / 1000 if client_sent_msg_ts else 0
+        client_timeout = client_timeout / 1000 if client_timeout else 0
+
+        include_agent_steps = payload.get("include_agent_steps", True)
+        include_tool_steps = payload.get("include_tool_steps", True)
+        if isinstance(include_agent_steps, str):
+            include_agent_steps = include_agent_steps.lower() == "true"
+        if isinstance(include_tool_steps, str):
+            include_tool_steps = include_tool_steps.lower() == "true"
+
+        return {
+            "message": payload.get("last_message"),
+            "conversation_id": payload.get("conversation_id"),
+            "config_name": payload.get("config_name"),
+            "is_refresh": payload.get("is_refresh"),
+            "client_sent_msg_ts": client_sent_msg_ts,
+            "client_timeout": client_timeout,
+            "client_id": payload.get("client_id"),
+            "include_agent_steps": include_agent_steps,
+            "include_tool_steps": include_tool_steps,
+        }
+
 
     def get_chat_response(self):
         """
@@ -1202,13 +1450,14 @@ class FlaskAppWrapper(object):
         server_received_msg_ts = datetime.now()
 
         # get user input and conversation_id from the request
-        message = request.json.get('last_message')
-        conversation_id = request.json.get('conversation_id')
-        config_name = request.json.get('config_name')
-        is_refresh = request.json.get('is_refresh')
-        client_sent_msg_ts = request.json.get('client_sent_msg_ts') / 1000
-        client_timeout = request.json.get('client_timeout') / 1000
-        client_id = request.json.get('client_id')
+        request_data = self._parse_chat_request()
+        message = request_data["message"]
+        conversation_id = request_data["conversation_id"]
+        config_name = request_data["config_name"]
+        is_refresh = request_data["is_refresh"]
+        client_sent_msg_ts = request_data["client_sent_msg_ts"]
+        client_timeout = request_data["client_timeout"]
+        client_id = request_data["client_id"]
 
         if not client_id:
             return jsonify({'error': 'client_id missing'}), 400
@@ -1256,6 +1505,52 @@ class FlaskAppWrapper(object):
         logger.info(f"API Response Time: {end_time - start_time:.2f} seconds")
 
         return jsonify(response_data)
+
+    def get_chat_response_stream(self):
+        """
+        Streams agent updates and the final response as NDJSON.
+        """
+        server_received_msg_ts = datetime.now()
+        request_data = self._parse_chat_request()
+
+        message = request_data["message"]
+        conversation_id = request_data["conversation_id"]
+        config_name = request_data["config_name"]
+        is_refresh = request_data["is_refresh"]
+        client_sent_msg_ts = request_data["client_sent_msg_ts"]
+        client_timeout = request_data["client_timeout"]
+        client_id = request_data["client_id"]
+        include_agent_steps = request_data["include_agent_steps"]
+        include_tool_steps = request_data["include_tool_steps"]
+
+        if not client_id:
+            return jsonify({"error": "client_id missing"}), 400
+
+        def _event_stream() -> Iterator[str]:
+            padding = " " * 2048
+            yield json.dumps({"type": "meta", "event": "stream_started", "padding": padding}) + "\n"
+            for event in self.chat.stream(
+                message,
+                conversation_id,
+                client_id,
+                is_refresh,
+                server_received_msg_ts,
+                client_sent_msg_ts,
+                client_timeout,
+                config_name,
+                include_agent_steps=include_agent_steps,
+                include_tool_steps=include_tool_steps,
+            ):
+                logger.debug(f"\n\n\nStreaming event\n\n\n")
+                yield json.dumps(event, default=str) + "\n"
+
+        headers = {
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",
+            "Content-Type": "application/x-ndjson",
+        }
+        return Response(stream_with_context(_event_stream()), headers=headers)
 
     def landing(self):
         """Landing page for unauthenticated users"""
@@ -1404,195 +1699,195 @@ class FlaskAppWrapper(object):
             if self.chat.conn is not None:
                 self.chat.conn.close()
 
-    def list_docs(self):
-        """
-        API endpoint to list all documents indexed in ChromaDB with pagination.
-        Query parameters:
-        - page: Page number (1-based, default: 1)
-        - per_page: Documents per page (default: 50, max: 500)
-        - content_length: Max content preview length (default: -1 for full content)
-        Returns a JSON with paginated list of documents and their metadata.
-        """
-        # Check if ChromaDB endpoints are enabled
-        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
-            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+    # def list_docs(self):
+    #     """
+    #     API endpoint to list all documents indexed in ChromaDB with pagination.
+    #     Query parameters:
+    #     - page: Page number (1-based, default: 1)
+    #     - per_page: Documents per page (default: 50, max: 500)
+    #     - content_length: Max content preview length (default: -1 for full content)
+    #     Returns a JSON with paginated list of documents and their metadata.
+    #     """
+    #     # Check if ChromaDB endpoints are enabled
+    #     if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+    #         return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
 
-        try:
-            # Get pagination parameters from query string
-            page = int(request.args.get('page', 1))
-            per_page = min(int(request.args.get('per_page', 50)), 500)  # Cap at 500
-            content_length = int(request.args.get('content_length', -1))  # Default -1 for full content
+    #     try:
+    #         # Get pagination parameters from query string
+    #         page = int(request.args.get('page', 1))
+    #         per_page = min(int(request.args.get('per_page', 50)), 500)  # Cap at 500
+    #         content_length = int(request.args.get('content_length', -1))  # Default -1 for full content
 
-            # Validate parameters
-            if page < 1:
-                return jsonify({'error': 'Page must be >= 1'}), 400
-            if per_page < 1:
-                return jsonify({'error': 'per_page must be >= 1'}), 400
-            if content_length < -1 or content_length == 0:
-                return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
+    #         # Validate parameters
+    #         if page < 1:
+    #             return jsonify({'error': 'Page must be >= 1'}), 400
+    #         if per_page < 1:
+    #             return jsonify({'error': 'per_page must be >= 1'}), 400
+    #         if content_length < -1 or content_length == 0:
+    #             return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
 
-            # Get the collection from ChromaDB
-            collection = self.chat.data_manager.fetch_collection()
+    #         # Get the collection from ChromaDB
+    #         collection = self.chat.data_manager.fetch_collection()
 
-            # Get total count first
-            total_documents = collection.count()
+    #         # Get total count first
+    #         total_documents = collection.count()
 
-            # Calculate pagination
-            offset = (page - 1) * per_page
-            total_pages = (total_documents + per_page - 1) // per_page  # Ceiling division
+    #         # Calculate pagination
+    #         offset = (page - 1) * per_page
+    #         total_pages = (total_documents + per_page - 1) // per_page  # Ceiling division
 
-            # Check if page is valid
-            if page > total_pages and total_documents > 0:
-                return jsonify({'error': f'Page {page} does not exist. Total pages: {total_pages}'}), 400
+    #         # Check if page is valid
+    #         if page > total_pages and total_documents > 0:
+    #             return jsonify({'error': f'Page {page} does not exist. Total pages: {total_pages}'}), 400
 
-            # Get paginated documents from the collection
-            result = collection.get(
-                include=['documents', 'metadatas'],
-                limit=per_page,
-                offset=offset
-            )
+    #         # Get paginated documents from the collection
+    #         result = collection.get(
+    #             include=['documents', 'metadatas'],
+    #             limit=per_page,
+    #             offset=offset
+    #         )
 
-            # Format the response
-            documents = []
-            for i, doc in enumerate(result['documents']):
-                # Truncate content based on content_length parameter (-1 means full content)
-                if content_length == -1:
-                    content = doc  # Return full content
-                else:
-                    content = doc[:content_length] + '...' if len(doc) > content_length else doc
+    #         # Format the response
+    #         documents = []
+    #         for i, doc in enumerate(result['documents']):
+    #             # Truncate content based on content_length parameter (-1 means full content)
+    #             if content_length == -1:
+    #                 content = doc  # Return full content
+    #             else:
+    #                 content = doc[:content_length] + '...' if len(doc) > content_length else doc
 
-                doc_info = {
-                    'id': result['ids'][i],
-                    'content': content,
-                    'content_length': len(doc),  # Original content length
-                    'metadata': result['metadatas'][i] if i < len(result['metadatas']) else {}
-                }
-                documents.append(doc_info)
+    #             doc_info = {
+    #                 'id': result['ids'][i],
+    #                 'content': content,
+    #                 'content_length': len(doc),  # Original content length
+    #                 'metadata': result['metadatas'][i] if i < len(result['metadatas']) else {}
+    #             }
+    #             documents.append(doc_info)
 
-            response_data = {
-                'pagination': {
-                    'page': page,
-                    'per_page': per_page,
-                    'total_documents': total_documents,
-                    'total_pages': total_pages,
-                    'has_next': page < total_pages,
-                    'has_prev': page > 1,
-                    'next_page': page + 1 if page < total_pages else None,
-                    'prev_page': page - 1 if page > 1 else None
-                },
-                'documents': documents
-            }
+    #         response_data = {
+    #             'pagination': {
+    #                 'page': page,
+    #                 'per_page': per_page,
+    #                 'total_documents': total_documents,
+    #                 'total_pages': total_pages,
+    #                 'has_next': page < total_pages,
+    #                 'has_prev': page > 1,
+    #                 'next_page': page + 1 if page < total_pages else None,
+    #                 'prev_page': page - 1 if page > 1 else None
+    #             },
+    #             'documents': documents
+    #         }
 
-            return jsonify(response_data), 200
+    #         return jsonify(response_data), 200
 
-        except ValueError as e:
-            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
-        except Exception as e:
-            print(f"ERROR in list_docs: {str(e)}")
-            return jsonify({'error': str(e)}), 500
+    #     except ValueError as e:
+    #         return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+    #     except Exception as e:
+    #         print(f"ERROR in list_docs: {str(e)}")
+    #         return jsonify({'error': str(e)}), 500
 
-    # TODO should this call a2rchi rather than connect to db directly?
-    # in any case, code-duplication should be elminated here
-    def search_docs(self):
-        """
-        API endpoint to search for the nearest documents to a given query with pagination.
-        Expects JSON input with:
-        - query (required): Search query string
-        - n_results (optional): Number of results to return (default: 5, max: 100)
-        - content_length (optional): Max content length in response (default: -1 for full content, max: 5000)
-        - include_full_content (optional): Whether to include full content (default: false)
-        Returns the most similar documents with their similarity scores.
-        """
-        # Check if ChromaDB endpoints are enabled
-        if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
-            return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
+    # # TODO should this call a2rchi rather than connect to db directly?
+    # # in any case, code-duplication should be elminated here
+    # def search_docs(self):
+    #     """
+    #     API endpoint to search for the nearest documents to a given query with pagination.
+    #     Expects JSON input with:
+    #     - query (required): Search query string
+    #     - n_results (optional): Number of results to return (default: 5, max: 100)
+    #     - content_length (optional): Max content length in response (default: -1 for full content, max: 5000)
+    #     - include_full_content (optional): Whether to include full content (default: false)
+    #     Returns the most similar documents with their similarity scores.
+    #     """
+    #     # Check if ChromaDB endpoints are enabled
+    #     if not self.chat_app_config.get('enable_debug_chroma_endpoints', False):
+    #         return jsonify({'error': 'ChromaDB endpoints are disabled in configuration'}), 404
 
-        try:
-            # Get the query from request
-            data = request.json
-            query = data.get('query')
-            n_results = min(int(data.get('n_results', 5)), 100)  # Cap at 100
-            content_length = min(int(data.get('content_length', -1)), 5000) if data.get('content_length', -1) != -1 else -1  # Default -1 for full content
-            include_full_content = data.get('include_full_content', False)
+    #     try:
+    #         # Get the query from request
+    #         data = request.json
+    #         query = data.get('query')
+    #         n_results = min(int(data.get('n_results', 5)), 100)  # Cap at 100
+    #         content_length = min(int(data.get('content_length', -1)), 5000) if data.get('content_length', -1) != -1 else -1  # Default -1 for full content
+    #         include_full_content = data.get('include_full_content', False)
 
-            if not query:
-                return jsonify({'error': 'Query parameter is required'}), 400
+    #         if not query:
+    #             return jsonify({'error': 'Query parameter is required'}), 400
 
-            if n_results < 1:
-                return jsonify({'error': 'n_results must be >= 1'}), 400
+    #         if n_results < 1:
+    #             return jsonify({'error': 'n_results must be >= 1'}), 400
 
-            if content_length < -1 or content_length == 0:
-                return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
+    #         if content_length < -1 or content_length == 0:
+    #             return jsonify({'error': 'content_length must be -1 (full content) or > 0'}), 400
 
-            # Connect to ChromaDB and create vectorstore
-            client = None
-            if self.services_config["chromadb"]["use_HTTP_chromadb_client"]:
-                client = chromadb.HttpClient(
-                    host=self.services_config["chromadb"]["chromadb_host"],
-                    port=self.services_config["chromadb"]["chromadb_port"],
-                    settings=Settings(allow_reset=True, anonymized_telemetry=False),
-                )
-            else:
-                client = chromadb.PersistentClient(
-                    path=self.global_config["LOCAL_VSTORE_PATH"],
-                    settings=Settings(allow_reset=True, anonymized_telemetry=False),
-                )
+    #         # Connect to ChromaDB and create vectorstore
+    #         client = None
+    #         if self.services_config["chromadb"]["use_HTTP_chromadb_client"]:
+    #             client = chromadb.HttpClient(
+    #                 host=self.services_config["chromadb"]["chromadb_host"],
+    #                 port=self.services_config["chromadb"]["port"],
+    #                 settings=Settings(allow_reset=True, anonymized_telemetry=False),
+    #             )
+    #         else:
+    #             client = chromadb.PersistentClient(
+    #                 path=self.global_config["LOCAL_VSTORE_PATH"],
+    #                 settings=Settings(allow_reset=True, anonymized_telemetry=False),
+    #             )
 
-            # Get the collection name and embedding model from chat
-            collection_name = self.chat.chain.collection_name
-            embedding_model = self.chat.chain.embedding_model
+    #         # Get the collection name and embedding model from chat
+    #         collection_name = self.chat.chain.collection_name
+    #         embedding_model = self.chat.chain.embedding_model
 
-            # Create vectorstore
-            vectorstore = Chroma(
-                client=client,
-                collection_name=collection_name,
-                embedding_function=embedding_model,
-            )
+    #         # Create vectorstore
+    #         vectorstore = Chroma(
+    #             client=client,
+    #             collection_name=collection_name,
+    #             embedding_function=embedding_model,
+    #         )
 
-            # Perform similarity search with scores
-            results = vectorstore.similarity_search_with_score(query, k=n_results)
+    #         # Perform similarity search with scores
+    #         results = vectorstore.similarity_search_with_score(query, k=n_results)
 
-            # Format the response
-            documents = []
-            for doc, score in results:
-                # Handle content length based on parameters
-                if include_full_content or content_length == -1:
-                    content = doc.page_content
-                else:
-                    content = (doc.page_content[:content_length] + '...'
-                             if len(doc.page_content) > content_length
-                             else doc.page_content)
+    #         # Format the response
+    #         documents = []
+    #         for doc, score in results:
+    #             # Handle content length based on parameters
+    #             if include_full_content or content_length == -1:
+    #                 content = doc.page_content
+    #             else:
+    #                 content = (doc.page_content[:content_length] + '...'
+    #                          if len(doc.page_content) > content_length
+    #                          else doc.page_content)
 
-                doc_info = {
-                    'content': content,
-                    'content_length': len(doc.page_content),  # Original content length
-                    'metadata': doc.metadata,
-                    'similarity_score': float(score)
-                }
-                documents.append(doc_info)
+    #             doc_info = {
+    #                 'content': content,
+    #                 'content_length': len(doc.page_content),  # Original content length
+    #                 'metadata': doc.metadata,
+    #                 'similarity_score': float(score)
+    #             }
+    #             documents.append(doc_info)
 
-            response_data = {
-                'query': query,
-                'search_params': {
-                    'n_results_requested': n_results,
-                    'n_results_returned': len(documents),
-                    'content_length': content_length,
-                    'include_full_content': include_full_content
-                },
-                'documents': documents
-            }
+    #         response_data = {
+    #             'query': query,
+    #             'search_params': {
+    #                 'n_results_requested': n_results,
+    #                 'n_results_returned': len(documents),
+    #                 'content_length': content_length,
+    #                 'include_full_content': include_full_content
+    #             },
+    #             'documents': documents
+    #         }
 
-            # Clean up
-            del vectorstore
-            del client
+    #         # Clean up
+    #         del vectorstore
+    #         del client
 
-            return jsonify(response_data), 200
+    #         return jsonify(response_data), 200
 
-        except ValueError as e:
-            return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
-        except Exception as e:
-            print(f"ERROR in search_docs: {str(e)}")
-            return jsonify({'error': str(e)}), 500
+    #     except ValueError as e:
+    #         return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
+    #     except Exception as e:
+    #         print(f"ERROR in search_docs: {str(e)}")
+    #         return jsonify({'error': str(e)}), 500
 
     def list_conversations(self):
         """
@@ -1773,139 +2068,3 @@ class FlaskAppWrapper(object):
         Returns true if there has been a correct login authentication and false otherwise.
         """
         return 'logged_in' in session and session['logged_in']
-
-    #@app.route('/document_index/')
-    def document_index(self):
-        """
-        Methods which gets all the filenames in the UPLOAD_FOLDER and lists them
-        in the UI.
-
-        Note, this method must convert the file hashes (which is the name the files)
-        are stored under in the filesystem) to file names. It uses get_filename_from_hash
-        for this.
-        """
-        sources_index = {}
-
-        for source_hash in self.catalog.metadata_index.keys():
-            metadata_source = self.catalog.get_metadata_for_hash(source_hash)
-            if not isinstance(metadata_source, dict):
-                logger.info("Metadata for hash %s missing or invalid; skipping", source_hash)
-                continue
-
-            source_type = metadata_source.get("source_type")
-            if not source_type:
-                logger.info("Metadata for hash %s missing source_type; skipping", source_hash)
-                continue
-
-            title = metadata_source.get("ticket_id") or metadata_source.get("url")
-            if not title:
-                title = metadata_source.get("display_name") or source_hash
-
-            sources_index.setdefault(source_type, []).append((source_hash, title))
-
-
-        return render_template('document_index.html', sources_index=sources_index.items())
-
-
-    #@app.route('/document_index/upload', methods=['POST'])
-    def upload(self):
-        """
-        Methods which governs uploading.
-
-        Does not allow uploading if the file is not of a valid file type or if the file
-        already exists in the filesystem.
-        """
-        # check that there is a file selected and that the name is not null
-        if 'file' not in request.files:
-            flash('No file part')
-            return redirect(url_for('index'))
-
-        file = request.files['file']
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(url_for('index'))
-
-        # check it is a valid file
-        file_extension = os.path.splitext(file.filename)[1]
-        if file and file_extension in self.global_config["ACCEPTED_FILES"]:
-
-            try:
-                resource = add_uploaded_file(target_dir=self.app.config['UPLOAD_FOLDER'],file=file, file_extension=file_extension)
-                self.scraper_manager.register_resource(target_dir=Path(self.app.config['UPLOAD_FOLDER']),resource=resource)
-                flash('File uploaded successfully')
-            except Exception:
-                flash(f'File under this name already exists. If you would like to upload a new file, please delete the old one.')
-
-        return redirect(url_for('index'))
-
-
-    #@app.route('/document_index/delete/<file_hash>')
-    def delete(self, file_hash):
-        """
-        Method which governs deleting
-
-        Technically can handle edge case where the file which is trying to be deleted
-        is not in the filesystem.
-        """
-        self.persistence.delete_resource(file_hash)
-        return redirect(url_for('index'))
-
-    #@app.route('/document_index/delete_source/<source_type>')
-    def delete_source(self, source_type):
-        """
-        Method to delete all documents of a specific source type
-        """
-
-        self.persistence.delete_by_metadata_filter("source_type", source_type)
-        return redirect(url_for('index'))
-
-    #@app.route('/document_index/upload_url', methods=['POST'])
-    def upload_url(self):
-        url = request.form.get('url')
-        if url:
-            logger.info(f"Uploading the following URL: {url}")
-            try:
-                target_dir = Path(self.app.config['WEBSITE_FOLDER'])
-                resources = self.scraper_manager.web_scraper.scrape(url)
-                for resource in resources:
-                    self.scraper_manager.register_resource(target_dir, resource)
-                self.scraper_manager.persist_sources()
-                added_to_urls = True
-
-            except Exception as e:
-                logger.error(f"Failed to upload URL: {str(e)}")
-                added_to_urls = False
-
-            if added_to_urls:
-                flash('URL uploaded successfully')
-            else:
-                flash('Failed to add URL')
-        else:
-            flash('No URL provided')
-
-        return redirect(url_for('index'))
-
-
-    #@app.route('/document_index/load_document/<path:file_hash>')
-    def load_document(self, file_hash):
-
-        index = self.catalog.file_index
-        if file_hash in index.keys():
-            document = self.catalog.get_document_for_hash(file_hash)
-            metadata = self.catalog.get_metadata_for_hash(file_hash)
-
-            title = metadata['title'] if 'title' in metadata.keys() else metadata['display_name']
-            return jsonify({'document':document,
-                            'display_name':metadata['display_name'],
-                            'source_type':metadata['source_type'],
-                            'original_url':metadata['url'],
-                            'title':title})
-
-        else:
-            return jsonify({'document':"Document not found",
-                            'display_name':"Error",
-                            'source_type':'null',
-                            'original_url':"no_url",
-                            'title':'Not found'})
-
-

@@ -1,18 +1,116 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import requests
+
 from langchain.tools import tool
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
-from src.data_manager.collectors.utils.index_utils import CatalogService
 from src.utils.logging import get_logger
+from src.utils.env import read_secret
 
 logger = get_logger(__name__)
+
+
+class RemoteCatalogClient:
+    """HTTP client for the data-manager catalog API."""
+
+    def __init__(
+        self,
+        *,
+        base_url: Optional[str] = None,
+        host_mode: Optional[bool] = None,
+        hostname: Optional[str] = None,
+        port: int = 7871,
+        external_port: Optional[int] = None,
+        api_token: Optional[str] = None,
+        timeout: float = 10.0,
+    ):
+        host_mode_flag = self._resolve_host_mode(host_mode)
+
+        if base_url:
+            self.base_url = base_url.rstrip("/")
+        else:
+            host = hostname or ("localhost" if host_mode_flag else "data-manager")
+            final_port = external_port if host_mode_flag and external_port else port
+            self.base_url = f"http://{host}:{final_port}"
+        self.timeout = timeout
+        self.api_token = api_token.strip() if api_token else None
+
+    @classmethod
+    def from_deployment_config(cls, config: Optional[Dict[str, object]]) -> "RemoteCatalogClient":
+        """Create a client using the standard A2rchi deployment config structure."""
+        cfg = config or {}
+        services_cfg = cfg.get("services", {}) if isinstance(cfg, dict) else {}
+        data_manager_cfg = services_cfg.get("data_manager", {}) if isinstance(services_cfg, dict) else {}
+        auth_cfg = data_manager_cfg.get("auth", {}) if isinstance(data_manager_cfg, dict) else {}
+        api_token = cls._resolve_api_token(auth_cfg.get("api_token") if isinstance(auth_cfg, dict) else None)
+
+        return cls(
+            base_url=data_manager_cfg.get("base_url"),
+            host_mode=cfg.get("host_mode"),
+            hostname=data_manager_cfg.get("hostname") or data_manager_cfg.get("host"),
+            port=data_manager_cfg.get("port", 7871),
+            external_port=data_manager_cfg.get("external_port"),
+            api_token=api_token,
+        )
+
+    @staticmethod
+    def _resolve_host_mode(host_mode: Optional[bool]) -> bool:
+        if host_mode is None:
+            env_host_mode = (
+                os.environ.get("HOST_MODE")
+                or os.environ.get("HOSTMODE")
+                or os.environ.get("A2RCHI_HOST_MODE")
+            )
+            return str(env_host_mode).lower() in {"1", "true", "yes", "on"}
+        return bool(host_mode)
+
+    @staticmethod
+    def _resolve_api_token(config_token: Optional[str]) -> Optional[str]:
+        token = (config_token or "").strip()
+        if token:
+            return token
+        secret_token = read_secret("DM_API_TOKEN")
+        if secret_token:
+            return secret_token
+        return None
+
+    def _headers(self) -> Dict[str, str]:
+        if not self.api_token:
+            return {}
+        return {"Authorization": f"Bearer {self.api_token}"}
+
+    def search(
+        self, query: str, *, limit: int = 5, search_content: bool = True
+    ) -> List[Dict[str, object]]:
+        resp = requests.get(
+            f"{self.base_url}/api/catalog/search",
+            params={"q": query, "limit": limit, "search_content": str(search_content).lower()},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("hits", []) or []
+
+    def get_document(self, resource_hash: str, *, max_chars: int = 4000) -> Optional[Dict[str, object]]:
+        resp = requests.get(
+            f"{self.base_url}/api/catalog/document/{resource_hash}",
+            params={"max_chars": max_chars},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json()
 
 
 def _render_metadata_preview(metadata: Optional[Dict[str, object]], *, max_chars: int = 800) -> str:
@@ -53,7 +151,7 @@ def _collect_snippet(text: str, match: re.Match, *, window: int = 240) -> str:
 
 
 def create_file_search_tool(
-    catalog: CatalogService,
+    catalog: RemoteCatalogClient,
     *,
     name: str = "search_local_files",
     description: Optional[str] = None,
@@ -82,37 +180,28 @@ def create_file_search_tool(
         hits: List[Tuple[str, Path, Optional[Dict[str, object]], str]] = []
         docs: List[Document] = []
 
-        for resource_hash, path in catalog.iter_files():
-            # attempt to load a Document via catalog helper
-            doc = None
-            try:
-                doc = catalog.get_document_for_hash(resource_hash)
-            except Exception:
-                doc = None
+        try:
+            results = catalog.search(query.strip(), limit=max_results, search_content=True)
+        except Exception as exc:
+            logger.warning("Catalog search failed: %s", exc)
+            return "Catalog search failed."
 
-            # search the content
-            text = doc.page_content if doc else None
-            if not text:
-                continue
-            match = pattern.search(text)
-            if not match:
-                continue
-
-            # form the snippet to pass to the LLM
-            snippet = _collect_snippet(text, match, window=window)
-            metadata = None
-            try:
-                metadata = catalog.get_metadata_for_hash(resource_hash)
-            except Exception:
-                metadata = None
+        for item in results:
+            resource_hash = item.get("hash")
+            path = Path(item.get("path", "")) if item.get("path") else Path("")
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            snippet = item.get("snippet") or ""
             hits.append((resource_hash, path, metadata, snippet))
 
-            # store the Document
-            if doc:
-                docs.append(doc)
-
-            if len(hits) >= max_results:
-                break
+        if store_docs and hits:
+            for resource_hash, path, metadata, _ in hits:
+                try:
+                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
+                    text = doc_payload.get("text") or ""
+                    doc_meta = doc_payload.get("metadata") or metadata or {}
+                    docs.append(Document(page_content=text, metadata=doc_meta))
+                except Exception:
+                    continue
 
         if store_docs:
             store_docs(f"{name}: {query}", docs)
@@ -134,7 +223,7 @@ def _flatten_metadata(data: Dict[str, object], prefix: str = "") -> Dict[str, st
 
 
 def create_metadata_search_tool(
-    catalog: CatalogService,
+    catalog: RemoteCatalogClient,
     *,
     name: str = "search_metadata_index",
     description: Optional[str] = None,
@@ -155,39 +244,31 @@ def create_metadata_search_tool(
 
         hits: List[Tuple[str, Path, Optional[Dict[str, object]], str]] = []
         docs: List[Document] = []
-        query_lower = query.lower()
 
-        for resource_hash, _ in catalog.metadata_index.items():
-            resource_metadata = catalog.get_metadata_for_hash(resource_hash)
-            if not isinstance(resource_metadata, dict):
-                continue
+        try:
+            results = catalog.search(query.strip(), limit=max_results, search_content=False)
+        except Exception as exc:
+            logger.warning("Metadata search failed: %s", exc)
+            return "Metadata search failed."
 
-            flattened = _flatten_metadata(resource_metadata)
-            matches = {
-                key: value
-                for key, value in flattened.items()
-                if query_lower in key.lower() or query_lower in value.lower()
-            }
-            if not matches:
-                continue
-
-            # obtain file path and content for snippet
-            try:
-                doc = catalog.get_document_for_hash(resource_hash)
-            except Exception:
-                doc = None
-            text = doc.page_content if doc else None
-
-            # build snippet from content
-            path = catalog.get_filepath_for_hash(resource_hash)
-            hits.append((resource_hash, path, resource_metadata, text))
-
-            # store docs
-            if doc:
-                docs.append(doc)
-
+        for item in results:
+            resource_hash = item.get("hash")
+            path = Path(item.get("path", "")) if item.get("path") else Path("")
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            snippet = item.get("snippet") or ""
+            hits.append((resource_hash, path, metadata, snippet))
             if len(hits) >= max_results:
                 break
+
+        if store_docs and hits:
+            for resource_hash, path, metadata, _ in hits:
+                try:
+                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
+                    text = doc_payload.get("text") or ""
+                    doc_meta = doc_payload.get("metadata") or metadata or {}
+                    docs.append(Document(page_content=text, metadata=doc_meta))
+                except Exception:
+                    continue
 
         if store_docs:
             store_docs(f"{name}: {query}", docs)
@@ -198,6 +279,7 @@ def create_metadata_search_tool(
 
 
 __all__ = [
+    "RemoteCatalogClient",
     "create_retriever_tool",
     "create_file_search_tool",
     "create_metadata_search_tool",

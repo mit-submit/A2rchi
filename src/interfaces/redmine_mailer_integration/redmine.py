@@ -31,13 +31,11 @@ class RedmineAIWrapper:
     def __init__(self):
 
         # initialize data manager
-        self.data_manager = DataManager()
-        self.data_manager.update_vectorstore()
+        self.data_manager = DataManager(run_ingestion=False)
 
         # configs
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.redmine_config = self.services_config.get("redmine_mailbox", {})
         self.data_path = self.global_config["DATA_PATH"]
@@ -109,9 +107,6 @@ class RedmineAIWrapper:
             reformatted_history.append((role,message))
         reformatted_history[0] = ("Expert", reformatted_history[0][1])
         reformatted_history[-1] = ("User", reformatted_history[-1][1])
-
-        # update vectorstore
-        self.data_manager.update_vectorstore()
 
         # execute chain and get answer
         result = self.a2rchi(history=reformatted_history)

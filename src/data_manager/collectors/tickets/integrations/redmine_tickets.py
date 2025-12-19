@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, Optional, List
 
 from redminelib import Redmine
 
@@ -17,7 +17,6 @@ ANSWER_TAG = load_services_config()["redmine_mailbox"]["answer_tag"]
 class RedmineClient:
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         self.redmine = None
-        self.project = None
         self.redmine_url: Optional[str] = None
         self.redmine_user: Optional[str] = None
         self.redmine_pw: Optional[str] = None
@@ -31,7 +30,6 @@ class RedmineClient:
             return
 
         self.redmine_url = redmine_config.get("url")
-        self.redmine_project = redmine_config.get("project")
         self.visible = bool(redmine_config.get("visible", True))
         if not self.redmine_url or not self.redmine_project:
             logger.warning("Redmine config missing url/project; skipping Redmine collection")
@@ -60,32 +58,31 @@ class RedmineClient:
 
         if not self._verify():
             self.redmine = None
-            self.project = None
             return
 
         try:
             self._connect()
-            self._load()
         except Exception as error:
             logger.warning(
                 "Failed to initialise Redmine client; skipping Redmine collection.",
                 exc_info=error,
             )
             self.redmine = None
-            self.project = None
 
-    def collect(self) -> Iterator[TicketResource]:
+    def collect(self, projects: List[str], **kwargs) -> Iterator[TicketResource]:
         """Return an iterator of Redmine tickets."""
-        if not self._verify() or not self.redmine or not self.project:
+        if not self._verify() or not self.redmine:
             logger.debug(
                 "Skipping Redmine collection; client not initialised or credentials missing."
             )
             return iter(())
 
-        return self._prepare_ticket_resources()
+        for project in projects:
+            yield from self._prepare_ticket_resources(project)
 
-    def _prepare_ticket_resources(self) -> Iterator[TicketResource]:
-        closed_issues = self.get_closed_issues()
+    def _prepare_ticket_resources(self, project: str) -> Iterator[TicketResource]:
+        project = self._get_project(project)
+        closed_issues = self._get_closed_issues(project)
         logger.info(f"Preparing {len(closed_issues)} redmine tickets' data")
         processed_count = 0
 
@@ -168,13 +165,13 @@ class RedmineClient:
             self.redmine_url, username=self.redmine_user, password=self.redmine_pw
         )
 
-    def _load(self) -> None:
+    def _get_project(self, project: str) -> None:
         """Load the project that is responsible to deal with email tickets."""
-        self.project = self.redmine.project.get(self.redmine_project)
+        return self.redmine.project.get(project)
 
-    def get_closed_issues(self) -> Any:
+    def _get_closed_issues(self, project) -> Any:
         return self.redmine.issue.filter(
-            project_id=self.project.id,
+            project_id=project.id,
             status_id="closed",
         )
 

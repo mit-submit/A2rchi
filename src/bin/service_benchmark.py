@@ -19,7 +19,6 @@ from ragas.metrics import (answer_relevancy, context_precision, context_recall,
 
 from src.a2rchi.a2rchi import A2rchi
 from src.a2rchi.models import HuggingFaceOpenLLM
-from src.data_manager.data_manager import DataManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
 from src.utils.generate_benchmark_report import parse_benchmark_results, format_html_output
@@ -131,7 +130,6 @@ class Benchmarker:
         self.previous_input_list = []
         self.chain = None 
         self.config = None 
-        self.data_manager = None 
         self.current_config = None 
 
         self.load_new_configuration()
@@ -150,19 +148,9 @@ class Benchmarker:
         if self.current_config == 'FINISHED': return
         with open(self.current_config, "r") as f:
             config = yaml.safe_load(f)
-        current_input_list = config.get('data_manager', {}).get('sources', {}).get('links', {}).get('input_lists', [])
 
         with open(CONFIG_PATH, 'w') as f: 
             yaml.dump(config, stream=f)
-
-        # for now we just reset the datamanager entirely every time,
-        # in the future we should add support for hot config swapping so 
-        # documents dont need to be reinputted unnecessarily
-        if self.data_manager:
-            del self.data_manager
-        self.data_manager = DataManager()
-        self.data_manager.update_vectorstore()
-        self.previous_input_list = current_input_list
 
         del self.chain
         self.config = config 
@@ -283,11 +271,13 @@ class Benchmarker:
                             'type': 'tool_call',
                             'tool_name': tool_call.get('name'),
                             'tool_args': tool_call.get('args',{}).get('query', 'No query found.'),
+                            'total_duration': getattr(msg, 'response_metadata', {}).get('total_duration', None),
                         })
                 elif hasattr(msg, 'content'):
                     formatted_messages.append({
                         'type': 'ai_message',
                         'content': msg.content,
+                        'total_duration': getattr(msg, 'response_metadata', {}).get('total_duration', None),
                     })
             elif type(msg) is HumanMessage:
                 # we don't store these...

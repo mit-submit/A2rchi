@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from jinja2 import Environment
 
@@ -260,12 +260,7 @@ class TemplateManager:
 
             if context.plan.host_mode:
                 updated_config["host_mode"] = context.plan.host_mode
-                chroma_cfg = updated_config.get("services", {}).get("chromadb", {})
-                external_port = chroma_cfg.get("chromadb_external_port")
-                if external_port:
-                    updated_config.setdefault("services", {}).setdefault("chromadb", {})[
-                        "chromadb_port"
-                    ] = external_port
+                self._apply_host_mode_port_overrides(updated_config)
 
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)
@@ -374,32 +369,33 @@ class TemplateManager:
 
     def _extract_port_config(self, context: TemplateContext) -> Dict[str, Any]:
         port_config: Dict[str, Any] = {}
+        host_mode = context.plan.host_mode
+        base_config = (context.config_manager.get_configs() or [{}])[0]
 
         for service_name, service_def in self.registry.get_all_services().items():
-            if service_def.default_host_port:
-                port_config[f"{service_name}_port_host"] = service_def.default_host_port
-            if service_def.default_container_port:
-                port_config[f"{service_name}_port_container"] = service_def.default_container_port
+            key_prefix = service_name.replace("-", "_")
+            host_port = service_def.default_host_port
+            container_port = service_def.default_container_port
 
             if service_def.port_config_path:
                 try:
-                    config_value: Any = context.config_manager.get_configs()[0]
+                    config_value: Any = base_config
                     for key in service_def.port_config_path.split('.'):
                         config_value = config_value[key]
 
-                    if isinstance(config_value, dict):
-                        host_port = config_value.get('external_port', service_def.default_host_port)
-                        container_port = config_value.get('port', service_def.default_container_port)
-                    else:
-                        host_port = config_value
-                        container_port = service_def.default_container_port
-
-                    if host_port:
-                        port_config[f"{service_name}_port_host"] = host_port
-                    if container_port:
-                        port_config[f"{service_name}_port_container"] = container_port
+                    host_port, container_port = self._resolve_ports_from_config(
+                        config_value,
+                        host_mode=host_mode,
+                        host_default=host_port,
+                        container_default=container_port,
+                    )
                 except (KeyError, TypeError):
-                    continue
+                    pass
+
+            if host_port:
+                port_config[f"{key_prefix}_port_host"] = host_port
+            if container_port:
+                port_config[f"{key_prefix}_port_container"] = container_port
 
         return port_config
 
@@ -408,6 +404,40 @@ class TemplateManager:
         grader_config = a2rchi_config.get('services', {}).get('grader_app', {})
         num_problems = grader_config.get('num_problems', 1)
         return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
+
+    def _apply_host_mode_port_overrides(self, config: Dict[str, Any]) -> None:
+        """Normalize service ports in host mode using port/external_port only."""
+        services_cfg = config.get("services", {})
+        if not isinstance(services_cfg, dict):
+            return
+
+        for service_cfg in services_cfg.values():
+            if not isinstance(service_cfg, dict):
+                continue
+
+            external = service_cfg.get("external_port")
+            if external is not None:
+                service_cfg["port"] = external
+
+    def _resolve_ports_from_config(
+        self,
+        config_value: Any,
+        *,
+        host_mode: bool,
+        host_default: Optional[int],
+        container_default: Optional[int],
+    ) -> tuple[Optional[int], Optional[int]]:
+        """Extract host/container ports using the standardized keys."""
+        host_port = host_default
+        container_port = container_default
+
+        if isinstance(config_value, dict):
+            container_port = config_value.get("port", container_port)
+            host_port = container_port if host_mode else config_value.get("external_port", host_port)
+        else:
+            host_port = config_value
+
+        return host_port, container_port
 
     # input list / source copying helpers
     def _copy_web_input_lists(self, context: TemplateContext) -> None:

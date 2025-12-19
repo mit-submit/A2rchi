@@ -126,6 +126,8 @@ class DeploymentManager:
                     logger.info(f"Removed deployment directory: {deployment_dir}")
                 except Exception as e:
                     logger.warning(f"Could not remove deployment directory: {e}")
+        else:
+            logger.info(f"Deployment directory does not exist: {deployment_dir}")
     
     def _validate_compose_file(self, compose_file: Path) -> None:
         """Validate compose file syntax"""

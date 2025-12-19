@@ -50,7 +50,6 @@ class ImageToTextWrapper:
     def __init__(self):
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
         self.pg_config = {
@@ -97,7 +96,6 @@ class GradingWrapper:
     def __init__(self):
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
 
@@ -154,11 +152,8 @@ class FlaskAppWrapper(object):
         self.configs(**configs)
         self.config = load_config()
         self.global_config = self.config["global"]
-        self.utils_config = self.config["utils"]
         self.services_config = self.config["services"]
         self.data_path = self.global_config["DATA_PATH"]
-
-        
 
         # session config
         self.app.secret_key = 'your_secret_key' # read_secret later... debugging

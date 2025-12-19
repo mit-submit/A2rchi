@@ -1,4 +1,5 @@
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.tickets.integrations.jira import JiraClient
@@ -16,31 +17,24 @@ class TicketManager:
     """Coordinates ticket integrations and delegates persistence."""
 
     def __init__(self, dm_config: Optional[Dict[str, Any]] = None) -> None:
-        self.data_path = global_config["DATA_PATH"]
+        self.data_path = Path(global_config["DATA_PATH"])
         raw_sources = (dm_config or {}).get('sources', {}) if isinstance(dm_config, dict) else {}
         sources_config = dict(raw_sources) if isinstance(raw_sources, dict) else {}
 
-        jira_config = dict(sources_config.get('jira', {}))
-        redmine_config = dict(sources_config.get('redmine', {}))
+        self.jira_config = dict(sources_config.get('jira', {}))
+        self.redmine_config = dict(sources_config.get('redmine', {}))
 
         self.jira_client = None
-        if jira_config.get('enabled', False):
-            self.jira_client = self._init_client(lambda: JiraClient(jira_config), "JIRA")
+        if self.jira_config.get('enabled', False):
+            self.jira_client = self._init_client(lambda: JiraClient(self.jira_config), "JIRA")
 
         self.redmine_client = None
-        if redmine_config.get('enabled', False):
-            self.redmine_client = self._init_client(lambda: RedmineClient(redmine_config), "Redmine")
+        if self.redmine_config.get('enabled', False):
+            self.redmine_client = self._init_client(lambda: RedmineClient(self.redmine_config), "Redmine")
 
-    def collect(self, persistence: PersistenceService) -> None:
-        self._collect_from_client(self.jira_client, "JIRA", persistence)
-        self._collect_from_client(self.redmine_client, "Redmine", persistence)
-
-    def run(self, persistence: Optional[PersistenceService] = None) -> None:
-        """Backward-compatible entry point for legacy callers."""
-        if persistence is None:
-            persistence = PersistenceService(self.data_path)
-        self.collect(persistence)
-        persistence.flush_index()
+        # cache the projects we have collected
+        self.jira_projects = set()
+        self.redmine_projects = set()
 
     def _init_client(self, factory, name: str):
         try:
@@ -52,17 +46,90 @@ class TicketManager:
             )
             return None
 
+    def collect_all_from_config(self, persistence: PersistenceService) -> None:
+        if self.jira_client:
+            jira_projects = self.jira_config.get("projects", [])
+            self.collect_jira(persistence, projects=jira_projects)
+        if self.redmine_client:
+            redmine_projects = self.redmine_config.get("projects", [])
+            self.collect_redmine(persistence, projects=redmine_projects)
+
+    def collect_jira(
+        self,
+        persistence: PersistenceService,
+        projects: List[str],
+        kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self._collect_from_client(
+            self.jira_client, "JIRA",
+            persistence=persistence,
+            projects=projects,
+            **(kwargs or {})
+        )
+
+    def collect_redmine(
+        self,
+        persistence: PersistenceService,
+        projects: List[str],
+        **kwargs
+    ) -> None:
+        self._collect_from_client(
+            self.redmine_client, "Redmine",
+            persistence=persistence,
+            projects=projects,
+            **kwargs
+        )
+
+    def schedule_collect_jira(
+        self,
+        persistence: PersistenceService,
+        last_run: Optional[str],
+    ) -> None:
+        """
+        Update all JIRA projects with tickets since last run
+        """
+
+        self._collect_from_client(
+            self.jira_client, "JIRA",
+            persistence=persistence,
+            projects=self.jira_projects,
+            since_iso=last_run
+        )
+
+    def schedule_collect_redmine(
+        self,
+        persistence: PersistenceService,
+        last_run: Optional[str],
+    ) -> None:
+        """
+        Update all Redmine projects with tickets since last run
+        """
+
+        self._collect_from_client(
+            self.redmine_client, "Redmine",
+            persistence=persistence,
+            projects=self.redmine_projects,
+            since_iso=last_run
+        )
+
     def _collect_from_client(
         self,
         client,
         name: str,
         persistence: PersistenceService,
+        projects: List[str],
+        **kwargs,
     ) -> None:
         if client is None:
             return
-
         try:
-            resources = client.collect()
+            resources = client.collect(projects=projects, **kwargs)
+            if name == "JIRA":
+                self.jira_projects.update(projects)
+                outdir = self.data_path / "jira"
+            elif name == "Redmine":
+                self.redmine_projects.update(projects)
+                outdir = self.data_path / "redmine"
         except Exception as exc:
             logger.warning(
                 f"{name} collection failed; skipping remaining tickets from this source.",
@@ -70,20 +137,5 @@ class TicketManager:
             )
             return
 
-        self._persist_resources(resources, persistence)
-
-    def _persist_resources(
-        self,
-        resources: Iterable[TicketResource] | None,
-        persistence: PersistenceService,
-    ) -> None:
-        if not resources:
-            return
-
         for resource in resources:
-            try:
-                persistence.persist_resource(resource, persistence.data_path / "tickets")
-            except Exception as exc:
-                logger.error(
-                    f"Failed to persist ticket {resource.ticket_id} from {resource.source}: {exc}"
-                )
+            persistence.persist_resource(resource, outdir)

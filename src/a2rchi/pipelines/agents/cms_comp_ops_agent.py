@@ -3,22 +3,23 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Sequence
 
 from langchain_core.documents import Document
+from langchain.agents.middleware import TodoListMiddleware, LLMToolSelectorMiddleware
 
 from src.utils.logging import get_logger
-from src.a2rchi.pipelines.agents.base import BaseAgent
+from src.a2rchi.pipelines.agents.base_react import BaseReActAgent
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 from src.a2rchi.pipelines.agents.tools import (
     create_file_search_tool,
     create_metadata_search_tool,
     create_retriever_tool,
+    RemoteCatalogClient,
 )
 from src.a2rchi.pipelines.agents.utils.history_utils import infer_speaker
-from src.data_manager.collectors.utils.index_utils import CatalogService
 
 logger = get_logger(__name__)
 
 
-class CMSCompOpsAgent(BaseAgent):
+class CMSCompOpsAgent(BaseReActAgent):
     """Agent designed for CMS CompOps operations."""
 
     def __init__(
@@ -29,13 +30,12 @@ class CMSCompOpsAgent(BaseAgent):
     ) -> None:
         super().__init__(config, *args, **kwargs)
 
-        self.catalog_service = CatalogService(
-            data_path=self.config["global"]["DATA_PATH"]
-        )
+        self.catalog_service = RemoteCatalogClient.from_deployment_config(self.config)
         self._vector_retrievers = None
         self._vector_tool = None
 
         self.rebuild_static_tools()
+        self.rebuild_static_middleware()
         self.refresh_agent()
 
     def _build_static_tools(self) -> List[Callable]:
@@ -66,6 +66,18 @@ class CMSCompOpsAgent(BaseAgent):
             store_docs=self._store_documents,
         )
         return [file_search_tool, metadata_search_tool]
+    
+    # def _build_static_middleware(self) -> List[Callable]:
+    #     """
+    #     Initialize middleware: currently, testing what works best.
+    #     This is static.
+    #     """
+    #     todolist_middleware = TodoListMiddleware()
+    #     llmtoolselector_middleware = LLMToolSelectorMiddleware(
+    #         model=self.agent_llm,
+    #         max_tools=3,
+    #     )
+    #     return [todolist_middleware, llmtoolselector_middleware]
 
     def _store_documents(self, stage: str, docs: Sequence[Document]) -> None:
         """Centralised helper used by tools to record documents into the active memory."""
@@ -101,10 +113,6 @@ class CMSCompOpsAgent(BaseAgent):
             self._vector_retrievers = None
             self._vector_tools = None
         extra_tools = self._vector_tools if self._vector_tools else None
-
-        # ensure the latest files are indexed for the tools' use
-        self.catalog_service.refresh()
-        memory.note("Catalog refreshed for agent run.")
 
         self.refresh_agent(extra_tools=extra_tools)
 

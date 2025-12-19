@@ -32,6 +32,10 @@ if (textFeedbackForm) {
 
 // DEFINITIONS
 let DEFAULT_TIMEOUT_SECS = 300
+const USE_STREAMING = true;
+const STREAM_INCLUDE_AGENT_STEPS = true;
+const STREAM_INCLUDE_TOOL_STEPS = true;
+const STREAM_ENDPOINT = "/api/get_chat_response_stream";
 let userText = null;
 let conversation = []
 let num_responses_since_last_rating = 0;
@@ -600,6 +604,82 @@ const createChatElement = (content, className) => {
     return chatDiv; // Return the created chat div
 }
 
+const ensureStreamStepsContainer = (incomingChatDiv) => {
+    if (!incomingChatDiv) return null;
+    let container = incomingChatDiv.querySelector("[data-stream-steps]");
+    if (!container) {
+        container = document.createElement("div");
+        container.classList.add("stream-steps");
+        container.dataset.streamSteps = "true";
+        incomingChatDiv.querySelector(".chat-details")?.appendChild(container);
+    }
+    return container;
+};
+
+const formatStreamStep = (event) => {
+    if (!event) return "";
+    if (event.step_type === "tool_call") {
+        const argsValue = event.tool_args || "";
+        const args = typeof argsValue === "string" ? argsValue : JSON.stringify(argsValue);
+        const argsText = args ? ` ${args}` : "";
+        return `Tool call: ${event.tool_name || "unknown"}${argsText}`;
+    }
+    if (event.step_type === "tool_result") {
+        return `Tool result:\n${event.content || ""}`;
+    }
+    if (event.step_type === "agent") {
+        return event.content || "";
+    }
+    return event.content || "";
+};
+
+const appendStreamStep = (incomingChatDiv, event) => {
+    const container = ensureStreamStepsContainer(incomingChatDiv);
+    if (!container) return;
+    const step = document.createElement("div");
+    const stepType = event.step_type || "agent";
+    container.classList.add("active");
+    step.classList.add("stream-step", `stream-step-${stepType}`);
+    step.textContent = formatStreamStep(event);
+    container.appendChild(step);
+    chatContainer.scrollTo(0, chatContainer.scrollHeight);
+};
+
+const flushToUi = () => new Promise(requestAnimationFrame);
+
+const finalizeIncomingChat = (incomingChatDiv, pElement, responseData) => {
+    if (responseData && responseData.response !== undefined) {
+        try {
+            pElement.innerHTML = responseData.response;
+        } catch (error) {
+            console.error("Error setting innerHTML:", error);
+            pElement.textContent = responseData.response || "";
+        }
+        pElement.setAttribute("id", responseData.a2rchi_msg_id?.toString() || "");
+        pElement.classList.add(".default-text");
+        conversation.push(["A2rchi", responseData.response]);
+        updateActiveConversationId(responseData.conversation_id);
+        last_response_is_feedback_request = false;
+        if (responseData.a2rchi_msg_id !== undefined && responseData.a2rchi_msg_id !== null) {
+            incomingChatDiv.dataset.messageId = responseData.a2rchi_msg_id.toString();
+            incomingChatDiv.dataset.commentCount = "0";
+        } else {
+            delete incomingChatDiv.dataset.messageId;
+            delete incomingChatDiv.dataset.commentCount;
+        }
+        updateFeedbackVisualState(incomingChatDiv, null);
+    }
+
+    incomingChatDiv.querySelector(".typing-animation")?.remove();
+    incomingChatDiv.querySelector("#loading-text")?.remove();
+    incomingChatDiv.querySelector(".chat-details").appendChild(pElement);
+    localStorage.setItem("all-chats", chatContainer.innerHTML);
+    chatContainer.scrollTo(0, chatContainer.scrollHeight);
+
+    setTimeout(() => loadConversations(), 500);
+    setTimeout(showFeedbackRequest, 500);
+};
+
 const refreshChat = async () => {
     // if the conversation is empty; this is a no-op
     if (conversation.length == 0) {
@@ -622,6 +702,9 @@ const refreshChat = async () => {
 }
 
 const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
+    if (USE_STREAMING && window.ReadableStream) {
+        return getChatResponseStream(incomingChatDiv, isRefresh);
+    }
     const API_URL = "/api/get_chat_response";
     const pElement = document.createElement("div");
     const configName = configDropdown ? configDropdown.value : null;
@@ -645,6 +728,7 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
     }
 
     // send POST request to Flask API, get response and set the response as paragraph element text, console logging nice for debugging
+    let responseData = null;
     try {
         const response = await (await fetchWithTimeout(API_URL, requestOptions)).json();
         console.log("Full API Response:", response);
@@ -654,50 +738,106 @@ const getChatResponse = async (incomingChatDiv, isRefresh=false) => {
             console.error("API Returned an Error:", response.error);
             throw new Error(response.error);
         }
-
-        // potential HTML escaping issue
-        console.log("Checking response.response:", response.response);
-
-        // Attempt setting response normally
-        try {
-            pElement.innerHTML = response.response;
-        } catch (error) {
-            console.error("Error setting innerHTML:", error);
-            throw error;
-        }
-
-        pElement.setAttribute('id', response.a2rchi_msg_id.toString());
-        pElement.classList.add(".default-text");
-        conversation.push(["A2rchi", response.response]);
-        updateActiveConversationId(response.conversation_id);
-        last_response_is_feedback_request = false;
-        if (response.a2rchi_msg_id !== undefined && response.a2rchi_msg_id !== null) {
-            incomingChatDiv.dataset.messageId = response.a2rchi_msg_id.toString();
-            incomingChatDiv.dataset.commentCount = "0";
-        } else {
-            delete incomingChatDiv.dataset.messageId;
-            delete incomingChatDiv.dataset.commentCount;
-        }
-        updateFeedbackVisualState(incomingChatDiv, null);
+        responseData = response;
     } catch (error) {
         console.error("Fetch Error:", error);
         pElement.classList.add("error");
-        pElement.textContent = "Oops! Something went wrong while retrieving the response. Please try again.";
+        const errorText = (error && error.message ? error.message : String(error || "")).trim();
+        const truncated = errorText ? errorText.slice(0, 160) : "";
+        const suffix = truncated ? ` (${truncated}${errorText.length > truncated.length ? "..." : ""})` : "";
+        pElement.textContent = `Oops! Something went wrong while retrieving the response. Please try again, and contact support if the issue persists.${suffix}`;
     }
 
-    // Remove the typing animation, append the paragraph element and save the chats to local storage
-    incomingChatDiv.querySelector(".typing-animation").remove();
-    incomingChatDiv.querySelector("#loading-text")?.remove();
-    incomingChatDiv.querySelector(".chat-details").appendChild(pElement);
-    localStorage.setItem("all-chats", chatContainer.innerHTML);
-    chatContainer.scrollTo(0, chatContainer.scrollHeight);
-
-    // reload conversations list to update sidebar
-    setTimeout(() => loadConversations(), 500);
-
-    // ask user for feedback if it's been too many messages w/out any feedback
-    setTimeout(showFeedbackRequest, 500);
+    finalizeIncomingChat(incomingChatDiv, pElement, responseData);
 }
+
+const getChatResponseStream = async (incomingChatDiv, isRefresh=false) => {
+    const pElement = document.createElement("div");
+    const configName = configDropdown ? configDropdown.value : null;
+
+    const requestOptions = {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            last_message: conversation.slice(-1),
+            conversation_id: conversation_id,
+            config_name: configName,
+            is_refresh: isRefresh,
+            client_sent_msg_ts: Date.now(),
+            client_timeout: DEFAULT_TIMEOUT_SECS * 1000,
+            client_id: clientId,
+            include_agent_steps: STREAM_INCLUDE_AGENT_STEPS,
+            include_tool_steps: STREAM_INCLUDE_TOOL_STEPS,
+        }),
+        timeout: DEFAULT_TIMEOUT_SECS * 1000,
+    };
+
+    let finalized = false;
+
+    try {
+        const response = await fetchWithTimeout(STREAM_ENDPOINT, requestOptions);
+        if (!response.ok) {
+            throw new Error(`Streaming failed with status ${response.status}`);
+        }
+        if (!response.body) {
+            throw new Error("Streaming response body not available");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                let event;
+                try {
+                    event = JSON.parse(trimmed);
+                } catch (error) {
+                    console.error("Failed to parse stream event:", error);
+                    continue;
+                }
+
+                if (event.type === "step") {
+                    appendStreamStep(incomingChatDiv, event);
+                    await flushToUi();
+                } else if (event.type === "meta") {
+                    continue;
+                } else if (event.type === "final") {
+                    finalizeIncomingChat(incomingChatDiv, pElement, event);
+                    finalized = true;
+                    reader.cancel();
+                    break;
+                } else if (event.type === "error") {
+                    const message = event.message || "Oops! Something went wrong while retrieving the response. Please try again.";
+                    pElement.classList.add("error");
+                    pElement.textContent = message;
+                    finalizeIncomingChat(incomingChatDiv, pElement, null);
+                    finalized = true;
+                    reader.cancel();
+                    break;
+                }
+            }
+            if (finalized) break;
+        }
+    } catch (error) {
+        console.error("Stream Error:", error);
+        pElement.classList.add("error");
+        const errorText = (error && error.message ? error.message : String(error || "")).trim();
+        const truncated = errorText ? errorText.slice(0, 160) : "";
+        const suffix = truncated ? ` (${truncated}${errorText.length > truncated.length ? "..." : ""})` : "";
+        pElement.textContent = `Oops! Something went wrong while retrieving the response. Please try again.${suffix}`;
+        finalizeIncomingChat(incomingChatDiv, pElement, null);
+    }
+};
 
 const copyCode = (copyCodeBtn) => {
     // Copy the text content of the response to the clipboard
@@ -896,12 +1036,8 @@ const showTypingAnimation = (isRefresh = false) => {
     const html = `<div class="chat-content">
                     <div class="chat-details">
                         <img src="/static/images/a2rchi.png" alt="chatbot-img">
-                        <div class="typing-animation">
-                            <div class="typing-dot" style="--delay: 0.2s"></div>
-                            <div class="typing-dot" style="--delay: 0.3s"></div>
-                            <div class="typing-dot" style="--delay: 0.4s"></div>
-                        </div>
-                        <p id="loading-text"><em style='color: gray;'>Processing request...</em></p>
+                        <p id="loading-text"><em class="loading-text">Processing request...</em></p>
+                        <div class="stream-steps" data-stream-steps></div>
                     </div>
                     <div class="button-container">
                         <button onclick="likeResponse(this)" class="material-button">
@@ -925,9 +1061,9 @@ const showTypingAnimation = (isRefresh = false) => {
     const loadingTextElement = document.getElementById("loading-text");
 
     const statusMessages = [
-        "<em style='color: gray;'>Searching through relevant documents...</em>",
-        "<em style='color: gray;'>Almost there... fetching more details.</em>",
-        "<em style='color: gray;'>Still processing... please wait a moment, open-source magic happening.</em>"
+        "<em class=\"loading-text\">Searching through relevant documents...</em>",
+        "<em class=\"loading-text\">Almost there... fetching more details.</em>",
+        "<em class=\"loading-text\">Still processing... please wait a moment, open-source magic happening.</em>"
     ];
     
     let statusIndex = 0;

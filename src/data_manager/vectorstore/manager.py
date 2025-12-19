@@ -9,10 +9,6 @@ import chromadb
 import nltk
 import yaml
 from chromadb.config import Settings
-from langchain_community.document_loaders import (BSHTMLLoader, PyPDFLoader,
-                                                  PythonLoader,
-                                                  UnstructuredMarkdownLoader)
-from langchain_community.document_loaders.text import TextLoader
 from .loader_utils import select_loader
 from langchain_text_splitters.character import CharacterTextSplitter
 
@@ -22,7 +18,6 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 SUPPORTED_DISTANCE_METRICS = ["l2", "cosine", "ip"]
-
 
 class VectorStoreManager:
     """Encapsulates vectorstore configuration and synchronization."""
@@ -86,13 +81,19 @@ class VectorStoreManager:
             return
 
         client = self._build_client()
-
         if self.collection_name in [c.name for c in client.list_collections()]:
+            logger.info(
+                f"reset_collection is enabled; deleting existing collection {self.collection_name}"
+            )
             client.delete_collection(self.collection_name)
 
     def fetch_collection(self):
         """Return the active Chroma collection."""
         client = self._build_client()
+        try: 
+            collection = client.get_collection(name=self.collection_name)
+        except chromadb.errors.NotFoundError:
+            logger.info(f"Collection {self.collection_name} not found; creating new collection.")
         collection = client.get_or_create_collection(
             name=self.collection_name,
             metadata={"hnsw:space": self.distance_metric},
@@ -123,14 +124,18 @@ class VectorStoreManager:
                     hash_value: files_in_vstore.get(hash_value, "<unknown>")
                     for hash_value in hashes_to_remove
                 }
-                logger.info(f"Resources to remove: {files_to_remove}")
+                filed_to_remove_show = {k: files_to_remove[k] for k in list(files_to_remove)[:10]}
+                logger.info(f"Files to remove: {filed_to_remove_show} ...")
+                logger.debug(f"Full files to remove: {files_to_remove}")
                 collection = self._remove_from_vectorstore(collection, hashes_to_remove)
 
             hashes_to_add = hashes_in_data - hashes_in_vstore
             files_to_add = {
                 hash_value: files_in_data[hash_value] for hash_value in hashes_to_add
             }
-            logger.info(f"Files to add: {files_to_add}")
+            filed_to_add_show = {k: files_to_add[k] for k in list(files_to_add)[:10]}
+            logger.info(f"Files to add: {filed_to_add_show} ...")
+            logger.debug(f"Full files to add: {files_to_add}")
             collection = self._add_to_vectorstore(collection, files_to_add)
             logger.info("Vectorstore update has been completed")
 
@@ -140,10 +145,11 @@ class VectorStoreManager:
     def _build_client(self):
         chroma_cfg = self._services_config.get("chromadb", {})
         if chroma_cfg.get("use_HTTP_chromadb_client"):
+            logger.debug("Using ChromaDB HTTP client")
             return chromadb.HttpClient(
                 host=chroma_cfg["chromadb_host"],
-                port=chroma_cfg["chromadb_port"],
-                settings=Settings(allow_reset=True, anonymized_telemetry=False),
+                port=chroma_cfg["port"],
+                settings=Settings(allow_reset=False, anonymized_telemetry=False),
             )
 
         local_path = chroma_cfg.get(
@@ -175,7 +181,7 @@ class VectorStoreManager:
 
         def process_file(filehash: str, file_path: str):
             filename = Path(file_path).name
-            logger.info(f"Processing file: {filename} (hash: {filehash})")
+            logger.debug(f"Processing file: {filename} (hash: {filehash})")
 
             try:
                 loader = self.loader(file_path)
@@ -250,6 +256,7 @@ class VectorStoreManager:
                 if result:
                     processed_results[filehash] = result
 
+        logger.info("Finished processing files; adding to vectorstore")
         for filehash, file_path in files_to_add_items:
             processed = processed_results.get(filehash)
             if not processed:
@@ -264,7 +271,7 @@ class VectorStoreManager:
 
             ids = [f"{filehash}-{idx:06d}" for idx in range(len(chunks))]
 
-            logger.debug(f"Ids: {ids}")
+            logger.debug(f"Adding to vectorstore ids: {ids}")
 
             collection.add(
                 embeddings=embeddings,
@@ -273,6 +280,7 @@ class VectorStoreManager:
                 metadatas=metadatas,
             )
 
+        logger.info("All files have been added to the vectorstore")
         return collection
 
     def loader(self, file_path: str):

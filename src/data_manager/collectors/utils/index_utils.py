@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from langchain_core.documents import Document
 
 import yaml
@@ -25,6 +25,11 @@ DEFAULT_TEXT_EXTENSIONS = {
     ".html",
     ".htm",
     ".log",
+    ".py",
+    ".c",
+    ".cpp",
+    ".C",
+    ".h",
 }
 
 @dataclass
@@ -71,12 +76,38 @@ class CatalogService:
                 matches.append(resource_hash)
         return matches
 
+    def get_metadata_by_filter(
+        self,
+        metadata_field: str,
+        value: Optional[str] = None,
+        metadata_keys: Optional[Sequence[str]] = None,
+    ) -> List[Tuple[str, Dict[str, Any]]]:
+        """
+        Return (resource_hash, metadata) pairs whose metadata contains ``metadata_field``.
+
+        If ``value`` is provided, only entries where ``metadata_field`` equals ``value`` are returned.
+        If ``metadata_keys`` is provided, only those keys are included in the returned metadata.
+        """
+        matches: List[Tuple[str, Dict[str, Any]]] = []
+        for resource_hash in self._metadata_index:
+            metadata = self.get_metadata_for_hash(resource_hash)
+            if not metadata or metadata_field not in metadata:
+                continue
+            if value is not None and metadata.get(metadata_field) != value:
+                continue
+            if metadata_keys:
+                metadata = {k: metadata[k] for k in metadata_keys if k in metadata}
+            matches.append((resource_hash, metadata))
+        return matches
+
     def iter_files(self) -> Iterable[Tuple[str, Path]]:
         for resource_hash in self._file_index.keys():
             path = self.get_filepath_for_hash(resource_hash)
             if not path:
+                logger.debug("File for resource hash %s not found; skipping.", resource_hash)
                 continue
             if self.include_extensions and path.suffix.lower() not in self.include_extensions:
+                logger.debug("File %s has excluded extension; skipping.", path)
                 continue
             yield resource_hash, path
 
@@ -89,7 +120,7 @@ class CatalogService:
             metadata_path = (self.data_path / metadata_path).resolve()
         return metadata_path if metadata_path.exists() else None
     
-    def get_metadata_for_hash(self, hash: str) -> Optional[Dict[str, any]]:
+    def get_metadata_for_hash(self, hash: str) -> Optional[Dict[str, Any]]:
         metadata_path = self.metadata_path_for_hash(hash)
         if not metadata_path:
             return None

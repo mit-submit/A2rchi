@@ -64,13 +64,27 @@ class ServiceRegistry:
         
         # Infrastructure services (auto-enabled)
         self.register(ServiceDefinition(
+            name='data-manager',
+            description='Ingestion service for sources and manual uploads',
+            category='infrastructure',
+            requires_volume=True,
+            auto_enable=True,
+            default_host_port=7871,
+            default_container_port=7871,
+            port_config_path='services.data_manager',
+            volume_name_pattern="a2rchi-data-{name}"
+        ))
+
+        self.register(ServiceDefinition(
             name='chromadb',
             description='Vector database for document storage and retrieval',
             category='infrastructure',
             requires_volume=True,
             auto_enable=True,
             default_host_port=8000,
-            port_config_path='services.chromadb.chromadb_external_port'
+            default_container_port=8000,
+            port_config_path='services.chromadb',
+            volume_name_pattern="a2rchi-chroma-{name}",
         ))
         
         self.register(ServiceDefinition(
@@ -103,7 +117,8 @@ class ServiceRegistry:
             depends_on=['postgres'],
             required_secrets=['GRAFANA_PG_PASSWORD'],
             default_host_port=3000,
-            port_config_path='services.grafana.external_port',
+            default_container_port=3000,
+            port_config_path='services.grafana',
             volume_name_pattern="a2rchi-grafana-{name}"
         ))
         
@@ -154,6 +169,7 @@ class ServiceRegistry:
             requires_volume=True, 
             description='Benchmarking runtime, its not really a service but under the hood it will be',
             category='benchmarking runtime', # not technically a service
+            volume_name_pattern="a2rchi-benchmark-{name}",
         ))
     
     def register(self, service_def: ServiceDefinition):

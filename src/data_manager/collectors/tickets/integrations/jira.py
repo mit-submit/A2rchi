@@ -1,6 +1,7 @@
 from threading import Lock
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, Optional, List
 from time import perf_counter
+from datetime import datetime 
 
 import jira
 
@@ -13,6 +14,7 @@ logger = get_logger(__name__)
 
 
 class JiraClient:
+
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         self.client: Optional[jira.JIRA] = None
         self.jira_url: Optional[str] = None
@@ -20,6 +22,7 @@ class JiraClient:
         self.anonymize_data = True
         self.anonymizer: Optional[Anonymizer] = None
         self.visible: bool = True
+        self.cutoff_date: Optional[str] = None
 
         jira_config: Dict[str, Any] = dict(config or {})
 
@@ -28,11 +31,8 @@ class JiraClient:
             return
 
         self.jira_config = jira_config
-        self.jira_url = jira_config.get('url') or jira_config.get('JIRA_URL')
-        projects = jira_config.get('projects') or jira_config.get('JIRA_PROJECTS')
-        self.jira_projects = projects or []
-
-        if not self.jira_url or not self.jira_projects:
+        self.jira_url = jira_config.get('url') or jira_config.get('JIRA_URL') # TODO at some point, could support multiple in the config
+        if not self.jira_url:
             logger.info(
                 "JIRA configs couldn't be found. A2rchi will skip data fetching from JIRA"
             )
@@ -49,8 +49,9 @@ class JiraClient:
 
         self.anonymize_data = jira_config.get('anonymize_data', False)
         self.max_tickets = int(jira_config.get('max_tickets', 1e10))
+        self.cutoff_date = jira_config.get("cutoff_date") or jira_config.get("cut_off_date")
 
-        client = self.log_in(pat)
+        client = self._log_in(pat)
         if not client:
             logger.warning('Could not establish JIRA connection; skipping JIRA collection.')
             return
@@ -63,24 +64,34 @@ class JiraClient:
                 logger.warning('Failed to initialise JIRA anonymizer; continuing without anonymization.', exc_info=error)
                 self.anonymize_data = False
 
-    def log_in(self, pat: str) -> Optional[jira.JIRA]:
+    def _log_in(self, pat: str) -> Optional[jira.JIRA]:
         try:
             return jira.JIRA(self.jira_url, token_auth=pat, timeout=30)
         except Exception as error:
             logger.error(f"Failed to log in to JIRA: {error}")
             return None
 
-    def collect(self) -> Iterator[TicketResource]:
+    def collect(
+        self,
+        projects: List[str],
+        since_iso: Optional[str] = None,
+    ) -> Iterator[TicketResource]:
         """Return an iterator of tickets pulled from JIRA."""
-        if not self.client or not self.jira_projects:
+        if not self.client or not projects:
             logger.warning("Skipping JIRA collection; client not initialized or projects missing.")
             return iter(())
+        for project in projects:
+            yield from self._fetch_ticket_resources(project, since_iso=since_iso)    
 
-        return self._fetch_ticket_resources()
-
-    def _fetch_ticket_resources(self) -> Iterator[TicketResource]:
+    def _fetch_ticket_resources(
+        self,
+        project: str,
+        since_iso: Optional[str] = None
+    ) -> Iterator[TicketResource]:
+        
         trimmed_url = self.jira_url.rstrip('/') if self.jira_url else None
-        for issue in self.get_all_issues():
+
+        for issue in self._get_project_issues(project, since_iso=since_iso):
             fields = getattr(issue, "fields", None)
             issue_key = getattr(issue, "key", str(issue))
             created_at = getattr(fields, "created", "") if fields else ""
@@ -95,6 +106,7 @@ class JiraClient:
             metadata = {
                 "project": getattr(getattr(fields, "project", None), "key", None) if fields else None,
                 "url": f"{trimmed_url}/browse/{issue_key}" if trimmed_url else None,
+                "parent": getattr(getattr(fields, "project", None), "key", None) if fields else None,
             }
 
             record = TicketResource(
@@ -108,49 +120,80 @@ class JiraClient:
             logger.debug(f"Collected JIRA ticket {issue_key}")
             yield record
 
-    def get_all_issues(self) -> Iterator[jira.Issue]:
+    def _get_project_issues(
+        self,
+        project: str,
+        since_iso: Optional[str] = None
+    ) -> Iterator[jira.Issue]:
+
         """Fetch all issues from the configured JIRA projects."""
         max_batch_results = min(100, self.max_tickets)  # You can adjust this up to 1000 for JIRA Cloud
-        logger.info(self.jira_config)
-        for project in self.jira_projects:
-            logger.debug(f"Fetching maximum of {int(self.max_tickets)} issues in batches of {max_batch_results} for project: {project}")
-            query = f"project={project}"
-            start_at = 0
-            project_start = perf_counter()
-            while True:
-                fetch_start = perf_counter()
-                batch = self.client.search_issues(
-                    query,
-                    startAt=start_at,
-                    maxResults=max_batch_results,
-                    fields=["summary", "description", "project", "created", "comment"],
-                    expand="renderedFields,comment",
-                )
-                fetch_duration = perf_counter() - fetch_start
-                if not batch:
-                    logger.info(
-                        "JIRA search returned 0 issues | project=%s startAt=%d duration=%.2fs",
-                        project,
-                        start_at,
-                        fetch_duration,
-                    )
-                    break
+        logger.info(f"Fetching issues for JIRA project: {project}")
+        
+        logger.debug(f"Fetching maximum of {int(self.max_tickets)} issues in batches of {max_batch_results} for project: {project}")
+        query_parts = [f"project={project}"]
+        cutoff_formatted = self._format_jira_datetime(self.cutoff_date, "cutoff_date")
+        if cutoff_formatted:
+            query_parts.append(f'created >= "{cutoff_formatted}"')
+        since_formatted = self._format_jira_datetime(since_iso, "since_iso")
+        if since_formatted:
+            query_parts.append(f'updated >= "{since_formatted}"')
+        query = " and ".join(query_parts)
+        logger.debug(f"Fetching JIRA issues with query: {query}")
+
+        start_at = 0
+        project_start = perf_counter()
+        while True:
+            fetch_start = perf_counter()
+            batch = self.client.search_issues(
+                query,
+                startAt=start_at,
+                maxResults=max_batch_results,
+                fields=["summary", "description", "project", "created", "comment"],
+                expand="renderedFields,comment",
+            )
+            fetch_duration = perf_counter() - fetch_start
+            if not batch:
                 logger.info(
-                    "Fetched %d JIRA issues | project=%s startAt=%d duration=%.2fs",
-                    len(batch),
+                    "JIRA search returned 0 issues | project=%s startAt=%d duration=%.2fs",
                     project,
                     start_at,
                     fetch_duration,
                 )
-                yield from batch
-                if len(batch) < max_batch_results:
-                    break
-                start_at += max_batch_results
-                if start_at > self.max_tickets:
-                    logger.warning(f"Reached max ticket limit of {self.max_tickets}. Stopping further fetch.")
-                    break
-            project_duration = perf_counter() - project_start
-            logger.info("Completed JIRA fetch for project=%s in %.2fs", project, project_duration)
+                break
+            logger.info(
+                "Fetched %d JIRA issues | project=%s startAt=%d duration=%.2fs",
+                len(batch),
+                project,
+                start_at,
+                fetch_duration,
+            )
+            yield from batch
+            if len(batch) < max_batch_results:
+                break
+            start_at += max_batch_results
+            if start_at > self.max_tickets:
+                logger.warning(f"Reached max ticket limit of {self.max_tickets}. Stopping further fetch.")
+                break
+
+        project_duration = perf_counter() - project_start
+        logger.info("Completed JIRA fetch for project=%s in %.2fs", project, project_duration)
+
+    @staticmethod
+    def _format_jira_datetime(date_iso: Optional[str], label: str) -> Optional[str]:
+        if not date_iso:
+            return None
+        try:
+            dt = datetime.fromisoformat(date_iso)
+        except (TypeError, ValueError) as error:
+            logger.warning(
+                "Invalid %s %r; expected ISO-8601. Skipping JIRA date filter.",
+                label,
+                date_iso,
+                exc_info=error,
+            )
+            return None
+        return dt.strftime("%Y/%m/%d %H:%M")
 
     def _build_issue_text(self, issue: jira.Issue, fields: Optional[Any]) -> str:
         """Return a formatted representation of a JIRA issue body."""
