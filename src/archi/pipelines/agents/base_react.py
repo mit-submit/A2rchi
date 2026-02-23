@@ -902,11 +902,28 @@ class BaseReActAgent:
         base_tools = list(static_tools) if static_tools is not None else self.tools
         toolset: List[Callable] = list(base_tools)
 
-        if "mcp" in self.selected_tool_names:
+        selected_mcp_tool_names = {
+            name.split("mcp:", 1)[1].strip()
+            for name in (self.selected_tool_names or [])
+            if isinstance(name, str) and name.startswith("mcp:") and name.split("mcp:", 1)[1].strip()
+        }
+        include_all_mcp = "mcp" in (self.selected_tool_names or [])
+
+        if include_all_mcp or selected_mcp_tool_names:
             if self._mcp_tools is None:
                 built = self._build_mcp_tools()
                 self._mcp_tools = list(built or [])
-            toolset.extend(self._mcp_tools)
+            selected_mcp_tools = list(self._mcp_tools or [])
+            if selected_mcp_tool_names and not include_all_mcp:
+                selected_mcp_tools = [
+                    tool for tool in selected_mcp_tools
+                    if getattr(tool, "name", "") in selected_mcp_tool_names
+                ]
+                loaded_names = {getattr(tool, "name", "") for tool in self._mcp_tools or []}
+                missing = sorted([name for name in selected_mcp_tool_names if name not in loaded_names])
+                if missing:
+                    logger.warning("Requested MCP tools were not available: %s", ", ".join(missing))
+            toolset.extend(selected_mcp_tools)
 
         if extra_tools:
             toolset.extend(extra_tools)
@@ -941,17 +958,32 @@ class BaseReActAgent:
     def _build_static_tools(self) -> List[Callable]:
         """Build and returns static tools defined in the config."""
         selected = list(self.selected_tool_names or [])
-        static_names = [name for name in selected if name != "mcp"]
+        static_names = [name for name in selected if name != "mcp" and not str(name).startswith("mcp:")]
         return self._select_tools_from_registry(static_names)
+
+    def get_mcp_servers_config(self) -> Dict[str, Any]:
+        """
+        Return MCP server config for this agent.
+
+        Override in concrete agents to define MCP servers at the class level.
+        """
+        if not isinstance(self.archi_config, dict):
+            return {}
+        servers = self.archi_config.get("mcp_servers") or {}
+        return servers if isinstance(servers, dict) else {}
 
     def _build_mcp_tools(self) -> List[Callable]:
         """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
         try:
+            mcp_servers = self.get_mcp_servers_config()
+            if not mcp_servers:
+                logger.info("No MCP servers configured for %s.", self.__class__.__name__)
+                return None
             self._async_runner = AsyncLoopThread.get_instance()
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools = self._async_runner.run(initialize_mcp_client())
+            client, mcp_tools = self._async_runner.run(initialize_mcp_client(mcp_servers=mcp_servers))
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None

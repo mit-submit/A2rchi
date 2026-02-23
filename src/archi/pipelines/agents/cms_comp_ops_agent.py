@@ -26,6 +26,19 @@ logger = get_logger(__name__)
 class CMSCompOpsAgent(BaseReActAgent):
     """Agent designed for CMS CompOps operations."""
 
+    #input MCP Servers
+
+    MCP_SERVERS = {
+        "test": {
+            "url": "http://submit76.mit.edu:7760/sse",
+            "transport": "sse",
+        },
+        "monitor": {
+            "url": "http://submit76.mit.edu:7761/sse",
+            "transport": "sse",
+        },
+    }
+
     def __init__(
         self,
         config: Dict[str, Any],
@@ -52,6 +65,33 @@ class CMSCompOpsAgent(BaseReActAgent):
     def _chat_app_config(self) -> Dict[str, Any]:
         """Return the services.chat_app config section."""
         return self.config.get("services", {}).get("chat_app", {})
+
+    def get_mcp_servers_config(self) -> Dict[str, Any]:
+        """
+        Return MCP server config for this agent.
+
+        Priority:
+        1) Class-level MCP_SERVERS (recommended for agent templates)
+        2) services.chat_app.tools.mcp_servers (deployment override)
+        3) archi.mcp_servers (legacy fallback)
+        """
+        class_servers = getattr(self.__class__, "MCP_SERVERS", {}) or {}
+        if isinstance(class_servers, dict) and class_servers:
+            return class_servers
+
+        config = getattr(self, "config", {}) or {}
+        services_cfg = config.get("services", {}) if isinstance(config, dict) else {}
+        chat_cfg = services_cfg.get("chat_app", {}) if isinstance(services_cfg, dict) else {}
+        tools_cfg = chat_cfg.get("tools", {}) if isinstance(chat_cfg, dict) else {}
+        chat_servers = tools_cfg.get("mcp_servers", {}) if isinstance(tools_cfg, dict) else {}
+        if isinstance(chat_servers, dict) and chat_servers:
+            return chat_servers
+
+        archi_cfg = getattr(self, "archi_config", {}) or {}
+        legacy_servers = archi_cfg.get("mcp_servers", {}) if isinstance(archi_cfg, dict) else {}
+        if isinstance(legacy_servers, dict):
+            return legacy_servers
+        return {}
 
     def _init_monit(self) -> None:
         """Initialize the MONIT OpenSearch client if credentials and config are available."""

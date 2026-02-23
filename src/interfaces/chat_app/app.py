@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -2363,6 +2364,70 @@ class FlaskAppWrapper(object):
             logger.warning("Failed to read tool registry for %s: %s", agent_class, exc)
             return []
 
+    def _get_agent_mcp_servers(self, agent_class: Optional[str]) -> Dict[str, Any]:
+        """Read MCP servers from the selected agent class if available."""
+        if not agent_class:
+            return {}
+        try:
+            from src.archi import pipelines
+        except Exception as exc:
+            logger.warning("Failed to import pipelines module: %s", exc)
+            return {}
+
+        agent_cls = getattr(pipelines, agent_class, None)
+        if not agent_cls:
+            return {}
+
+        try:
+            dummy = agent_cls.__new__(agent_cls)
+            getter = getattr(agent_cls, "get_mcp_servers_config", None)
+            if not callable(getter):
+                return {}
+            servers = getter(dummy) or {}
+            return servers if isinstance(servers, dict) else {}
+        except Exception as exc:
+            logger.warning("Failed to read MCP server config for %s: %s", agent_class, exc)
+            return {}
+
+    def _get_mcp_tools(self, mcp_servers: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
+        """Return available MCP tool definitions (name + description)."""
+        try:
+            from src.archi.pipelines.agents.tools import initialize_mcp_client
+        except Exception as exc:
+            logger.warning("Failed to import MCP tooling: %s", exc)
+            return []
+
+        client = None
+        try:
+            client, mcp_tools = asyncio.run(initialize_mcp_client(mcp_servers=mcp_servers))
+            tools: List[Dict[str, str]] = []
+            for tool in mcp_tools or []:
+                name = getattr(tool, "name", "")
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                description = getattr(tool, "description", "") or ""
+                tools.append({
+                    "name": name.strip(),
+                    "description": str(description).strip(),
+                })
+            tools.sort(key=lambda item: item["name"])
+            return tools
+        except Exception as exc:
+            logger.warning("Failed to read MCP tools: %s", exc)
+            return []
+        finally:
+            if client is not None:
+                try:
+                    aclose = getattr(client, "aclose", None)
+                    if callable(aclose):
+                        asyncio.run(aclose())
+                    else:
+                        close = getattr(client, "close", None)
+                        if callable(close):
+                            close()
+                except Exception:
+                    pass
+
     def _build_agent_template(self, name: str, tools: List[str]) -> str:
         tools_block = "\n".join(f"  - {tool}" for tool in tools) if tools else "  - <tool_name>"
         return (
@@ -2435,11 +2500,21 @@ class FlaskAppWrapper(object):
         """
         try:
             agent_name = request.args.get("name") or "New Agent"
+            agent_class = self._get_agent_class_name()
             tool_items = self._get_agent_tools()
-            tools = [tool["name"] for tool in tool_items]
+            mcp_servers = self._get_agent_mcp_servers(agent_class)
+            mcp_tool_items = self._get_mcp_tools(mcp_servers=mcp_servers)
+            non_mcp_tools = [tool for tool in tool_items if tool.get("name") != "mcp"]
+            tools = [tool["name"] for tool in non_mcp_tools]
+            if mcp_tool_items:
+                tools.extend([f"mcp:{tool['name']}" for tool in mcp_tool_items if tool.get("name")])
+            elif any(tool.get("name") == "mcp" for tool in tool_items):
+                # Fallback for environments where MCP tools could not be introspected.
+                tools.append("mcp")
             return jsonify({
                 "name": agent_name,
-                "tools": tool_items,
+                "tools": non_mcp_tools,
+                "mcp_tools": mcp_tool_items,
                 "template": self._build_agent_template(agent_name, tools),
             }), 200
         except Exception as exc:

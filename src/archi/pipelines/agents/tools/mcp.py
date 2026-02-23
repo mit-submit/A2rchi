@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -10,7 +10,9 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[BaseTool]]:
+async def initialize_mcp_client(
+    mcp_servers: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[MultiServerMCPClient], List[BaseTool]]:
     """
     Initializes the MCP client and fetches tool definitions.
     Returns:
@@ -18,8 +20,13 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
         tools: The list of LangChain-compatible tools.
     """
 
-    archi_cfg = get_archi_config()
-    mcp_servers = archi_cfg.get("mcp_servers") or {}
+    if mcp_servers is None:
+        archi_cfg = get_archi_config()
+        mcp_servers = archi_cfg.get("mcp_servers") or {}
+    if not isinstance(mcp_servers, dict) or not mcp_servers:
+        logger.info("No MCP servers configured.")
+        return None, []
+
     client = MultiServerMCPClient(mcp_servers)
 
     all_tools: List[BaseTool] = []

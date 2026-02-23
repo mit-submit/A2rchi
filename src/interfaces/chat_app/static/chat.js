@@ -1152,11 +1152,12 @@ const UI = {
   populateAgentSpecForm({ name = '', tools = [], prompt = '' } = {}) {
     if (this.elements.agentSpecName) this.elements.agentSpecName.value = name;
     if (this.elements.agentSpecPrompt) this.elements.agentSpecPrompt.value = prompt;
+    const hasLegacyMcp = tools.includes('mcp');
     // Update tool checkboxes
     const checkboxes = this.elements.agentSpecToolsList?.querySelectorAll('input[type="checkbox"]');
     if (checkboxes) {
       checkboxes.forEach((cb) => {
-        cb.checked = tools.includes(cb.value);
+        cb.checked = tools.includes(cb.value) || (hasLegacyMcp && String(cb.value).startsWith('mcp:'));
       });
     }
   },
@@ -1180,13 +1181,15 @@ const UI = {
       const template = response?.template || '';
       if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = template;
       this._lastAvailableTools = response?.tools || [];
-      this.renderAgentToolPalette(this._lastAvailableTools);
+      this._lastAvailableMcpTools = response?.mcp_tools || [];
+      this.renderAgentToolPalette(this._lastAvailableTools, this._lastAvailableMcpTools);
       const parsed = this.parseAgentSpec(template);
       this.populateAgentSpecForm(parsed);
     } catch (e) {
       console.error('Failed to load agent template:', e);
       if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = '';
       this.populateAgentSpecForm();
+      this._lastAvailableMcpTools = [];
       this.setAgentSpecStatus('Unable to load agent template.', 'error');
     }
   },
@@ -1195,11 +1198,13 @@ const UI = {
     try {
       const response = await API.getAgentTemplate();
       this._lastAvailableTools = response?.tools || [];
-      this.renderAgentToolPalette(this._lastAvailableTools);
+      this._lastAvailableMcpTools = response?.mcp_tools || [];
+      this.renderAgentToolPalette(this._lastAvailableTools, this._lastAvailableMcpTools);
     } catch (e) {
       console.error('Failed to load tool palette:', e);
       this._lastAvailableTools = [];
-      this.renderAgentToolPalette([]);
+      this._lastAvailableMcpTools = [];
+      this.renderAgentToolPalette([], []);
     }
   },
 
@@ -1230,9 +1235,9 @@ const UI = {
     }
   },
 
-  renderAgentToolPalette(tools = []) {
+  renderAgentToolPalette(tools = [], mcpTools = []) {
     if (!this.elements.agentSpecToolsList) return;
-    if (!tools.length) {
+    if (!tools.length && !mcpTools.length) {
       this.elements.agentSpecToolsList.innerHTML = '<div class="agent-spec-tool-desc">No tools available.</div>';
       return;
     }
@@ -1251,7 +1256,36 @@ const UI = {
         </div>
       </label>`;
     });
-    this.elements.agentSpecToolsList.innerHTML = items.join('');
+    const mcpItems = mcpTools.map((tool) => {
+      const mcpToolName = tool.name || '';
+      const value = `mcp:${mcpToolName}`;
+      const checked = selectedTools.includes('mcp') || selectedTools.includes(value) ? 'checked' : '';
+      return `
+      <label class="agent-spec-tool agent-spec-tool-mcp">
+        <input type="checkbox" class="agent-spec-tool-checkbox" value="${Utils.escapeHtml(value)}" ${checked} />
+        <div class="agent-spec-tool-info">
+          <div class="agent-spec-tool-name">${Utils.escapeHtml(mcpToolName)}</div>
+          <div class="agent-spec-tool-desc">${Utils.escapeHtml(tool.description || '')}</div>
+        </div>
+      </label>`;
+    });
+
+    const sections = [];
+    if (items.length) {
+      sections.push(`
+      <div class="agent-spec-tool-section">
+        <div class="agent-spec-tool-section-title">Tools</div>
+        ${items.join('')}
+      </div>`);
+    }
+    if (mcpItems.length) {
+      sections.push(`
+      <div class="agent-spec-tool-section">
+        <div class="agent-spec-tool-section-title">MCP Tools</div>
+        ${mcpItems.join('')}
+      </div>`);
+    }
+    this.elements.agentSpecToolsList.innerHTML = sections.join('');
   },
 
   async saveAgentSpec() {
