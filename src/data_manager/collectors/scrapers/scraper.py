@@ -3,7 +3,7 @@ import re
 import time
 
 import requests
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, Pattern
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin, urldefrag, urlunparse
 
@@ -36,8 +36,8 @@ class LinkScraper:
         self,
         verify_urls: bool = True,
         enable_warnings: bool = True,
-        allowed_path_regexes: List[str] = [],
-        denied_path_regexes: List[str] = [],
+        allowed_path_regexes: List[Pattern] = [],
+        denied_path_regexes: List[Pattern] = [],
         delay: float = 60.0,
         delay_jitter: float = 0.3,
     ) -> None:
@@ -46,8 +46,8 @@ class LinkScraper:
         # seen_urls tracks anything queued/visited; visited_urls tracks pages actually crawled.
         self.visited_urls = set()
         self.seen_urls = set()
-        self._allowed = [re.compile(rx) for rx in allowed_path_regexes]
-        self._denied = [re.compile(rx) for rx in denied_path_regexes]
+        self._allowed = allowed_path_regexes
+        self._denied = denied_path_regexes
         self.delay = delay
         self.delay_jitter = max(0.0, delay_jitter)
         self._headers = dict(DEFAULT_HTTP_HEADERS)

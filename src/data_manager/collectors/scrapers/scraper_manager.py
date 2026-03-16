@@ -1,7 +1,8 @@
 import os
+import re
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Pattern
 
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.scrapers.scraped_resource import \
@@ -31,10 +32,8 @@ class ScraperManager:
         git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
         sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
         self.base_depth = links_config.get('base_source_depth', 5)
-        raw_allowed_path_regexes = links_config.get('allowed_path_regexes')
-        raw_denied_path_regexes = links_config.get('denied_path_regexes')
-        self.allowed_path_regexes = self._normalize_regex_list(raw_allowed_path_regexes, "allowed_path_regexes")
-        self.denied_path_regexes = self._normalize_regex_list(raw_denied_path_regexes, "denied_path_regexes")
+        self.allowed_path_regexes = self.compile_regex_config(links_config.get('allowed_path_regexes'), "allowed_path_regexes")
+        self.denied_path_regexes = self.compile_regex_config(links_config.get('denied_path_regexes'), "denied_path_regexes")
         logger.debug(f"Using base depth of {self.base_depth} for weblist URLs")
 
         scraper_config = {}
@@ -79,38 +78,56 @@ class ScraperManager:
         )
         self._git_scraper: Optional["GitScraper"] = None
           
-    def _normalize_regex_list(self, value: Any, config_key: str) -> List[str]:
+
+    def compile_regex_config(self, value: Any, config_key: str) -> List[Pattern]:
         """
-         Normalize a config value representing regex patterns into a List[str].
-         Accepts:
-         - None / missing: returns []
-         - str: returns [value]
-         - list: returns a list of only the string elements, warning on non-strings
-         - any other type: logs a warning and returns []
-         """
+        Normalize and safely compile regex patterns from config.
+
+        Accepts:
+        - None → []
+        - str → [compiled]
+        - list[str] → compiled list
+        - other types → warning + []
+        """
+
+        compiled: List[Pattern] = []
+
         if value is None:
-            return []
+            return compiled
+
         if isinstance(value, str):
-            return [value]
-        if isinstance(value, list):
-            normalized: List[str] = []
-            for idx, item in enumerate(value):
-                if isinstance(item, str):
-                    normalized.append(item)
-                else:
-                    logger.warning(
-                        "Ignoring non-string value at index %s in %s config: %r",
-                        idx,
-                        config_key,
-                        item,
-                    )
-            return normalized
-        logger.warning(
-            "Expected %s to be a string or list of strings in links config, got %r; ignoring.",
-            config_key,
-            value,
-        )
-        return []
+            value = [value]
+
+        if not isinstance(value, list):
+            logger.warning(
+                "Expected %s to be string or list[str]; got %r. Ignoring.",
+                config_key,
+                type(value),
+            )
+            return compiled
+
+        for idx, pattern in enumerate(value):
+
+            if not isinstance(pattern, str):
+                logger.warning(
+                    "Ignoring non-string value at index %s in %s: %r",
+                    idx,
+                    config_key,
+                    pattern,
+                )
+                continue
+
+            try:
+                compiled.append(re.compile(pattern))
+            except re.error as exc:
+                logger.warning(
+                    "Invalid regex pattern in %s skipped: %r (%s)",
+                    config_key,
+                    pattern,
+                    exc,
+                )
+
+        return compiled
 
     def collect_all_from_config(
         self, persistence: PersistenceService
