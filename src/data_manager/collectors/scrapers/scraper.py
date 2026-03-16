@@ -256,10 +256,13 @@ class LinkScraper:
             logger.info(f"Crawling depth {depth + 1}/{max_depth}: {current_url}")
 
             try:
-                sleep_time = max(
-                    0.0,
-                    self.delay + random.uniform(-self.delay_jitter, self.delay_jitter),
-                )
+                if self.delay <= 0:
+                    sleep_time = 0.0
+                else:
+                    sleep_time = max(
+                        0.0,
+                        self.delay + random.uniform(-self.delay_jitter, self.delay_jitter),
+                    )
                 time.sleep(sleep_time)
 
                 # grab the page content 
