@@ -36,8 +36,8 @@ class LinkScraper:
         self,
         verify_urls: bool = True,
         enable_warnings: bool = True,
-        allowed_path_regexes: List[Pattern] = [],
-        denied_path_regexes: List[Pattern] = [],
+        allowed_path_regexes: Optional[List[Pattern]] = None,
+        denied_path_regexes: Optional[List[Pattern]] = None,
         delay: float = 60.0,
         delay_jitter: float = 0.3,
     ) -> None:
@@ -46,8 +46,8 @@ class LinkScraper:
         # seen_urls tracks anything queued/visited; visited_urls tracks pages actually crawled.
         self.visited_urls = set()
         self.seen_urls = set()
-        self._allowed = allowed_path_regexes
-        self._denied = denied_path_regexes
+        self._allowed = allowed_path_regexes or []
+        self._denied = denied_path_regexes or []
         self.delay = delay
         self.delay_jitter = max(0.0, delay_jitter)
         self._headers = dict(DEFAULT_HTTP_HEADERS)
