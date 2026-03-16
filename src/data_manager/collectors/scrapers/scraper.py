@@ -344,7 +344,8 @@ class LinkScraper:
 
     def _canonical_url(self, url: str) -> str:
         """
-        Return a canonical URL by removing query strings and fragments. Drops specific parameters (e.g. ?rev=, ?version=, ?skin=) and reconstructs the URL using only scheme, host, and path.
+        Return a canonical URL by removing all query strings and fragments and
+         reconstructing the URL using only the scheme, host, and path components.
         """
         p = urlparse(url)
         return urlunparse((p.scheme, p.netloc, p.path, "", "", ""))
