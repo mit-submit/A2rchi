@@ -1,3 +1,4 @@
+import re
 import time
 import pytest
 from src.data_manager.collectors.scrapers.scraper import LinkScraper
@@ -30,7 +31,7 @@ def test_link_scraper_deep_crawl(http_router: OfflineRouter):
 @pytest.mark.slow
 @pytest.mark.routesets("twiki")
 def test_link_scraper_delay(http_router: OfflineRouter):
-    scraper = LinkScraper(delay=1.0)
+    scraper = LinkScraper(delay=0.5)
 
     start = time.perf_counter()
     scraped = list(scraper.crawl_iter(
@@ -47,8 +48,8 @@ def test_link_scraper_delay(http_router: OfflineRouter):
 def test_link_scraper_allowed_prefixes_and_sanitization(http_router: OfflineRouter):
     # If w/o allowed path regexes, denied path regexes we should get all valid links (23 links)
     scraper = LinkScraper(
-        allowed_path_regexes=[".*Crab.*", ".*CRAB3.*", ".*WorkBook.*"],
-        denied_path_regexes=["LeftBar", "diff"],
+        allowed_path_regexes=[re.compile(s) for s in [".*Crab.*", ".*CRAB3.*", ".*WorkBook.*"]],
+        denied_path_regexes=[re.compile(s) for s in ["LeftBar", "diff"]],
         delay=0
     )
 
