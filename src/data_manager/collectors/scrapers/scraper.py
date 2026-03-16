@@ -354,7 +354,7 @@ class LinkScraper:
 
         base_url = self._normalize_url(url) or url
         base_hostname = urlparse(base_url).netloc
-        links = set()
+        links: List[str] = []
         a_tags = []
         
         if (page_data.suffix == "html"):
@@ -371,7 +371,7 @@ class LinkScraper:
             if link_netloc == base_hostname:
                 if "twiki" in base_hostname and self._is_allowed_path(link_path):
                         canonicalized_url = self._canonical_url(normalized)
-                        links.add(canonicalized_url)
+                        links.append(canonicalized_url)
                 else:
-                    links.add(normalized)
+                    links.append(normalized)
         return list(self._unique(links))
