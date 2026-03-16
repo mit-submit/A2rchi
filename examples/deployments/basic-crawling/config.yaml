@@ -42,9 +42,9 @@ data_manager:
       denied_path_regexes:
         - "LeftBarLeftBar"
         - "diff"
-      base_source_depth: 2      # 2-level crawl in this case gave us 251 docs with-in minutes.
+      base_source_depth: 2      # 2-level crawling, in this case it will gently crawled and gave us 251 docs with-in ~4 hrs.
       max_pages: 1000           # normally we might need depth=3 with more specific allowed/denied patterns.
-      delay: 60                 # set to the bare minimum tolerated delay for twiki.cern.ch to avoid being blacklisted.
+      delay: 60                 # set to the bare minimum tolerable delay for twiki.cern.ch to avoid being blacklisted.
       input_lists:
         - examples/deployments/basic-crawling/twiki.seeds.list
   embedding_name: HuggingFaceEmbeddings
