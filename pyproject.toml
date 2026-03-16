@@ -55,7 +55,7 @@ markers = [
 
 [project.optional-dependencies]
 test = [
-  "pytest>=8.0",
+  "pytest>=7.4,<8",
   "requests-mock>=1.11"
 ]
 
