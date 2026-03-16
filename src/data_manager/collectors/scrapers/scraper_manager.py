@@ -31,8 +31,10 @@ class ScraperManager:
         git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
         sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
         self.base_depth = links_config.get('base_source_depth', 5)
-        self.allowed_path_regexes = links_config.get('allowed_path_regexes', [])
-        self.denied_path_regexes = links_config.get('denied_path_regexes', [])
+        raw_allowed_path_regexes = links_config.get('allowed_path_regexes')
+        raw_denied_path_regexes = links_config.get('denied_path_regexes')
+        self.allowed_path_regexes = self._normalize_regex_list(raw_allowed_path_regexes, "allowed_path_regexes")
+        self.denied_path_regexes = self._normalize_regex_list(raw_denied_path_regexes, "denied_path_regexes")
         logger.debug(f"Using base depth of {self.base_depth} for weblist URLs")
 
         scraper_config = {}
@@ -77,6 +79,39 @@ class ScraperManager:
         )
         self._git_scraper: Optional["GitScraper"] = None
           
+    def _normalize_regex_list(self, value: Any, config_key: str) -> List[str]:
+        """
+         Normalize a config value representing regex patterns into a List[str].
+         Accepts:
+         - None / missing: returns []
+         - str: returns [value]
+         - list: returns a list of only the string elements, warning on non-strings
+         - any other type: logs a warning and returns []
+         """
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            normalized: List[str] = []
+            for idx, item in enumerate(value):
+                if isinstance(item, str):
+                    normalized.append(item)
+                else:
+                    logger.warning(
+                        "Ignoring non-string value at index %s in %s config: %r",
+                        idx,
+                        config_key,
+                        item,
+                    )
+            return normalized
+        logger.warning(
+            "Expected %s to be a string or list of strings in links config, got %r; ignoring.",
+            config_key,
+            value,
+        )
+        return []
+
     def collect_all_from_config(
         self, persistence: PersistenceService
     ) -> None:
