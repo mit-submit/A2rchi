@@ -10,6 +10,10 @@ class TwikiSpider(scrapy.Spider):
 
     name = "twiki"
 
+    custom_settings = {
+        "ROBOTSTXT_OBEY": False,
+    }
+
     async def start(self):
         """
         Seed request for the CRAB3 Twiki config page.
@@ -26,7 +30,10 @@ class TwikiSpider(scrapy.Spider):
     def parse(self, response):
         """
         Twiki pages render their main content inside #patternMain or .twikiMain.
-        Yields a raw dict
+
+        @url https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile
+        @returns items 1 1
+        @scrapes url title same_host_links_count
         """
         self.logger.info("Status %s for %s", response.status, response.url)
 
