@@ -28,7 +28,7 @@ from __future__ import annotations
 from functools import singledispatch
  
 from src.data_manager.collectors.scrapers.scraped_resource import ScrapedResource
-from src.data_manager.collectors.scrapers.items import WebPageItem, TWikiPageItem
+from src.data_manager.collectors.scrapers.items import PDFItem, WebPageItem, TWikiPageItem
  
  
 @singledispatch
@@ -40,17 +40,27 @@ def to_scraped_resource(item) -> ScrapedResource:
     )
  
 @to_scraped_resource.register(WebPageItem)
-def _web(item): return _html_page(item, source_type="web")
-
 @to_scraped_resource.register(TWikiPageItem)
-def _twiki(item): return _html_page(item, source_type="twiki")
-
-def _html_page(item, source_type) -> ScrapedResource:
+def _html_page(item) -> ScrapedResource:
     return ScrapedResource(
         url=item["url"],
         content=item["content"],
         suffix=item.get("suffix", "html"),
-        source_type=source_type,
+        source_type="web",
+        metadata={
+            "content_type": item.get("content_type"),
+            "encoding": item.get("encoding"),
+            "title": item.get("title"),
+        },
+    )
+
+@to_scraped_resource.register(PDFItem)
+def _pdf(item) -> ScrapedResource:
+    return ScrapedResource(
+        url=item["url"],
+        content=item["content"],
+        suffix=item.get("suffix", "pdf"),
+        source_type="web",
         metadata={
             "content_type": item.get("content_type"),
             "encoding": item.get("encoding"),

@@ -45,7 +45,7 @@ class LinkSpider(Spider):
         Extract one item per response, then yield follow Requests up to max_depth.
         @url https://quotes.toscrape.com/
         @returns items 1
-        @scrapes url content suffix source_type title
+        @scrapes url content suffix title
         """
         self.logger.info("Status %s for %s", response.status, response.url)
 
@@ -87,7 +87,6 @@ class LinkSpider(Spider):
                 url=response.url,
                 content=response.body,
                 suffix="pdf",
-                source_type="web",
                 title="",
                 content_type=ct,
             )
@@ -100,7 +99,6 @@ class LinkSpider(Spider):
             url=response.url,
             content=response.text,
             suffix="html",
-            source_type="web",
             title=title,
             content_type=ct,
             encoding=encoding,
