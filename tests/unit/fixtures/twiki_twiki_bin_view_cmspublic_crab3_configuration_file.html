@@ -1,0 +1,993 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en-US" lang="en-US">
+<head>
+<script type="text/javascript" src="/twiki/pub/TWiki/JQueryPlugin/jquery.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/JQueryPlugin/jquery-migrate.js"></script>
+<link rel="stylesheet" href="/twiki/pub/TWiki/JQueryPlugin/jquery-all.css" type="text/css" media="all" />
+<script type="text/javascript" src="/twiki/pub/TWiki/JQueryPlugin/jquery-all.js"></script>
+<link rel="stylesheet" href="https://twiki.cern.ch/twiki/pub/TWiki/ImagePlugin/style.css" type="text/css" media="all" />
+<link rel="stylesheet" href="https://twiki.cern.ch/twiki/pub/TWiki/ImageGalleryPlugin/style.css" type="text/css" media="all" />
+<title> CRAB3ConfigurationFile &lt; CMSPublic &lt; TWiki</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<link rel="icon" href="/twiki/pub/CMSPublic/WebPreferences/favicon.ico" type="image/x-icon" />
+<link rel="shortcut icon" href="/twiki/pub/CMSPublic/WebPreferences/favicon.ico" type="image/x-icon" />
+<link rel="alternate" href="https://twiki.cern.ch/twiki/bin/edit/CMSPublic/CRAB3ConfigurationFile?t=1773998843" type="application/x-wiki" title="Edit CRAB3ConfigurationFile" />
+<link rel="edit" href="https://twiki.cern.ch/twiki/bin/edit/CMSPublic/CRAB3ConfigurationFile?t=1773998843" title="Edit CRAB3ConfigurationFile" />
+<meta name="SCRIPTURLPATH" content="/twiki/bin" />
+<meta name="SCRIPTSUFFIX" content="" />
+<meta name="TEXT_JUMP" content="Jump" />
+<meta name="TEXT_SEARCH" content="Search" />
+<meta name="TEXT_NUM_TOPICS" content="Number of topics:" />
+<meta name="TEXT_MODIFY_SEARCH" content="Modify search" />
+<link rel="alternate" type="application/rss+xml" title="RSS Feed" href="/twiki/bin/view/CMSPublic/WebRss" />
+<base href="https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile"></base>
+<!--BEHAVIOURCONTRIB--><script type="text/javascript" src="/twiki/pub/TWiki/BehaviourContrib/behaviour.compressed.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/TWikiJavascripts/twikilib.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/TWikiJavascripts/twikiWindow.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/TWikiJavascripts/twikiEvent.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/TWikiJavascripts/twikiHTML.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/TWikiJavascripts/twikiCSS.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/TWikiJavascripts/twikiForm.js"></script>
+<script type="text/javascript" src="/twiki/pub/TWiki/PatternSkin/pattern.js"></script>
+<style type="text/css" media="all">
+@import url('/twiki/pub/TWiki/TWikiTemplates/base.css');
+</style>
+<style type="text/css" media="all">
+#patternTopBar,
+#patternClearHeaderCenter,
+#patternClearHeaderLeft,
+#patternClearHeaderRight,
+#patternTopBarContentsOuter,
+#patternTopBarContents {
+	height:64px; /* top bar height; make room for header columns */
+	overflow:hidden;
+}
+#patternOuter {
+	margin-left:14em;
+}
+#patternLeftBar {
+	width:14em;
+	margin-left:-14em;
+}
+</style>
+<style type="text/css" media="all">
+@import url('/twiki/pub/TWiki/PatternSkin/layout.css');
+@import url('/twiki/pub/TWiki/PatternSkin/style.css');
+@import url('/twiki/pub/TWiki/PatternSkin/colors.css');
+</style>
+<style type="text/css" media="all">
+	/* Styles that are set using variables */
+	.patternBookView .twikiTopRow,
+	.patternWebIndicator a img,
+	.patternWebIndicator a:hover img {
+		background-color:#33FFFF;
+	}
+	#patternTopBarContents { background-image:url(/twiki/pub/TWiki/PatternSkin/TWiki_header.gif); background-repeat:no-repeat;}
+	
+	.patternBookView {
+		border-color:#33FFFF;
+	}
+	.patternPreviewPage #patternMain {
+		/* uncomment to set the preview image */
+		/*background-image:url("/twiki/pub/TWiki/PreviewBackground/preview2bg.gif");*/
+	}
+	
+</style><style type="text/css" media="all">
+
+
+
+</style>
+<style type="text/css" media="all">
+	@import url("/twiki/pub/TWiki/PatternSkin/print.css");
+</style>
+<!--[if IE]><style type="text/css" media="screen">
+pre {
+	overflow-x:auto;
+	padding-bottom:expression(this.scrollWidth > this.offsetWidth ? 16 : 0);
+}
+</style>
+<![endif]-->
+<!--[if lte IE 6]> 
+<style type="text/css">
+#patternLeftBar {
+	position:relative; /* IE 5.5 needs this or the contents won't show outside the parent container on print. IE 6.0 needs it only during printable copy! */
+}
+</style><![endif]-->
+<script type="text/javascript" src="/twiki/pub/TWiki/TWikiJavascripts/twikiStyles.js"></script>
+
+<script src="https://twiki.cern.ch/twiki/pub/TWiki/ChecklistPlugin/itemstatechange.js" language="javascript" type="text/javascript"></script><!--GENERATED_HEADERS--><!-- CERNSEARCHBAR_CSS --> <link rel='stylesheet' href='/twiki/pub/TWiki/CernSearchBar/CernSearchBar.css' type='text/css' media='all' /></head>
+<body class="patternViewPage">
+<a name="PageTop"></a>
+<div id="patternScreen">
+<div id="patternPageShadow">
+<div id="patternPage">
+<div id="patternWrapper"><div id="patternOuter">
+<div id="patternFloatWrap">
+<div id="patternMain"><div id="patternClearHeaderCenter"></div>
+<div id="patternMainContents"><div class="patternTop"><span class="patternHomePath twikiLeft"><a class="twikiLink" href="/twiki/bin/view/Main/WebHome">TWiki</a><span class='twikiSeparator'>&gt;</span><img src="/twiki/pub/TWiki/TWikiDocGraphics/web-bg-small.gif" border="0" alt="" width="13" height="13" style="background-color:#33FFFF" />&nbsp;<a href="/twiki/bin/view/CMSPublic/WebHome">CMSPublic Web</a><span class='twikiSeparator'>&gt;</span><a class="twikiLink" href="/twiki/bin/view/CMSPublic/SWGuide">SWGuide</a><span class='twikiSeparator'>&gt;</span><a class="twikiLink" href="/twiki/bin/view/CMSPublic/SWGuideCrab">SWGuideCrab</a><span class='twikiSeparator'>&gt;</span><a href="https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile" title='Topic revision: 99 (2026-01-22 - 12:10:10)'>CRAB3ConfigurationFile</a> <span class='patternRevInfo'>(2026-01-22, <span class="twikiNewLink"><a href="/twiki/bin/edit/Main/KrittinPhornsiricharoenphant?topicparent=CMSPublic.CRAB3ConfigurationFile;nowysiwyg=1"    rel="nofollow" title="this topic does not yet exist; you can create it.">KrittinPhornsiricharoenphant</a></span>)</span></span><!-- /patternHomePath--><span class="patternToolBar twikiRight"><span><a href='https://twiki.cern.ch/twiki/bin/edit/CMSPublic/CRAB3ConfigurationFile?t=1773998843;nowysiwyg=1' rel='nofollow' title='Edit this topic text' accesskey='e'><img src='/twiki/pub/TWiki/TWikiDocGraphics/uweb-o14.gif' width='14' height='14' border='0' alt='' /> <span class='twikiAccessKey'>E</span>dit</a></span><span><a href='/twiki/bin/attach/CMSPublic/CRAB3ConfigurationFile' rel='nofollow' title='Attach an image or document to this topic' accesskey='a'><span class='twikiAccessKey'>A</span>ttach</a></span><span><a href='/twiki/bin/genpdf/CMSPublic/CRAB3ConfigurationFile' rel='nofollow' title='Create a PDF file for the topic' accesskey='f'><span class='twikiAccessKey'>P</span>DF</a></span></span><!-- /patternToolBar--><br class="twikiClear" /></div><!--/patternTop--><div class="twikiContentHeader"></div><div class="patternContent"><div class="patternTopic"> <!-- /ActionTrackerPlugin -->
+<LINK href="/twiki/pub/TWiki/KupuContrib/kuputwiki.css" type=text/css rel=stylesheet>
+<style type="text/css" media="all">
+pre {text-align: left; padding: 10px; color: black; font-size: 12px;}
+pre.command {background-color: lightgrey;}
+pre.config {background-color: lightblue;}
+pre.code {background-color: lightpink;}
+pre.output {background-color: lightgreen;}
+pre.file {background-color: lightyellow;}
+pre.note {background-color: white;}
+</style>
+<p />
+<img alt="CRAB Logo" src="http://cmsdoc.cern.ch/cms/ccs/wm/www/Crab/img/crab_logo_3.png" high='77' width='154' align='right' />
+<p />
+<h1><a name="CRAB_configuration_file"></a> CRAB configuration file </h1>
+<p />
+<table border="1" cellpadding="0" cellspacing="0" class="twikiTable" id="table1" rules="all">
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol twikiLast" valign="top"> Complete: <img src="https://twiki.cern.ch/twiki/pub/CMS/WebPreferences/complete5.png" alt="5" /> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1 twikiLastCol twikiLast" valign="top"> Go to <a class="twikiLink" href="/twiki/bin/view/CMSPublic/SWGuideCrab">SWGuideCrab</a> </td>
+</tr></table>
+<p />
+<div class="twikiToc"><span class="twikiTocTitle">Contents:</span> <ul>
+<li> <a href="#CRAB_configuration_file"> CRAB configuration file</a> <ul>
+<li> <a href="#CRAB_configuration_file_AN1"> CRAB configuration file</a> <ul>
+ <li>
+ <ul>
+ <li>
+ <ul>
+<li> <a href="#Abbreviated_configuration_defini"> Abbreviated configuration definition</a>
+</li></ul> 
+</li></ul> 
+</li> <li> <a href="#CRAB_configuration_sections"> CRAB configuration sections</a> <ul>
+<li> <a href="#Predefined_CRAB_configuration_fi"> Predefined CRAB configuration file with empty skeleton</a>
+</li></ul> 
+</li> <li> <a href="#CRAB_configuration_parameters"> CRAB configuration parameters</a>
+</li></ul> 
+</li> <li> <a href="#Passing_CRAB_configuration_param"> Passing CRAB configuration parameters from the command line</a>
+</li> <li> <a href="#Converting_a_CRAB2_configuration"> Converting a CRAB2 configuration file into a CRAB3 configuration file</a>
+</li></ul> 
+</li></ul> 
+</div>
+<p />
+<h2><a name="CRAB_configuration_file_AN1"></a> CRAB configuration file </h2>
+<p />
+<!--STARTCRAB3CONFIG0-->
+For convenience, we suggest to place the CRAB configuration file in the same directory as the CMSSW parameter-set file to be used by CRAB.
+<p />
+The expected default name of the CRAB configuration file is <code>crabConfig.py</code>, but of course one can give it any name (respecting always the filename extension <code>.py</code> and not adding other dots in the filename), as long as one specifies the name when required (e.g. when issuing the CRAB submission command).
+<p />
+In CRAB3 the configuration file is in Python language. It consists of creating a <code>Configuration</code> object imported from the <code>WMCore</code> library:
+<p />
+<pre class='config'>
+import CRABClient
+from WMCore.Configuration import Configuration
+config &#61; Configuration()
+</pre>
+<p />
+Once the <code>Configuration</code> object is created, it is possible to add new sections to it with corresponding parameters. This is done using the following syntax:
+<p />
+<pre class='config'>
+config.section&#95;(&#34;&#60;section-name&#62;&#34;)
+config.&#60;section-name&#62;.&#60;parameter-name&#62; &#61; &#60;parameter-value&#62;
+</pre>
+<p />
+<h5><a name="Abbreviated_configuration_defini"></a> Abbreviated configuration definition </h5>
+Those lines can be simplified a bit by using instead the following which already defines all the <code>config.&lt;section-name&gt;</code> objects, but the more
+explicit format above is more clear and it is the one most commonly used
+<pre class='config'>
+import CRABClient
+from CRABClient.UserUtilities import config 
+</pre>
+<p />
+<p />
+<!--STOPCRAB3CONFIG0-->
+<p />
+<p />
+<p />
+<h3><a name="CRAB_configuration_sections"></a> CRAB configuration sections </h3>
+<p />
+<!--STARTCRAB3CONFIG1-->
+The table below shows what are the sections currently available for CRAB configuration.
+<p />
+<table border="1" cellpadding="0" cellspacing="0" class="twikiTable" id="table2" rules="all">
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<th bgcolor="#687684" class="twikiTableCol0 twikiFirstCol" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=0;table=2;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff">Section</font></a> </th>
+<th bgcolor="#687684" class="twikiTableCol1 twikiLastCol" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=1;table=2;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff">Description</font></a> </th>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>General</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1 twikiLastCol" valign="top"> In this section, the user specifies generic parameters about the request (e.g. request name). </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>JobType</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1 twikiLastCol" valign="top"> This section aims to contain all the parameters of the user job type and related configurables (e.g. CMSSW parameter-set configuration file, additional input files, etc.). </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>Data</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1 twikiLastCol" valign="top"> This section contains all the parameters related to the data to be analyzed, including the splitting parameters. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>Site</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1 twikiLastCol" valign="top"> Grid site parameters are defined in this section, including the stage out information (e.g. stage out destination site, white/black lists, etc.). </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>User</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1 twikiLastCol" valign="top"> This section is dedicated to all the information relative to the user (e.g. voms information). </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol twikiLast" valign="top"> <code>Debug</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1 twikiLastCol twikiLast" valign="top"> For experts use only. </td>
+</tr></table>
+<!--STOPCRAB3CONFIG1-->
+<p />
+<h4><a name="Predefined_CRAB_configuration_fi"></a> Predefined CRAB configuration file with empty skeleton </h4>
+<p />
+To simplify life a bit, CRAB provides a function <a class="twikiAnchorLink" href="/twiki/bin/view/CMSPublic/CRAB3UserFunctions#config">config</a> that returns a <code>Configuration</code> object with pre-defined sections. The function is in the <code>CRABClient.UserUtilities</code> module. Users can import and use the function in their CRAB configuration file:
+<p />
+<pre class='config'>
+from CRABClient.UserUtilities import config
+config &#61; config()
+</pre>
+<p />
+which, from the point of view of the <code>Configuration</code> instance, is equivalent to:
+<p />
+<pre class='config'>
+from WMCore.Configuration import Configuration
+config &#61; Configuration()
+
+config.section&#95;(&#34;General&#34;)
+config.section&#95;(&#34;JobType&#34;)
+config.section&#95;(&#34;Data&#34;)
+config.section&#95;(&#34;Site&#34;)
+config.section&#95;(&#34;User&#34;)
+config.section&#95;(&#34;Debug&#34;)
+</pre>
+<p />
+<a name="ConfigParams"></a>
+<h3><a name="CRAB_configuration_parameters"></a> CRAB configuration parameters </h3>
+<p />
+<!--STARTCRAB3CONFIG2-->
+The table below provides a list of all the available CRAB configuration parameters (organized by sections), including a short description. Mandatory parameters are marked with two stars (**). Other important parameters are marked with one star (*).
+<p />
+<table border="1" cellpadding="0" cellspacing="0" class="twikiTable" id="table3" rules="all">
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<th bgcolor="#687684" class="twikiTableCol0 twikiFirstCol" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=0;table=3;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff">Parameter</font></a> </th>
+<th bgcolor="#687684" class="twikiTableCol1" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=1;table=3;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff">Type</font></a> </th>
+<th bgcolor="#687684" class="twikiTableCol2 twikiLastCol" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=2;table=3;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff">Description</font></a> </th>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> Section <code>General</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> &nbsp; </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> &nbsp; </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>requestName (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> A name the user gives to it's request/task. In particular, it is used by CRAB to create a project directory (named <code>crab_&lt;requestName&gt;</code>) where files corresponding to this particular task will be stored. Defaults to <code>&lt;time-stamp&gt;</code>, where the time stamp is of the form <code>&lt;YYYYMMDD&gt;_&lt;hhmmss&gt;</code> and corresponds to the submission time. The maximum allowed length is 100 characters, according to the formati in <a href="https://github.com/dmwm/CRABServer/blob/3801feebcb7f8c795c358ca4af05f53040754448/src/python/CRABInterface/Regexps.py#L24" rel="nofollow" target="_blank">RX_TASKNAME<img alt="" border="0" height="12" src="/twiki/pub/TWiki/TWikiDocGraphics/external-link.gif" width="13" /></a>. Task submission will fail with "Incorrect 'workflow' parameter" if other characters are used. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>workArea (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> The area (full or relative path) where to create the CRAB project directory. If the area doesn't exist, CRAB will try to create it using the <code>mkdir</code> command. Defaults to the current working directory. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>transferOutputs (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Whether or not to transfer the output files to the storage site. If set to <code>False</code>, the output files are discarded and the user can not recover them. Defaults to <code>True</code>. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>transferLogs (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Whether or not to copy the jobs log files to the storage site. If set to <code>False</code>, the log files are discarded and the user can not recover them. Notice however that a short version of the log files containing the first 1000 lines and the last 3000 lines are still available through the monitoring web pages. Defaults to <code>False</code>. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>failureLimit</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> The number of jobs that may fail permanently before the entire task is cancelled. Disabled by default. <strong>Note:</strong> a very dangerous parameter, for expert use, do not touch it unless you are sure of what you are doing </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>instance (**)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> The CRAB server instance where to submit the task. For users please use <code>'prod'</code>. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>activity</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> The activity name used when reporting to Dashboard. For experts use only. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<th bgcolor="#687684" class="twikiTableCol0 twikiFirstCol" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol1" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol2 twikiLastCol" valign="top"> <font color="#ffffff"></font> </th>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> Section <code>JobType</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> &nbsp; </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> &nbsp; </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>pluginName (**)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Specifies if this task is running an analysis (<code>'Analysis'</code>) on an existing dataset or is running MC event generation (<code>'PrivateMC'</code>). </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>psetName (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> The name of the CMSSW parameter-set configuration file that should be run via <code>cmsRun</code>. Defaults to <code>'pset.py'</code>. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>generator</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> This parameter should be set to <code>'lhe'</code> when running MC generation on LHE files. Automatically set if an <code>LHESource</code> is present in the parameter-set. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>pyCfgParams</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> List of parameters to pass to the CMSSW parameter-set configuration file, as explained <a href="https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideAboutPythonConfigFile#Passing_Command_Line_Arguments_T" target="_top">here</a>. For example, if set to <code>['myOption','-param1=value1',--'param2=value2']</code>, then the jobs will execute <code>cmsRun JobType.psetName myOption -param1=value1 --param2=value2</code>. <strong>NOTE:</strong> No blanks allowed in <code>'param=value'</code> see the note about <code>pyCfgParams</code> below. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>inputFiles</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> List of private input files (and/or directories) needed by the jobs. They will be added to the input sandbox. The input sandbox can not exceed 120 MB. The input sandbox is shipped with each job. The input files will be placed in the working directory where the users' application (e.g. cmsRun) is launched regardless of a possible path indicated in this parameter (i.e. only the file name at right of last / is relevant). Directories are tarred and their subtree structure is preserved.  Please check the <a class="twikiAnchorLink" href="/twiki/bin/view/CMSPublic/CRAB3FAQ#How_are_the_inputFiles_handled_i">FAQ</a> for more details on how these files are handled. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>disableAutomaticOutputCollection</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Whether to disable or not the automatic recognition of output files produced by PoolOutputModule or TFileService in the CMSSW parameter-set configuration. If set to <code>True</code>, it becomes the user's responsibility to specify in the <code>JobType.outputFiles</code> parameter all the output files that need to be collected. Defaults to <code>False</code>. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>outputFiles</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> List of output files that need to be collected. If <code>disableAutomaticOutputCollection = False</code> (the default), output files produced by PoolOutputModule or TFileService in the CMSSW parameter-set configuration are automatically recognized by CRAB  and don't need to be included in this parameter. If publication in DBS is requested (the default) file names must obey DBS lexicon rules, in particular end with <code>.root</code>. If <code>Data.publication</code> is set to <code>False</code> any reasonable string will do. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>eventsPerLumi</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Deprecated. Use <code>Data.lumisPerFile</code> instead. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>allowUndistributedCMSSW</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Whether to allow or not using a CMSSW release possibly not available at sites. Defaults to <code>False</code>. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>maxMemoryMB</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Maximum amount of memory (in MB) a job is allowed to use. Defaults to 2000. The more memory you request, the more difficult will be to find a slot where to run your jobs. Maximum for single core jobs is 5000. for multiple cores can be up to 2500*numCores </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>maxJobRuntimeMin</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> The maximum runtime (in minutes) per job. Jobs running longer than this amount of time will be removed. Defaults to 1315 (21 hours 55 minutes), see the note about <code>maxJobRuntimeMin</code> below. Not compatible with <code>Automatic</code> splitting. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>numCores</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Number of requested cores per job. Defaults to 1. If you increase this value to run multi-threaded cmsRun, you may need to increase <code>maxMemoryMB</code> as well. <br /> In the CMSSW parameter-set configuration you may require also the number of streams to be larger than one per thread, which affects the memory consumption too. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>priority</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Task priority among the user's own tasks. Higher priority tasks will be processed before lower priority. Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a task are given a priority boost of 10. Defaults to 10. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>scriptExe</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> A user script that should be run on the worker node instead of the default cmsRun. It is up to the user to setup the script properly to run on the worker node enviroment. CRAB guarantees that the CMSSW environment is setup (e.g. scram is in the path) and that the modified CMSSW parameter-set configuration file will be placed in the working directory with name <code>PSet.py</code>. The user must ensure that a properly named framework job report file will be written; this can be done e.g. by calling cmsRun within the script as <code>cmsRun -j FrameworkJobReport.xml -p PSet.py</code>. The script itself will be added automatically to the input sandbox. Output files produced by PoolOutputModule or TFileService in the CMSSW parameter-set configuration file will be automatically collected (CRAB3 will look in the framework job report). The user needs to specify other output files to be collected in the <code>JobType.outputFiles</code> parameter.  See <a class="twikiAnchorLink" href="/twiki/bin/view/CMSPublic/CRAB3AdvancedTopic#Running_a_user_script_with_CRAB">CRAB3AdvancedTopic#Running_a_user_script_with_CRAB</a> for more information. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>scriptArgs</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Additional arguments (in the form <code>param=value</code>) to be passed to the script specified in the <code>JobType.scriptExe</code> parameter. The first argument passed to the script is always the job number </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>sendPythonFolder</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Obsolete. The 'python' folder in the CMSSW release ($CMSSW_BASE/python) is always included in the sandbox </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>sendVenvFolder</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Determine if the <a href="http://cms-sw.github.io/venv.html" rel="nofollow" target="_blank">=venv= folder<img alt="" border="0" height="12" src="/twiki/pub/TWiki/TWikiDocGraphics/external-link.gif" width="13" /></a> in the CMSSW release (<code>$CMSSW_BASE/venv</code>) is included in the sandbox or not. Contrary to other sandbox files, symbolic links found in <code>venv</code> are not dereferenced. Defaults to <code>False</code>. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>sendExternalFolder</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Determine if the 'external' folder in the CMSSW release ($CMSSW_BASE/external) is included in the sandbox or not. See <a href="https://hypernews.cern.ch/HyperNews/CMS/get/computing-tools/1972.html" rel="nofollow" target="_blank">https://hypernews.cern.ch/HyperNews/CMS/get/computing-tools/1972.html<img alt="" border="0" height="12" src="/twiki/pub/TWiki/TWikiDocGraphics/external-link.gif" width="13" /></a>. Defaults to <code>False</code>. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>externalPluginFile</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Name of a plug-in provided by the user and which should be run instead of the standard CRAB plug-in <code>Analysis</code> or <code>PrivateMC</code>. Can not be specified together with <code>pluginName</code>; is either one or the other. <span style="color: #ff0000">Not supported yet.</span></verbatim> </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<th bgcolor="#687684" class="twikiTableCol0 twikiFirstCol" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol1" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol2 twikiLastCol" valign="top"> <font color="#ffffff"></font> </th>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> Section <code>Data</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> &nbsp; </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> &nbsp; </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>inputDataset (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> When running an analysis over a dataset registered in DBS, this parameter specifies the name of the dataset. The dataset can be an official CMS dataset or a dataset produced by a user or a Rucio DID as explain in <a href="https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3FAQ#Can_I_use_CRAB_to_process_data_d" target="_top">this FAQ</a> . </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>inputBlocks</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> list </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> A list of DBS block names in the format <code>datasetname#uuid</code>. If present only those blocks will be processed, instead of the full dataset. The dataset in the block names must be the same as indicated in <code>inputDataset</code>. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>allowNonValidInputDataset</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Allow CRAB to run over (the valid files of) the input dataset given in <code>Data.inputDataset</code> even if its status in DBS is not VALID. Defaults to <code>False</code>. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>outputPrimaryDataset (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> When running an analysis over private input files or running MC generation, this parameter specifies the primary dataset name that should be used in the LFN of the output/log files and in the publication dataset name (see <a class="twikiLink" href="/twiki/bin/view/CMSPublic/Crab3DataHandling">Data handling in CRAB</a>). </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>inputDBS (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> The URL of the DBS reader instance where the input dataset is published. The URL is of the form <code>'https://cmsweb.cern.ch/dbs/prod/&lt;instance&gt;/DBSReader'</code>, where <code>instance</code> can be <code>global</code>, <code>phys01</code>, <code>phys02</code> or <code>phys03</code>. The default is <code>global</code> instance. The aliases <code>global</code>, <code>phys01</code>, <code>phys02</code> and <code>phys03</code> in place of the whole URLs are also supported (and indeed recommended to avoid typos). For datasets that are not of <code>USER</code> tier, CRAB only allows to read them from <code>global</code> DBS. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>splitting (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Mode to use to split the task in jobs. When <code>JobType.pluginName = 'Analysis'</code>, the splitting mode can either be <code>'Automatic'</code> (the default, please read the dedicated <a href="https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3FAQ#What_is_the_Automatic_splitting" target="_top">FAQ</a>), <code>'FileBased'</code>, <code>'LumiBased'</code>, or <code>'EventAwareLumiBased'</code> (for Data the recommended mode is <code>'Automatic'</code> or <code>'LumiBased'</code>). For <code>'EventAwareLumiBased'</code>, CRAB will split the task by luminosity sections, where each job will contain a varying number of luminosity sections such that the number of events analyzed by each job is roughly <code>unitsPerJob</code>. When <code>JobType.pluginName = 'PrivateMC'</code>, the splitting mode can only be <code>'EventBased'</code>. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>unitsPerJob (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Mandatory when <code>Data.splitting</code> is not <code>'Automatic'</code>, suggests (but not impose) how many units (i.e. files, luminosity sections or events - depending on the splitting mode - see the note about <code>Data.splitting</code> below) to include in each job. When <code>Data.splitting = 'Automatic'</code> it represents the jobs target runtime in minutes and its minimum allowed value is 180 (i.e. 3 hours). </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>totalUnits (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Mandatory when <code>JobType.pluginName = 'PrivateMC'</code>, in which case the parameter tells how many events to generate in total. When <code>JobType.pluginName = 'Analysis'</code>, this parameter tells how many files (when <code>Data.splitting = 'FileBased'</code>), luminosity sections (when <code>Data.splitting = 'LumiBased'</code>) or events (when <code>Data.splitting = 'EventAwareLumiBased'</code> or <code>Data.splitting = 'Automatic'</code> - see the note about "Data.splitting" below) to analyze (after applying the lumi-mask and/or run range filters). </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>lumisPerFile</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> integer </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> When <code>JobType.pluginName = 'PrivateMC'</code>, this parameter specifies how many luminosity section will be presetn in each output file. It should be used only in very special and well motivated use cases. Note that every job starts with a fresh luminosity section, which may lead to unevenly sized luminosity sections if <code>Data.unitsPerJob</code> is not a multiple of this parameter.  Defaults to 1. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>useParent</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Adds corresponding parent dataset in DBS as secondary input source. Allows to gain access to more data tiers than present in the current dataset. This will not check for parent dataset availability; jobs may fail with xrootd errors or due to missing dataset access. Defaults to <code>False</code>. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>secondaryInputDataset</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> An extension of the <code>Data.useParent</code> parameter. Allows to specify any grandparent dataset in DBS (same instance as the primary dataset) as secondary input source. CRAB will internally set this dataset as the parent and will set <code>Data.useParent = True</code>. Therefore, <code>Data.useParent</code> and <code>Data.secondaryInputDataset</code> can not be used together <em>a priori</em>. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>lumiMask (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> A lumi-mask to apply to the input dataset before analysis. Can either be a URL address or the path to a JSON file on disk. Default to an empty string (no lumi-sections filter). </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>runRange (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> The runs and/or run ranges to process (e.g. <code>'193093-193999,198050,199564'</code>). It can be used together with a lumi-mask. Defaults to an empty string (no run filter). </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>outLFNDirBase (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> The first part of the LFN of the output files (see <a class="twikiLink" href="/twiki/bin/view/CMSPublic/Crab3DataHandling">Data handling in CRAB</a>). Accepted values are <code>/store/user/&lt;username&gt;[/&lt;subdir&gt;*]</code> (the trailing <code>/</code> after <code>&lt;username&gt;</code> can not be omitted if a <code>subdir</code> is not given) and <code>/store/group/&lt;groupname&gt;[/&lt;subgroupname&gt;*]</code> (and <code>/store/local/&lt;dir&gt;[/&lt;subdir&gt;*]</code> if <code>Data.publication = False</code>). Defaults to <code>/store/user/&lt;username&gt;/</code>. CRAB creates the <code>outLFNDirBase</code> path on the storage site if needed, do not create it yourself otherwise the file stage-out may fail due to permissions inconsistency. <br> <strong>Note:</strong> even if publication is disabled, the LFN needs to be a valid LFN name for DBS. So keep in mind that 1) name of first subdir after <code>username</code> (or <code>groupname</code> ) must start with a letter, not a number 2) do not use dot as separator inside names 3) LFN must end with <code>.root</code> </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>publication (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Whether to publish or not the EDM output files (i.e. output files produced by PoolOutputModule) in DBS. Notice that for publication to be possible, the corresponding output files have to be transferred to the permanent storage element. Defaults to <code>True</code>. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>publishDBS (*)</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> The URL of the DBS writer instance where to publish. The URL is of the form <code>'https://cmsweb.cern.ch/dbs/prod/&lt;instance&gt;/DBSWriter'</code>, where <code>instance</code> can so far only be <code>phys03</code>, and therefore it is set as the default, so the user doesn't have to specify this parameter. The alias <code>phys03</code> in place of the whole URL is also supported. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>outputDatasetTag (*)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> A custom string used in both, the LFN of the output files (even if <code>Data.publication = False</code>) and the publication dataset name (if <code>Data.publication = True</code>) (see <a class="twikiLink" href="/twiki/bin/view/CMSPublic/Crab3DataHandling">Data handling in CRAB</a>). </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>ignoreLocality</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Defaults to <code>False</code>. DO NOT USE </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>userInputFiles</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> This parameter serves to run an analysis over a set of input files, as opposed to run over an full dataset from DBS. Format is: <code>Data.userInputFiles = ['file1', 'file2', 'etc']</code>. When this parameter is used, the only allowed splitting mode is <code>'FileBased'</code>.  There are two ways to use this. <br>  <strong>1)</strong> as a fileMask, analogous to <code>inputBlocks</code>. If specified together with <code>Data.inputDataset</code> it must contain a list of LFN's and only the listed files will be processed from that Dataset. An error will be raised if some LFN does not belong to the input dataset. <br> <strong>2)</strong> as a pure "list of files" in case <code>Data.inputDataset</code> is missing. In this case 'fileN' can be an LFN (i.e. a string starting with <code>/store/</code>), or PFN (i.e. a string starting with <code>protocol-prefix://store/</code> like e.g.  a pointer to an xrootd redirector  <a href="https://twiki.cern.ch/twiki/bin/view/CMSPublic/WorkBookXrootdService" target="_top">ref</a>). One could also have a local text file containing the list of input files (one file per line; don't include quotation marks nor commas) and then specify in this parameter the following: <code>Data.userInputFiles = open('/path/to/local/file.txt').readlines()</code>. Also, since there is no input dataset from where to extract the primary dataset name, the user must use the parameter <code>Data.outputPrimaryDataset</code> to define it.  CRAB will not do any data discovery and user must specify the locations where to run the jobs via the <code>Site.whitelist</code> parameter. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>partialDataset</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Allow to process input dataset that is only partially on disk. Normally, when CRAB finds out that some files of the input dataset are not fully replicated on disk, CRAB will issue tape recall to Rucio and wait for all files to be on disk before running the task. If <code>partialdataset</code> is <code>True</code>, CRAB will submit task to condor immediately without request tape recall and process the files currently on disk. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<th bgcolor="#687684" class="twikiTableCol0 twikiFirstCol" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol1" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol2 twikiLastCol" valign="top"> <font color="#ffffff"></font> </th>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> Section <code>Site</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> &nbsp; </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> &nbsp; </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>storageSite (**)</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Site where the output files should be permanently copied to. See the note about <code>storageSite</code> below. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>whitelist</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> A user-specified list of sites where the jobs can run. For example: <code>['T2_CH_CERN','T2_IT_Bari',...]</code>. Jobs will not be assigned to a site that is not in the white list. Note that at times this list may not be respected, see this <a class="twikiAnchorLink" href="/twiki/bin/view/CMSPublic/CRAB3FAQ#Why_are_my_jobs_submitted_to_a_s">FAQ</a> </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>blacklist</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> A user-specified list of sites where the jobs should not run. Useful to avoid jobs to run on a site where the user knows they will fail (e.g. because of temporary problems with the site).  Note that at times this list may not be respected, see this <a class="twikiAnchorLink" href="/twiki/bin/view/CMSPublic/CRAB3FAQ#Why_are_my_jobs_submitted_to_a_s">FAQ</a> </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>ignoreGlobalBlacklist</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> Whether or not to ignore the global site blacklist provided by the Site Status Board. Should only be used in special cases with a custom whitelist or blacklist to make sure the jobs land on the intended sites. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>requireAccelerator</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> Defaults to <code>False</code>. Set to <code>True</code> to request GPU node for the jobs. Please see <a href="https://monit-grafana.cern.ch/d/2qoPfS0Mz/cms-submission-infrastructure-gpus-monitor?orgId=11" rel="nofollow" target="_blank">CMS Submission Infrastructure: GPUs monitor<img alt="" border="0" height="12" src="/twiki/pub/TWiki/TWikiDocGraphics/external-link.gif" width="13" /></a> dashboard to check sites and GPUs availability. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol twikiLast" valign="top"> <code>acceleratorParams</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1 twikiLast" valign="top"> dictionary </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol twikiLast" valign="top"> Defaults to <code>{}</code>. When <code>Site.requireAccelerator</code> is <code>True</code>, this parameter dictionary will be used to specify detailed GPU resource requirements for the jobs. Please see <a href="https://monit-grafana.cern.ch/d/2qoPfS0Mz/cms-submission-infrastructure-gpus-monitor?orgId=11" rel="nofollow" target="_blank">CMS Submission Infrastructure: GPUs monitor<img alt="" border="0" height="12" src="/twiki/pub/TWiki/TWikiDocGraphics/external-link.gif" width="13" /></a> dashboard to check GPU's <code>Memory</code>, <code>Capacity</code> and <code>Runtime</code> availability. See Example parameters below. </td>
+</tr></table>
+<pre>
+config.Site.acceleratorParams &#61; {
+    &#34;GPUMemoryMB&#34;: &#34;4000&#34;,
+    &#34;GPUMinimumCapability&#34;: &#34;7.0&#34;,
+    &#34;GPUMaximumCapability&#34;: &#34;8.0&#34;,
+    &#34;GPURuntime&#34;: &#34;12.1&#34;
+}
+</pre>
+<table border="1" cellpadding="0" cellspacing="0" class="twikiTable" id="table4" rules="all">
+<tr class="twikiTableOdd twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<th bgcolor="#687684" class="twikiTableCol0 twikiFirstCol" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=0;table=4;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff"></font></a> </th>
+<th bgcolor="#687684" class="twikiTableCol1" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=1;table=4;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff"></font></a> </th>
+<th bgcolor="#687684" class="twikiTableCol2 twikiLastCol" valign="top"> <a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?sortcol=2;table=4;up=0#sorted_table" rel="nofollow" title="Sort by this column"><font color="#ffffff"></font></a> </th>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> Section <code>User</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> &nbsp; </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> &nbsp; </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>voGroup</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> The VO group that should be used with the proxy and under which the task should be submitted. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>voRole</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> The VO role that should be used with the proxy and under which the task should be submitted. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<th bgcolor="#687684" class="twikiTableCol0 twikiFirstCol" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol1" valign="top"> <font color="#ffffff"></font> </th>
+<th bgcolor="#687684" class="twikiTableCol2 twikiLastCol" valign="top"> <font color="#ffffff"></font> </th>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> Section <code>Debug</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> &nbsp; </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> &nbsp; </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>oneEventMode</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> boolean </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> For experts use only. </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>asoConfig</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> list of dictionaries </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> For experts use only. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>scheddName</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol" valign="top"> For experts use only. NB if you select a schedd on the ITB pool, remember to change the <code>collector</code> accordingly! </td>
+</tr>
+<tr class="twikiTableEven twikiTableRowdataBgSorted0 twikiTableRowdataBg0">
+<td bgcolor="#ffffff" class="twikiTableCol0 twikiFirstCol" valign="top"> <code>extraJDL</code> </td>
+<td bgcolor="#ffffff" class="twikiTableCol1" valign="top"> list of strings </td>
+<td bgcolor="#ffffff" class="twikiTableCol2 twikiLastCol" valign="top"> For experts use only. </td>
+</tr>
+<tr class="twikiTableOdd twikiTableRowdataBgSorted1 twikiTableRowdataBg1">
+<td bgcolor="#edf4f9" class="twikiTableCol0 twikiFirstCol twikiLast" valign="top"> <code>collector</code> </td>
+<td bgcolor="#edf4f9" class="twikiTableCol1 twikiLast" valign="top"> string </td>
+<td bgcolor="#edf4f9" class="twikiTableCol2 twikiLastCol twikiLast" valign="top"> For experts use only. </td>
+</tr></table>
+<!--STOPCRAB3CONFIG2-->
+<p />
+<img alt="note.gif" src="https://twiki.cern.ch/twiki/pub/TWiki/TWikiDocGraphics/note.gif" /> <strong>Note for</strong> <code>Data.splitting = 'EventAwareLumiBased'</code> <br />
+When CRAB does data discovery of the input dataset in DBS, the number of events is only known per input file (because that's the information available on DBS) and not per luminosity section. CRAB can therefore only estimate the number of events per luminosity section in a given input file as the number of events in the file divided by the number of luminosity sections in the file. Because of that, <code>Data.unitsPerJob</code> and <code>Data.totalUnits</code> should not be considered by the user as rigorous limits, but as limits applicable on average.
+<p />
+<img alt="note.gif" src="https://twiki.cern.ch/twiki/pub/TWiki/TWikiDocGraphics/note.gif" /> <strong>Note for</strong> <code>maxJobRuntimeMin</code> <br />
+We strongly encourage every user to tune their splitting paramenters aiming for jobs to run for a few hours, ideally 8-10 hours, and set the <code>maxJobRuntimeMin</code> accordingly.
+Having many jobs increases the chance of failure, since the number of problems is roughly proportional to the number of run jobs. Moreover, short jobs suffer of start/end overheads resulting in poor CPU/Wall-clock ratio, which impacts negatively CMS and makes it harder to secure additional resources.
+<p />
+<img alt="note.gif" src="https://twiki.cern.ch/twiki/pub/TWiki/TWikiDocGraphics/note.gif" /> <strong>Note for</strong> <code>pyCfgParam</code> <br />
+Either <code>JobType.pyCfgParams=["arg=value" ]</code> or <code>JobType.pyCfgParams=["arg", "value" ]</code> are fine (the latter somehow more correct), but <code>JobType.pyCfgParams=["arg value" ]</code> will not work.  You can use python's <code>shlex.split</code> to convert args from "the way you time them when running cmsRun interactively" to the correct format. Example 
+<pre>import shlex
+args &#61; &#39;--arg 1 --another-arg &#34;my name&#34;&#39;
+config.JobType.pyCfgParams &#61; shlex.split(args)</pre>
+results in
+<code>['--arg', '1', '--another-arg', 'my name']</code> i.e. it correctly preserves quoted spaces etc.
+<p />
+N.B. there has been reports years ago that params with double dashes may break things. Most likely it was due to (now very old and unsupported) old python and/or CMSSW versions. But if you get odd errors you may check for this and report.
+<p />
+<p />
+<!--STARTCRAB3CONFIG3-->
+<img alt="note.gif" src="https://twiki.cern.ch/twiki/pub/TWiki/TWikiDocGraphics/note.gif" /> <strong>Note for</strong> <code>storageSite</code> <br />
+In CRAB3 the output files of each job are transferred first to a temporary storage element in the site where the job ran and later from there to a permanent storage element in a destination site. The transfer to the permanent storage element is done asynchronously by a service called AsyncStageOut (ASO). The destination site must be specified in the <code>Site.storageSite</code> parameter in the form <code>'Tx_yy_zzzzz'</code> (e.g. <code>'T2_IT_Bari'</code>, <code>'T2_US_Nebraska'</code>, etc.). The official names of CMS sites can be found in the <a href="https://cms-cric.cern.ch" rel="nofollow" target="_blank">CRIC<img alt="" border="0" height="12" src="/twiki/pub/TWiki/TWikiDocGraphics/external-link.gif" width="13" /></a>  web page. <span style="color: #ff0000">The user MUST have write permission in the storage site.</span></verbatim>
+<!--STOPCRAB3CONFIG3-->
+<p />
+<h2><a name="Passing_CRAB_configuration_param"></a> Passing CRAB configuration parameters from the command line </h2>
+<p />
+<!--STARTCRAB3CONFIG5-->
+It is possible to define/overwrite CRAB configuration parameters by passing them through the command line when the <code>crab submit</code> command is executed. Parameters can be set with the convention <code>&lt;parameter-name&gt;=&lt;parameter-value&gt;</code> and can be sequentially listed separating them with a blank space. Here is an example on how one would pass the request name and the publication name:
+<p />
+<pre class='command'>
+crab submit -c my&#95;crab&#95;config&#95;file.py General.requestName&#61;my&#95;request&#95;name Data.outputDatasetTag&#61;my&#95;publication&#95;name
+</pre>
+<p />
+<img alt="note.gif" src="https://twiki.cern.ch/twiki/pub/TWiki/TWikiDocGraphics/note.gif" /> <strong>Note</strong>: Currently it is only possible to overwrite the parameters that take as value a string, an integer, a float or a boolean. Parameters that take a list can not be overwritten this way.
+<!--STOPCRAB3CONFIG5-->
+<p />
+<h2><a name="Converting_a_CRAB2_configuration"></a> Converting a CRAB2 configuration file into a CRAB3 configuration file </h2>
+<p />
+<!--STARTCRAB3CONFIG6-->
+CRAB3 is essentially new compared to CRAB2; it is not just a re-write. As a consequence, the configuration is different and there is no direct trivial translation that can be done automatically for every CRAB2 configuration file into a CRAB3 one. There is only a basic CRAB3 utility, called <code>crab2cfgTOcrab3py</code>, meant to help the user to convert an existing CRAB2 configuration file into a CRAB3 configuration file template. The user has to provide the name of the CRAB2 configuration file he/she wants to convert and the name he/she wants to give to the CRAB3 configuration file (both arguments have default values; <code>crab.cfg</code> and <code>crabConfig.py</code> respectively). 
+<p />
+<pre class='command'>
+crab2cfgTOcrab3py &#91;crab2confgiName.cfg] &#91;crab3configName.py]
+</pre>
+<p />
+Instead of blindly taking the produced CRAB3 configuration file and run it, the user should always inspect the produced file, understand what each parameter means, edit them and add other parameters that might be needed, etc.
+<p />
+Here we give a usage example. Suppose we have the following CRAB2 configuration file with the default name <code>crab.cfg</code>:
+<p />
+<pre class='config'>
+&#91;CRAB]
+jobtype                 &#61; cmssw
+scheduler               &#61; remoteGlidein
+use&#95;server              &#61; 0
+
+&#91;CMSSW]
+datasetpath             &#61; /GenericTTbar/HC-CMSSW&#95;5&#95;3&#95;1&#95;START53&#95;V5-v1/GEN-SIM-RECO
+dbs&#95;url                 &#61; global
+pset                    &#61; my&#95;CMSSW&#95;config.py
+number&#95;of&#95;jobs          &#61; 100
+events&#95;per&#95;job          &#61; 20
+output&#95;file             &#61; output.root
+
+&#91;GRID]
+se&#95;white&#95;list           &#61; T2&#95;IT&#95;Bari
+se&#95;black&#95;list           &#61; T2&#95;IT&#95;Legnaro
+data&#95;location&#95;override  &#61; T2&#95;IT&#95;Bari
+
+&#91;USER]
+ui&#95;working&#95;dir          &#61; my&#95;CRAB&#95;project&#95;directory
+return&#95;data             &#61; 0
+copy&#95;data               &#61; 1
+storage&#95;element         &#61; T2&#95;IT&#95;Legnaro
+user&#95;remote&#95;dir         &#61; my&#95;remote&#95;directory
+publish&#95;data            &#61; 1
+publish&#95;data&#95;name       &#61; my&#95;publication&#95;name
+dbs&#95;url&#95;for&#95;publication &#61; phys03
+</pre>
+<p />
+If we run the tool without specifying any input parameters:
+<p />
+<pre class='command'>
+crab2cfgTOcrab3py
+</pre>
+<p />
+it will create a file <code>crabConfig.py</code> with the following content:
+<p />
+<pre class='config'>
+from WMCore.Configuration import Configuration
+config &#61; Configuration()
+config.section&#95;(&#39;General&#39;)
+config.General.transferOutputs &#61; True
+config.General.requestName &#61; &#39;my&#95;CRAB&#95;project&#95;directory&#39;
+config.section&#95;(&#39;JobType&#39;)
+config.JobType.psetName &#61; &#39;my&#95;CMSSW&#95;config.py&#39;
+config.JobType.pluginName &#61; &#39;Analysis&#39;
+config.JobType.outputFiles &#61; &#91;&#39;output.root&#39;]
+config.section&#95;(&#39;Data&#39;)
+config.Data.inputDataset &#61; &#39;/GenericTTbar/HC-CMSSW&#95;5&#95;3&#95;1&#95;START53&#95;V5-v1/GEN-SIM-RECO&#39;
+config.Data.publication &#61; True
+config.Data.unitsPerJob &#61; 20
+config.Data.publishDBS &#61; &#39;https://cmsweb.cern.ch/dbs/prod/phys03/DBSWriter/&#39;
+config.Data.splitting &#61; &#39;EventBased&#39;
+config.Data.inputDBS &#61; &#39;https://cmsweb.cern.ch/dbs/prod/global/DBSReader/&#39;
+config.Data.outputDatasetTag &#61; &#39;my&#95;publication&#95;name&#39;
+config.section&#95;(&#39;Site&#39;)
+config.Site.blacklist &#61; &#91;&#39;T2&#95;IT&#95;Legnaro&#39;]
+config.Site.whitelist &#61; &#91;&#39;T2&#95;IT&#95;Bari&#39;]
+config.Site.storageSite &#61; &#39;T2&#95;IT&#95;Legnaro&#39;
+</pre>
+<p />
+and it will show the following screen output:
+<p />
+<pre class='output'>
+Convertion done!
+crab2cfgTOcrab3py report:
+CRAB2 parameters not YET supported in CRAB3: 
+   data&#95;location&#95;override,user&#95;remote&#95;dir
+CRAB2 parameters obsolete in CRAB3: 
+   return&#95;data,jobtype,scheduler,use&#95;server
+</pre>
+<p />
+As we already emphasized, the template configuration file produced by the <code>crab2cfgTOcrab3py</code> utility should not be used before carefully looking into its content. Along this line, one can see for example that the parameter <code>JobType.outputFiles</code> was set to <code>['output.root']</code>. If <code>output.root</code> is defined in the CMSSW parameter-set configuration file in an output module, then it doesn't have to be included in the <code>JobType.outputFiles</code> list (although it doesn't harm).
+<!--STOPCRAB3CONFIG6-->
+<p />
+<h2><a name=""></a>  </h2>
+<p />
+-- <a class="twikiLink" href="/twiki/bin/view/Main/AndresTanasijczuk">AndresTanasijczuk</a> - 02 Oct 2014 </div><!-- /patternTopic-->
+<div class="twikiContentFooter"></div></div><!-- /patternContent-->
+<div class="clear"></div>
+<a name="topic-actions"></a><div class="patternTopicActions"><div class="patternTopicAction"><span class="patternActionButtons"><span style=''><span><a href='https://twiki.cern.ch/twiki/bin/edit/CMSPublic/CRAB3ConfigurationFile?t=1773998843;nowysiwyg=1' rel='nofollow' title='Edit this topic text' accesskey='e'><img src='/twiki/pub/TWiki/TWikiDocGraphics/uweb-o14.gif' width='14' height='14' border='0' alt='' /> <span class='twikiAccessKey'>E</span>dit</a></span><span class='twikiSeparator'>&nbsp;|&nbsp;</span></span><span style=''><span><a href='/twiki/bin/attach/CMSPublic/CRAB3ConfigurationFile' rel='nofollow' title='Attach an image or document to this topic' accesskey='a'><span class='twikiAccessKey'>A</span>ttach</a></span><span class='twikiSeparator'>&nbsp;|&nbsp;</span></span><span><a href='/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?cover=print' rel='nofollow' title='Printable version of this topic' accesskey='p'><span class='twikiAccessKey'>P</span>rint version</a></span><span class='twikiSeparator'>&nbsp;|&nbsp;</span><span><span><a href='/twiki/bin/oops/CMSPublic/CRAB3ConfigurationFile?template=oopshistory' rel='nofollow' title='View total topic history' accesskey='h'><span class='twikiAccessKey'>H</span>istory</a></span>: r99&nbsp;<a href="/twiki/bin/rdiff/CMSPublic/CRAB3ConfigurationFile?rev1=99;rev2=98" rel="nofollow">&lt;</a>&nbsp;<a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?rev=98" rel="nofollow">r98</a>&nbsp;<a href="/twiki/bin/rdiff/CMSPublic/CRAB3ConfigurationFile?rev1=98;rev2=97" rel="nofollow">&lt;</a>&nbsp;<a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?rev=97" rel="nofollow">r97</a>&nbsp;<a href="/twiki/bin/rdiff/CMSPublic/CRAB3ConfigurationFile?rev1=97;rev2=96" rel="nofollow">&lt;</a>&nbsp;<a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?rev=96" rel="nofollow">r96</a>&nbsp;<a href="/twiki/bin/rdiff/CMSPublic/CRAB3ConfigurationFile?rev1=96;rev2=95" rel="nofollow">&lt;</a>&nbsp;<a href="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?rev=95" rel="nofollow">r95</a></span><span class='twikiSeparator'>&nbsp;|&nbsp;</span><span><a href='/twiki/bin/oops/CMSPublic/CRAB3ConfigurationFile?template=backlinksweb' rel='nofollow' title='Search the CMSPublic Web for topics that link to here' accesskey='b'><span class='twikiAccessKey'>B</span>acklinks</a></span><span class='twikiSeparator'>&nbsp;|&nbsp;</span><span><a href='/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile?raw=on' rel='nofollow' title='View raw text without formatting' accesskey='r'><span class='twikiAccessKey'>R</span>aw View</a></span><span class='twikiSeparator'>&nbsp;|&nbsp;</span><span style=''><span><a href='https://twiki.cern.ch/twiki/bin/edit/CMSPublic/CRAB3ConfigurationFile?t=1773998843;nowysiwyg=0' rel='nofollow' title='WYSIWYG editor' accesskey='w'>WYSIWYG</a></span><span class='twikiSeparator'>&nbsp;|&nbsp;</span></span><span><a href='/twiki/bin/oops/CMSPublic/CRAB3ConfigurationFile?template=oopsmore&amp;param1=99&amp;param2=99' rel='nofollow' title='Delete or rename this topic; set parent topic; view and compare revisions' accesskey='m'><span class='twikiAccessKey'>M</span>ore topic actions</a></span></span></div><!--/patternTopicAction--></div><!--/patternTopicActions-->
+<div class="patternInfo twikiGrayText"><div class="patternRevInfo">Topic revision: r99 - 2026-01-22 <a href="https://twiki.cern.ch/twiki/bin/edit/CMSPublic/CRAB3ConfigurationFile?t=1773998843;nowysiwyg=1" target="_top">-</a> <span class="twikiNewLink"><a href="/twiki/bin/edit/Main/KrittinPhornsiricharoenphant?topicparent=CMSPublic.CRAB3ConfigurationFile;nowysiwyg=1"    rel="nofollow" title="this topic does not yet exist; you can create it.">KrittinPhornsiricharoenphant</a></span></div><!-- /patternRevInfo--></div><!-- /patternInfo-->
+</div><!-- /patternMainContents-->
+</div><!-- /patternMain--><div id="patternLeftBar"><div id="patternClearHeaderLeft"></div>
+<div id="patternLeftBarContents"><div class="patternLoginActions"><img src="/twiki/pub/TWiki/TWikiDocGraphics/lock.gif" width="16" height="16" alt="Lock" title="Lock" border="0" /> <a href="/twiki/bin/logon/CMSPublic/CRAB3ConfigurationFile">Log In</a></div><div class="patternWebIndicator"> <ul>
+<li> <a class="twikiCurrentWebHomeLink twikiLink" href="/twiki/bin/view/CMSPublic/WebHome"><img src="/twiki/pub/TWiki/TWikiDocGraphics/web-bg-small.gif" width="13" height="13" alt="Web background" title="Web background" border="0" /> CMSPublic</a>
+</li></ul> 
+</div> <ul>
+<li> <b><a class="twikiCurrentWebHomeLink twikiLink" href="/twiki/bin/view/CMSPublic/WebHome"> <img src="/twiki/pub/TWiki/TWikiDocGraphics/home.gif" width="16" height="16" alt="Home" title="Home" border="0" /> CMSPublic Web</a></b>
+</li> <li> <a class="twikiLink" href="/twiki/bin/view/CMS/WebHome"><img src="/twiki/pub/TWiki/TWikiDocGraphics/home.gif" width="16" height="16" alt="Home" title="Home" border="0" /> CMSPrivate Web</a>
+</li> <li> <a href="/twiki/bin/view/CMSPublic/WebTopicCreator?parent=CRAB3ConfigurationFile" target="_top"> <img src="/twiki/pub/Main/SiteDocGraphics/newtopic.png" width="16" height="16" alt="New Topic" title="New Topic" border="0" /> Create New Topic</a>
+</li> <li> <a class="twikiLink" href="/twiki/bin/view/CMSPublic/WebTopicList"> <img src="/twiki/pub/TWiki/TWikiDocGraphics/index.gif" width="16" height="16" alt="Index" title="Index" border="0" /> Index</a>
+</li> <li> <a class="twikiLink" href="/twiki/bin/view/CMSPublic/WebSearch"> <img src="/twiki/pub/Main/SiteDocGraphics/searchtopic.png" width="16" height="16" alt="Search" title="Search" border="0" /> Search</a>
+</li> <li> <a class="twikiLink" href="/twiki/bin/view/CMSPublic/WebChanges"> <img src="/twiki/pub/Main/SiteDocGraphics/changes.png" width="16" height="16" alt="Changes" title="Changes" border="0" /> Changes</a>
+</li> <li> <a class="twikiLink" href="/twiki/bin/view/CMSPublic/WebNotify"> <img src="/twiki/pub/TWiki/TWikiDocGraphics/notify.gif" width="16" height="16" alt="Notify" title="Notify" border="0" /> Notifications</a>
+</li> <li> <a class="twikiLink" href="/twiki/bin/view/CMSPublic/WebStatistics"> <img src="/twiki/pub/TWiki/TWikiDocGraphics/statistics.gif" width="16" height="16" alt="Statistics" title="Statistics" border="0" /> Statistics</a>
+</li> <li> <a class="twikiLink" href="/twiki/bin/view/CMSPublic/WebPreferences"> <img src="/twiki/pub/TWiki/TWikiDocGraphics/wrench.gif" width="16" height="16" alt="Wrench, tools" title="Wrench, tools" border="0" /> Preferences</a>
+</li></ul> 
+<p />
+<hr />
+<div class="twikiLeftBarBase">
+  <a href="/twiki/bin/edit/CMSPublic/CRAB3ConfigurationFileLeftBar?templatetopic=CMSPublic.WebLeftBarTemplate">Create</a> a LeftBar</div>
+<hr />
+<p />
+</div><!-- /patternLeftBarContents--></div><!-- /patternLeftBar-->
+</div><!-- /patternFloatWrap-->
+<div class="clear">&nbsp;</div>
+</div><!-- /patternOuter--></div><!-- /patternWrapper--><div id="patternTopBar"><div id="patternTopBarContents"><table border="0" cellpadding="0" cellspacing="0" style="width:100%; margin-top:12px;">
+<tr><td valign="middle"><span id="twikiLogo" class="twikiImage"><a href="http://www.cern.ch" rel="nofollow"><img src="https://twiki.cern.ch/twiki/pub/cern/outline-blue2.png " border="0" alt="CERN" style="border:none;" /></a></span></td>
+<td align="right" valign="top" class="patternMetaMenu">
+ <ul>
+<li> <form name="jumpForm" action="/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile"><input id="jumpFormField" type="text" class="twikiInputField" name="topic" value="" size="18" /><noscript>&nbsp;<input type="submit" class="twikiButton" size="5" name="submit" value="Jump" />&nbsp;</noscript>   </form>
+</li> <li> <form name="quickSearchForm" action="https://search.cern.ch/Pages/TwikiResults.aspx" target="search" class="cernTWikiSearch">    <ul class="engineList" style="background-image: url('https://twiki.cern.ch/twiki/pub/TWiki/CernSearchBar/arrow.png');">        <li class="active" id="twikisearch">            <img src="https://twiki.cern.ch/twiki/pub/TWiki/CernSearchBar/twikisearchicon.gif" alt="TWiki Search Icon" />            <span class="engineDescription">TWiki Search</span>        </li>        <!-- Due to a security incident <a href="https://cern.service-now.com/service-portal?id=outage&amp;n=OTG0156848" rel="nofollow" target="_blank">OTG0156848<img alt="" border="0" height="12" src="/twiki/pub/TWiki/TWikiDocGraphics/external-link.gif" width="13" /></a>, the legacy CERN Search Service has been shut down        <li id="cernsearch">            <img src="https://twiki.cern.ch/twiki/pub/TWiki/CernSearchBar/cernsearchicon.png" alt="Cern Search Icon" />            <span class="engineDescription">Cern Search</span>        </li>         -->        <li id="googlesearch">            <img class="engine" src="https://twiki.cern.ch/twiki/pub/TWiki/CernSearchBar/googlesearchicon.png" alt="Google Search Icon" />            <span class="engineDescription">Google Search</span>        </li>    </ul>    <input type="text" class="twikiInputField" id="quickSearchBox" name="k" value="" size="18" /> <br />    <input type="radio" name="scope" value=CMSPublic checked />     <span class="webScopeDescription">CMSPublic</span>    <input type="radio" name="scope" value="AllWebs" />    <span class="allWebsScopeDescription">All webs</span>    <img src='/twiki/pub/TWiki/TWikiDocGraphics/login.gif' width='16' height='16' alt='login'/>     <noscript>        &nbsp; <input type="submit" size="5" class="twikiButton" name="submit" value="Search"/>&nbsp;    </noscript>
+</li></ul> 
+</form>
+<p />
+<p />
+<!-- <pre> -->
+<script language="javascript">
+<!--
+$(function() {
+    // We use the current web name to form the redirect in the TWiki search
+    var currentWeb = undefined;
+    // If the web starts with alice* atlas* cms* or lhcb* (case-insensitive),
+    // the "Web search" should be altered so that AtlasFoo => Atlas
+    var specialWeb = undefined;
+    // Remembering what the user have entered into the searchbox to after
+    // he has selected a new search engine from the dropdown
+    var searchPhrase = '';
+
+    // --- BEGIN: CONFIGURABLE LIST FOR SUBWEB SEARCH ---
+    // List of webs for which sub-web searching should be enabled
+    var subWebSearchWebs = ['AtlasProtected', 'AtlasComputing', 'Atlas'];
+    // --- END: CONFIGURABLE LIST FOR SUBWEB SEARCH ---
+
+    // --- ORIGINAL WEB DETECTION LOGIC ---
+    // We want to store the current web for later use.
+    var currentWebSearch = window.location.pathname.match(/\/([A-Z][^\/]+)/);
+    if (currentWebSearch != null) {
+        currentWeb = currentWebSearch[1];
+
+        // Do we have a special kind of web? If so, the web search should be altered a little to fetch more broader results.
+        var specialWebSearch = currentWeb.match(/^(alice|atlas|cms|lhcb)/i);
+        if (specialWebSearch != null) {
+            var lowercaseToCorrect = {
+                'alice' : 'Alice',
+                'atlas' : 'Atlas',
+                'cms'   : 'CMS',
+                'lhcb'  : 'LHCb'
+            };
+            specialWeb = lowercaseToCorrect[specialWebSearch[1].toLowerCase()];
+            $('span.webScopeDescription').text(specialWeb);
+        }
+    } else {
+        currentWeb = 'DefaultWeb';
+    }
+
+    // --- BEGIN: SUBWEB LOGIC TO EXTRACT SUBWEB PATH (EXCLUDING TOPIC) ---
+    var subWebSearchWebs = ['AtlasProtected', 'AtlasComputing', 'Atlas'];
+    // Build regex to match web/subweb path and topic
+    var subWebsPattern = new RegExp(
+        '/((' + subWebSearchWebs.join('|') + ')(?=(?:/|$))(?:/[A-Za-z0-9_]+)*)/([A-Za-z0-9_]+)$'
+    );
+    var subWebMatch = window.location.pathname.match(subWebsPattern);
+    if (subWebMatch) {
+        // subWebMatch[1] is the full web/subweb path (e.g. "AtlasComputing/AtlasComputingArchive")
+        // subWebMatch[3] is the topic (e.g. "WebHome")
+        currentWeb = subWebMatch[1];
+        specialWeb = currentWeb;
+        $('span.webScopeDescription').text(specialWeb);
+    }
+    // --- END: SUBWEB LOGIC TO EXTRACT SUBWEB PATH (EXCLUDING TOPIC) ---
+
+    // Do we have a favourite search engine in localStorage? We set Twiki search as default anyways
+    if (window.localStorage) {
+        // var storedEngine = localStorage.getItem('defaultSearchEngine');
+        // console.log('stored engine preference: ' + storedEngine);
+        var storedEngine = 'twikisearch';
+        var storedEngineLi = $('.cernTWikiSearch li#' + storedEngine);
+        if (!storedEngineLi.hasClass('active')) {
+            changeActiveSearchEngine(storedEngineLi);
+        }
+        if (storedEngine == 'twikisearch') {
+            $('input[name=scope][value=AllWebs]').attr('disabled','disabled');
+            $('.allWebsScopeDescription').addClass('disabled');
+        }
+    }
+    
+    // Toggle the searchEngines list on and off on click
+    $('.cernTWikiSearch ul.engineList').click(function(e) {
+        e.stopPropagation();
+        if ($(this).hasClass('open')) {
+            $(this).removeClass('open');
+        } else {
+            $(this).addClass('open');
+        }
+    });
+
+    // Stupid IE8 hack because the click handler on ul.engineList does not work properly there.
+    if ($.browser.msie && document.documentMode && document.documentMode < 9) {
+        $('.cernTWikiSearch #quickSearchBox').focus(function(e) {
+            $('.cernTWikiSearch ul.engineList').removeClass('open');
+        });
+    }
+    
+    // Handle clicks on one of the search engines
+    $('.cernTWikiSearch ul.engineList li').click(function(e) {
+        // If we clicked on a <li> that does not has class 'active', it means this should become active and swap places with this.
+        if (!$(this).hasClass('active')) {
+            changeActiveSearchEngine($(this));
+        }  
+        if ($(this).parent().hasClass('open')) {
+            $('.cernTWikiSearch #quickSearchBox').val(searchPhrase);
+            $('.cernTWikiSearch #quickSearchBox').focus();                          
+        }
+        if ($(this).attr('id') == 'twikisearch') {
+            var allWebsRadio = $('input[name=scope][value=AllWebs]');
+            allWebsRadio.attr('disabled','disabled');
+            allWebsRadio.siblings('input[type=radio]').attr('checked',true)
+            $('.allWebsScopeDescription').addClass('disabled');
+        } else {
+            $('input[name=scope][value=AllWebs]').attr('disabled','');
+            $('.allWebsScopeDescription').removeClass('disabled');
+        }
+    });
+    
+    // Show the engine description text on hover
+    $('.engineList.open li').live('hover',function() {
+        var displayText = $(this).find('span.engineDescription').text();
+        $('.cernTWikiSearch #quickSearchBox').val(displayText);
+    });
+
+
+    // The form is submitted, now let's do the search.
+    $('.cernTWikiSearch').submit(function(e) {
+        e.preventDefault();
+
+        var scope = $('input[name=scope]:checked', $(this)).val();
+        if (scope != 'AllWebs' && specialWeb !== undefined) {
+            scope = specialWeb;
+        }
+        var val = $('.cernTWikiSearch #quickSearchBox').val();
+        var engine = $('.engineList li.active').attr('id')
+        
+        switch (engine) {
+            case 'googlesearch':
+                window.open('https://google.com/search?q=site:' + encodeURIComponent('https://twiki.cern.ch') + (scope != 'AllWebs' ? ' ' + scope : '') + ' ' + val);
+                break;
+            case 'cernsearch':
+                window.open('https://search.cern.ch/Pages/TwikiResults.aspx?k=' + val + (scope != 'AllWebs' ? ' cernscope:' + scope : '') + '');
+                break;
+            case 'twikisearch':
+                window.open(window.location.pathname.replace(/\/[A-Z].+$/,'') + '/' + currentWeb + '/WebSearch?search=' + val + '&scope=all');
+                break;
+        default:
+            break;
+        }
+        
+        // Save the search engine. If the user reloads the page he should get the last one used.
+        if (window.localStorage) { 
+            console.log('store engine preference: ' + engine);
+            localStorage.setItem('defaultSearchEngine',engine);
+        }
+    });
+    
+    // Save the search phrase on every key up
+    $('.cernTWikiSearch #quickSearchBox').keyup(function() {
+        searchPhrase = $(this).val();
+    });
+    
+    // If a user clicks outside the search engine list, the search engine list should be closed.
+    $('html').click(function() {
+        if ($('.engineList').hasClass('open')) {
+            $('.engineList').removeClass('open');
+            $('.cernTWikiSearch #quickSearchBox').val(searchPhrase);
+        }
+    });
+});
+
+// We want to change the active search engine
+function changeActiveSearchEngine(engineLi) {
+    var activeEngine = engineLi.siblings(':first');
+    engineLi.detach().insertBefore(activeEngine);
+    activeEngine.removeClass('active');
+    engineLi.addClass('active');
+    if (engineLi.attr('id') == 'twikiSearch') {
+        deactivateAllWebsOption();
+    }
+}
+
+// The user has chosen twiki search (or the preference was stored in localStorage). 
+// We will then disable the 'All Webs' option since this will time out.
+function deactivateAllWebsOption() {
+}
+
+// Helper method to check input attribute browser compability
+function checkInputAttributeSupport(attribute) {
+    var i = document.createElement("input");
+    return typeof i.placeholder !== 'undefined';
+}
+//-->
+</script>
+<!-- </pre> --> <ul>
+<li> 
+</li></ul> 
+</td></tr></table></div></div><!-- /patternTopBar--><div id="patternBottomBar"><div id="patternBottomBarContents"><div id="patternWebBottomBar"><div class="twikiCopyright"><span class="twikiRight"> <a href="http://twiki.org/"><img src="/twiki/pub/TWiki/TWikiLogos/T-badge-88x31.gif" alt="This site is powered by the TWiki collaboration platform" width="88" height="31" title="This site is powered by the TWiki collaboration platform" border="0" /></a></span><span class="twikiRight" style="padding:0 10px 0 10px"> <a href="http://www.perl.org/" rel="nofollow"><img src="/twiki/pub/TWiki/TWikiLogos/perl-logo-88x31.gif" alt="Powered by Perl" width="88" height="31" title="Powered by Perl" border="0" /></a></span>Copyright &amp;© 2008-2026 by the contributing authors. All material on this collaboration platform is the property of the contributing authors. <br />  or Ideas, requests, problems regarding TWiki? use <a href="https://discourse.web.cern.ch/c/collaborative-editing/wikis/12" rel="nofollow">Discourse</a> or <a href='https://twiki.cern.ch/twiki/bin/view/Main/ServiceNow'>Send feedback</a> </div><!--/twikiCopyright--></div><!--/patternWebBottomBar--></div><!-- /patternBottomBarContents--></div><!-- /patternBottomBar-->
+</div><!-- /patternPage-->
+</div><!-- /patternPageShadow-->
+</div><!-- /patternScreen-->
+<p />
+<p />
+<p />
+<!-- Matomo -->
+<script>
+  var _paq = window._paq = window._paq || [];
+  /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+  (function() {
+	 var u="https://webanalytics.web.cern.ch/";
+	 _paq.push(['setTrackerUrl', u+'matomo.php']);
+	 _paq.push(['setSiteId', '5']);
+	 var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+	 g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+<!-- End Matomo Code -->
+<p />
+</body></html>

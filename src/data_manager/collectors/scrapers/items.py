@@ -21,5 +21,3 @@ class TestTWikiItem(WebPageItem):
     """Item produced by the trivial Twiki spider."""
     body_length = Field()
     body_preview = Field()
-    same_host_links_count = Field()
-    same_host_links_sample = Field()
