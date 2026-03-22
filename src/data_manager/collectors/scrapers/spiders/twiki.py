@@ -1,8 +1,11 @@
-import scrapy
+from typing import Iterator, cast
+from scrapy import Spider, Request
+from scrapy.http import Response
 from urllib.parse import urlparse
+from src.data_manager.collectors.scrapers.items import TestTWikiItem
 
 
-class TwikiSpider(scrapy.Spider):
+class TwikiSpider(Spider):
     """
     Minimal Twiki spider against a real Twiki target.
     Public page — no SSO needed — isolates lifecycle learning from auth complexity.
@@ -12,6 +15,9 @@ class TwikiSpider(scrapy.Spider):
 
     custom_settings = {
         "ROBOTSTXT_OBEY": False,
+        "DOWNLOAD_DELAY": 60,
+        "DOWNLOAD_TIMEOUT": 120,
+        "RETRY_TIMES": 0,
     }
 
     async def start(self):
@@ -20,14 +26,14 @@ class TwikiSpider(scrapy.Spider):
         Building the habit: always use start_requests() with errback attached,
         never rely on the start_urls shortcut in production spiders.
         """
-        yield scrapy.Request(
+        yield Request(
             url="https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile",
             callback=self.parse,
             errback=self.errback,
             meta={"source_type": "web"},  # will become "sso" for protected Twiki pages
         )
 
-    def parse(self, response):
+    def parse(self, response: Response) -> Iterator[TestTWikiItem]:
         """
         Twiki pages render their main content inside #patternMain or .twikiMain.
 
@@ -58,16 +64,16 @@ class TwikiSpider(scrapy.Spider):
         self.logger.info("Found title: %r", title)
         self.logger.info("Found %d same-host links", len(same_host_links))
 
-        yield {
-            "url": response.url,
-            "title": title,
-            "body_length": len(body_text),
-            "body_preview": body_text[:300],
-            "same_host_links_count": len(same_host_links),
-            "same_host_links_sample": same_host_links[:5],
-            "source_type": response.meta.get("source_type"),
-            "content_type": response.headers.get("Content-Type", b"").decode(),
-        }
+        yield TestTWikiItem(
+            url=response.url,
+            title=title,
+            body_length=len(body_text),
+            body_preview=body_text[:300],
+            same_host_links_count=len(same_host_links),
+            same_host_links_sample=same_host_links[:5],
+            source_type=response.meta.get("source_type"),
+            content_type=cast(bytes, response.headers.get("Content-Type", b"")).decode()
+        )
 
     def errback(self, failure):
         self.logger.error(

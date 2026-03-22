@@ -68,6 +68,9 @@ CLOSESPIDER_ERRORCOUNT = 25
 
 LOG_LEVEL = "INFO"
 
+# The class used to detect and filter duplicate requests
+DUPEFILTER_CLASS = "scrapy.dupefilters.RFPDupeFilter"
+
 # ---------------------------------------------------------------------------
 # Middlewares, Pipelines and Extensions Priorities
 # ---------------------------------------------------------------------------
