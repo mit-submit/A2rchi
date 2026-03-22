@@ -13,6 +13,10 @@ class WebPageItem(ArchiBaseItem):
     content_type = Field()   # value of Content-Type response header
     encoding = Field()       # response encoding (e.g. "utf-8")
 
+class PDFItem(ArchiBaseItem):
+    """Binary PDF scraped from a web URL."""
+    content_type = Field()
+
 class TestTWikiItem(WebPageItem):
     """Item produced by the trivial Twiki spider."""
     body_length = Field()

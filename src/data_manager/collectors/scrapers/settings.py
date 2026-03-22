@@ -56,6 +56,11 @@ AUTOTHROTTLE_MAX_DELAY = 60                 # cap: never wait more than 60s
 # set False in production if log volume is too high.
 AUTOTHROTTLE_DEBUG = False
 
+# ------------------------------------------------------------------ #
+# Depth limiting — safety cap; spiders can narrow via custom_settings.
+# ------------------------------------------------------------------ #
+DEPTH_LIMIT = 2   # hard cap so a misconfigured crawl can't run forever
+
 # ---------------------------------------------------------------------------
 # Safety: fail loudly on spider import errors
 # ---------------------------------------------------------------------------

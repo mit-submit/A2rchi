@@ -3,6 +3,7 @@ from scrapy import Spider, Request
 from scrapy.http import Response
 from urllib.parse import urlparse
 from src.data_manager.collectors.scrapers.items import TestTWikiItem
+from src.data_manager.collectors.scrapers.utils import get_content_type, same_host_links
 
 
 class TwikiSpider(Spider):
@@ -26,11 +27,16 @@ class TwikiSpider(Spider):
         Building the habit: always use start_requests() with errback attached,
         never rely on the start_urls shortcut in production spiders.
         """
+        start_url = "https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile"
+        base_host = urlparse(start_url).netloc
         yield Request(
-            url="https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile",
+            url=start_url,
             callback=self.parse,
             errback=self.errback,
-            meta={"source_type": "web"},  # will become "sso" for protected Twiki pages
+            meta={
+                "source_type": "web",
+                "base_host": base_host,
+            },
         )
 
     def parse(self, response: Response) -> Iterator[TestTWikiItem]:
@@ -53,26 +59,20 @@ class TwikiSpider(Spider):
             response.css("#twikiMainContents *::text, .patternMain *::text").getall()
         ).strip()
 
-        # Same-host links
-        base = "twiki.cern.ch"
-        same_host_links = [
-            response.urljoin(href)
-            for href in response.css("a::attr(href)").getall()
-            if urlparse(response.urljoin(href)).netloc == base
-        ]
+        shlinks = same_host_links(response.meta['base_host'], response)
 
         self.logger.info("Found title: %r", title)
-        self.logger.info("Found %d same-host links", len(same_host_links))
+        self.logger.info("Found %d same-host links", len(shlinks))
 
         yield TestTWikiItem(
             url=response.url,
             title=title,
             body_length=len(body_text),
             body_preview=body_text[:300],
-            same_host_links_count=len(same_host_links),
-            same_host_links_sample=same_host_links[:5],
+            same_host_links_count=len(shlinks),
+            same_host_links_sample=shlinks[:5],
             source_type=response.meta.get("source_type"),
-            content_type=cast(bytes, response.headers.get("Content-Type", b"")).decode()
+            content_type=get_content_type(response)
         )
 
     def errback(self, failure):
