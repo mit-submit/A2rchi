@@ -3,7 +3,7 @@ from typing import Iterator
 from scrapy import Spider, Request
 from scrapy.http import Response
 from urllib.parse import urlparse
-from src.data_manager.collectors.scrapers.items import TestTWikiItem
+from src.data_manager.collectors.scrapers.items import TWikiPageItem
 from src.data_manager.collectors.scrapers.utils import get_content_type, same_host_links
 
 logger = logging.getLogger(__name__)
@@ -35,12 +35,9 @@ class TwikiSpider(Spider):
             url=start_url,
             callback=self.parse,
             errback=self.errback,
-            meta={
-                "source_type": "web",
-            },
         )
 
-    def parse(self, response: Response) -> Iterator[TestTWikiItem | Request]:
+    def parse(self, response: Response) -> Iterator[TWikiPageItem | Request]:
         """
         Twiki pages render their main content inside #patternMain or .twikiMain.
 
@@ -62,7 +59,7 @@ class TwikiSpider(Spider):
             repr(failure.value),
         )
 
-def parse_twiki_page(response: Response) -> Iterator[TestTWikiItem]:
+def parse_twiki_page(response: Response) -> Iterator[TWikiPageItem]:
     # Twiki-specific selectors
     title = (
         response.css("#topic-title::text").get()
@@ -77,11 +74,10 @@ def parse_twiki_page(response: Response) -> Iterator[TestTWikiItem]:
 
     logger.info("Found title: %r", title)
 
-    yield TestTWikiItem(
+    yield TWikiPageItem(
         url=response.url,
         title=title,
         body_length=len(body_text),
         body_preview=body_text[:300],
-        source_type=response.meta.get("source_type"),
         content_type=get_content_type(response)
     )
