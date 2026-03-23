@@ -1233,10 +1233,49 @@ class ChatWrapper:
         """
         Extract and store agent tool calls from the pipeline output.
 
-        AIMessage with tool_calls contains the tool name, args, and timestamp.
-        ToolMessage contains the result, matched by tool_call_id.
+        Checks ``metadata["tool_calls"]`` first (Copilot adapter format,
+        decision 12), then falls back to messages-based extraction
+        (classic pipelines).
         """
-        if not output or not output.messages:
+        if not output:
+            return
+
+        # ── Path 1: metadata-based tool calls (Copilot adapter) ──────
+        meta_tool_calls = (output.metadata or {}).get("tool_calls")
+        if meta_tool_calls:
+            insert_tups = []
+            for step_number, tc in enumerate(meta_tool_calls, start=1):
+                tool_name = tc.get("name", "unknown")
+                tool_args = tc.get("args", {})
+                tool_result = tc.get("result", "")
+                if len(tool_result) > 500:
+                    tool_result = tool_result[:500] + "..."
+                created_at = tc.get("created_at")
+                if created_at:
+                    try:
+                        ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        ts = datetime.now()
+                else:
+                    ts = datetime.now()
+                insert_tups.append((
+                    conversation_id, message_id, step_number,
+                    tool_name,
+                    json.dumps(tool_args) if tool_args else None,
+                    tool_result, ts,
+                ))
+            if insert_tups:
+                logger.debug("Inserting %d tool calls (metadata) for message %d", len(insert_tups), message_id)
+                conn = psycopg2.connect(**self.pg_config)
+                cursor = conn.cursor()
+                psycopg2.extras.execute_values(cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
+                conn.commit()
+                cursor.close()
+                conn.close()
+            return
+
+        # ── Path 2: messages-based extraction (classic pipelines) ────
+        if not output.messages:
             return
 
         tool_calls = output.extract_tool_calls()
@@ -1758,6 +1797,8 @@ class ChatWrapper:
                 
                 # Handle different event types
                 if event_type == "tool_start":
+                    # Try messages-based path first (classic pipelines),
+                    # fall back to metadata-only (Copilot adapter, decision 16).
                     tool_messages = getattr(output, "messages", []) or []
                     tool_message = tool_messages[0] if tool_messages else None
                     tool_calls = getattr(tool_message, "tool_calls", None) if tool_message else None
@@ -1851,14 +1892,45 @@ class ChatWrapper:
                             pending_tool_call_ids.append(tool_call_id)
                             _remember_tool_call(tool_call_id, tool_name, tool_args)
                             tool_call_count += 1
+                            trace_event = {
+                                "type": "tool_start",
+                                "tool_call_id": tool_call.get("id", ""),
+                                "tool_name": tool_call.get("name", "unknown"),
+                                "tool_args": tool_call.get("args", {}),
+                                "timestamp": timestamp,
+                                "conversation_id": context.conversation_id,
+                            }
+                            trace_events.append(trace_event)
+                            if include_tool_steps:
+                                yield trace_event
+                    elif output.metadata:
+                        # Metadata-only path (Copilot adapter)
+                        tool_call_count += 1
+                        trace_event = {
+                            "type": "tool_start",
+                            "tool_call_id": output.metadata.get("tool_call_id", ""),
+                            "tool_name": output.metadata.get("tool_name", "unknown"),
+                            "tool_args": output.metadata.get("tool_args", {}),
+                            "timestamp": timestamp,
+                            "conversation_id": context.conversation_id,
+                        }
+                        trace_events.append(trace_event)
+                        if include_tool_steps:
+                            yield trace_event
                         
                 elif event_type == "tool_output":
+                    # Messages-based path (classic) or metadata-only (Copilot adapter)
                     tool_messages = getattr(output, "messages", []) or []
                     tool_message = tool_messages[0] if tool_messages else None
-                    tool_output = self._message_content(tool_message) if tool_message else ""
-                    truncated = len(tool_output) > max_step_chars
-                    full_length = len(tool_output) if truncated else None
-                    display_output = self._truncate_text(tool_output, max_step_chars)
+                    if tool_message:
+                        tool_output_text = self._message_content(tool_message)
+                        tool_call_id = getattr(tool_message, "tool_call_id", "")
+                    else:
+                        tool_output_text = output.metadata.get("output", "") if output.metadata else ""
+                        tool_call_id = output.metadata.get("tool_call_id", "") if output.metadata else ""
+                    truncated = len(tool_output_text) > max_step_chars
+                    full_length = len(tool_output_text) if truncated else None
+                    display_output = self._truncate_text(tool_output_text, max_step_chars)
                     
                     output_tool_call_id = getattr(tool_message, "tool_call_id", "") if tool_message else ""
                     if not output_tool_call_id and pending_tool_call_ids:

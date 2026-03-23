@@ -34,6 +34,18 @@ RUN GECKO_VERSION="v0.36.0" && \
     && chmod +x /usr/local/bin/geckodriver \
     && rm "geckodriver-${GECKO_VERSION}-${GECKO_ARCH}.tar.gz"
 
+# Install GitHub Copilot CLI (used by the Copilot SDK agent runtime)
+ARG COPILOT_CLI_VERSION=latest
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then CLI_ARCH="arm64"; else CLI_ARCH="amd64"; fi && \
+    if [ "$COPILOT_CLI_VERSION" = "latest" ]; then \
+        DOWNLOAD_URL="https://github.com/github/copilot-cli/releases/latest/download/copilot-linux-${CLI_ARCH}"; \
+    else \
+        DOWNLOAD_URL="https://github.com/github/copilot-cli/releases/download/${COPILOT_CLI_VERSION}/copilot-linux-${CLI_ARCH}"; \
+    fi && \
+    wget -q -O /usr/local/bin/copilot "$DOWNLOAD_URL" && \
+    chmod +x /usr/local/bin/copilot
+
 COPY archi_code src
 COPY configs configs
 COPY pyproject.toml pyproject.toml
