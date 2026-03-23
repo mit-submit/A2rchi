@@ -378,6 +378,11 @@ services:
         condition: service_completed_successfully
     {% endif -%}
     environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
@@ -401,8 +406,10 @@ services:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
       {% endfor %}
+    ports:
+      - "{{ services.mattermost.external_port | default(5000) }}:{{ services.mattermost.port | default(5000) }}"
     volumes:
-      - {{ data_volume_name }}:/root/data/
+      - {{ data_manager_volume_name }}:/root/data/
       - ./configs:/root/archi/configs
       - ./data/prompts:/root/archi/data/prompts:ro
       - ./data/agents:/root/archi/agents:ro

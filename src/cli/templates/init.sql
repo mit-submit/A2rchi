@@ -74,7 +74,27 @@ CREATE INDEX IF NOT EXISTS idx_users_auth_provider ON users(auth_provider);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id) WHERE github_id IS NOT NULL;
 
 -- ============================================================================
--- 1.1 SESSIONS
+-- 1.1 MATTERMOST TOKENS
+-- ============================================================================
+-- Stores SSO refresh tokens for Mattermost users, enabling role-based access
+-- without requiring re-login on every message.
+
+CREATE TABLE IF NOT EXISTS mattermost_tokens (
+    mattermost_user_id  VARCHAR(255) PRIMARY KEY,
+    mattermost_username VARCHAR(255),
+    email               VARCHAR(255),
+    roles               JSONB NOT NULL DEFAULT '[]',
+    refresh_token       BYTEA,       -- pgp_sym_encrypt(token, BYOK_ENCRYPTION_KEY)
+    token_expires_at    TIMESTAMPTZ, -- when re-login is required (configurable session lifetime)
+    roles_refreshed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mm_tokens_username ON mattermost_tokens(mattermost_username);
+
+-- ============================================================================
+-- 1.2 SESSIONS
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS sessions (

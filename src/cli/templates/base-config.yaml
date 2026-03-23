@@ -51,6 +51,18 @@ services:
     update_time: {{ services.piazza.update_time | default(60, true) }}
   mattermost:
     update_time: {{ services.mattermost.update_time | default(60, true) }}
+    port: {{ services.mattermost.port | default(5000, true) }}
+    external_port: {{ services.mattermost.external_port | default(5000, true) }}
+    auth:
+      enabled: {{ services.mattermost.auth.enabled | default(false, true) }}
+      token_store: {{ services.mattermost.auth.token_store | default('config', true) }}
+      default_role: {{ services.mattermost.auth.default_role | default('mattermost-restricted', true) }}
+      session_lifetime_days: {{ services.mattermost.auth.session_lifetime_days | default(30, true) }}
+      roles_refresh_hours: {{ services.mattermost.auth.roles_refresh_hours | default(24, true) }}
+      login_base_url: {{ services.mattermost.auth.login_base_url | default('', true) }}
+      sso:
+        token_endpoint: {{ services.mattermost.auth.sso.token_endpoint | default('', true) }}
+      user_roles: {{ services.mattermost.auth.user_roles | default({}, true) | tojson }}
   redmine_mailbox:
     agent_class: {{ services.redmine_mailbox.agent_class | default('CMSCompOpsAgent', true) }}
     agents_dir: "{{ services.redmine_mailbox.agents_dir | default('', true) }}"

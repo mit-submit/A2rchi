@@ -136,8 +136,11 @@ class ServiceRegistry:
             name='mattermost',
             description='Integration service for Mattermost channels',
             category='integration',
-            required_secrets=['MATTERMOST_WEBHOOK', 'MATTERMOST_CHANNEL_ID_READ', 
-                            'MATTERMOST_CHANNEL_ID_WRITE', 'MATTERMOST_PAK']
+            requires_volume=True,
+            required_secrets=['MATTERMOST_WEBHOOK',
+                            #   'MATTERMOST_CHANNEL_ID_READ', 
+                            # 'MATTERMOST_CHANNEL_ID_WRITE', 'MATTERMOST_PAK'
+                            'MATTERMOST_OUTGOING_TOKEN']
         ))
         
         self.register(ServiceDefinition(

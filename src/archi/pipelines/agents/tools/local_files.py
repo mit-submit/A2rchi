@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -31,6 +32,8 @@ class RemoteCatalogClient:
         port: int = 7871,
         external_port: Optional[int] = None,
         timeout: float = 30.0,
+        retry_attempts: int = 3,
+        retry_backoff_seconds: float = 1.0,
         api_token: Optional[str] = None,
     ):
         host_mode_flag = self._resolve_host_mode(host_mode)
@@ -42,9 +45,56 @@ class RemoteCatalogClient:
             final_port = external_port if host_mode_flag and external_port else port
             self.base_url = f"http://{host}:{final_port}"
         self.timeout = timeout
+        self.retry_attempts = max(int(retry_attempts), 1)
+        self.retry_backoff_seconds = max(float(retry_backoff_seconds), 0.0)
         self._headers: Dict[str, str] = {}
         if api_token:
             self._headers["Authorization"] = f"Bearer {api_token}"
+
+    def _get(self, path: str, *, params: Optional[Dict[str, object]] = None) -> requests.Response:
+            last_exc: Optional[Exception] = None
+            for attempt in range(1, self.retry_attempts + 1):
+                try:
+                    resp = requests.get(
+                        f"{self.base_url}{path}",
+                        params=params,
+                        headers=self._headers,
+                        timeout=self.timeout,
+                    )
+                except (requests.Timeout, requests.ConnectionError) as exc:
+                    last_exc = exc
+                    if attempt >= self.retry_attempts:
+                        raise
+                    sleep_s = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Catalog request failed (%s/%s) %s: %s; retrying in %.2fs",
+                        attempt,
+                        self.retry_attempts,
+                        path,
+                        exc,
+                        sleep_s,
+                    )
+                    time.sleep(sleep_s)
+                    continue
+
+                if resp.status_code >= 500 and attempt < self.retry_attempts:
+                    sleep_s = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Catalog request got HTTP %s (%s/%s) %s; retrying in %.2fs",
+                        resp.status_code,
+                        attempt,
+                        self.retry_attempts,
+                        path,
+                        sleep_s,
+                    )
+                    time.sleep(sleep_s)
+                    continue
+
+                return resp
+
+            if last_exc is not None:
+                raise last_exc
+            raise RuntimeError(f"Catalog request exhausted retries for {path}")
 
     @classmethod
     def from_deployment_config(cls, config: Optional[Dict[str, object]]) -> "RemoteCatalogClient":

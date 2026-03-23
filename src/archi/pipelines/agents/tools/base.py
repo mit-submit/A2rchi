@@ -35,7 +35,30 @@ def check_tool_permission(required_permission: str) -> tuple[bool, Optional[str]
     try:
         from flask import session, has_request_context
         from src.utils.rbac.registry import get_registry
-        
+
+        # Check Mattermost context first — covers webhook mode (Flask context, no session)
+        # and polling mode (no Flask context). ContextVar is set by mattermost_user_context().
+        try:
+            from src.utils.rbac.mattermost_context import get_mattermost_context
+            mm_ctx = get_mattermost_context()
+            if mm_ctx is not None:
+                registry = get_registry()
+                if registry.has_permission(mm_ctx.roles, required_permission):
+                    logger.debug(
+                        f"Mattermost user @{mm_ctx.username} granted '{required_permission}'"
+                    )
+                    return True, None
+                logger.info(
+                    f"Mattermost user @{mm_ctx.username} denied '{required_permission}' "
+                    f"(roles: {mm_ctx.roles})"
+                )
+                return False, (
+                    f"Permission denied for @{mm_ctx.username}: "
+                    f"requires '{required_permission}'."
+                )
+        except Exception as mm_exc:
+            logger.debug(f"Mattermost context check skipped: {mm_exc}")
+
         # If we're not in a request context, allow the tool (for testing/CLI usage)
         if not has_request_context():
             logger.debug("No request context, allowing tool access")

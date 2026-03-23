@@ -279,30 +279,193 @@ archi create [...] --services chatbot,redmine-mailer
 
 ## Mattermost Interface
 
-Reads posts from a Mattermost forum and posts draft responses to a specified channel.
+Connects Archi to a Mattermost channel. Supports two operating modes:
 
-### Configuration
+- **Webhook mode** — Mattermost pushes outgoing webhooks to Archi (recommended)
+- **Polling mode** — Archi polls a channel periodically via the Mattermost API
+
+**Default port:** `5000`
+
+### Setup
+
+#### Secrets
+
+```bash
+# Required for webhook mode
+MATTERMOST_WEBHOOK=https://mattermost.example.com/hooks/...  # Incoming webhook URL
+MATTERMOST_OUTGOING_TOKEN=...                                 # Outgoing webhook token for request validation
+
+# Required for polling mode only
+MATTERMOST_PAK=...                       # Personal Access Token for the bot account
+MATTERMOST_CHANNEL_ID_READ=...           # Channel to read posts from
+MATTERMOST_CHANNEL_ID_WRITE=...          # Channel to post responses to
+
+# Required for SSO auth (db mode)
+SSO_CLIENT_ID=...
+SSO_CLIENT_SECRET=...
+BYOK_ENCRYPTION_KEY=...                  # Used to encrypt stored refresh tokens
+PG_PASSWORD=...
+```
+
+#### Basic Configuration
 
 ```yaml
 services:
   mattermost:
-    update_time: 60
+    update_time: 60       # polling interval in seconds (polling mode only)
+    port: 5000
+    external_port: 5000
 ```
 
-### Secrets
-
-```bash
-MATTERMOST_WEBHOOK=...
-MATTERMOST_PAK=...
-MATTERMOST_CHANNEL_ID_READ=...
-MATTERMOST_CHANNEL_ID_WRITE=...
-```
-
-### Running
+#### Running
 
 ```bash
 archi create [...] --services chatbot,mattermost
 ```
+
+---
+
+### Authentication
+
+By default auth is disabled and the bot responds to all users. Two auth modes are available.
+
+#### Mode 1: Config (Static Allowlist)
+
+Roles are assigned to Mattermost users via a static map in the config. No SSO or database required.
+
+```yaml
+services:
+  mattermost:
+    auth:
+      enabled: true
+      token_store: config
+      default_role: mattermost-restricted  # role for users not in user_roles
+      user_roles:
+        jsmith: [archi-expert]             # Mattermost username → list of roles
+        ahmedmu: [archi-admins]
+        someuser: [archi-expert, base-user]
+```
+
+- Users in `user_roles` get the specified roles.
+- Users not in `user_roles` get `default_role`.
+- If `default_role` is not defined in `auth_roles`, those users have no permissions and are denied.
+
+#### Mode 2: DB / SSO (Recommended)
+
+Roles come from the CERN SSO JWT token. On first message, the bot sends the user a login link. After authenticating, their roles are stored in the database and reused on subsequent messages — no re-login required until the session expires.
+
+```yaml
+services:
+  mattermost:
+    auth:
+      enabled: true
+      token_store: db
+      session_lifetime_days: 30     # full re-login required after this period
+      roles_refresh_hours: 24       # silent background role refresh interval
+      login_base_url: "https://your-mattermost-service-host:5000"
+      sso:
+        server_metadata_url: "https://auth.cern.ch/auth/realms/cern/.well-known/openid-configuration"
+        token_endpoint: "https://auth.cern.ch/auth/realms/cern/protocol/openid-connect/token"
+```
+
+**SSO registration requirement:** The callback URL `<login_base_url>/mattermost-auth/callback` must be registered as a valid redirect URI in your SSO client (Keycloak / CERN Auth).
+
+**Login flow:**
+
+```
+1. User sends message to bot (no token stored)
+2. Bot replies: "Please login: https://<host>:5000/mattermost-auth?state=<user_id>&username=<username>"
+3. User clicks link → redirected to CERN SSO
+4. After SSO login → redirected to /mattermost-auth/callback
+5. Roles extracted from JWT, stored in mattermost_tokens table
+6. User sees success page, closes tab, returns to Mattermost
+7. Future messages use stored roles (silent refresh every 24h)
+```
+
+**Session lifecycle:**
+
+| Event | Behaviour |
+|-------|-----------|
+| First message | Login link sent |
+| Token valid, roles fresh | Respond normally |
+| Roles stale (`> roles_refresh_hours`) | Silent refresh via stored refresh token |
+| Session expired (`> session_lifetime_days`) | Login link sent again |
+| Admin invalidates token | Login link sent on next message |
+
+---
+
+### Role-Based Access Control
+
+Mattermost auth integrates with the same RBAC system used by the chat app. Roles are defined under `services.chat_app.auth.auth_roles`.
+
+#### Restricting Access
+
+To allow only users with a specific role (e.g. `archi-expert` and above), add the `mattermost:access` permission to those roles and **not** to `base-user`:
+
+```yaml
+services:
+  chat_app:
+    auth:
+      auth_roles:
+        roles:
+          base-user:
+            permissions:
+              - chat:query
+              - chat:history
+              # no mattermost:access here
+
+          archi-expert:
+            inherits: [base-user]
+            permissions:
+              - mattermost:access   # grants access to the Mattermost bot
+              - documents:view
+              - config:view
+              # ...
+
+          archi-admins:
+            permissions:
+              - "*"                 # wildcard includes mattermost:access
+
+        permissions:
+          mattermost:access:
+            description: "Access the Mattermost bot"
+            category: "mattermost"
+```
+
+- `base-user` only → denied with "you don't have permission" message
+- `archi-expert` → allowed (has `mattermost:access`)
+- `archi-admins` → allowed (wildcard)
+
+#### Tool-Level Permissions
+
+Tool permissions work the same as in the chat app. Add permissions like `tools:http_get` to roles that should be able to use specific agent tools. The Mattermost user context is propagated through the full call stack so tool checks apply correctly.
+
+```yaml
+          archi-expert:
+            permissions:
+              - mattermost:access
+              - tools:http_get      # allow HTTP GET tool for this role
+```
+
+#### Database
+
+A `mattermost_tokens` table is required when using `token_store: db`. It is created automatically by `init.sql` on first deploy. For existing deployments, run the migration manually:
+
+```sql
+CREATE TABLE IF NOT EXISTS mattermost_tokens (
+    mattermost_user_id  VARCHAR(255) PRIMARY KEY,
+    mattermost_username VARCHAR(255),
+    email               VARCHAR(255),
+    roles               JSONB NOT NULL DEFAULT '[]',
+    refresh_token       BYTEA,
+    token_expires_at    TIMESTAMPTZ,
+    roles_refreshed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Refresh tokens are encrypted at rest using `pgp_sym_encrypt` (requires `BYOK_ENCRYPTION_KEY`).
 
 ---
 
