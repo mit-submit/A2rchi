@@ -93,14 +93,18 @@ class CopilotEventAdapter:
 
     # ── Hook callbacks (passed to SDK session creation) ───────────────
 
-    async def on_pre_tool_use(self, tool_use):
+    def on_pre_tool_use(self, hook_input, context=None):
         """Fires before tool permission check (decision 3).
 
-        Returns ``permissionDecision: "allow"`` and emits ``tool_start``.
+        Called by the SDK as ``handler(hook_input_dict, context_dict)``.
+        ``hook_input`` is a dict with keys: ``toolName``, ``toolArgs``,
+        ``timestamp``, ``cwd``.
+
+        Emits ``tool_start``.
         """
-        tool_call_id = getattr(tool_use, "id", None) or str(uuid.uuid4())
-        tool_name = getattr(tool_use, "name", "unknown")
-        tool_args = getattr(tool_use, "arguments", {}) or {}
+        tool_call_id = str(uuid.uuid4())
+        tool_name = hook_input.get("toolName", "unknown") if isinstance(hook_input, dict) else getattr(hook_input, "toolName", "unknown")
+        tool_args = hook_input.get("toolArgs", {}) if isinstance(hook_input, dict) else getattr(hook_input, "toolArgs", {})
 
         record = _ToolCallRecord(id=tool_call_id, name=tool_name, args=tool_args)
         self._active_tools[tool_call_id] = record
@@ -120,23 +124,33 @@ class CopilotEventAdapter:
             final=False,
         ))
 
-        if self._cancelled:
-            return {"permissionDecision": "deny"}
-        return {"permissionDecision": "allow"}
-
-    async def on_post_tool_use(self, tool_use):
+    def on_post_tool_use(self, hook_input, context=None):
         """Fires after tool execution completes (decision 3).
+
+        Called by the SDK as ``handler(hook_input_dict, context_dict)``.
+        ``hook_input`` is a dict with keys: ``toolName``, ``toolArgs``,
+        ``toolResult``, ``timestamp``, ``cwd``.
 
         Emits ``tool_output`` and records the result for metadata storage.
         """
-        tool_call_id = getattr(tool_use, "id", None) or ""
-        result = getattr(tool_use, "result", None)
+        tool_name = hook_input.get("toolName", "unknown") if isinstance(hook_input, dict) else getattr(hook_input, "toolName", "unknown")
+        result = hook_input.get("toolResult", None) if isinstance(hook_input, dict) else getattr(hook_input, "toolResult", None)
         result_str = str(result) if result is not None else ""
 
-        # Update the record with the result
-        record = self._active_tools.pop(tool_call_id, None)
-        if record is not None:
-            record.result = result_str
+        # Match to active tool record by name (SDK hook inputs don't carry a call ID)
+        tool_call_id = ""
+        matched_record = None
+        for tid, record in list(self._active_tools.items()):
+            if record.name == tool_name:
+                tool_call_id = tid
+                matched_record = record
+                break
+        if matched_record is not None:
+            matched_record.result = result_str
+            self._active_tools.pop(tool_call_id, None)
+        else:
+            # No matching pre-hook (shouldn't happen, but be defensive)
+            tool_call_id = str(uuid.uuid4())
 
         self._queue.put(PipelineOutput(
             answer="",
@@ -148,92 +162,101 @@ class CopilotEventAdapter:
             final=False,
         ))
 
-    # ── Async event consumer (runs on AsyncLoopThread) ────────────────
+    # ── Event-based session consumer ─────────────────────────────────
 
-    async def consume_session(self, session) -> None:
-        """Subscribe to session events and push PipelineOutputs into the queue.
+    def attach_to_session(self, session) -> None:
+        """Register an event handler on the session via ``session.on()``.
 
-        Called from the async loop.  When the session ends (or errors),
-        the sentinel is pushed so ``iter_outputs()`` terminates.
+        Events are dispatched by the SDK; this method returns immediately.
+        Call ``signal_done()`` after ``send_and_wait()`` returns to push
+        the sentinel and unblock ``iter_outputs()``.
         """
         self._session = session
-        try:
-            async for event in session.events():
-                if self._cancelled:
-                    break
 
-                event_type = getattr(event, "type", None) or ""
+        def _on_event(event):
+            if self._cancelled:
+                return
 
-                if event_type == "assistant.message_delta":
-                    delta = getattr(event, "content", "") or ""
-                    if delta:
-                        self._end_thinking_if_active()
-                        self._response_buffer += delta
-                        self._queue.put(PipelineOutput(
-                            answer=self._response_buffer,
-                            metadata={"event_type": "text"},
-                            final=False,
-                        ))
+            # Compare by value string for compatibility with both real and
+            # mock SessionEventType enums.
+            raw_type = event.type
+            event_type = raw_type.value if hasattr(raw_type, "value") else str(raw_type)
+            data = event.data
 
-                elif event_type == "assistant.reasoning_delta":
-                    delta = getattr(event, "content", "") or ""
-                    if delta:
-                        if not self._in_thinking:
-                            self._start_thinking()
-                        self._thinking_buffer += delta
-
-                elif event_type == "assistant.message":
-                    # Final complete message — may contain usage
-                    content = getattr(event, "content", "") or ""
-                    if content:
-                        self._end_thinking_if_active()
-                        self._response_buffer = content
-                        self._queue.put(PipelineOutput(
-                            answer=self._response_buffer,
-                            metadata={"event_type": "text"},
-                            final=False,
-                        ))
-                    usage = getattr(event, "usage", None)
-                    if usage:
-                        self._capture_usage(usage)
-
-                elif event_type == "assistant.reasoning":
-                    # Final complete reasoning
-                    content = getattr(event, "content", "") or ""
-                    if content:
-                        self._thinking_buffer = content
+            if event_type in ("assistant.streaming_delta", "assistant.message_delta"):
+                delta = getattr(data, "delta_content", "") or ""
+                if delta:
                     self._end_thinking_if_active()
+                    self._response_buffer += delta
+                    self._queue.put(PipelineOutput(
+                        answer=self._response_buffer,
+                        metadata={"event_type": "text"},
+                        final=False,
+                    ))
 
-                elif event_type == "session.idle":
-                    # Terminal event — session finished
-                    usage = getattr(event, "usage", None)
-                    if usage:
-                        self._capture_usage(usage)
-                    break
+            elif event_type == "assistant.reasoning_delta":
+                delta = getattr(data, "delta_content", "") or getattr(data, "reasoning_text", "") or ""
+                if delta:
+                    if not self._in_thinking:
+                        self._start_thinking()
+                    self._thinking_buffer += delta
 
-                elif event_type in (
-                    "session.compaction_start",
-                    "session.compaction_complete",
-                ):
-                    logger.debug("Context compaction event: %s", event_type)
+            elif event_type == "assistant.message":
+                content = getattr(data, "content", "") or ""
+                if content:
+                    self._end_thinking_if_active()
+                    self._response_buffer = content
+                    self._queue.put(PipelineOutput(
+                        answer=self._response_buffer,
+                        metadata={"event_type": "text"},
+                        final=False,
+                    ))
 
-        except Exception:
-            logger.exception("Error consuming Copilot SDK session events")
-            raise
-        finally:
-            self._end_thinking_if_active()
-            self._queue.put(_SENTINEL)
+            elif event_type == "assistant.reasoning":
+                content = getattr(data, "content", "") or getattr(data, "reasoning_text", "") or ""
+                if content:
+                    self._thinking_buffer = content
+                self._end_thinking_if_active()
+
+            elif event_type == "assistant.turn_end":
+                self._end_thinking_if_active()
+
+            elif event_type == "session.idle":
+                self._end_thinking_if_active()
+
+            elif event_type == "assistant.usage":
+                self._capture_usage(data)
+
+            elif event_type == "session.error":
+                error_msg = getattr(data, "message", "") or ""
+                logger.error("Copilot SDK session error: %s", error_msg)
+
+        session.on(_on_event)
+
+    def signal_done(self) -> None:
+        """Push the sentinel to unblock ``iter_outputs()``.
+
+        Called after ``send_and_wait()`` completes.
+        """
+        self._end_thinking_if_active()
+        self._queue.put(_SENTINEL)
 
     # ── Sync generator (consumed by Flask thread) ─────────────────────
 
-    def iter_outputs(self) -> Iterator[PipelineOutput]:
+    def iter_outputs(self, *, poll_timeout: float = 180.0) -> Iterator[PipelineOutput]:
         """Yield PipelineOutput objects until the session stream ends.
 
         On GeneratorExit (stream cancelled), disconnects the SDK session.
+        Uses a poll timeout to prevent indefinite blocking if the async
+        session crashes without calling ``signal_done()``.
         """
         try:
             while True:
-                item = self._queue.get()
+                try:
+                    item = self._queue.get(timeout=poll_timeout)
+                except queue.Empty:
+                    logger.warning("Adapter queue timed out after %.0fs — session may have crashed", poll_timeout)
+                    break
                 if item is _SENTINEL:
                     break
                 yield item
@@ -326,20 +349,25 @@ class CopilotEventAdapter:
         self._thinking_buffer = ""
 
     def _capture_usage(self, usage) -> None:
-        """Normalize SDK usage object to the frontend-expected dict."""
+        """Normalize SDK usage/data object to the frontend-expected dict."""
         if isinstance(usage, dict):
             raw = usage
         else:
+            # SDK Data object from ASSISTANT_USAGE event
+            input_tokens = (
+                getattr(usage, "input_tokens", None)
+                or getattr(usage, "prompt_tokens", None)
+                or 0
+            )
+            output_tokens = (
+                getattr(usage, "output_tokens", None)
+                or getattr(usage, "completion_tokens", None)
+                or 0
+            )
             raw = {
-                "prompt_tokens": getattr(usage, "prompt_tokens", None)
-                    or getattr(usage, "promptTokens", None)
-                    or 0,
-                "completion_tokens": getattr(usage, "completion_tokens", None)
-                    or getattr(usage, "completionTokens", None)
-                    or 0,
-                "total_tokens": getattr(usage, "total_tokens", None)
-                    or getattr(usage, "totalTokens", None)
-                    or 0,
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+                "total_tokens": (input_tokens or 0) + (output_tokens or 0),
             }
 
         self._usage = {

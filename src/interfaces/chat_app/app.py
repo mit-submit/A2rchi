@@ -1791,7 +1791,7 @@ class ChatWrapper:
                     return
                 last_output = output
                 
-                # Extract event_type from metadata (new structured events from BaseReActAgent)
+                # Extract event_type from metadata (structured events from agent pipeline)
                 event_type = output.metadata.get("event_type", "text") if output.metadata else "text"
                 timestamp = datetime.now(timezone.utc).isoformat()
                 
@@ -2035,6 +2035,14 @@ class ChatWrapper:
                 elif event_type == "final":
                     # Final event handled below after loop
                     pass
+                elif event_type == "error":
+                    error_msg = output.metadata.get("error", "Unknown error")
+                    logger.error("Agent pipeline error: %s", error_msg)
+                    yield {
+                        "type": "error",
+                        "message": error_msg,
+                        "timestamp": timestamp,
+                    }
                 else:
                     # Fallback: legacy event handling for non-agent pipelines
                     if getattr(output, "final", False):

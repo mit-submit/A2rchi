@@ -95,20 +95,19 @@ def build_file_search_tool(
     max_results: int = 3,
     store_docs: Optional[Callable[[str, Sequence[Document]], None]] = None,
 ):
-    from github_copilot_sdk import define_tool
+    from copilot import define_tool
 
     tool_description = description or FILE_SEARCH_DESCRIPTION
 
-    @define_tool(name=name, description=tool_description, schema=FileSearchInput)
-    async def _search_local_files(
-        query: str,
-        regex: bool = False,
-        case_sensitive: bool = False,
-        max_results_override: Optional[int] = None,
-        max_matches_per_file: int = 3,
-        before: int = 0,
-        after: int = 0,
-    ) -> str:
+    @define_tool(name=name, description=tool_description)
+    async def _search_local_files(params: FileSearchInput) -> str:
+        query = params.query
+        regex = params.regex
+        case_sensitive = params.case_sensitive
+        max_results_override = params.max_results_override
+        max_matches_per_file = params.max_matches_per_file
+        before = params.before
+        after = params.after
         if not query.strip():
             return "Please provide a non-empty search query."
 
@@ -159,12 +158,13 @@ def build_metadata_search_tool(
     max_results: int = 5,
     store_docs: Optional[Callable[[str, Sequence[Document]], None]] = None,
 ):
-    from github_copilot_sdk import define_tool
+    from copilot import define_tool
 
     tool_description = description or METADATA_SEARCH_DESCRIPTION
 
-    @define_tool(name=name, description=tool_description, schema=MetadataSearchInput)
-    async def _search_metadata(query: str) -> str:
+    @define_tool(name=name, description=tool_description)
+    async def _search_metadata(params: MetadataSearchInput) -> str:
+        query = params.query
         if not query.strip():
             return "Please provide a non-empty search query."
 
@@ -210,11 +210,11 @@ def build_metadata_schema_tool(
     name: str = METADATA_SCHEMA_NAME,
     description: Optional[str] = None,
 ):
-    from github_copilot_sdk import define_tool
+    from copilot import define_tool
 
     tool_description = description or METADATA_SCHEMA_DESCRIPTION
 
-    @define_tool(name=name, description=tool_description, schema=MetadataSchemaInput)
+    @define_tool(name=name, description=tool_description)
     async def _schema_tool() -> str:
         try:
             payload = catalog.schema()
@@ -240,12 +240,14 @@ def build_document_fetch_tool(
     description: Optional[str] = None,
     default_max_chars: int = 4000,
 ):
-    from github_copilot_sdk import define_tool
+    from copilot import define_tool
 
     tool_description = description or DOCUMENT_FETCH_DESCRIPTION
 
-    @define_tool(name=name, description=tool_description, schema=DocumentFetchInput)
-    async def _fetch_document(resource_hash: str, max_chars: int = default_max_chars) -> str:
+    @define_tool(name=name, description=tool_description)
+    async def _fetch_document(params: DocumentFetchInput) -> str:
+        resource_hash = params.resource_hash
+        max_chars = params.max_chars
         if not resource_hash.strip():
             return "Please provide a non-empty resource hash."
 

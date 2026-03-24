@@ -58,7 +58,7 @@ def build_monit_search_tool(
     index: str,
     skill: Optional[str] = None,
 ):
-    from github_copilot_sdk import define_tool
+    from copilot import define_tool
 
     # Build description, optionally appending domain skill
     base_desc = (
@@ -72,13 +72,12 @@ def build_monit_search_tool(
     if skill:
         base_desc += f"\n--- Domain Knowledge ---\n{skill}"
 
-    @define_tool(name=tool_name, description=base_desc, schema=OpenSearchSearchInput)
-    async def _search_opensearch(
-        query: str,
-        from_time: str = "now-24h",
-        to_time: str = "now",
-        max_results: int = 10,
-    ) -> str:
+    @define_tool(name=tool_name, description=base_desc)
+    async def _search_opensearch(params: OpenSearchSearchInput) -> str:
+        query = params.query
+        from_time = params.from_time
+        to_time = params.to_time
+        max_results = params.max_results
         if not query or not query.strip():
             return "Please provide a non-empty Lucene query."
 
@@ -112,7 +111,7 @@ def build_monit_aggregation_tool(
     index: str,
     skill: Optional[str] = None,
 ):
-    from github_copilot_sdk import define_tool
+    from copilot import define_tool
 
     base_desc = (
         f"Run aggregation queries on the '{index}' OpenSearch index.\n\n"
@@ -128,15 +127,14 @@ def build_monit_aggregation_tool(
     if skill:
         base_desc += f"\n--- Domain Knowledge ---\n{skill}"
 
-    @define_tool(name=tool_name, description=base_desc, schema=OpenSearchAggregationInput)
-    async def _aggregate_opensearch(
-        query: str,
-        group_by: str,
-        agg_type: str = "terms",
-        top_n: int = 10,
-        from_time: str = "now-24h",
-        to_time: str = "now",
-    ) -> str:
+    @define_tool(name=tool_name, description=base_desc)
+    async def _aggregate_opensearch(params: OpenSearchAggregationInput) -> str:
+        query = params.query
+        group_by = params.group_by
+        agg_type = params.agg_type
+        top_n = params.top_n
+        from_time = params.from_time
+        to_time = params.to_time
         if not query or not query.strip():
             return "Please provide a non-empty Lucene query (use '*' for all documents)."
         if not group_by or not group_by.strip():

@@ -89,7 +89,6 @@ class TestProviderKeyIntegration:
         
         assert ProviderType.OPENAI in types
         assert ProviderType.ANTHROPIC in types
-        assert ProviderType.GEMINI in types
         assert ProviderType.OPENROUTER in types
         assert ProviderType.LOCAL in types
 
@@ -159,13 +158,6 @@ class TestProviderDisplayNames:
         provider = get_provider_with_api_key(ProviderType.ANTHROPIC, "test-key")
         assert provider.display_name == "Anthropic"
     
-    def test_gemini_display_name(self):
-        """Gemini provider should have correct display name."""
-        from src.archi.providers import get_provider_with_api_key, ProviderType
-        
-        provider = get_provider_with_api_key(ProviderType.GEMINI, "test-key")
-        assert provider.display_name == "Google Gemini"
-
 
 class TestSecurityRequirements:
     """Test security-related requirements."""

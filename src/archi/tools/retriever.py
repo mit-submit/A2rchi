@@ -89,12 +89,13 @@ def build_retriever_tool(
     Dependencies are captured via closure — the returned callable only
     receives the Pydantic-validated ``RetrieverInput`` at invocation time.
     """
-    from github_copilot_sdk import define_tool  # deferred import
+    from copilot import define_tool  # deferred import
 
     tool_description = description or TOOL_DESCRIPTION
 
-    @define_tool(name=name, description=tool_description, schema=RetrieverInput)
-    async def _retriever_tool(query: str) -> str:
+    @define_tool(name=name, description=tool_description)
+    async def _retriever_tool(params: RetrieverInput) -> str:
+        query = params.query
         results = retriever.invoke(query)
         docs = _normalize_results(results or [])
         if store_docs:

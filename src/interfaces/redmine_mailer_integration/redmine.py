@@ -43,7 +43,7 @@ class RedmineAIWrapper:
         self.data_path = self.global_config["DATA_PATH"]
 
         # agent
-        agent_class = self.redmine_config.get("agent_class") or self.redmine_config.get("pipeline", "CMSCompOpsAgent")
+        agent_class = self.redmine_config.get("agent_class") or self.redmine_config.get("pipeline", "CopilotAgentPipeline")
         agents_dir = Path(
             self.redmine_config.get("agents_dir")
             or self.services_config.get("chat_app", {}).get("agents_dir", "/root/archi/agents")

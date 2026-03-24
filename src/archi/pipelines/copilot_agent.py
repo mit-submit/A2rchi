@@ -19,8 +19,6 @@ from __future__ import annotations
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence
 
 from src.archi.copilot_event_adapter import CopilotEventAdapter
-from src.archi.tools import TOOL_REGISTRY, DocumentCollector
-from src.archi.tools.retriever import build_retriever_tool
 from src.archi.utils.async_loop import AsyncLoopThread
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.utils.logging import get_logger
@@ -36,7 +34,7 @@ def _get_copilot_client_cls():
     import this module for ``get_tool_registry()`` / ``get_tool_descriptions()``."""
     global _CopilotClient
     if _CopilotClient is None:
-        from github_copilot_sdk import CopilotClient
+        from copilot import CopilotClient
         _CopilotClient = CopilotClient
     return _CopilotClient
 
@@ -79,7 +77,7 @@ def _build_sdk_provider(
         )
 
     provider_cfg = providers_config.get(provider_name.lower(), {})
-    result: Dict[str, Any] = {"type": sdk_type, "model": model_id}
+    result: Dict[str, Any] = {"type": sdk_type}
 
     base_url = provider_cfg.get("base_url")
     if base_url:
@@ -249,7 +247,7 @@ class CopilotAgentPipeline:
 
     def _build_tools(
         self,
-        collector: DocumentCollector,
+        collector,
         vectorstore: Any = None,
     ) -> list:
         """Build the list of ``@define_tool`` functions for a session.
@@ -271,7 +269,14 @@ class CopilotAgentPipeline:
         store_docs = collector.make_store_docs_callback()
         tools: list = []
 
-        names = set(self.selected_tool_names) if self.selected_tool_names else None
+        # Normalise legacy tool-name aliases so agent specs written with
+        # older names still match the canonical TOOL_REGISTRY entries.
+        _ALIASES: Dict[str, str] = {
+            "search_vectorstore_hybrid": "search_knowledge_base",
+        }
+        names: Optional[set] = None
+        if self.selected_tool_names:
+            names = {_ALIASES.get(n, n) for n in self.selected_tool_names}
 
         def _want(name: str) -> bool:
             return names is None or name in names
@@ -279,6 +284,7 @@ class CopilotAgentPipeline:
         # Vectorstore retriever tool
         if vectorstore and _want("search_knowledge_base"):
             try:
+                from src.archi.tools.retriever import build_retriever_tool
                 from src.data_manager.vectorstore.retrievers import HybridRetriever
                 retrievers_cfg = self.dm_config.get("retrievers", {})
                 hybrid_cfg = retrievers_cfg.get("hybrid_retriever", {})
@@ -360,7 +366,7 @@ class CopilotAgentPipeline:
 
         cfg: Dict[str, Any] = {}
         if system_message:
-            cfg["systemMessage"] = {"content": system_message}
+            cfg["system_message"] = {"mode": "replace", "content": system_message}
 
         # Provider (decision 4)
         if self.default_provider and self.default_model:
@@ -370,11 +376,12 @@ class CopilotAgentPipeline:
                 self._providers_config,
                 api_key=api_key,
             )
+            cfg["model"] = self.default_model
 
         # MCP servers (decision 8)
         mcp = _build_mcp_servers(self.archi_config)
         if mcp:
-            cfg["mcpServers"] = mcp
+            cfg["mcp_servers"] = mcp
 
         # Tools are passed to create_session, not in config dict
         cfg["_tools"] = tools
@@ -389,10 +396,16 @@ class CopilotAgentPipeline:
         """Create a Copilot SDK session with hooks attached."""
         tools = config.pop("_tools", [])
 
+        from copilot import PermissionHandler
+
         session = await self._client.create_session(
             tools=tools,
-            on_pre_tool_use=adapter.on_pre_tool_use,
-            on_post_tool_use=adapter.on_post_tool_use,
+            on_permission_request=PermissionHandler.approve_all,
+            streaming=True,
+            hooks={
+                "on_pre_tool_use": adapter.on_pre_tool_use,
+                "on_post_tool_use": adapter.on_post_tool_use,
+            },
             **config,
         )
         return session
@@ -410,6 +423,7 @@ class CopilotAgentPipeline:
         user_id = kwargs.get("user_id")
 
         # Per-request document collector
+        from src.archi.tools import DocumentCollector
         collector = DocumentCollector()
 
         # Build tools for this request
@@ -430,20 +444,28 @@ class CopilotAgentPipeline:
 
         # Create session and start consuming events (async)
         async def _run_session():
-            session = await self._create_session(adapter, session_config)
+            try:
+                session = await self._create_session(adapter, session_config)
 
-            # Extract last user message from history
-            last_msg = ""
-            if history:
-                last_pair = history[-1]
-                if last_pair[0].lower() in ("user", "human"):
-                    last_msg = last_pair[1]
+                # Extract last user message from history
+                last_msg = ""
+                if history:
+                    last_pair = history[-1]
+                    if last_pair[0].lower() in ("user", "human"):
+                        last_msg = last_pair[1]
 
-            # Send the user's message to start the agent turn
-            await session.send_message(last_msg)
-
-            # Consume events until session is idle
-            await adapter.consume_session(session)
+                # Register event handler and send the user's message
+                adapter.attach_to_session(session)
+                await session.send_and_wait(last_msg, timeout=120.0)
+            except Exception as exc:
+                logger.error("Copilot session error: %s", exc, exc_info=True)
+                adapter._queue.put(PipelineOutput(
+                    answer="",
+                    metadata={"event_type": "error", "error": str(exc)},
+                    final=False,
+                ))
+            finally:
+                adapter.signal_done()
 
         # Schedule async work on the background loop
         import concurrent.futures
@@ -523,12 +545,12 @@ class CopilotAgentPipeline:
 
     # ── Tool registry (decision 17) ──────────────────────────────────
 
-    @classmethod
-    def get_tool_registry(cls) -> Dict[str, Callable]:
-        """Return tool name → factory mapping for the agent spec editor."""
+    def get_tool_registry(self) -> Dict[str, Callable]:
+        """Return tool name -> factory mapping for the agent spec editor."""
+        from src.archi.tools import TOOL_REGISTRY
         return {name: entry["factory"] for name, entry in TOOL_REGISTRY.items()}
 
-    @classmethod
-    def get_tool_descriptions(cls) -> Dict[str, str]:
-        """Return tool name → description mapping for UI display."""
+    def get_tool_descriptions(self) -> Dict[str, str]:
+        """Return tool name -> description mapping for UI display."""
+        from src.archi.tools import TOOL_REGISTRY
         return {name: entry["description"] for name, entry in TOOL_REGISTRY.items()}

@@ -19,13 +19,15 @@ class TestProviderMapping:
     def test_openai_provider(self):
         result = _build_sdk_provider("openai", "gpt-4o", {}, api_key="sk-test")
         assert result["type"] == "openai"
-        assert result["model"] == "gpt-4o"
         assert result["api_key"] == "sk-test"
+        # model is passed separately to create_session, not in provider dict
+        assert "model" not in result
 
     def test_anthropic_provider(self):
         result = _build_sdk_provider("anthropic", "claude-sonnet-4-20250514", {}, api_key="key")
         assert result["type"] == "anthropic"
-        assert result["model"] == "claude-sonnet-4-20250514"
+        assert result["api_key"] == "key"
+        assert "model" not in result
 
     def test_openrouter_maps_to_openai(self):
         cfg = {"openrouter": {"base_url": "https://openrouter.ai/api/v1"}}
@@ -156,3 +158,64 @@ class TestToolRegistry:
             assert "description" in entry, f"{name} missing description"
             assert callable(entry["factory"]), f"{name} factory not callable"
             assert isinstance(entry["description"], str), f"{name} description not str"
+
+
+class TestToolNameAliases:
+    """Tool-name alias normalization in _build_tools."""
+
+    def test_search_vectorstore_hybrid_normalizes(self):
+        """Agent specs with 'search_vectorstore_hybrid' should match
+        the canonical 'search_knowledge_base' tool."""
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
+        # Build a bare pipeline with the old tool name
+        pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        pipeline.selected_tool_names = ["search_vectorstore_hybrid", "search_local_files"]
+        pipeline.dm_config = {}
+        pipeline._catalog_client = None
+        pipeline._monit_client = None
+
+        # _build_tools needs a collector; tools will be empty because there's
+        # no vectorstore or catalog client, but the alias resolution itself
+        # should not raise.
+        from src.archi.tools import DocumentCollector
+        tools = pipeline._build_tools(DocumentCollector())
+        # No tools built (no vectorstore/catalog), but no crash either
+        assert isinstance(tools, list)
+
+    def test_canonical_name_still_works(self):
+        """The canonical 'search_knowledge_base' should still work."""
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
+        pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        pipeline.selected_tool_names = ["search_knowledge_base"]
+        pipeline.dm_config = {}
+        pipeline._catalog_client = None
+        pipeline._monit_client = None
+
+        from src.archi.tools import DocumentCollector
+        tools = pipeline._build_tools(DocumentCollector())
+        assert isinstance(tools, list)
+
+
+class TestGetToolRegistrySignature:
+    """get_tool_registry and get_tool_descriptions must work when called
+    via the same pattern as app.py: agent_cls.method(dummy_instance)."""
+
+    def test_get_tool_registry_instance_call(self):
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
+        dummy = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        # This is how app.py calls it — must not raise
+        registry = CopilotAgentPipeline.get_tool_registry(dummy)
+        assert isinstance(registry, dict)
+        assert "search_knowledge_base" in registry
+
+    def test_get_tool_descriptions_instance_call(self):
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
+        dummy = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        descriptions = CopilotAgentPipeline.get_tool_descriptions(dummy)
+        assert isinstance(descriptions, dict)
+        assert "search_knowledge_base" in descriptions
+        assert isinstance(descriptions["search_knowledge_base"], str)

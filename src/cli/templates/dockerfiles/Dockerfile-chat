@@ -37,14 +37,16 @@ RUN GECKO_VERSION="v0.36.0" && \
 # Install GitHub Copilot CLI (used by the Copilot SDK agent runtime)
 ARG COPILOT_CLI_VERSION=latest
 RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "aarch64" ]; then CLI_ARCH="arm64"; else CLI_ARCH="amd64"; fi && \
+    if [ "$ARCH" = "aarch64" ]; then CLI_ARCH="arm64"; else CLI_ARCH="x64"; fi && \
     if [ "$COPILOT_CLI_VERSION" = "latest" ]; then \
-        DOWNLOAD_URL="https://github.com/github/copilot-cli/releases/latest/download/copilot-linux-${CLI_ARCH}"; \
+        DOWNLOAD_URL="https://github.com/github/copilot-cli/releases/latest/download/copilot-linux-${CLI_ARCH}.tar.gz"; \
     else \
-        DOWNLOAD_URL="https://github.com/github/copilot-cli/releases/download/${COPILOT_CLI_VERSION}/copilot-linux-${CLI_ARCH}"; \
+        DOWNLOAD_URL="https://github.com/github/copilot-cli/releases/download/${COPILOT_CLI_VERSION}/copilot-linux-${CLI_ARCH}.tar.gz"; \
     fi && \
-    wget -q -O /usr/local/bin/copilot "$DOWNLOAD_URL" && \
-    chmod +x /usr/local/bin/copilot
+    wget -q -O /tmp/copilot.tar.gz "$DOWNLOAD_URL" && \
+    tar -xzf /tmp/copilot.tar.gz -C /usr/local/bin && \
+    chmod +x /usr/local/bin/copilot && \
+    rm /tmp/copilot.tar.gz
 
 COPY archi_code src
 COPY configs configs
