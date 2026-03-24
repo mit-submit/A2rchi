@@ -134,12 +134,12 @@ class TicketManager:
             elif name == "Redmine":
                 self.redmine_projects.update(projects)
                 outdir = self.data_path / "redmine"
+
+            for resource in resources:
+                persistence.persist_resource(resource, outdir)
         except Exception as exc:
             logger.warning(
                 f"{name} collection failed; skipping remaining tickets from this source.",
                 exc_info=exc,
             )
             return
-
-        for resource in resources:
-            persistence.persist_resource(resource, outdir,overwrite)
