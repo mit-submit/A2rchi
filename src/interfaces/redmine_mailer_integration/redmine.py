@@ -42,8 +42,14 @@ class RedmineAIWrapper:
         self.redmine_config = self.services_config.get("redmine_mailbox", {})
         self.data_path = self.global_config["DATA_PATH"]
 
+        chat_app_config = self.services_config.get("chat_app", {})
+
         # agent
-        agent_class = self.redmine_config.get("agent_class") or self.redmine_config.get("pipeline", "CMSCompOpsAgent")
+        agent_class = (self.redmine_config.get("agent_class")
+                       or self.redmine_config.get("pipeline")
+                       or chat_app_config.get("agent_class")
+                       or chat_app_config.get("pipeline", "CMSCompOpsAgent"))
+
         agents_dir = Path(
             self.redmine_config.get("agents_dir")
             or self.services_config.get("chat_app", {}).get("agents_dir", "/root/archi/agents")
@@ -52,8 +58,10 @@ class RedmineAIWrapper:
             agent_spec = select_agent_spec(agents_dir)
         except AgentSpecError as exc:
             raise ValueError(f"Failed to load agent spec: {exc}") from exc
-        default_provider = self.redmine_config.get("default_provider")
-        default_model = self.redmine_config.get("default_model")
+        default_provider = (self.redmine_config.get("default_provider")
+                            or chat_app_config.get("default_provider"))
+        default_model = (self.redmine_config.get("default_model")
+                         or chat_app_config.get("default_model"))
         self.archi = archi(
             pipeline=agent_class,
             agent_spec=agent_spec,
