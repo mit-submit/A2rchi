@@ -1923,7 +1923,7 @@ class ChatWrapper:
                     full_length = len(tool_output_text) if truncated else None
                     display_output = self._truncate_text(tool_output_text, max_step_chars)
                     
-                    output_tool_call_id = getattr(tool_message, "tool_call_id", "") if tool_message else ""
+                    output_tool_call_id = getattr(tool_message, "tool_call_id", "") if tool_message else tool_call_id
                     if not output_tool_call_id and pending_tool_call_ids:
                         output_tool_call_id = pending_tool_call_ids.pop(0)
                     elif output_tool_call_id in pending_tool_call_ids:
