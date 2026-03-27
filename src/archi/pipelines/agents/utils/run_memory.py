@@ -10,7 +10,6 @@ from langchain_core.documents import Document
 
 class RunMemory:
     """Track documents, notes, and tool call inputs produced in one run."""
-
     # TODO for now we return langchain's Document objects. We could think about returning the same Resource classes we use when collecting these (or vice versa) to reduce the amount of dataclasses to worry about.
     # TODO we don't collect retriever scores
 
@@ -26,7 +25,7 @@ class RunMemory:
         if not docs_list:
             return
         self._document_events.append((stage, docs_list))
-
+    
     def record_documents(self, stage: str, documents: Iterable[Document]) -> None:
         """Convenience wrapper that records documents and appends a note.
 
@@ -45,9 +44,7 @@ class RunMemory:
             return
         self._notes.append(message)
 
-    def record_tool_call(
-        self, tool_call_id: str, tool_name: str, tool_input: Any
-    ) -> None:
+    def record_tool_call(self, tool_call_id: str, tool_name: str, tool_input: Any) -> None:
         """Store/refresh a tool call entry keyed by call id."""
         if not tool_call_id:
             return
@@ -55,11 +52,7 @@ class RunMemory:
         self._tool_runs[tool_call_id] = {
             "tool_call_id": tool_call_id,
             "tool_name": tool_name or existing.get("tool_name", "unknown"),
-            "tool_input": (
-                tool_input
-                if tool_input not in (None, "")
-                else existing.get("tool_input", {})
-            ),
+            "tool_input": tool_input if tool_input not in (None, "") else existing.get("tool_input", {}),
             "documents": existing.get("documents", []),
         }
 
@@ -84,9 +77,7 @@ class RunMemory:
         queue = self._pending_tool_inputs_by_name.setdefault(tool_name, [])
         queue.append(tool_input)
 
-    def resolve_tool_input(
-        self, tool_call_id: str, tool_name: str, tool_args: Any
-    ) -> Any:
+    def resolve_tool_input(self, tool_call_id: str, tool_name: str, tool_args: Any) -> Any:
         """Resolve empty tool args from pending runtime inputs and bind to call id."""
         if tool_args not in (None, "", {}, []):
             return tool_args
@@ -143,16 +134,12 @@ class RunMemory:
             if tool_args in (None, "", {}, []):
                 tool_args = raw_args_by_id.get(tool_call_id, tool_args)
             tool_name = call.get("name", "unknown")
-            if (
-                not tool_name or str(tool_name).strip().lower() == "unknown"
-            ) and tool_call_id in raw_name_by_id:
+            if (not tool_name or str(tool_name).strip().lower() == "unknown") and tool_call_id in raw_name_by_id:
                 tool_name = raw_name_by_id[tool_call_id]
             tool_args = self.resolve_tool_input(tool_call_id, tool_name, tool_args)
             self.record_tool_call(tool_call_id, tool_name, tool_args)
 
-    def record_tool_documents(
-        self, tool_call_id: str, documents: Iterable[Document]
-    ) -> None:
+    def record_tool_documents(self, tool_call_id: str, documents: Iterable[Document]) -> None:
         """Attach retrieved documents to a previously seen tool call."""
         if not tool_call_id:
             return
@@ -232,11 +219,7 @@ class RunMemory:
     def _document_key(doc: Document) -> Tuple[str, str, str]:
         metadata = doc.metadata or {}
         return (
-            str(
-                metadata.get("document_id")
-                or metadata.get("id")
-                or metadata.get("source", "")
-            ),
+            str(metadata.get("document_id") or metadata.get("id") or metadata.get("source", "")),
             str(metadata.get("path") or metadata.get("file_path") or ""),
             doc.page_content[:200] if doc.page_content else "",
         )

@@ -10,8 +10,8 @@ from typing import Any, Callable, Dict, List, Optional
 from jinja2 import Environment
 
 from src.cli.service_registry import service_registry
-from src.cli.utils.grafana_styling import assign_feedback_palette
 from src.cli.utils.service_builder import DeploymentPlan
+from src.cli.utils.grafana_styling import assign_feedback_palette
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -58,17 +58,13 @@ def get_git_information() -> Dict[str, str]:
 
 def get_git_version() -> str:
     """Get the current git version using 'git describe --tags --always --dirty'."""
-
+    
     try:
-        version = (
-            subprocess.check_output(
-                ["git", "describe", "--tags", "--always", "--dirty"],
-                stderr=subprocess.DEVNULL,
-                cwd=Path(__file__).parent,
-            )
-            .strip()
-            .decode("utf-8")
-        )
+        version = subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            stderr=subprocess.DEVNULL,
+            cwd=Path(__file__).parent
+        ).strip().decode("utf-8")
         return version
     except Exception:
         return "unknown"
@@ -135,9 +131,7 @@ class TemplateManager:
         logger.info(f"Finished preparing deployment artifacts for {plan.name}")
 
     # workflow construction
-    def _build_workflow(
-        self, context: TemplateContext
-    ) -> List[Callable[[TemplateContext], None]]:
+    def _build_workflow(self, context: TemplateContext) -> List[Callable[[TemplateContext], None]]:
         stages: List[Callable[[TemplateContext], None]] = [
             self._stage_prompts,
             self._stage_agents,
@@ -170,9 +164,7 @@ class TemplateManager:
             benchmark_cfg = services_cfg.get("benchmarking", {}) or {}
             agent_md_file = benchmark_cfg.get("agent_md_file")
             if not agent_md_file:
-                raise ValueError(
-                    "Missing required services.benchmarking.agent_md_file in config."
-                )
+                raise ValueError("Missing required services.benchmarking.agent_md_file in config.")
             source_path = Path(str(agent_md_file)).expanduser()
             config_path = Path(str(config.get("_config_path", ""))).expanduser()
             if not source_path.is_absolute() and config_path:
@@ -182,18 +174,14 @@ class TemplateManager:
             if not source_path.exists() or not source_path.is_file():
                 raise ValueError(f"Benchmark agent file not found: {source_path}")
             if source_path.suffix.lower() != ".md":
-                raise ValueError(
-                    f"Benchmark agent file must be a .md file: {source_path}"
-                )
+                raise ValueError(f"Benchmark agent file must be a .md file: {source_path}")
             dst_dir.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, dst_dir / source_path.name)
             return
 
         agents_dir = (services_cfg.get("chat_app") or {}).get("agents_dir")
         if not agents_dir:
-            if dst_dir.exists() and any(
-                p.suffix.lower() == ".md" for p in dst_dir.iterdir()
-            ):
+            if dst_dir.exists() and any(p.suffix.lower() == ".md" for p in dst_dir.iterdir()):
                 return
             raise ValueError("Missing required services.chat_app.agents_dir in config.")
         src_dir = Path(agents_dir).expanduser()
@@ -240,27 +228,23 @@ class TemplateManager:
         defaults_prompts_dir = repo_root / "examples" / "defaults" / "prompts"
         # Deploy to data/prompts/ (admin-editable location)
         deployment_prompts_dir = context.base_dir / "data" / "prompts"
-
+        
         if not defaults_prompts_dir.exists():
-            logger.warning(
-                f"Default prompts directory not found: {defaults_prompts_dir}"
-            )
+            logger.warning(f"Default prompts directory not found: {defaults_prompts_dir}")
             return
-
+        
         # Copy the entire prompts directory structure (condense/, chat/, system/)
         for prompt_type in ["condense", "chat", "system"]:
             src_dir = defaults_prompts_dir / prompt_type
             dst_dir = deployment_prompts_dir / prompt_type
-
+            
             if src_dir.exists():
                 dst_dir.mkdir(parents=True, exist_ok=True)
                 for prompt_file in src_dir.glob("*.prompt"):
                     dst_file = dst_dir / prompt_file.name
                     if not dst_file.exists():  # Don't overwrite existing prompts
                         shutil.copyfile(prompt_file, dst_file)
-                        logger.debug(
-                            f"Copied default prompt: {prompt_type}/{prompt_file.name}"
-                        )
+                        logger.debug(f"Copied default prompt: {prompt_type}/{prompt_file.name}")
 
     def _stage_configs(self, context: TemplateContext) -> None:
         self._render_config_files(context)
@@ -286,9 +270,7 @@ class TemplateManager:
     def _stage_benchmarking(self, context: TemplateContext) -> None:
         query_file = context.pop_option("query_file")
         if not query_file:
-            logger.warning(
-                "Benchmarking requested but no query file provided; skipping copy"
-            )
+            logger.warning("Benchmarking requested but no query file provided; skipping copy")
         else:
             query_file_dest = context.base_dir / "queries.txt"
             shutil.copyfile(query_file, query_file_dest)
@@ -302,9 +284,7 @@ class TemplateManager:
             yaml.dump(git_info, f)
 
     # prompt preparation
-    def _collect_prompt_mappings(
-        self, context: TemplateContext
-    ) -> Dict[str, Dict[str, str]]:
+    def _collect_prompt_mappings(self, context: TemplateContext) -> Dict[str, Dict[str, str]]:
         return {}
 
     def _copy_pipeline_prompts(
@@ -337,9 +317,7 @@ class TemplateManager:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source_path, target_path)
 
-                prompt_mappings[prompt_key] = (
-                    f"/root/archi/data/prompts/{source_path.name}"
-                )
+                prompt_mappings[prompt_key] = f"/root/archi/data/prompts/{source_path.name}"
                 logger.debug(f"Copied prompt {prompt_key} to {target_path}")
 
         return prompt_mappings
@@ -371,14 +349,10 @@ class TemplateManager:
                 if isinstance(benchmark_cfg, dict):
                     agent_md_file = benchmark_cfg.get("agent_md_file")
                     if agent_md_file:
-                        benchmark_cfg["agent_md_file"] = (
-                            f"/root/archi/agents/{Path(str(agent_md_file)).name}"
-                        )
+                        benchmark_cfg["agent_md_file"] = f"/root/archi/agents/{Path(str(agent_md_file)).name}"
 
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
-            config_rendered = config_template.render(
-                verbosity=context.plan.verbosity, **updated_config
-            )
+            config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)
 
             target_name = "config.yaml" if single_mode else f"{name}.yaml"
             with open(configs_path / target_name, "w") as f:
@@ -392,11 +366,7 @@ class TemplateManager:
         grafana_dir.mkdir(exist_ok=True)
 
         grafana_pg_password = context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD")
-        postgres_port = (
-            context.config_manager.config.get("services", {})
-            .get("postgres", {})
-            .get("port", 5432)
-        )
+        postgres_port = context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432)
 
         datasources_template = self.env.get_template(BASE_GRAFANA_DATASOURCES_TEMPLATE)
         datasources = datasources_template.render(
@@ -415,9 +385,7 @@ class TemplateManager:
         configs = context.config_manager.get_configs()
         palette = assign_feedback_palette(configs)
 
-        dashboard_template = self.env.get_template(
-            BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE
-        )
+        dashboard_template = self.env.get_template(BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE)
         dashboard = dashboard_template.render(
             feedback_palette=palette,
         )
@@ -444,33 +412,26 @@ class TemplateManager:
 
         if rubric_dir:
             for problem in range(1, num_problems + 1):
-                rubric_path = (
-                    Path(rubric_dir).expanduser()
-                    / f"solution_with_rubric_{problem}.txt"
-                )
+                rubric_path = Path(rubric_dir).expanduser() / f"solution_with_rubric_{problem}.txt"
                 if rubric_path.exists():
-                    target_path = (
-                        context.base_dir / f"solution_with_rubric_{problem}.txt"
-                    )
+                    target_path = context.base_dir / f"solution_with_rubric_{problem}.txt"
                     shutil.copyfile(rubric_path, target_path)
 
     # postgres + compose rendering
     def _render_postgres_init(self, context: TemplateContext) -> None:
         grafana_enabled = context.plan.get_service("grafana").enabled
         grafana_pg_password = (
-            context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD")
-            if grafana_enabled
-            else ""
+            context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD") if grafana_enabled else ""
         )
-
+        
         # PostgreSQL + pgvector schema
         init_sql_template = self.env.get_template(BASE_INIT_SQL_TEMPLATE)
-
+        
         # Get embedding dimensions from data_manager config
         data_manager_config = context.config_manager.config.get("data_manager", {})
         embedding_class_map = data_manager_config.get("embedding_class_map", {})
         embedding_name = data_manager_config.get("embedding_name", "all-MiniLM-L6-v2")
-
+        
         # Default dimensions based on common embedding models
         default_dimensions = {
             "all-MiniLM-L6-v2": 384,
@@ -479,13 +440,13 @@ class TemplateManager:
             "text-embedding-3-large": 3072,
         }
         embedding_dimensions = default_dimensions.get(embedding_name, 384)
-
+        
         # Allow override from config
         if embedding_name in embedding_class_map:
             embedding_dimensions = embedding_class_map[embedding_name].get(
                 "dimensions", embedding_dimensions
             )
-
+        
         init_sql = init_sql_template.render(
             use_grafana=grafana_enabled,
             grafana_pg_password=grafana_pg_password,
@@ -501,20 +462,14 @@ class TemplateManager:
             f.write(init_sql)
         logger.debug(f"Wrote PostgreSQL init script to {dest}")
 
+
     def _render_compose_file(self, context: TemplateContext) -> None:
         template_vars = context.plan.to_template_vars()
         port_config = self._extract_port_config(context)
         allow_port_reuse = context.get_option("allow_port_reuse", False)
-        self._check_ports_available(
-            context, port_config, allow_port_reuse=allow_port_reuse
-        )
+        self._check_ports_available(context, port_config, allow_port_reuse=allow_port_reuse)
         template_vars.update(port_config)
-        template_vars.setdefault(
-            "postgres_port",
-            context.config_manager.config.get("services", {})
-            .get("postgres", {})
-            .get("port", 5432),
-        )
+        template_vars.setdefault("postgres_port", context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432))
         template_vars.setdefault("verbosity", self.global_verbosity)
 
         template_vars["app_version"] = get_git_version()
@@ -547,7 +502,7 @@ class TemplateManager:
             if service_def.port_config_path:
                 try:
                     config_value: Any = base_config
-                    for key in service_def.port_config_path.split("."):
+                    for key in service_def.port_config_path.split('.'):
                         config_value = config_value[key]
 
                     host_port, container_port = self._resolve_ports_from_config(
@@ -566,19 +521,11 @@ class TemplateManager:
 
         return port_config
 
-    def _check_ports_available(
-        self,
-        context: TemplateContext,
-        port_config: Dict[str, Any],
-        *,
-        allow_port_reuse: bool = False,
-    ) -> None:
+    def _check_ports_available(self, context: TemplateContext, port_config: Dict[str, Any], *, allow_port_reuse: bool = False) -> None:
         host_mode = context.plan.host_mode
         enabled_services = context.plan.get_enabled_services()
         base_config = (context.config_manager.get_configs() or [{}])[0]
-        services_cfg = (
-            base_config.get("services", {}) if isinstance(base_config, dict) else {}
-        )
+        services_cfg = base_config.get("services", {}) if isinstance(base_config, dict) else {}
 
         port_usages: List[tuple[int, str, Optional[str]]] = []
         for service_name in enabled_services:
@@ -591,23 +538,13 @@ class TemplateManager:
             service_def = self.registry.get_service(service_name)
             config_hint = self._service_port_config_hint(service_def, host_mode)
             port_usages.append(
-                (
-                    self._normalize_port(host_port, service_name, config_hint),
-                    service_name,
-                    config_hint,
-                )
+                (self._normalize_port(host_port, service_name, config_hint), service_name, config_hint)
             )
 
         if host_mode and context.plan.get_service("postgres").enabled:
             postgres_port = services_cfg.get("postgres", {}).get("port", 5432)
             port_usages.append(
-                (
-                    self._normalize_port(
-                        postgres_port, "postgres", "services.postgres.port"
-                    ),
-                    "postgres",
-                    "services.postgres.port",
-                )
+                (self._normalize_port(postgres_port, "postgres", "services.postgres.port"), "postgres", "services.postgres.port")
             )
 
         if not port_usages:
@@ -621,20 +558,16 @@ class TemplateManager:
         for port, services in sorted(port_to_services.items()):
             if len(services) > 1:
                 details = ", ".join(
-                    f"{service} ({hint})" if hint else service
-                    for service, hint in services
+                    f"{service} ({hint})" if hint else service for service, hint in services
                 )
-                errors.append(
-                    f"Port {port} is assigned to multiple services: {details}"
-                )
+                errors.append(f"Port {port} is assigned to multiple services: {details}")
 
         if not allow_port_reuse:
             for port, services in sorted(port_to_services.items()):
                 error = self._probe_port(port)
                 if error:
                     details = ", ".join(
-                        f"{service} ({hint})" if hint else service
-                        for service, hint in services
+                        f"{service} ({hint})" if hint else service for service, hint in services
                     )
                     errors.append(f"Port {port} is already in use ({details}): {error}")
 
@@ -647,22 +580,16 @@ class TemplateManager:
         suffix = "port" if host_mode else "external_port"
         return f"{service_def.port_config_path}.{suffix}"
 
-    def _normalize_port(
-        self, port: Any, service_name: str, config_hint: Optional[str]
-    ) -> int:
+    def _normalize_port(self, port: Any, service_name: str, config_hint: Optional[str]) -> int:
         try:
             port_value = int(port)
         except (TypeError, ValueError):
             location = f" ({config_hint})" if config_hint else ""
-            raise ValueError(
-                f"Invalid port value '{port}' for {service_name}{location}"
-            )
+            raise ValueError(f"Invalid port value '{port}' for {service_name}{location}")
 
         if port_value < 1 or port_value > 65535:
             location = f" ({config_hint})" if config_hint else ""
-            raise ValueError(
-                f"Port out of range for {service_name}{location}: {port_value}"
-            )
+            raise ValueError(f"Port out of range for {service_name}{location}: {port_value}")
 
         return port_value
 
@@ -677,8 +604,8 @@ class TemplateManager:
 
     def _get_grader_rubrics(self, config_manager) -> List[str]:
         archi_config = config_manager.get_configs()[0]
-        grader_config = archi_config.get("services", {}).get("grader_app", {})
-        num_problems = grader_config.get("num_problems", 1)
+        grader_config = archi_config.get('services', {}).get('grader_app', {})
+        num_problems = grader_config.get('num_problems', 1)
         return [f"solution_with_rubric_{i}" for i in range(1, num_problems + 1)]
 
     def _apply_host_mode_port_overrides(self, config: Dict[str, Any]) -> None:
@@ -709,11 +636,7 @@ class TemplateManager:
 
         if isinstance(config_value, dict):
             container_port = config_value.get("port", container_port)
-            host_port = (
-                container_port
-                if host_mode
-                else config_value.get("external_port", host_port)
-            )
+            host_port = container_port if host_mode else config_value.get("external_port", host_port)
         else:
             host_port = config_value
 
@@ -725,21 +648,17 @@ class TemplateManager:
         weblists_path = context.base_dir / "weblists"
         weblists_path.mkdir(exist_ok=True)
         logger.debug(f"Created weblists directory at {weblists_path}")
-
+        
         input_lists = context.config_manager.get_input_lists()
         if not input_lists:
             return
 
         for input_list in input_lists:
             if os.path.exists(input_list):
-                shutil.copyfile(
-                    input_list, weblists_path / os.path.basename(input_list)
-                )
+                shutil.copyfile(input_list, weblists_path / os.path.basename(input_list))
                 logger.debug(f"Copied input list {input_list}")
             else:
-                logger.warning(
-                    f"Configured input list {input_list} not found; skipping"
-                )
+                logger.warning(f"Configured input list {input_list} not found; skipping")
 
     def copy_source_code(self, base_dir: Path) -> None:
         # Try to locate the repository root in a robust way. Prefer CWD when
@@ -751,13 +670,10 @@ class TemplateManager:
 
         try:
             import src.cli.utils._repository_info
-
             repo_root = Path(src.cli.utils._repository_info.REPO_PATH)
         except Exception as e:
-            logger.warning(
-                f"Could not import repository path information. {str(e)}",
-                "Falling back to current working directory.",
-            )
+            logger.warning(f"Could not import repository path information. {str(e)}",
+                            "Falling back to current working directory.")
             repo_root = Path(__file__).resolve()
 
         source_files = [
@@ -777,6 +693,4 @@ class TemplateManager:
             elif src_path.exists():
                 shutil.copyfile(src_path, dst_path)
             else:
-                raise FileNotFoundError(
-                    f"Source path {src_path} does not exist. Something went wrong in the repo structure."
-                )
+                raise FileNotFoundError(f"Source path {src_path} does not exist. Something went wrong in the repo structure.")
