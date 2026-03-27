@@ -53,6 +53,17 @@ if [[ -n "${ollama_host}" ]]; then
     exit 1
   fi
 fi
+
+info "Running deployment preflight checks..."
+"${tool}" exec -i -w /root/archi \
+  -e DM_BASE_URL="${DM_BASE_URL}" \
+  -e OLLAMA_URL="${OLLAMA_URL}" \
+  -e OLLAMA_MODEL="${OLLAMA_MODEL}" \
+  "${container_name}" \
+  python3 - < tests/smoke/deploy_preflight.py || {
+    echo "[combined-smoke] WARNING: deploy_preflight checks had failures (continuing)" >&2
+  }
+
 "${tool}" exec -i -w /root/archi \
   -e ARCHI_CONFIG_NAME="${config_name}" \
   -e ARCHI_CONFIG_PATH="/root/archi/configs/${config_name}.yaml" \

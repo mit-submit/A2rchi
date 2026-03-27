@@ -70,6 +70,24 @@ export const mockData = {
       { provider: 'openai', display_name: 'OpenAI', configured: false, has_session_key: false },
     ],
   },
+
+  agents: {
+    agents: [
+      { name: 'CMS Comp Ops', filename: 'cms-comp-ops.md' },
+      { name: 'Test Agent', filename: 'test-agent.md' },
+    ],
+    active_name: 'CMS Comp Ops',
+  },
+
+  agentTemplate: {
+    name: 'New Agent',
+    tools: [
+      { name: 'search_knowledge_base', description: 'Search the knowledge base' },
+      { name: 'search_local_files', description: 'Search uploaded local files' },
+      { name: 'search_metadata_index', description: 'Search the metadata index' },
+    ],
+    template: '---\nname: New Agent\ntools:\n  - search_knowledge_base\n  - search_local_files\n  - search_metadata_index\n---\n\nWrite your system prompt here.\n\n',
+  },
 };
 
 // =============================================================================
@@ -152,6 +170,10 @@ export async function setupBasicMocks(page: Page) {
 
   await page.route('**/api/new_conversation', async (route) => {
     await route.fulfill({ status: 200, json: { conversation_id: null } });
+  });
+
+  await page.route('**/api/agents/list', async (route) => {
+    await route.fulfill({ status: 200, json: mockData.agents });
   });
 }
 

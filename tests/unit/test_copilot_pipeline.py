@@ -7,9 +7,9 @@ and tool registry without requiring the Copilot SDK to be installed.
 import pytest
 
 from src.archi.pipelines.copilot_agent import (
+    _build_tool_restriction_kwargs,
     _build_mcp_servers,
     _build_sdk_provider,
-    _format_history_as_preamble,
 )
 
 
@@ -51,37 +51,6 @@ class TestProviderMapping:
         cfg = {"openai": {"base_url": "https://custom.endpoint/v1"}}
         result = _build_sdk_provider("openai", "gpt-4o", cfg, api_key="k")
         assert result["base_url"] == "https://custom.endpoint/v1"
-
-
-class TestHistoryFormatter:
-    """Task 3.4: conversation history → system message preamble."""
-
-    def test_empty_history(self):
-        assert _format_history_as_preamble([]) == ""
-        assert _format_history_as_preamble(None) == ""
-
-    def test_single_user_message(self):
-        result = _format_history_as_preamble([("user", "Hello")])
-        assert "<conversation_history>" in result
-        assert "[user]: Hello" in result
-        assert "</conversation_history>" in result
-
-    def test_multi_turn(self):
-        history = [
-            ("user", "Hi"),
-            ("assistant", "Hello!"),
-            ("user", "How are you?"),
-        ]
-        result = _format_history_as_preamble(history)
-        assert "[user]: Hi" in result
-        assert "[assistant]: Hello!" in result
-        assert "[user]: How are you?" in result
-
-    def test_speaker_normalization(self):
-        history = [("Human", "test"), ("AI", "response")]
-        result = _format_history_as_preamble(history)
-        assert "[user]: test" in result
-        assert "[assistant]: response" in result
 
 
 class TestMCPPassthrough:
@@ -198,6 +167,71 @@ class TestToolNameAliases:
         assert isinstance(tools, list)
 
 
+class TestToolRestrictions:
+    """Copilot built-in tools must be hard-blocked for Archi sessions."""
+
+    def test_known_builtin_tools_are_explicitly_excluded(self):
+        kwargs = _build_tool_restriction_kwargs()
+
+        # available_tools must NOT be set — an empty list disables custom tools
+        assert "available_tools" not in kwargs
+        assert sorted(kwargs["excluded_tools"]) == sorted([
+            "bash",
+            "edit",
+            "grep",
+            "read_file",
+            "str_replace_editor",
+            "task",
+        ])
+
+
+class TestPermissionRequests:
+    """Only declared Archi custom tools should be approved."""
+
+    def _make_pipeline(self, selected_tool_names=None):
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
+        pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        pipeline.selected_tool_names = list(selected_tool_names or [])
+        return pipeline
+
+    def test_approves_allowed_custom_tool(self):
+        from copilot.generated.session_events import PermissionRequest, PermissionRequestKind
+
+        pipeline = self._make_pipeline(["search_local_files"])
+        request = PermissionRequest(kind=PermissionRequestKind.CUSTOM_TOOL, tool_name="search_local_files")
+
+        result = pipeline._on_permission_request(request, {"toolCallId": "1"})
+
+        assert result.kind == "approved"
+
+    def test_denies_builtin_shell_request(self):
+        from copilot.generated.session_events import PermissionRequest, PermissionRequestKind
+
+        pipeline = self._make_pipeline(["search_local_files"])
+        request = PermissionRequest(
+            kind=PermissionRequestKind.SHELL,
+            tool_name="bash",
+            full_command_text="pwd",
+        )
+
+        result = pipeline._on_permission_request(request, {"toolCallId": "2"})
+
+        assert result.kind == "denied"
+        assert "Only Archi custom tools" in result.message
+
+    def test_denies_custom_tool_not_in_agent_spec(self):
+        from copilot.generated.session_events import PermissionRequest, PermissionRequestKind
+
+        pipeline = self._make_pipeline(["search_local_files"])
+        request = PermissionRequest(kind=PermissionRequestKind.CUSTOM_TOOL, tool_name="read_file")
+
+        result = pipeline._on_permission_request(request, {"toolCallId": "3"})
+
+        assert result.kind == "denied"
+        assert "not allowed" in result.message
+
+
 class TestGetToolRegistrySignature:
     """get_tool_registry and get_tool_descriptions must work when called
     via the same pattern as app.py: agent_cls.method(dummy_instance)."""
@@ -219,3 +253,217 @@ class TestGetToolRegistrySignature:
         assert isinstance(descriptions, dict)
         assert "search_knowledge_base" in descriptions
         assert isinstance(descriptions["search_knowledge_base"], str)
+
+
+class TestSessionConfigOverrides:
+    """Bug #15/#16: per-request provider/model/api_key overrides."""
+
+    def _make_pipeline(self):
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        p.default_provider = "openai"
+        p.default_model = "gpt-4o"
+        p._providers_config = {}
+        p.agent_prompt = "You are a test bot"
+        p.archi_config = {}
+        return p
+
+    def test_default_provider_used_when_no_override(self):
+        p = self._make_pipeline()
+        cfg = p._build_session_config(tools=[], api_key="sk-test")
+        assert cfg["model"] == "gpt-4o"
+        assert cfg["provider"]["type"] == "openai"
+        assert cfg["provider"]["api_key"] == "sk-test"
+
+    def test_provider_override(self):
+        p = self._make_pipeline()
+        cfg = p._build_session_config(
+            tools=[],
+            api_key="ant-key",
+            provider_override="anthropic",
+            model_override="claude-sonnet-4-20250514",
+        )
+        assert cfg["model"] == "claude-sonnet-4-20250514"
+        assert cfg["provider"]["type"] == "anthropic"
+        assert cfg["provider"]["api_key"] == "ant-key"
+
+    def test_partial_override_only_model(self):
+        """If only model is overridden, provider stays default."""
+        p = self._make_pipeline()
+        cfg = p._build_session_config(
+            tools=[],
+            api_key="k",
+            model_override="gpt-4o-mini",
+        )
+        assert cfg["model"] == "gpt-4o-mini"
+        assert cfg["provider"]["type"] == "openai"
+
+    def test_partial_override_only_provider(self):
+        """If only provider is overridden, model stays default."""
+        p = self._make_pipeline()
+        cfg = p._build_session_config(
+            tools=[],
+            api_key="k",
+            provider_override="anthropic",
+        )
+        assert cfg["model"] == "gpt-4o"
+        assert cfg["provider"]["type"] == "anthropic"
+
+    def test_api_key_forwarded(self):
+        """API key is forwarded to provider dict."""
+        p = self._make_pipeline()
+        cfg = p._build_session_config(tools=[], api_key="session-key-123")
+        assert cfg["provider"]["api_key"] == "session-key-123"
+
+
+class TestSessionResume:
+    """Session resume failure should not reuse a bad session_id."""
+
+    def test_session_id_cleared_on_resume_failure(self):
+        """When resume_session() fails, the fallback create_session() should not
+        reuse the old session_id that failed."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
+        p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        p.default_provider = "openai"
+        p.default_model = "gpt-4o"
+        p._providers_config = {}
+        p.agent_prompt = "test"
+        p.archi_config = {}
+        p.selected_tool_names = None
+
+        mock_client = MagicMock()
+        mock_client.resume_session = AsyncMock(side_effect=Exception("session not found"))
+        mock_session = MagicMock()
+        mock_client.create_session = AsyncMock(return_value=mock_session)
+        p._client = mock_client
+
+        adapter = MagicMock()
+
+        loop = asyncio.new_event_loop()
+        config = p._build_session_config(tools=[], api_key=None)
+        session = loop.run_until_complete(
+            p._create_session(adapter, config, session_id="bad-session-id")
+        )
+        loop.close()
+
+        # create_session should NOT have session_id= in its kwargs
+        call_kwargs = mock_client.create_session.call_args
+        assert "session_id" not in call_kwargs.kwargs
+        # But it should still have been called
+        mock_client.create_session.assert_called_once()
+
+
+class TestCustomizeMode:
+    """System message uses customize mode with per-section overrides."""
+
+    def _make_pipeline(self, prompt="You are a test bot"):
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        p.default_provider = "openai"
+        p.default_model = "gpt-4o"
+        p._providers_config = {}
+        p.agent_prompt = prompt
+        p.archi_config = {}
+        return p
+
+    def test_customize_mode_with_identity_section(self):
+        p = self._make_pipeline("You are a CMS computing assistant")
+        cfg = p._build_session_config(tools=[], api_key="k")
+
+        sm = cfg["system_message"]
+        assert sm["mode"] == "customize"
+        assert "sections" in sm
+        assert sm["sections"]["identity"]["action"] == "replace"
+        assert sm["sections"]["identity"]["content"] == "You are a CMS computing assistant"
+
+    def test_no_system_message_without_prompt(self):
+        p = self._make_pipeline(prompt=None)
+        cfg = p._build_session_config(tools=[], api_key="k")
+        sm = cfg["system_message"]
+        assert sm["mode"] == "customize"
+        assert "identity" not in sm["sections"]
+        assert sm["sections"]["tool_instructions"]["action"] == "append"
+
+    def test_sdk_defaults_not_overridden(self):
+        """safety, tool_efficiency, and code_change_rules should stay SDK-managed."""
+        p = self._make_pipeline()
+        cfg = p._build_session_config(tools=[], api_key="k")
+        sections = cfg["system_message"]["sections"]
+        for section in ("safety", "tool_efficiency", "code_change_rules"):
+            assert section not in sections
+
+    def test_tool_instructions_forbid_fake_shell_use(self):
+        p = self._make_pipeline()
+        cfg = p._build_session_config(tools=[], api_key="k")
+
+        section = cfg["system_message"]["sections"]["tool_instructions"]
+        assert section["action"] == "append"
+        assert "Do not claim to have run bash" in section["content"]
+
+    def test_no_history_in_system_message(self):
+        """History is no longer injected — session persistence handles it."""
+        p = self._make_pipeline()
+        cfg = p._build_session_config(tools=[], api_key="k")
+        sm = cfg["system_message"]
+        # No content key at all, just sections
+        assert "content" not in sm or "<conversation_history>" not in str(sm.get("content", ""))
+
+
+class TestErrorHook:
+    """onErrorOccurred hook: retry transient model errors."""
+
+    def _make_pipeline(self):
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        return p
+
+    def test_recoverable_model_error_returns_retry(self):
+        p = self._make_pipeline()
+        result = p._on_error_occurred({
+            "error": "Rate limit exceeded",
+            "errorContext": "model_call",
+            "recoverable": True,
+            "timestamp": 1,
+            "cwd": "/",
+        })
+        assert result is not None
+        assert result["errorHandling"] == "retry"
+        assert result["retryCount"] == 2
+        assert "retry" in result["userNotification"].lower()
+
+    def test_non_recoverable_error_returns_none(self):
+        p = self._make_pipeline()
+        result = p._on_error_occurred({
+            "error": "Invalid API key",
+            "errorContext": "model_call",
+            "recoverable": False,
+            "timestamp": 1,
+            "cwd": "/",
+        })
+        assert result is None
+
+    def test_tool_execution_error_not_retried(self):
+        p = self._make_pipeline()
+        result = p._on_error_occurred({
+            "error": "Tool crashed",
+            "errorContext": "tool_execution",
+            "recoverable": True,
+            "timestamp": 1,
+            "cwd": "/",
+        })
+        # Only model_call errors are retried
+        assert result is None
+
+    def test_system_error_not_retried(self):
+        p = self._make_pipeline()
+        result = p._on_error_occurred({
+            "error": "System error",
+            "errorContext": "system",
+            "recoverable": True,
+            "timestamp": 1,
+            "cwd": "/",
+        })
+        assert result is None

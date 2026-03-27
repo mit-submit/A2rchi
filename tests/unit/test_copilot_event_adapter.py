@@ -51,6 +51,8 @@ def _make_event(event_type, **kwargs):
             "ASSISTANT_USAGE": "assistant.usage",
             "SESSION_IDLE": "session.idle",
             "SESSION_ERROR": "session.error",
+            "TOOL_EXECUTION_START": "tool.execution_start",
+            "TOOL_EXECUTION_COMPLETE": "tool.execution_complete",
         })
 
     _type_map = {
@@ -63,6 +65,8 @@ def _make_event(event_type, **kwargs):
         "assistant.usage": SessionEventType.ASSISTANT_USAGE,
         "session.idle": SessionEventType.SESSION_IDLE,
         "session.error": SessionEventType.SESSION_ERROR,
+        "tool.execution_start": SessionEventType.TOOL_EXECUTION_START,
+        "tool.execution_complete": SessionEventType.TOOL_EXECUTION_COMPLETE,
     }
     ev = MagicMock()
     ev.type = _type_map.get(event_type, event_type)
@@ -180,95 +184,193 @@ class TestThinkingStateMachine:
         assert thinking_start.metadata["step_id"] == thinking_end.metadata["step_id"]
 
 
-class TestToolHooks:
-    """Decision 3: tool events via on_pre_tool_use / on_post_tool_use."""
+class TestToolStreamingEvents:
+    """Tool events via streaming events (tool.execution_start / tool.execution_complete)."""
 
-    def test_pre_tool_use_emits_tool_start(self):
-        adapter = CopilotEventAdapter(FakeAsyncLoop())
-        hook_input = _make_tool_use()
-
-        adapter.on_pre_tool_use(hook_input, {"session_id": "s1"})
-
-        item = adapter._queue.get_nowait()
-        assert isinstance(item, PipelineOutput)
-        assert item.metadata["event_type"] == "tool_start"
-        assert item.metadata["tool_name"] == "my_tool"
-        assert item.metadata["tool_call_id"]  # UUID, not deterministic
-
-    def test_post_tool_use_emits_tool_output(self):
+    def test_tool_execution_start_emits_tool_start(self):
         adapter = CopilotEventAdapter(FakeAsyncLoop())
 
-        # First call pre to register the tool
-        pre_input = _make_tool_use()
-        adapter.on_pre_tool_use(pre_input, {"session_id": "s1"})
-        adapter._queue.get_nowait()  # discard tool_start
+        events = [
+            _make_event(
+                "tool.execution_start",
+                tool_call_id="tc-123",
+                tool_name="my_tool",
+                arguments={"q": "test"},
+            ),
+        ]
+        _fire_events(adapter, events)
 
-        # Now post
-        post_input = _make_tool_use(result="42")
-        adapter.on_post_tool_use(post_input, {"session_id": "s1"})
+        outputs = []
+        while not adapter._queue.empty():
+            item = adapter._queue.get_nowait()
+            if isinstance(item, PipelineOutput):
+                outputs.append(item)
 
-        item = adapter._queue.get_nowait()
-        assert isinstance(item, PipelineOutput)
-        assert item.metadata["event_type"] == "tool_output"
-        assert item.metadata["output"] == "42"
+        tool_starts = [o for o in outputs if o.metadata.get("event_type") == "tool_start"]
+        assert len(tool_starts) == 1
+        assert tool_starts[0].metadata["tool_call_id"] == "tc-123"
+        assert tool_starts[0].metadata["tool_name"] == "my_tool"
+        assert tool_starts[0].metadata["tool_args"] == {"q": "test"}
+
+    def test_tool_execution_complete_emits_tool_output(self):
+        adapter = CopilotEventAdapter(FakeAsyncLoop())
+
+        events = [
+            _make_event(
+                "tool.execution_start",
+                tool_call_id="tc-456",
+                tool_name="search",
+                arguments={"q": "hello"},
+            ),
+            _make_event(
+                "tool.execution_complete",
+                tool_call_id="tc-456",
+                result="found it",
+            ),
+        ]
+        _fire_events(adapter, events)
+
+        outputs = []
+        while not adapter._queue.empty():
+            item = adapter._queue.get_nowait()
+            if isinstance(item, PipelineOutput):
+                outputs.append(item)
+
+        tool_outputs = [o for o in outputs if o.metadata.get("event_type") == "tool_output"]
+        assert len(tool_outputs) == 1
+        assert tool_outputs[0].metadata["tool_call_id"] == "tc-456"
+        assert tool_outputs[0].metadata["output"] == "found it"
 
     def test_tool_calls_recorded_for_metadata(self):
         """Decision 12: tool calls stored in metadata."""
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        pre_input = _make_tool_use(name="search")
-        adapter.on_pre_tool_use(pre_input, {"session_id": "s1"})
-        post_input = _make_tool_use(name="search", result="found it")
-        adapter.on_post_tool_use(post_input, {"session_id": "s1"})
+
+        events = [
+            _make_event(
+                "tool.execution_start",
+                tool_call_id="tc-789",
+                tool_name="search",
+                arguments={"q": "test"},
+            ),
+            _make_event(
+                "tool.execution_complete",
+                tool_call_id="tc-789",
+                result="found it",
+            ),
+        ]
+        _fire_events(adapter, events)
 
         assert len(adapter._tool_calls) == 1
         assert adapter._tool_calls[0].name == "search"
         assert adapter._tool_calls[0].result == "found it"
+        assert adapter._tool_calls[0].id == "tc-789"
 
         final = adapter.build_final_output()
         tc = final.metadata["tool_calls"]
         assert len(tc) == 1
         assert tc[0]["name"] == "search"
         assert tc[0]["result"] == "found it"
+        assert tc[0]["id"] == "tc-789"
 
-    def test_cancelled_pre_tool_use_still_records(self):
+    def test_tool_call_id_correlation(self):
+        """Start and complete events should share the same native toolCallId."""
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        adapter._cancelled = True
-        hook_input = _make_tool_use()
-        adapter.on_pre_tool_use(hook_input, {"session_id": "s1"})
-        # Tool is still recorded even when cancelled
-        assert len(adapter._tool_calls) == 1
 
-    def test_hooks_accept_sdk_calling_convention(self):
-        """SDK calls hooks as handler(input_dict, context_dict) — verify
-        both positional args are accepted without error."""
+        events = [
+            _make_event(
+                "tool.execution_start",
+                tool_call_id="tc-corr-1",
+                tool_name="search",
+                arguments={},
+            ),
+            _make_event(
+                "tool.execution_complete",
+                tool_call_id="tc-corr-1",
+                result="ok",
+            ),
+        ]
+        _fire_events(adapter, events)
+
+        outputs = []
+        while not adapter._queue.empty():
+            item = adapter._queue.get_nowait()
+            if isinstance(item, PipelineOutput):
+                outputs.append(item)
+
+        start_ids = [o.metadata["tool_call_id"] for o in outputs if o.metadata.get("event_type") == "tool_start"]
+        end_ids = [o.metadata["tool_call_id"] for o in outputs if o.metadata.get("event_type") == "tool_output"]
+        assert start_ids == ["tc-corr-1"]
+        assert end_ids == ["tc-corr-1"]
+
+    def test_multiple_concurrent_tools(self):
+        """Multiple tools running concurrently should be tracked independently."""
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        pre_input = {"toolName": "run_query", "toolArgs": {"sql": "SELECT 1"}, "timestamp": 1, "cwd": "/"}
-        context = {"session_id": "sess-123"}
 
-        # Must not raise TypeError
-        adapter.on_pre_tool_use(pre_input, context)
-        item = adapter._queue.get_nowait()
-        assert item.metadata["tool_name"] == "run_query"
-        assert item.metadata["tool_args"] == {"sql": "SELECT 1"}
+        events = [
+            _make_event("tool.execution_start", tool_call_id="tc-a", tool_name="search", arguments={"q": "a"}),
+            _make_event("tool.execution_start", tool_call_id="tc-b", tool_name="fetch", arguments={"url": "b"}),
+            _make_event("tool.execution_complete", tool_call_id="tc-b", result="result-b"),
+            _make_event("tool.execution_complete", tool_call_id="tc-a", result="result-a"),
+        ]
+        _fire_events(adapter, events)
 
-        post_input = {"toolName": "run_query", "toolArgs": {"sql": "SELECT 1"}, "toolResult": "1 row", "timestamp": 2, "cwd": "/"}
-        adapter.on_post_tool_use(post_input, context)
-        item = adapter._queue.get_nowait()
-        assert item.metadata["output"] == "1 row"
+        assert len(adapter._tool_calls) == 2
+        assert adapter._tool_calls[0].id == "tc-a"
+        assert adapter._tool_calls[1].id == "tc-b"
+        # Results are matched by ID, not order
+        assert adapter._tool_calls[0].result == "result-a"
+        assert adapter._tool_calls[1].result == "result-b"
 
-    def test_pre_post_tool_call_id_match(self):
-        """Pre and post hooks for the same tool name should share a call ID."""
+    def test_tool_start_ends_thinking(self):
+        """Tool invocation should end active thinking state."""
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        adapter.on_pre_tool_use({"toolName": "search", "toolArgs": {}, "timestamp": 1, "cwd": "/"}, {})
-        pre_item = adapter._queue.get_nowait()
-        pre_call_id = pre_item.metadata["tool_call_id"]
 
-        adapter.on_post_tool_use({"toolName": "search", "toolArgs": {}, "toolResult": "ok", "timestamp": 2, "cwd": "/"}, {})
-        post_item = adapter._queue.get_nowait()
-        post_call_id = post_item.metadata["tool_call_id"]
+        events = [
+            _make_event("assistant.reasoning_delta", delta_content="Let me think..."),
+            _make_event("tool.execution_start", tool_call_id="tc-x", tool_name="search", arguments={}),
+        ]
+        _fire_events(adapter, events)
 
-        assert pre_call_id == post_call_id
-        assert pre_call_id  # non-empty
+        outputs = []
+        while not adapter._queue.empty():
+            item = adapter._queue.get_nowait()
+            if isinstance(item, PipelineOutput):
+                outputs.append(item)
+
+        event_types = [o.metadata.get("event_type") for o in outputs]
+        assert "thinking_start" in event_types
+        assert "thinking_end" in event_types
+        # thinking_end comes before tool_start
+        thinking_end_idx = event_types.index("thinking_end")
+        tool_start_idx = event_types.index("tool_start")
+        assert thinking_end_idx < tool_start_idx
+
+
+    def test_orphan_tool_complete_logs_warning(self, caplog):
+        """tool.execution_complete without matching start logs a warning."""
+        import logging
+        adapter = CopilotEventAdapter(FakeAsyncLoop())
+
+        events = [
+            _make_event(
+                "tool.execution_complete",
+                tool_call_id="tc-orphan",
+                result="dangling result",
+            ),
+        ]
+        with caplog.at_level(logging.WARNING):
+            _fire_events(adapter, events)
+
+        assert "unknown tool_call_id=tc-orphan" in caplog.text
+        # Still emits tool_output and tool_end events so the UI doesn't hang
+        outputs = []
+        while not adapter._queue.empty():
+            item = adapter._queue.get_nowait()
+            if isinstance(item, PipelineOutput):
+                outputs.append(item)
+        event_types = [o.metadata.get("event_type") for o in outputs]
+        assert "tool_output" in event_types
+        assert "tool_end" in event_types
 
 
 class TestUsageCapture:
@@ -347,3 +449,23 @@ class TestIterOutputsTimeout:
         results = list(adapter.iter_outputs(poll_timeout=0.1))
         assert len(results) == 1
         assert results[0].answer == "ok"
+
+
+class TestSignalDoneUsageWarning:
+    """Bug fix: signal_done logs a warning when no usage data received."""
+
+    def test_warning_when_no_usage(self, caplog):
+        import logging
+        adapter = CopilotEventAdapter(FakeAsyncLoop())
+        assert adapter._usage is None
+        with caplog.at_level(logging.WARNING):
+            adapter.signal_done()
+        assert "No usage data received" in caplog.text
+
+    def test_no_warning_when_usage_present(self, caplog):
+        import logging
+        adapter = CopilotEventAdapter(FakeAsyncLoop())
+        adapter._usage = {"prompt_tokens": 10, "completion_tokens": 5}
+        with caplog.at_level(logging.WARNING):
+            adapter.signal_done()
+        assert "No usage data received" not in caplog.text

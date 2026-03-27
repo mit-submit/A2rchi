@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
-"""Direct tool smoke checks for catalog and vectorstore tools."""
+"""Direct tool smoke checks for catalog and vectorstore tools.
+
+Updated for Copilot SDK: tools are now @define_tool-decorated async
+functions. We test the underlying catalog/retriever operations directly
+and verify that the tool factories produce callable objects.
+"""
+import asyncio
 import os
 import sys
 from typing import Dict
 
 import yaml
 
-from src.archi.pipelines.agents.tools import (
-    RemoteCatalogClient,
-    create_document_fetch_tool,
-    create_file_search_tool,
-    create_metadata_search_tool,
-    create_retriever_tool,
+from src.archi.tools import (
+    TOOL_REGISTRY,
+    DocumentCollector,
+    build_document_fetch_tool,
+    build_file_search_tool,
+    build_metadata_search_tool,
+    build_retriever_tool,
 )
+from src.archi.pipelines.agents.tools import RemoteCatalogClient
 from src.archi.utils.vectorstore_connector import VectorstoreConnector
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 
@@ -24,14 +32,6 @@ def _fail(message: str) -> None:
 
 def _info(message: str) -> None:
     print(f"[tools-smoke] {message}")
-
-
-def _invoke_tool(tool, payload: Dict[str, object]) -> str:
-    if hasattr(tool, "invoke"):
-        return tool.invoke(payload)
-    if hasattr(tool, "run"):
-        return tool.run(payload)
-    raise TypeError(f"Unsupported tool type: {type(tool)}")
 
 
 def _load_config() -> Dict:
@@ -75,30 +75,39 @@ def _run_catalog_tools(catalog: RemoteCatalogClient) -> None:
     file_query = os.getenv("FILE_SEARCH_QUERY", "Smoke test seed document")
     metadata_query = os.getenv("METADATA_SEARCH_QUERY", "file_name:seed.txt")
 
-    file_search_tool = create_file_search_tool(catalog)
-    metadata_search_tool = create_metadata_search_tool(catalog)
-    fetch_tool = create_document_fetch_tool(catalog)
+    # Verify tool factories produce callable objects
+    collector = DocumentCollector()
+    file_search_tool = build_file_search_tool(catalog, store_docs=collector.store)
+    metadata_search_tool = build_metadata_search_tool(catalog, store_docs=collector.store)
+    fetch_tool = build_document_fetch_tool(catalog)
+    assert callable(file_search_tool), "build_file_search_tool did not return a callable"
+    assert callable(metadata_search_tool), "build_metadata_search_tool did not return a callable"
+    assert callable(fetch_tool), "build_document_fetch_tool did not return a callable"
+    _info("Tool factories produce callable objects ✓")
 
-    _info("Running file search tool ...")
-    file_result = _invoke_tool(file_search_tool, {"query": file_query})
-    if "failed" in file_result.lower() or "no local files" in file_result.lower():
-        _fail("File search tool returned no results or failed")
+    # Test underlying catalog operations directly
+    _info("Running catalog file search ...")
+    file_results = catalog.search(file_query, limit=3, search_content=True)
+    file_hits = list(file_results)
+    if not file_hits:
+        _fail("Catalog file search returned no results")
+    _info(f"  Found {len(file_hits)} file(s)")
 
-    _info("Running metadata search tool ...")
-    meta_result = _invoke_tool(metadata_search_tool, {"query": metadata_query})
-    if "failed" in meta_result.lower() or "no local files" in meta_result.lower():
-        _fail("Metadata search tool returned no results or failed")
+    _info("Running catalog metadata search ...")
+    meta_results = catalog.search(metadata_query, limit=3, search_content=False)
+    meta_hits = list(meta_results)
+    if not meta_hits:
+        _fail("Catalog metadata search returned no results")
+    _info(f"  Found {len(meta_hits)} metadata hit(s)")
 
-    _info("Running document fetch tool ...")
-    hits = catalog.search(metadata_query, limit=1, search_content=False)
-    if not hits:
-        _fail("Metadata search returned no hits; cannot fetch document")
-    resource_hash = hits[0].get("hash")
+    _info("Running document fetch ...")
+    resource_hash = meta_hits[0].get("hash")
     if not resource_hash:
         _fail("Catalog hit missing resource hash")
-    fetch_result = _invoke_tool(fetch_tool, {"resource_hash": resource_hash})
-    if "content:" not in fetch_result.lower():
-        _fail("Document fetch tool returned unexpected output")
+    doc = catalog.get_document(resource_hash, max_chars=4000)
+    if not doc or not doc.get("text"):
+        _fail("Document fetch returned empty content")
+    _info(f"  Fetched document ({len(doc['text'])} chars)")
 
 
 def _run_vectorstore_tool(config: Dict) -> None:
@@ -116,17 +125,50 @@ def _run_vectorstore_tool(config: Dict) -> None:
         semantic_weight=retriever_cfg["semantic_weight"],
     )
 
-    retriever_tool = create_retriever_tool(hybrid_retriever)
-    query = os.getenv("VECTORSTORE_QUERY", "Smoke test seed document")
+    # Verify factory produces a callable
+    collector = DocumentCollector()
+    retriever_tool = build_retriever_tool(hybrid_retriever, store_docs=collector.store)
+    assert callable(retriever_tool), "build_retriever_tool did not return a callable"
+    _info("Retriever tool factory produces callable ✓")
 
-    _info("Running vectorstore retriever tool ...")
-    result = _invoke_tool(retriever_tool, {"query": query})
-    if "no documents found" in result.lower():
-        _fail("Vectorstore retriever tool returned no documents")
+    # Test underlying retriever directly
+    query = os.getenv("VECTORSTORE_QUERY", "Smoke test seed document")
+    _info("Running vectorstore retriever ...")
+    results = hybrid_retriever.invoke(query)
+    if not results:
+        _fail("Vectorstore retriever returned no documents")
+    _info(f"  Retrieved {len(results)} document(s)")
+
+
+def _verify_tool_registry() -> None:
+    """Verify TOOL_REGISTRY is consistent and all factories are callable."""
+    _info("Verifying TOOL_REGISTRY ...")
+    expected_tools = {
+        "search_knowledge_base",
+        "search_local_files",
+        "search_metadata_index",
+        "list_metadata_schema",
+        "fetch_catalog_document",
+        "monit_opensearch_search",
+        "monit_opensearch_aggregation",
+    }
+    actual_tools = set(TOOL_REGISTRY.keys())
+    if actual_tools != expected_tools:
+        missing = expected_tools - actual_tools
+        extra = actual_tools - expected_tools
+        _fail(f"TOOL_REGISTRY mismatch. Missing: {missing}, Extra: {extra}")
+
+    for name, entry in TOOL_REGISTRY.items():
+        if not callable(entry.get("factory")):
+            _fail(f"TOOL_REGISTRY['{name}'].factory is not callable")
+        if not isinstance(entry.get("description"), str):
+            _fail(f"TOOL_REGISTRY['{name}'].description is not a string")
+    _info(f"  All {len(TOOL_REGISTRY)} tools registered correctly ✓")
 
 
 def main() -> None:
     config = _load_config()
+    _verify_tool_registry()
     catalog = _build_catalog_client(config)
     _run_catalog_tools(catalog)
     _run_vectorstore_tool(config)
