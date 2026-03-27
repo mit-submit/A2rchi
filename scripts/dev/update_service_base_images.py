@@ -83,11 +83,17 @@ def _update_line(line: str, base_name: str, options: UpdateOptions) -> Tuple[str
     if not stripped.startswith("FROM "):
         return line, False
 
-    match = re.match(r"(?P<intro>\s*FROM\s+(?:--platform=\S+\s+)?)(?P<image>\S+)(?P<suffix>.*)", core)
+    match = re.match(
+        r"(?P<intro>\s*FROM\s+(?:--platform=\S+\s+)?)(?P<image>\S+)(?P<suffix>.*)", core
+    )
     if not match:
         return line, False
 
-    intro, image_spec, suffix = match.group("intro"), match.group("image"), match.group("suffix")
+    intro, image_spec, suffix = (
+        match.group("intro"),
+        match.group("image"),
+        match.group("suffix"),
+    )
     prefix, image, current_tag = _split_image_spec(image_spec)
 
     if image != base_name:
@@ -127,7 +133,7 @@ def update_base_tags(options: UpdateOptions) -> None:
                 new_line, line_changed = _update_line(line, image_name, options)
                 new_lines.append(new_line)
                 file_changed = file_changed or line_changed
-            updated = ''.join(new_lines)
+            updated = "".join(new_lines)
             changed = changed or file_changed
 
         if changed and updated != original:
@@ -137,9 +143,15 @@ def update_base_tags(options: UpdateOptions) -> None:
 
 
 def parse_args() -> UpdateOptions:
-    parser = argparse.ArgumentParser(description="Point service Dockerfiles at the given base image tag.")
+    parser = argparse.ArgumentParser(
+        description="Point service Dockerfiles at the given base image tag."
+    )
     parser.add_argument("--tag", help="Base image tag to reference, e.g. v1.2.3")
-    parser.add_argument("--orig-tag", help="Only update lines using this tag (use 'all' to match any)", default="latest")
+    parser.add_argument(
+        "--orig-tag",
+        help="Only update lines using this tag (use 'all' to match any)",
+        default="latest",
+    )
     parser.add_argument(
         "--switch-source",
         choices=sorted(SOURCE_PREFIXES),

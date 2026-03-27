@@ -12,17 +12,15 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from src.archi.pipelines.agents.tools.monit_opensearch import (
-    MAX_RESULTS_HARD_LIMIT,
-    MONITOpenSearchClient,
-    _format_aggregation_response,
-    _format_opensearch_response,
-)
+    MAX_RESULTS_HARD_LIMIT, MONITOpenSearchClient,
+    _format_aggregation_response, _format_opensearch_response)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 # ── Pydantic input models ────────────────────────────────────────────────
+
 
 class OpenSearchSearchInput(BaseModel):
     query: str = Field(description="Lucene query string.")
@@ -34,8 +32,13 @@ class OpenSearchSearchInput(BaseModel):
 class OpenSearchAggregationInput(BaseModel):
     query: str = Field(description="Lucene query string to filter documents.")
     group_by: str = Field(description="Field to aggregate on.")
-    agg_type: str = Field(default="terms", description="Aggregation type: terms, sum, avg, min, max, cardinality.")
-    top_n: int = Field(default=10, description="Number of top buckets for terms aggregation.")
+    agg_type: str = Field(
+        default="terms",
+        description="Aggregation type: terms, sum, avg, min, max, cardinality.",
+    )
+    top_n: int = Field(
+        default=10, description="Number of top buckets for terms aggregation."
+    )
     from_time: str = Field(default="now-24h", description="Start time (date math).")
     to_time: str = Field(default="now", description="End time (date math).")
 
@@ -46,10 +49,13 @@ SEARCH_TOOL_NAME = "monit_opensearch_search"
 SEARCH_TOOL_DESCRIPTION = "Search MONIT OpenSearch for CMS Rucio events."
 
 AGGREGATION_TOOL_NAME = "monit_opensearch_aggregation"
-AGGREGATION_TOOL_DESCRIPTION = "Run aggregation queries on MONIT OpenSearch for CMS Rucio events."
+AGGREGATION_TOOL_DESCRIPTION = (
+    "Run aggregation queries on MONIT OpenSearch for CMS Rucio events."
+)
 
 
 # ── Factory functions ────────────────────────────────────────────────────
+
 
 def build_monit_search_tool(
     client: MONITOpenSearchClient,
@@ -94,8 +100,12 @@ def build_monit_search_tool(
                 index=index,
             )
             return _format_opensearch_response(
-                response, query.strip(), index, effective_max,
-                from_time=from_time, to_time=to_time,
+                response,
+                query.strip(),
+                index,
+                effective_max,
+                from_time=from_time,
+                to_time=to_time,
             )
         except Exception as e:
             logger.error("OpenSearch query error: %s", e, exc_info=True)
@@ -136,7 +146,9 @@ def build_monit_aggregation_tool(
         from_time = params.from_time
         to_time = params.to_time
         if not query or not query.strip():
-            return "Please provide a non-empty Lucene query (use '*' for all documents)."
+            return (
+                "Please provide a non-empty Lucene query (use '*' for all documents)."
+            )
         if not group_by or not group_by.strip():
             return "Please provide a field to aggregate on (group_by)."
 
@@ -151,8 +163,13 @@ def build_monit_aggregation_tool(
                 index=index,
             )
             return _format_aggregation_response(
-                response, query.strip(), index, group_by.strip(), agg_type,
-                from_time=from_time, to_time=to_time,
+                response,
+                query.strip(),
+                index,
+                group_by.strip(),
+                agg_type,
+                from_time=from_time,
+                to_time=to_time,
             )
         except Exception as e:
             logger.error("OpenSearch aggregation error: %s", e, exc_info=True)

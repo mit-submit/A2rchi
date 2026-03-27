@@ -1,5 +1,5 @@
-import os
 import importlib
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -25,12 +25,22 @@ class ScraperManager:
         global_config = get_global_config()
 
         sources_config = (dm_config or {}).get("sources", {}) or {}
-        links_config = sources_config.get("links", {}) if isinstance(sources_config, dict) else {}
-        selenium_config = links_config.get("selenium_scraper", {}) if isinstance(sources_config, dict) else {}
+        links_config = (
+            sources_config.get("links", {}) if isinstance(sources_config, dict) else {}
+        )
+        selenium_config = (
+            links_config.get("selenium_scraper", {})
+            if isinstance(sources_config, dict)
+            else {}
+        )
 
-        git_config = sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
-        sso_config = sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
-        self.base_depth = links_config.get('base_source_depth', 5)
+        git_config = (
+            sources_config.get("git", {}) if isinstance(sources_config, dict) else {}
+        )
+        sso_config = (
+            sources_config.get("sso", {}) if isinstance(sources_config, dict) else {}
+        )
+        self.base_depth = links_config.get("base_source_depth", 5)
         logger.debug(f"Using base depth of {self.base_depth} for weblist URLs")
 
         scraper_config = {}
@@ -46,7 +56,9 @@ class ScraperManager:
                 logger.warning(f"Invalid max_pages value {raw_max_pages}; ignoring.")
 
         self.links_enabled = True
-        self.git_enabled = git_config.get("enabled", False) if isinstance(git_config, dict) else True
+        self.git_enabled = (
+            git_config.get("enabled", False) if isinstance(git_config, dict) else True
+        )
         self.git_config = git_config if isinstance(git_config, dict) else {}
         self.selenium_config = selenium_config or {}
         self.selenium_enabled = self.selenium_config.get("enabled", False)
@@ -61,16 +73,18 @@ class ScraperManager:
         self.data_path.mkdir(parents=True, exist_ok=True)
 
         self.web_scraper = LinkScraper(
-            verify_urls=self.config.get("verify_urls", False),  # Default to False for broader compatibility
+            verify_urls=self.config.get(
+                "verify_urls", False
+            ),  # Default to False for broader compatibility
             enable_warnings=self.config.get("enable_warnings", False),
         )
         self._git_scraper: Optional["GitScraper"] = None
-          
-    def collect_all_from_config(
-        self, persistence: PersistenceService
-    ) -> None:
+
+    def collect_all_from_config(self, persistence: PersistenceService) -> None:
         """Run the configured scrapers and persist their output."""
-        link_urls, git_urls, sso_urls = self._collect_urls_from_lists_by_type(self.input_lists)
+        link_urls, git_urls, sso_urls = self._collect_urls_from_lists_by_type(
+            self.input_lists
+        )
 
         if git_urls:
             self.git_enabled = True
@@ -99,7 +113,9 @@ class ScraperManager:
         websites_dir = persistence.data_path / "websites"
         if not os.path.exists(websites_dir):
             os.makedirs(websites_dir, exist_ok=True)
-        return self._collect_links_from_urls(link_urls, persistence, websites_dir, max_depth=max_depth)
+        return self._collect_links_from_urls(
+            link_urls, persistence, websites_dir, max_depth=max_depth
+        )
 
     def collect_git(
         self,
@@ -134,24 +150,38 @@ class ScraperManager:
             os.makedirs(sso_dir, exist_ok=True)
         self._collect_sso_from_urls(sso_urls, persistence, sso_dir)
 
-    def schedule_collect_links(self, persistence: PersistenceService, last_run: Optional[str] = None) -> None:
+    def schedule_collect_links(
+        self, persistence: PersistenceService, last_run: Optional[str] = None
+    ) -> None:
         """
         Scheduled collection of link sources.
         For now, this behaves the same as a full collection, overriding last_run depending on the persistence layer.
         """
-        metadata = persistence.catalog.get_metadata_by_filter("source_type", source_type="web", metadata_keys=["url"])
+        metadata = persistence.catalog.get_metadata_by_filter(
+            "source_type", source_type="web", metadata_keys=["url"]
+        )
         catalog_urls = [m[1].get("url", "").strip() for m in metadata]
         catalog_urls = [u for u in catalog_urls if u]
-        logger.info("Scheduled links collection found %d URL(s) in catalog", len(catalog_urls))
+        logger.info(
+            "Scheduled links collection found %d URL(s) in catalog", len(catalog_urls)
+        )
         self.collect_links(persistence, link_urls=catalog_urls)
 
-    def schedule_collect_git(self, persistence: PersistenceService, last_run: Optional[str] = None) -> None:
-        metadata = persistence.catalog.get_metadata_by_filter("source_type", source_type="git", metadata_keys=["url"])
+    def schedule_collect_git(
+        self, persistence: PersistenceService, last_run: Optional[str] = None
+    ) -> None:
+        metadata = persistence.catalog.get_metadata_by_filter(
+            "source_type", source_type="git", metadata_keys=["url"]
+        )
         catalog_urls = [m[1].get("url", "") for m in metadata]
         self.collect_git(persistence, git_urls=catalog_urls)
 
-    def schedule_collect_sso(self, persistence: PersistenceService, last_run: Optional[str] = None) -> None:
-        metadata = persistence.catalog.get_metadata_by_filter("source_type", source_type="sso", metadata_keys=["url"])
+    def schedule_collect_sso(
+        self, persistence: PersistenceService, last_run: Optional[str] = None
+    ) -> None:
+        metadata = persistence.catalog.get_metadata_by_filter(
+            "source_type", source_type="sso", metadata_keys=["url"]
+        )
         catalog_urls = [m[1].get("url", "") for m in metadata]
         self.collect_sso(persistence, sso_urls=catalog_urls)
 
@@ -176,12 +206,12 @@ class ScraperManager:
                 # For standard link collection, don't use selenium for scraping
                 # (SSO urls are handled separately via collect_sso)
                 count = self._handle_standard_url(
-                    url, 
-                    persistence, 
-                    output_dir, 
+                    url,
+                    persistence,
+                    output_dir,
                     max_depth=max_depth if max_depth is not None else self.base_depth,
                     client=None,
-                    use_client_for_scraping=False
+                    use_client_for_scraping=False,
                 )
                 total_count += count
         finally:
@@ -197,7 +227,9 @@ class ScraperManager:
     ) -> None:
         """Collect SSO-protected URLs using selenium for authentication."""
         if not self.selenium_enabled:
-            logger.error("SSO scraping requires data_manager.sources.links.selenium_scraper.enabled")
+            logger.error(
+                "SSO scraping requires data_manager.sources.links.selenium_scraper.enabled"
+            )
             return
         if not read_secret("SSO_USERNAME") or not read_secret("SSO_PASSWORD"):
             logger.error("SSO scraping requires SSO_USERNAME and SSO_PASSWORD secrets")
@@ -207,9 +239,11 @@ class ScraperManager:
             authenticator_class, kwargs = self._resolve_scraper()
             if authenticator_class is not None:
                 authenticator = authenticator_class(**kwargs)
-        
+
         if authenticator is None:
-            logger.error("SSO collection requires a valid selenium scraper configuration")
+            logger.error(
+                "SSO collection requires a valid selenium scraper configuration"
+            )
             return
 
         try:
@@ -222,7 +256,7 @@ class ScraperManager:
                     output_dir,
                     max_depth=self.base_depth,
                     client=authenticator,
-                    use_client_for_scraping=self.scrape_with_selenium
+                    use_client_for_scraping=self.scrape_with_selenium,
                 )
         finally:
             if authenticator is not None:
@@ -265,7 +299,9 @@ class ScraperManager:
 
         return urls
 
-    def _collect_urls_from_lists_by_type(self, input_lists: List[str]) -> tuple[List[str], List[str], List[str]]:
+    def _collect_urls_from_lists_by_type(
+        self, input_lists: List[str]
+    ) -> tuple[List[str], List[str], List[str]]:
         """All types of URLs are in the same input lists, separate them via prefixes"""
         link_urls: List[str] = []
         git_urls: List[str] = []
@@ -279,38 +315,40 @@ class ScraperManager:
                 continue
             link_urls.append(raw_url)
         return link_urls, git_urls, sso_urls
+
     def _resolve_scraper(self):
         class_name = self.selenium_config.get("selenium_class")
         class_map = self.selenium_config.get("selenium_class_map", {})
-        selenium_url = self.selenium_config.get("selenium_url",None)
+        selenium_url = self.selenium_config.get("selenium_url", None)
 
         entry = class_map.get(class_name)
 
-        if not entry: 
-            logger.error(f"Selenium class {class_name} is not defined in the configuration")
+        if not entry:
+            logger.error(
+                f"Selenium class {class_name} is not defined in the configuration"
+            )
             return None, {}
 
         scraper_class = entry.get("class")
         if isinstance(scraper_class, str):
             module_name = entry.get(
-                    "module", 
-                    "src.data_manager.collectors.scrapers.integrations.sso_scraper",
-                    )
+                "module",
+                "src.data_manager.collectors.scrapers.integrations.sso_scraper",
+            )
             module = importlib.import_module(module_name)
             scraper_class = getattr(module, scraper_class)
         scraper_kwargs = entry.get("kwargs", {})
         scraper_kwargs["selenium_url"] = selenium_url
         return scraper_class, scraper_kwargs
 
-
     def _handle_standard_url(
-            self, 
-            url: str, 
-            persistence: PersistenceService, 
-            output_dir: Path, 
-            max_depth: int, 
-            client=None, 
-            use_client_for_scraping: bool = False,
+        self,
+        url: str,
+        persistence: PersistenceService,
+        output_dir: Path,
+        max_depth: int,
+        client=None,
+        use_client_for_scraping: bool = False,
     ) -> int:
         """Scrape a URL and persist resources. Returns count of resources scraped."""
         count = 0
@@ -322,9 +360,7 @@ class ScraperManager:
                 selenium_scrape=use_client_for_scraping,
                 max_pages=self.max_pages,
             ):
-                persistence.persist_resource(
-                    resource, output_dir
-                )
+                persistence.persist_resource(resource, output_dir)
                 count += 1
             logger.info(f"Scraped {count} resources from {url}")
         except Exception as exc:
@@ -360,7 +396,7 @@ class ScraperManager:
     def _get_git_scraper(self) -> "GitScraper":
         if self._git_scraper is None:
             from src.data_manager.collectors.scrapers.integrations.git_scraper import \
-                    GitScraper
+                GitScraper
 
             self._git_scraper = GitScraper(manager=self, git_config=self.git_config)
         return self._git_scraper

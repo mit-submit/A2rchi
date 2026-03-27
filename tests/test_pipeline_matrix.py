@@ -6,6 +6,7 @@ against the same feature matrix to verify interface parity.
 
 Usage:  python tests/test_pipeline_matrix.py
 """
+
 import sys
 import time
 import traceback
@@ -61,6 +62,7 @@ class TestResult:
         self.error = error
         return self
 
+
 results: List[TestResult] = []
 
 
@@ -80,6 +82,7 @@ print("=" * 70)
 print("\nImporting pipeline classes...")
 try:
     from src.archi.pipelines.agents.cms_comp_ops_agent import CMSCompOpsAgent
+
     print("  CMSCompOpsAgent: OK")
 except Exception as e:
     print(f"  CMSCompOpsAgent: FAILED - {e}")
@@ -87,13 +90,13 @@ except Exception as e:
 
 try:
     from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
     print("  CopilotAgentPipeline: OK")
 except Exception as e:
     print(f"  CopilotAgentPipeline: FAILED - {e}")
     sys.exit(1)
 
 from src.archi.utils.output_dataclass import PipelineOutput
-
 
 # ===================================================================
 # TEST MATRIX
@@ -117,7 +120,13 @@ for label, cls in [("LangGraph", CMSCompOpsAgent), ("Copilot", CopilotAgentPipel
 
 # ----- T2: Has required methods -----
 print("\n--- T2: Required methods ---")
-REQUIRED_METHODS = ["invoke", "stream", "astream", "get_tool_registry", "get_tool_descriptions"]
+REQUIRED_METHODS = [
+    "invoke",
+    "stream",
+    "astream",
+    "get_tool_registry",
+    "get_tool_descriptions",
+]
 for label, agent in PIPELINES.items():
     for method in REQUIRED_METHODS:
         r = test(f"T2: has {method}()", label)
@@ -157,7 +166,9 @@ for label, agent in PIPELINES.items():
         elif len(descs) == 0:
             r.fail("empty descriptions")
         else:
-            all_have_desc = all(isinstance(v, str) and len(v) > 0 for v in descs.values())
+            all_have_desc = all(
+                isinstance(v, str) and len(v) > 0 for v in descs.values()
+            )
             r.ok(f"{len(descs)} descriptions, all non-empty={all_have_desc}")
         print(f"  [{label}] {r.passed and 'PASS' or 'FAIL'} — {r.details or r.error}")
     except Exception as e:
@@ -203,7 +214,9 @@ for label, agent in PIPELINES.items():
     try:
         history = [("user", "Say hello")]
         outputs = list(agent.stream(history=history))
-        non_po = [type(o).__name__ for o in outputs if not isinstance(o, PipelineOutput)]
+        non_po = [
+            type(o).__name__ for o in outputs if not isinstance(o, PipelineOutput)
+        ]
         if non_po:
             r.fail(f"non-PipelineOutput types: {non_po}")
         else:
@@ -222,8 +235,7 @@ for label, agent in PIPELINES.items():
         history = [("user", "What is the capital of France? Be brief.")]
         outputs = list(agent.stream(history=history))
         event_types = [
-            o.metadata.get("event_type", "?") if o.metadata else "?"
-            for o in outputs
+            o.metadata.get("event_type", "?") if o.metadata else "?" for o in outputs
         ]
         has_text = "text" in event_types
         has_final = "final" in event_types
@@ -233,7 +245,9 @@ for label, agent in PIPELINES.items():
         elif not has_text:
             r.fail(f"missing 'text' event. Got: {event_types}")
         else:
-            r.ok(f"text={has_text}, final={has_final}, thinking={has_thinking}, all={event_types}")
+            r.ok(
+                f"text={has_text}, final={has_final}, thinking={has_thinking}, all={event_types}"
+            )
         print(f"  [{label}] {r.passed and 'PASS' or 'FAIL'} — {r.details or r.error}")
     except Exception as e:
         r.fail(str(e))
@@ -247,7 +261,9 @@ for label, agent in PIPELINES.items():
     try:
         history = [("user", "Say OK")]
         outputs = list(agent.stream(history=history))
-        finals = [o for o in outputs if o.metadata and o.metadata.get("event_type") == "final"]
+        finals = [
+            o for o in outputs if o.metadata and o.metadata.get("event_type") == "final"
+        ]
         if not finals:
             r.fail("no final event")
         else:
@@ -329,11 +345,12 @@ print("\n--- T12: agent_spec support ---")
 for label, cls in [("LangGraph", CMSCompOpsAgent), ("Copilot", CopilotAgentPipeline)]:
     r = test("T12: agent_spec", label)
     try:
+
         class FakeAgentSpec:
             name = "TestAgent"
             prompt = "You are a pirate. Always respond in pirate speak."
             tools = []
-        
+
         agent_with_spec = cls(
             config=SHARED_CONFIG,
             agent_spec=FakeAgentSpec(),
@@ -346,12 +363,25 @@ for label, cls in [("LangGraph", CMSCompOpsAgent), ("Copilot", CopilotAgentPipel
             r.fail("no final answer")
         else:
             answer_lower = final.answer.lower()
-            pirate_words = ["ahoy", "matey", "arr", "ye", "pirate", "captain", "sea", "ship", "sail", "treasure"]
+            pirate_words = [
+                "ahoy",
+                "matey",
+                "arr",
+                "ye",
+                "pirate",
+                "captain",
+                "sea",
+                "ship",
+                "sail",
+                "treasure",
+            ]
             has_pirate = any(w in answer_lower for w in pirate_words)
             if has_pirate:
                 r.ok(f"pirate_words={has_pirate}, answer='{final.answer[:80]}'")
             else:
-                r.fail(f"agent_spec prompt not reflected — answer='{final.answer[:80]}'")
+                r.fail(
+                    f"agent_spec prompt not reflected — answer='{final.answer[:80]}'"
+                )
         print(f"  [{label}] {r.passed and 'PASS' or 'FAIL'} — {r.details or r.error}")
     except Exception as e:
         r.fail(str(e))
@@ -365,7 +395,9 @@ for label, agent in PIPELINES.items():
     try:
         history = [("user", "Count from 1 to 5.")]
         outputs = list(agent.stream(history=history))
-        text_events = [o for o in outputs if o.metadata and o.metadata.get("event_type") == "text"]
+        text_events = [
+            o for o in outputs if o.metadata and o.metadata.get("event_type") == "text"
+        ]
         if not text_events:
             r.fail("no text events emitted")
         else:
@@ -390,7 +422,9 @@ for label, agent in PIPELINES.items():
             last = outputs[-1]
             is_final = last.metadata and last.metadata.get("event_type") == "final"
             if not is_final:
-                last_type = last.metadata.get("event_type") if last.metadata else "no metadata"
+                last_type = (
+                    last.metadata.get("event_type") if last.metadata else "no metadata"
+                )
                 r.fail(f"last event is '{last_type}', not 'final'")
             else:
                 r.ok(f"final is last of {len(outputs)} events")
@@ -406,12 +440,14 @@ for label, agent in PIPELINES.items():
     r = test("T15: Extra kwargs tolerance", label)
     try:
         history = [("user", "Say OK")]
-        outputs = list(agent.stream(
-            history=history,
-            conversation_id=None,
-            vectorstore=None,
-            user_id=None,
-        ))
+        outputs = list(
+            agent.stream(
+                history=history,
+                conversation_id=None,
+                vectorstore=None,
+                user_id=None,
+            )
+        )
         final = outputs[-1] if outputs else None
         if not final or not final.answer:
             r.fail("no answer with extra None kwargs")
@@ -434,6 +470,7 @@ print("=" * 70)
 
 # Group by test name
 from collections import OrderedDict
+
 matrix: OrderedDict[str, Dict[str, TestResult]] = OrderedDict()
 for r in results:
     if r.name not in matrix:

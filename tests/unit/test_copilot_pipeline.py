@@ -6,11 +6,9 @@ and tool registry without requiring the Copilot SDK to be installed.
 
 import pytest
 
-from src.archi.pipelines.copilot_agent import (
-    _build_tool_restriction_kwargs,
-    _build_mcp_servers,
-    _build_sdk_provider,
-)
+from src.archi.pipelines.copilot_agent import (_build_mcp_servers,
+                                               _build_sdk_provider,
+                                               _build_tool_restriction_kwargs)
 
 
 class TestProviderMapping:
@@ -24,14 +22,18 @@ class TestProviderMapping:
         assert "model" not in result
 
     def test_anthropic_provider(self):
-        result = _build_sdk_provider("anthropic", "claude-sonnet-4-20250514", {}, api_key="key")
+        result = _build_sdk_provider(
+            "anthropic", "claude-sonnet-4-20250514", {}, api_key="key"
+        )
         assert result["type"] == "anthropic"
         assert result["api_key"] == "key"
         assert "model" not in result
 
     def test_openrouter_maps_to_openai(self):
         cfg = {"openrouter": {"base_url": "https://openrouter.ai/api/v1"}}
-        result = _build_sdk_provider("openrouter", "google/gemini-2.0-flash", cfg, api_key="or-key")
+        result = _build_sdk_provider(
+            "openrouter", "google/gemini-2.0-flash", cfg, api_key="or-key"
+        )
         assert result["type"] == "openai"
         assert result["base_url"] == "https://openrouter.ai/api/v1"
         assert result["api_key"] == "or-key"
@@ -139,7 +141,10 @@ class TestToolNameAliases:
 
         # Build a bare pipeline with the old tool name
         pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
-        pipeline.selected_tool_names = ["search_vectorstore_hybrid", "search_local_files"]
+        pipeline.selected_tool_names = [
+            "search_vectorstore_hybrid",
+            "search_local_files",
+        ]
         pipeline.dm_config = {}
         pipeline._catalog_client = None
         pipeline._monit_client = None
@@ -148,6 +153,7 @@ class TestToolNameAliases:
         # no vectorstore or catalog client, but the alias resolution itself
         # should not raise.
         from src.archi.tools import DocumentCollector
+
         tools = pipeline._build_tools(DocumentCollector())
         # No tools built (no vectorstore/catalog), but no crash either
         assert isinstance(tools, list)
@@ -163,6 +169,7 @@ class TestToolNameAliases:
         pipeline._monit_client = None
 
         from src.archi.tools import DocumentCollector
+
         tools = pipeline._build_tools(DocumentCollector())
         assert isinstance(tools, list)
 
@@ -204,17 +211,21 @@ class TestPermissionRequests:
         return pipeline
 
     def test_approves_allowed_custom_tool(self):
-        from copilot.generated.session_events import PermissionRequest, PermissionRequestKind
+        from copilot.generated.session_events import (PermissionRequest,
+                                                      PermissionRequestKind)
 
         pipeline = self._make_pipeline(["search_local_files"])
-        request = PermissionRequest(kind=PermissionRequestKind.CUSTOM_TOOL, tool_name="search_local_files")
+        request = PermissionRequest(
+            kind=PermissionRequestKind.CUSTOM_TOOL, tool_name="search_local_files"
+        )
 
         result = pipeline._on_permission_request(request, {"toolCallId": "1"})
 
         assert result.kind == "approved"
 
     def test_denies_builtin_shell_request(self):
-        from copilot.generated.session_events import PermissionRequest, PermissionRequestKind
+        from copilot.generated.session_events import (PermissionRequest,
+                                                      PermissionRequestKind)
 
         pipeline = self._make_pipeline(["search_local_files"])
         request = PermissionRequest(
@@ -229,10 +240,13 @@ class TestPermissionRequests:
         assert "Only Archi custom tools" in result.message
 
     def test_denies_custom_tool_not_in_agent_spec(self):
-        from copilot.generated.session_events import PermissionRequest, PermissionRequestKind
+        from copilot.generated.session_events import (PermissionRequest,
+                                                      PermissionRequestKind)
 
         pipeline = self._make_pipeline(["search_local_files"])
-        request = PermissionRequest(kind=PermissionRequestKind.CUSTOM_TOOL, tool_name="read_file")
+        request = PermissionRequest(
+            kind=PermissionRequestKind.CUSTOM_TOOL, tool_name="read_file"
+        )
 
         result = pipeline._on_permission_request(request, {"toolCallId": "3"})
 
@@ -268,6 +282,7 @@ class TestSessionConfigOverrides:
 
     def _make_pipeline(self):
         from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = "openai"
         p.default_model = "gpt-4o"
@@ -332,6 +347,7 @@ class TestSessionResume:
         reuse the old session_id that failed."""
         import asyncio
         from unittest.mock import AsyncMock, MagicMock
+
         from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
 
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
@@ -343,7 +359,9 @@ class TestSessionResume:
         p.selected_tool_names = None
 
         mock_client = MagicMock()
-        mock_client.resume_session = AsyncMock(side_effect=Exception("session not found"))
+        mock_client.resume_session = AsyncMock(
+            side_effect=Exception("session not found")
+        )
         mock_session = MagicMock()
         mock_client.create_session = AsyncMock(return_value=mock_session)
         p._client = mock_client
@@ -369,6 +387,7 @@ class TestCustomizeMode:
 
     def _make_pipeline(self, prompt="You are a test bot"):
         from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = "openai"
         p.default_model = "gpt-4o"
@@ -385,7 +404,9 @@ class TestCustomizeMode:
         assert sm["mode"] == "customize"
         assert "sections" in sm
         assert sm["sections"]["identity"]["action"] == "replace"
-        assert sm["sections"]["identity"]["content"] == "You are a CMS computing assistant"
+        assert (
+            sm["sections"]["identity"]["content"] == "You are a CMS computing assistant"
+        )
 
     def test_no_system_message_without_prompt(self):
         p = self._make_pipeline(prompt=None)
@@ -417,7 +438,9 @@ class TestCustomizeMode:
         cfg = p._build_session_config(tools=[], api_key="k")
         sm = cfg["system_message"]
         # No content key at all, just sections
-        assert "content" not in sm or "<conversation_history>" not in str(sm.get("content", ""))
+        assert "content" not in sm or "<conversation_history>" not in str(
+            sm.get("content", "")
+        )
 
 
 class TestErrorHook:
@@ -425,18 +448,21 @@ class TestErrorHook:
 
     def _make_pipeline(self):
         from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         return p
 
     def test_recoverable_model_error_returns_retry(self):
         p = self._make_pipeline()
-        result = p._on_error_occurred({
-            "error": "Rate limit exceeded",
-            "errorContext": "model_call",
-            "recoverable": True,
-            "timestamp": 1,
-            "cwd": "/",
-        })
+        result = p._on_error_occurred(
+            {
+                "error": "Rate limit exceeded",
+                "errorContext": "model_call",
+                "recoverable": True,
+                "timestamp": 1,
+                "cwd": "/",
+            }
+        )
         assert result is not None
         assert result["errorHandling"] == "retry"
         assert result["retryCount"] == 2
@@ -444,34 +470,40 @@ class TestErrorHook:
 
     def test_non_recoverable_error_returns_none(self):
         p = self._make_pipeline()
-        result = p._on_error_occurred({
-            "error": "Invalid API key",
-            "errorContext": "model_call",
-            "recoverable": False,
-            "timestamp": 1,
-            "cwd": "/",
-        })
+        result = p._on_error_occurred(
+            {
+                "error": "Invalid API key",
+                "errorContext": "model_call",
+                "recoverable": False,
+                "timestamp": 1,
+                "cwd": "/",
+            }
+        )
         assert result is None
 
     def test_tool_execution_error_not_retried(self):
         p = self._make_pipeline()
-        result = p._on_error_occurred({
-            "error": "Tool crashed",
-            "errorContext": "tool_execution",
-            "recoverable": True,
-            "timestamp": 1,
-            "cwd": "/",
-        })
+        result = p._on_error_occurred(
+            {
+                "error": "Tool crashed",
+                "errorContext": "tool_execution",
+                "recoverable": True,
+                "timestamp": 1,
+                "cwd": "/",
+            }
+        )
         # Only model_call errors are retried
         assert result is None
 
     def test_system_error_not_retried(self):
         p = self._make_pipeline()
-        result = p._on_error_occurred({
-            "error": "System error",
-            "errorContext": "system",
-            "recoverable": True,
-            "timestamp": 1,
-            "cwd": "/",
-        })
+        result = p._on_error_occurred(
+            {
+                "error": "System error",
+                "errorContext": "system",
+                "recoverable": True,
+                "timestamp": 1,
+                "cwd": "/",
+            }
+        )
         assert result is None

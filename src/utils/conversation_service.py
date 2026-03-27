@@ -4,6 +4,7 @@ ConversationService - Conversation tracking with model/pipeline info.
 This service manages conversation storage with the PostgreSQL-consolidated schema,
 storing model_used and pipeline_used directly instead of config foreign keys.
 """
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,20 +13,17 @@ from uuid import UUID, uuid4
 import psycopg2
 from psycopg2.extras import execute_values
 
-from src.utils.sql import (
-    SQL_INSERT_CONVO,
-    SQL_INSERT_AB_COMPARISON,
-    SQL_UPDATE_AB_PREFERENCE,
-    SQL_GET_AB_COMPARISON,
-    SQL_GET_PENDING_AB_COMPARISON,
-    SQL_DELETE_AB_COMPARISON,
-    SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
-)
+from src.utils.sql import (SQL_DELETE_AB_COMPARISON, SQL_GET_AB_COMPARISON,
+                           SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
+                           SQL_GET_PENDING_AB_COMPARISON,
+                           SQL_INSERT_AB_COMPARISON, SQL_INSERT_CONVO,
+                           SQL_UPDATE_AB_PREFERENCE)
 
 
 @dataclass
 class Message:
     """A conversation message."""
+
     message_id: Optional[int] = None
     conversation_id: str = ""
     sender: str = ""  # 'user' or 'assistant'
@@ -41,11 +39,12 @@ class Message:
 @dataclass
 class ABComparison:
     """An A/B comparison between two model responses."""
+
     comparison_id: Optional[int] = None
     conversation_id: str = ""
     user_prompt_mid: int = 0  # message_id of user prompt
-    response_a_mid: int = 0   # message_id of response A
-    response_b_mid: int = 0   # message_id of response B
+    response_a_mid: int = 0  # message_id of response A
+    response_b_mid: int = 0  # message_id of response B
     model_a: str = ""
     pipeline_a: str = ""
     model_b: str = ""
@@ -59,25 +58,27 @@ class ABComparison:
 class ConversationService:
     """
     Service for managing conversation tracking with model/pipeline info.
-    
+
     Supports:
     - Storing messages with model_used/pipeline_used (no config FK)
     - A/B comparisons with model_a/model_b instead of config_id
     - Batch message insertion for efficiency
     - Conversation history retrieval
     """
-    
-    def __init__(self, connection_pool=None, connection_params: Optional[Dict[str, Any]] = None):
+
+    def __init__(
+        self, connection_pool=None, connection_params: Optional[Dict[str, Any]] = None
+    ):
         """
         Initialize ConversationService.
-        
+
         Args:
             connection_pool: ConnectionPool instance (preferred)
             connection_params: Direct connection parameters (fallback)
         """
         self._pool = connection_pool
         self._conn_params = connection_params
-    
+
     def _get_connection(self):
         """Get a database connection."""
         if self._pool:
@@ -86,43 +87,43 @@ class ConversationService:
             return psycopg2.connect(**self._conn_params)
         else:
             raise ValueError("No connection pool or params provided")
-    
+
     def _release_connection(self, conn):
         """Release connection back to pool."""
         if self._pool:
             self._pool.release_connection(conn)
         else:
             conn.close()
-    
+
     # =========================================================================
     # Message Operations
     # =========================================================================
-    
+
     def insert_message(self, message: Message) -> int:
         """
         Insert a single message.
-        
+
         Args:
             message: Message to insert
-            
+
         Returns:
             message_id of inserted message
         """
         return self.insert_messages([message])[0]
-    
+
     def insert_messages(self, messages: List[Message]) -> List[int]:
         """
         Insert multiple messages in a batch.
-        
+
         Args:
             messages: List of messages to insert
-            
+
         Returns:
             List of message_ids
         """
         if not messages:
             return []
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
@@ -140,12 +141,7 @@ class ConversationService:
                     )
                     for m in messages
                 ]
-                result = execute_values(
-                    cur,
-                    SQL_INSERT_CONVO,
-                    values,
-                    fetch=True
-                )
+                result = execute_values(cur, SQL_INSERT_CONVO, values, fetch=True)
                 conn.commit()
                 return [row[0] for row in result]
         except Exception as e:
@@ -153,7 +149,7 @@ class ConversationService:
             raise
         finally:
             self._release_connection(conn)
-    
+
     def get_conversation_history(
         self,
         conversation_id: str,
@@ -162,12 +158,12 @@ class ConversationService:
     ) -> List[Message]:
         """
         Get conversation history.
-        
+
         Args:
             conversation_id: Conversation to retrieve
             limit: Max messages to return
             offset: Pagination offset
-            
+
         Returns:
             List of Messages ordered by timestamp
         """
@@ -179,13 +175,13 @@ class ConversationService:
             ORDER BY ts ASC
             LIMIT %s OFFSET %s;
         """
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(query, (conversation_id, limit, offset))
                 rows = cur.fetchall()
-                
+
                 return [
                     Message(
                         message_id=row[0],
@@ -203,7 +199,7 @@ class ConversationService:
                 ]
         finally:
             self._release_connection(conn)
-    
+
     def get_user_conversations(
         self,
         user_id: str,
@@ -212,12 +208,12 @@ class ConversationService:
     ) -> List[Dict[str, Any]]:
         """
         Get list of conversations for a user.
-        
+
         Args:
             user_id: User identifier (stored in conversation_id prefix)
             archi_service: Service filter
             limit: Max conversations to return
-            
+
         Returns:
             List of conversation summaries with last message info
         """
@@ -234,13 +230,13 @@ class ConversationService:
             ORDER BY conversation_id, last_message_at DESC
             LIMIT %s;
         """
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(query, (f"user_{user_id}_%", archi_service, limit))
                 rows = cur.fetchall()
-                
+
                 return [
                     {
                         "conversation_id": row[0],
@@ -251,11 +247,11 @@ class ConversationService:
                 ]
         finally:
             self._release_connection(conn)
-    
+
     # =========================================================================
     # A/B Comparison Operations
     # =========================================================================
-    
+
     def create_ab_comparison(
         self,
         conversation_id: str,
@@ -270,7 +266,7 @@ class ConversationService:
     ) -> int:
         """
         Create a new A/B comparison.
-        
+
         Args:
             conversation_id: Conversation this comparison belongs to
             user_prompt_mid: Message ID of user prompt
@@ -281,7 +277,7 @@ class ConversationService:
             model_b: Model identifier for response B
             pipeline_b: Pipeline identifier for response B
             is_config_a_first: Whether response A shown first
-            
+
         Returns:
             comparison_id
         """
@@ -300,7 +296,7 @@ class ConversationService:
                         model_b,
                         pipeline_b,
                         is_config_a_first,
-                    )
+                    ),
                 )
                 comparison_id = cur.fetchone()[0]
                 conn.commit()
@@ -310,7 +306,7 @@ class ConversationService:
             raise
         finally:
             self._release_connection(conn)
-    
+
     def record_ab_preference(
         self,
         comparison_id: int,
@@ -318,20 +314,20 @@ class ConversationService:
     ) -> None:
         """
         Record user's preference for an A/B comparison.
-        
+
         Args:
             comparison_id: ID of comparison
             preference: 'a', 'b', 'tie', or 'skip'
         """
-        if preference not in ('a', 'b', 'tie', 'skip'):
+        if preference not in ("a", "b", "tie", "skip"):
             raise ValueError(f"Invalid preference: {preference}")
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     SQL_UPDATE_AB_PREFERENCE,
-                    (preference, datetime.now(timezone.utc), comparison_id)
+                    (preference, datetime.now(timezone.utc), comparison_id),
                 )
                 conn.commit()
         except Exception as e:
@@ -339,14 +335,14 @@ class ConversationService:
             raise
         finally:
             self._release_connection(conn)
-    
+
     def get_ab_comparison(self, comparison_id: int) -> Optional[ABComparison]:
         """
         Get a specific A/B comparison.
-        
+
         Args:
             comparison_id: ID of comparison
-            
+
         Returns:
             ABComparison or None if not found
         """
@@ -355,10 +351,10 @@ class ConversationService:
             with conn.cursor() as cur:
                 cur.execute(SQL_GET_AB_COMPARISON, (comparison_id,))
                 row = cur.fetchone()
-                
+
                 if not row:
                     return None
-                
+
                 return ABComparison(
                     comparison_id=row[0],
                     conversation_id=row[1],
@@ -376,17 +372,17 @@ class ConversationService:
                 )
         finally:
             self._release_connection(conn)
-    
+
     def get_pending_ab_comparison(
         self,
         conversation_id: str,
     ) -> Optional[ABComparison]:
         """
         Get the most recent pending (unvoted) A/B comparison.
-        
+
         Args:
             conversation_id: Conversation to check
-            
+
         Returns:
             ABComparison or None if no pending comparisons
         """
@@ -395,10 +391,10 @@ class ConversationService:
             with conn.cursor() as cur:
                 cur.execute(SQL_GET_PENDING_AB_COMPARISON, (conversation_id,))
                 row = cur.fetchone()
-                
+
                 if not row:
                     return None
-                
+
                 return ABComparison(
                     comparison_id=row[0],
                     conversation_id=row[1],
@@ -416,29 +412,26 @@ class ConversationService:
                 )
         finally:
             self._release_connection(conn)
-    
+
     def get_conversation_ab_comparisons(
         self,
         conversation_id: str,
     ) -> List[ABComparison]:
         """
         Get all A/B comparisons for a conversation.
-        
+
         Args:
             conversation_id: Conversation to retrieve comparisons for
-            
+
         Returns:
             List of ABComparisons ordered by creation time
         """
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
-                    (conversation_id,)
-                )
+                cur.execute(SQL_GET_AB_COMPARISONS_BY_CONVERSATION, (conversation_id,))
                 rows = cur.fetchall()
-                
+
                 return [
                     ABComparison(
                         comparison_id=row[0],
@@ -459,14 +452,14 @@ class ConversationService:
                 ]
         finally:
             self._release_connection(conn)
-    
+
     def delete_ab_comparison(self, comparison_id: int) -> bool:
         """
         Delete an A/B comparison.
-        
+
         Args:
             comparison_id: ID of comparison to delete
-            
+
         Returns:
             True if deleted, False if not found
         """
@@ -482,11 +475,11 @@ class ConversationService:
             raise
         finally:
             self._release_connection(conn)
-    
+
     # =========================================================================
     # Analytics Queries
     # =========================================================================
-    
+
     def get_model_comparison_stats(
         self,
         model_a: Optional[str] = None,
@@ -496,13 +489,13 @@ class ConversationService:
     ) -> Dict[str, Any]:
         """
         Get aggregated A/B comparison statistics.
-        
+
         Args:
             model_a: Filter by model A (optional)
             model_b: Filter by model B (optional)
             start_date: Start of time range (optional)
             end_date: End of time range (optional)
-            
+
         Returns:
             Dict with statistics: total, preference_counts, win_rates
         """
@@ -519,7 +512,7 @@ class ConversationService:
             WHERE 1=1
         """
         params = []
-        
+
         if model_a:
             query += " AND model_a = %s"
             params.append(model_a)
@@ -532,35 +525,41 @@ class ConversationService:
         if end_date:
             query += " AND created_at <= %s"
             params.append(end_date)
-        
+
         query += " GROUP BY model_a, model_b"
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 rows = cur.fetchall()
-                
+
                 results = []
                 for row in rows:
                     total_voted = row[3] + row[4] + row[5]  # wins_a + wins_b + ties
-                    results.append({
-                        "model_a": row[0],
-                        "model_b": row[1],
-                        "total": row[2],
-                        "wins_a": row[3],
-                        "wins_b": row[4],
-                        "ties": row[5],
-                        "skips": row[6],
-                        "pending": row[7],
-                        "win_rate_a": row[3] / total_voted if total_voted > 0 else 0,
-                        "win_rate_b": row[4] / total_voted if total_voted > 0 else 0,
-                    })
-                
+                    results.append(
+                        {
+                            "model_a": row[0],
+                            "model_b": row[1],
+                            "total": row[2],
+                            "wins_a": row[3],
+                            "wins_b": row[4],
+                            "ties": row[5],
+                            "skips": row[6],
+                            "pending": row[7],
+                            "win_rate_a": (
+                                row[3] / total_voted if total_voted > 0 else 0
+                            ),
+                            "win_rate_b": (
+                                row[4] / total_voted if total_voted > 0 else 0
+                            ),
+                        }
+                    )
+
                 return {"comparisons": results}
         finally:
             self._release_connection(conn)
-    
+
     def get_model_usage_stats(
         self,
         start_date: Optional[datetime] = None,
@@ -569,12 +568,12 @@ class ConversationService:
     ) -> List[Dict[str, Any]]:
         """
         Get model usage statistics from conversations.
-        
+
         Args:
             start_date: Start of time range (optional)
             end_date: End of time range (optional)
             archi_service: Service filter (optional)
-            
+
         Returns:
             List of model usage stats
         """
@@ -589,7 +588,7 @@ class ConversationService:
               AND model_used IS NOT NULL
         """
         params = []
-        
+
         if start_date:
             query += " AND ts >= %s"
             params.append(start_date)
@@ -599,15 +598,15 @@ class ConversationService:
         if archi_service:
             query += " AND archi_service = %s"
             params.append(archi_service)
-        
+
         query += " GROUP BY model_used, pipeline_used ORDER BY message_count DESC"
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 rows = cur.fetchall()
-                
+
                 return [
                     {
                         "model": row[0],

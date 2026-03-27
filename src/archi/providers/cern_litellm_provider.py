@@ -9,12 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from langchain_openai import ChatOpenAI
 
-from src.archi.providers.base import (
-    BaseProvider,
-    ModelInfo,
-    ProviderConfig,
-    ProviderType,
-)
+from src.archi.providers.base import (BaseProvider, ModelInfo, ProviderConfig,
+                                      ProviderType)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)

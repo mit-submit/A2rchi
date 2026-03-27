@@ -4,8 +4,8 @@ Config access helpers that read from ConfigService / Postgres only.
 
 from typing import Any, Dict
 
-from src.utils.postgres_service_factory import PostgresServiceFactory
 from src.utils.config_service import ConfigService
+from src.utils.postgres_service_factory import PostgresServiceFactory
 
 
 class ConfigNotReadyError(RuntimeError):
@@ -15,7 +15,9 @@ class ConfigNotReadyError(RuntimeError):
 def _config_service() -> ConfigService:
     factory = PostgresServiceFactory.get_instance()
     if not factory:
-        raise ConfigNotReadyError("PostgresServiceFactory not initialized. Set it before accessing config.")
+        raise ConfigNotReadyError(
+            "PostgresServiceFactory not initialized. Set it before accessing config."
+        )
     return factory.config_service
 
 

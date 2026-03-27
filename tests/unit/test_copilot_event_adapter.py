@@ -12,11 +12,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.archi.copilot_event_adapter import CopilotEventAdapter, _ToolCallRecord
+from src.archi.copilot_event_adapter import (CopilotEventAdapter,
+                                             _ToolCallRecord)
 from src.archi.utils.output_dataclass import PipelineOutput
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────
+
 
 class FakeAsyncLoop:
     """Minimal stub for AsyncLoopThread used in tests."""
@@ -41,19 +42,23 @@ def _make_event(event_type, **kwargs):
     except ImportError:
         # SDK not installed locally — use a mock enum that matches by value
         from enum import Enum
-        SessionEventType = Enum("SessionEventType", {
-            "ASSISTANT_MESSAGE_DELTA": "assistant.message_delta",
-            "ASSISTANT_STREAMING_DELTA": "assistant.streaming_delta",
-            "ASSISTANT_REASONING_DELTA": "assistant.reasoning_delta",
-            "ASSISTANT_MESSAGE": "assistant.message",
-            "ASSISTANT_REASONING": "assistant.reasoning",
-            "ASSISTANT_TURN_END": "assistant.turn_end",
-            "ASSISTANT_USAGE": "assistant.usage",
-            "SESSION_IDLE": "session.idle",
-            "SESSION_ERROR": "session.error",
-            "TOOL_EXECUTION_START": "tool.execution_start",
-            "TOOL_EXECUTION_COMPLETE": "tool.execution_complete",
-        })
+
+        SessionEventType = Enum(
+            "SessionEventType",
+            {
+                "ASSISTANT_MESSAGE_DELTA": "assistant.message_delta",
+                "ASSISTANT_STREAMING_DELTA": "assistant.streaming_delta",
+                "ASSISTANT_REASONING_DELTA": "assistant.reasoning_delta",
+                "ASSISTANT_MESSAGE": "assistant.message",
+                "ASSISTANT_REASONING": "assistant.reasoning",
+                "ASSISTANT_TURN_END": "assistant.turn_end",
+                "ASSISTANT_USAGE": "assistant.usage",
+                "SESSION_IDLE": "session.idle",
+                "SESSION_ERROR": "session.error",
+                "TOOL_EXECUTION_START": "tool.execution_start",
+                "TOOL_EXECUTION_COMPLETE": "tool.execution_complete",
+            },
+        )
 
     _type_map = {
         "assistant.message_delta": SessionEventType.ASSISTANT_MESSAGE_DELTA,
@@ -114,6 +119,7 @@ def _make_tool_use(*, name="my_tool", args=None, result=None):
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────
+
 
 class TestTextAccumulation:
     """Decision 14: adapter must accumulate message deltas."""
@@ -176,11 +182,15 @@ class TestThinkingStateMachine:
         assert "thinking_end" in event_types
 
         # thinking_end should contain the thinking content
-        thinking_end = [o for o in outputs if o.metadata.get("event_type") == "thinking_end"][0]
+        thinking_end = [
+            o for o in outputs if o.metadata.get("event_type") == "thinking_end"
+        ][0]
         assert "Let me think..." in thinking_end.metadata.get("thinking_content", "")
 
         # thinking_start and thinking_end share the same step_id
-        thinking_start = [o for o in outputs if o.metadata.get("event_type") == "thinking_start"][0]
+        thinking_start = [
+            o for o in outputs if o.metadata.get("event_type") == "thinking_start"
+        ][0]
         assert thinking_start.metadata["step_id"] == thinking_end.metadata["step_id"]
 
 
@@ -206,7 +216,9 @@ class TestToolStreamingEvents:
             if isinstance(item, PipelineOutput):
                 outputs.append(item)
 
-        tool_starts = [o for o in outputs if o.metadata.get("event_type") == "tool_start"]
+        tool_starts = [
+            o for o in outputs if o.metadata.get("event_type") == "tool_start"
+        ]
         assert len(tool_starts) == 1
         assert tool_starts[0].metadata["tool_call_id"] == "tc-123"
         assert tool_starts[0].metadata["tool_name"] == "my_tool"
@@ -236,7 +248,9 @@ class TestToolStreamingEvents:
             if isinstance(item, PipelineOutput):
                 outputs.append(item)
 
-        tool_outputs = [o for o in outputs if o.metadata.get("event_type") == "tool_output"]
+        tool_outputs = [
+            o for o in outputs if o.metadata.get("event_type") == "tool_output"
+        ]
         assert len(tool_outputs) == 1
         assert tool_outputs[0].metadata["tool_call_id"] == "tc-456"
         assert tool_outputs[0].metadata["output"] == "found it"
@@ -297,8 +311,16 @@ class TestToolStreamingEvents:
             if isinstance(item, PipelineOutput):
                 outputs.append(item)
 
-        start_ids = [o.metadata["tool_call_id"] for o in outputs if o.metadata.get("event_type") == "tool_start"]
-        end_ids = [o.metadata["tool_call_id"] for o in outputs if o.metadata.get("event_type") == "tool_output"]
+        start_ids = [
+            o.metadata["tool_call_id"]
+            for o in outputs
+            if o.metadata.get("event_type") == "tool_start"
+        ]
+        end_ids = [
+            o.metadata["tool_call_id"]
+            for o in outputs
+            if o.metadata.get("event_type") == "tool_output"
+        ]
         assert start_ids == ["tc-corr-1"]
         assert end_ids == ["tc-corr-1"]
 
@@ -307,10 +329,24 @@ class TestToolStreamingEvents:
         adapter = CopilotEventAdapter(FakeAsyncLoop())
 
         events = [
-            _make_event("tool.execution_start", tool_call_id="tc-a", tool_name="search", arguments={"q": "a"}),
-            _make_event("tool.execution_start", tool_call_id="tc-b", tool_name="fetch", arguments={"url": "b"}),
-            _make_event("tool.execution_complete", tool_call_id="tc-b", result="result-b"),
-            _make_event("tool.execution_complete", tool_call_id="tc-a", result="result-a"),
+            _make_event(
+                "tool.execution_start",
+                tool_call_id="tc-a",
+                tool_name="search",
+                arguments={"q": "a"},
+            ),
+            _make_event(
+                "tool.execution_start",
+                tool_call_id="tc-b",
+                tool_name="fetch",
+                arguments={"url": "b"},
+            ),
+            _make_event(
+                "tool.execution_complete", tool_call_id="tc-b", result="result-b"
+            ),
+            _make_event(
+                "tool.execution_complete", tool_call_id="tc-a", result="result-a"
+            ),
         ]
         _fire_events(adapter, events)
 
@@ -327,7 +363,12 @@ class TestToolStreamingEvents:
 
         events = [
             _make_event("assistant.reasoning_delta", delta_content="Let me think..."),
-            _make_event("tool.execution_start", tool_call_id="tc-x", tool_name="search", arguments={}),
+            _make_event(
+                "tool.execution_start",
+                tool_call_id="tc-x",
+                tool_name="search",
+                arguments={},
+            ),
         ]
         _fire_events(adapter, events)
 
@@ -345,10 +386,10 @@ class TestToolStreamingEvents:
         tool_start_idx = event_types.index("tool_start")
         assert thinking_end_idx < tool_start_idx
 
-
     def test_orphan_tool_complete_logs_warning(self, caplog):
         """tool.execution_complete without matching start logs a warning."""
         import logging
+
         adapter = CopilotEventAdapter(FakeAsyncLoop())
 
         events = [
@@ -378,11 +419,13 @@ class TestUsageCapture:
 
     def test_capture_usage_dict(self):
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        adapter._capture_usage({
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-            "total_tokens": 150,
-        })
+        adapter._capture_usage(
+            {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+            }
+        )
         assert adapter._usage["prompt_tokens"] == 100
         assert adapter._usage["completion_tokens"] == 50
         assert adapter._usage["total_tokens"] == 150
@@ -398,7 +441,9 @@ class TestUsageCapture:
 
     def test_usage_in_final_output(self):
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        adapter._capture_usage({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+        adapter._capture_usage(
+            {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        )
         final = adapter.build_final_output()
         assert final.metadata["usage"]["total_tokens"] == 15
 
@@ -408,9 +453,14 @@ class TestIterOutputs:
 
     def test_iter_outputs_drains_queue(self):
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        adapter._queue.put(PipelineOutput(answer="a", metadata={"event_type": "text"}, final=False))
-        adapter._queue.put(PipelineOutput(answer="b", metadata={"event_type": "text"}, final=False))
+        adapter._queue.put(
+            PipelineOutput(answer="a", metadata={"event_type": "text"}, final=False)
+        )
+        adapter._queue.put(
+            PipelineOutput(answer="b", metadata={"event_type": "text"}, final=False)
+        )
         from src.archi.copilot_event_adapter import _SENTINEL
+
         adapter._queue.put(_SENTINEL)
 
         results = list(adapter.iter_outputs())
@@ -443,7 +493,9 @@ class TestIterOutputsTimeout:
         """If signal_done() is never called, iter_outputs should still
         return after poll_timeout rather than hanging forever."""
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        adapter._queue.put(PipelineOutput(answer="ok", metadata={"event_type": "text"}, final=False))
+        adapter._queue.put(
+            PipelineOutput(answer="ok", metadata={"event_type": "text"}, final=False)
+        )
         # No sentinel pushed — simulates async session crash
 
         results = list(adapter.iter_outputs(poll_timeout=0.1))
@@ -456,6 +508,7 @@ class TestSignalDoneUsageWarning:
 
     def test_warning_when_no_usage(self, caplog):
         import logging
+
         adapter = CopilotEventAdapter(FakeAsyncLoop())
         assert adapter._usage is None
         with caplog.at_level(logging.WARNING):
@@ -464,6 +517,7 @@ class TestSignalDoneUsageWarning:
 
     def test_no_warning_when_usage_present(self, caplog):
         import logging
+
         adapter = CopilotEventAdapter(FakeAsyncLoop())
         adapter._usage = {"prompt_tokens": 10, "completion_tokens": 5}
         with caplog.at_level(logging.WARNING):

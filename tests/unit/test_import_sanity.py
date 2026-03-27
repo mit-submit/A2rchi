@@ -13,12 +13,15 @@ import pytest
 class TestNoCircularImports:
     """Regression for bug #8: circular import between modules."""
 
-    @pytest.mark.parametrize("module", [
-        "src.archi.archi",
-        "src.archi.copilot_event_adapter",
-        "src.archi.utils.output_dataclass",
-        "src.archi.pipelines.agents.tools.local_files",
-    ])
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "src.archi.archi",
+            "src.archi.copilot_event_adapter",
+            "src.archi.utils.output_dataclass",
+            "src.archi.pipelines.agents.tools.local_files",
+        ],
+    )
     def test_module_imports_cleanly(self, module):
         """Each module must be importable without ImportError in a clean process."""
         result = subprocess.run(

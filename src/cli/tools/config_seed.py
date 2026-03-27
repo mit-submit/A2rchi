@@ -14,10 +14,11 @@ Exits 0 on success, non-zero on failure.
 
 import os
 import sys
+
 import yaml
 
-from src.utils.postgres_service_factory import PostgresServiceFactory
 from src.utils.config_service import ConfigService
+from src.utils.postgres_service_factory import PostgresServiceFactory
 
 
 def load_config(path: str):
@@ -37,7 +38,9 @@ def seed(config: dict, cs: ConfigService):
     # Embedding dimensions fallback TODO why is this here?
     embedding_name = dm.get("embedding_name", "HuggingFaceEmbeddings")
     embedding_class_map = dm.get("embedding_class_map", {})
-    embedding_dimensions = embedding_class_map.get(embedding_name, {}).get("dimensions", 384)
+    embedding_dimensions = embedding_class_map.get(embedding_name, {}).get(
+        "dimensions", 384
+    )
 
     agent_class = services.get("chat_app", {}).get("agent_class")
     provider = services.get("chat_app", {}).get("provider")
@@ -75,7 +78,9 @@ def seed(config: dict, cs: ConfigService):
         hybrid = retrievers.get("hybrid_retriever", {})
         active_model = f"{provider}/{model}" if provider and model else None
         cs.update_dynamic_config(
-            active_pipeline=services.get("chat_app", {}).get("agent_class", "CMSCompOpsAgent"),
+            active_pipeline=services.get("chat_app", {}).get(
+                "agent_class", "CMSCompOpsAgent"
+            ),
             active_model=active_model,
             num_documents_to_retrieve=hybrid.get("num_documents_to_retrieve", 10),
             bm25_weight=hybrid.get("bm25_weight", 0.3),
@@ -93,7 +98,9 @@ def main():
 def seed_entry(config_path: str, env: dict):
     print(f"[config-seed] Loading config from {config_path}")
     config = load_config(config_path)
-    factory = PostgresServiceFactory.from_env(password_override=env.get("PGPASSWORD") or env.get("PG_PASSWORD"))
+    factory = PostgresServiceFactory.from_env(
+        password_override=env.get("PGPASSWORD") or env.get("PG_PASSWORD")
+    )
     PostgresServiceFactory.set_instance(factory)
     cs = factory.config_service
     seed(config, cs)
@@ -106,5 +113,6 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"Config seeding failed: {exc}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

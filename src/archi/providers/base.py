@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 
 class ProviderType(str, Enum):
     """Enumeration of supported provider types."""
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     OPENROUTER = "openrouter"
@@ -30,6 +31,7 @@ class ProviderType(str, Enum):
 @dataclass
 class ModelInfo:
     """Information about a specific model offered by a provider."""
+
     id: str
     name: str
     display_name: str
@@ -38,7 +40,7 @@ class ModelInfo:
     supports_streaming: bool = True
     supports_vision: bool = False
     max_output_tokens: Optional[int] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -55,6 +57,7 @@ class ModelInfo:
 @dataclass
 class ProviderConfig:
     """Configuration for a model provider."""
+
     provider_type: ProviderType
     api_key_env: str = ""
     api_key: Optional[str] = None
@@ -68,51 +71,51 @@ class ProviderConfig:
 class BaseProvider(ABC):
     """
     Abstract base class for LLM providers.
-    
+
     Each provider implementation wraps a specific LLM service (OpenAI, Anthropic, etc.)
     and provides a consistent interface for:
     - Getting chat models
     - Listing available models
     - Validating API credentials
     """
-    
+
     provider_type: ProviderType
     display_name: str
-    
+
     def __init__(self, config: ProviderConfig):
         self.config = config
         self._api_key: Optional[str] = None
         self._load_api_key()
-    
+
     def _load_api_key(self) -> None:
         """Load API key from config or environment."""
         if self.config.api_key:
             self._api_key = self.config.api_key
         elif self.config.api_key_env:
             self._api_key = read_secret(self.config.api_key_env)
-    
+
     @property
     def api_key(self) -> Optional[str]:
         """Get the API key for this provider."""
         return self._api_key
-    
+
     @api_key.setter
     def api_key(self, value: Optional[str]) -> None:
         """Set the API key for this provider dynamically."""
         self._api_key = value
-    
+
     def set_api_key(self, api_key: str) -> None:
         """
         Set the API key for this provider.
-        
+
         This allows runtime configuration of API keys without requiring
         environment variables.
-        
+
         Args:
             api_key: The API key to use for this provider
         """
         self._api_key = api_key
-    
+
     @property
     def is_configured(self) -> bool:
         """Check if the provider has necessary credentials configured."""
@@ -120,47 +123,47 @@ class BaseProvider(ABC):
         if self.provider_type == ProviderType.LOCAL:
             return bool(self.config.base_url)
         return bool(self._api_key)
-    
+
     @property
     def is_enabled(self) -> bool:
         """Check if the provider is enabled and properly configured."""
         return self.config.enabled and self.is_configured
-    
+
     @abstractmethod
     def get_chat_model(self, model_name: str, **kwargs) -> BaseChatModel:
         """
         Get a chat model instance for the specified model.
-        
+
         Args:
             model_name: The name/ID of the model to use
             **kwargs: Additional arguments to pass to the model constructor
-            
+
         Returns:
             A BaseChatModel instance configured for the specified model
         """
         pass
-    
+
     @abstractmethod
     def list_models(self) -> List[ModelInfo]:
         """
         List all available models for this provider.
-        
+
         Returns:
             List of ModelInfo objects describing available models
         """
         pass
-    
+
     def get_model_info(self, model_name: str) -> Optional[ModelInfo]:
         """Get information about a specific model."""
         for model in self.list_models():
             if model.id == model_name or model.name == model_name:
                 return model
         return None
-    
+
     def validate_connection(self) -> bool:
         """
         Test the connection to the provider.
-        
+
         Returns:
             True if the provider is accessible and credentials are valid
         """
@@ -178,7 +181,7 @@ class BaseProvider(ABC):
         except Exception as e:
             logger.warning(f"Provider {self.display_name} validation failed: {e}")
             return False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize provider info to a dictionary."""
         return {

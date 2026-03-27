@@ -6,8 +6,8 @@ from langchain.tools import tool
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
-from src.utils.logging import get_logger
 from src.archi.pipelines.agents.tools.base import require_tool_permission
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -21,9 +21,7 @@ def _normalize_results(
         if isinstance(item, Document):
             normalized.append((item, None))
         elif (
-            isinstance(item, tuple)
-            and len(item) >= 2
-            and isinstance(item[0], Document)
+            isinstance(item, tuple) and len(item) >= 2 and isinstance(item[0], Document)
         ):
             normalized.append((item[0], item[1]))
     return normalized
@@ -41,19 +39,15 @@ def _format_documents_for_llm(
 
     snippets = []
     for idx, (doc, score) in enumerate(docs[:max_documents], start=1):
-        source = (
-            doc.metadata.get("filename")
-            or "unknown source"
-        )
-        hash = (
-            doc.metadata.get("resource_hash")
-            or "n/a"
-        )
+        source = doc.metadata.get("filename") or "unknown source"
+        hash = doc.metadata.get("resource_hash") or "n/a"
         text = doc.page_content.strip()
         if len(text) > max_chars:
             text = f"{text[:max_chars].rstrip()}..."
         header = f"[{idx}] {source} (hash={hash})"
-        footer = f"Score: {score:.4f}" if isinstance(score, (float, int)) else "Score: n/a"
+        footer = (
+            f"Score: {score:.4f}" if isinstance(score, (float, int)) else "Score: n/a"
+        )
         snippets.append(f"{header}\n{footer}\n{text}")
 
     return "\n\n".join(snippets)
@@ -77,7 +71,7 @@ def create_retriever_tool(
     so the calling agent can ground its responses in the vector store content.
     If ``store_docs`` is provided, it will be invoked with the tool name and
     the list of retrieved ``Document`` objects before formatting the response.
-    
+
     Args:
         retriever: The LangChain retriever instance to wrap.
         name: The name of the tool.
@@ -89,14 +83,11 @@ def create_retriever_tool(
             If None, no permission check is performed (allow all).
     """
 
-    tool_description = (
-        description
-        or (
-            "Search the indexed knowledge base for relevant passages.\n"
-            "Input: query string.\n"
-            "Output: ranked snippets with source filename, resource hash, and score.\n"
-            "Example input: \"transfer errors in CMS\"."
-        )
+    tool_description = description or (
+        "Search the indexed knowledge base for relevant passages.\n"
+        "Input: query string.\n"
+        "Output: ranked snippets with source filename, resource hash, and score.\n"
+        'Example input: "transfer errors in CMS".'
     )
 
     @tool(name, description=tool_description)
@@ -107,13 +98,17 @@ def create_retriever_tool(
             try:
                 store_tool_input(name, {"query": query})
             except Exception:
-                logger.debug("Failed to store runtime input for tool '%s'", name, exc_info=True)
+                logger.debug(
+                    "Failed to store runtime input for tool '%s'", name, exc_info=True
+                )
         if query is None or not str(query).strip():
             logger.warning("Retriever tool '%s' received empty query", name)
         results = retriever.invoke(query)
         docs = _normalize_results(results or [])
         if store_docs:
             store_docs(f"{name}: {query}", [doc for doc, _ in docs])
-        return _format_documents_for_llm(docs, max_documents=max_documents, max_chars=max_chars)
+        return _format_documents_for_llm(
+            docs, max_documents=max_documents, max_chars=max_chars
+        )
 
     return _retriever_tool

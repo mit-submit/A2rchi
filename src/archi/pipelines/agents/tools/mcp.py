@@ -1,16 +1,20 @@
 from __future__ import annotations
-from typing import List, Any, Tuple, Optional
 
+from typing import Any, List, Optional, Tuple
+
+from langchain.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
-from langchain.tools import BaseTool
 
 from src.utils.config_access import get_mcp_servers_config
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[BaseTool]]:
+
+async def initialize_mcp_client() -> (
+    Tuple[Optional[MultiServerMCPClient], List[BaseTool]]
+):
     """
     Initializes the MCP client and fetches tool definitions.
     Returns:
@@ -29,13 +33,17 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
         try:
             tools = await client.get_tools(server_name=name)
             for tool in tools:
-                logger.info(f"Loaded tool from MCP server '{name}': {tool.name} - {tool.description}")
+                logger.info(
+                    f"Loaded tool from MCP server '{name}': {tool.name} - {tool.description}"
+                )
             all_tools.extend(tools)
         except Exception as e:
             logger.error(f"Failed to fetch tools from MCP server '{name}': {e}")
             failed_servers[name] = str(e)
 
-    logger.info(f"Active MCP servers: {[n for n in mcp_servers if n not in failed_servers]}")
+    logger.info(
+        f"Active MCP servers: {[n for n in mcp_servers if n not in failed_servers]}"
+    )
     logger.warning(f"Failed MCP servers: {list(failed_servers.keys())}")
 
     return client, all_tools

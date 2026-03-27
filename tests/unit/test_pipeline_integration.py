@@ -7,15 +7,15 @@ and Archi.stream() without requiring a real Copilot SDK session.
 import asyncio
 import queue
 import threading
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
-from src.archi.copilot_event_adapter import CopilotEventAdapter, _SENTINEL
+from src.archi.copilot_event_adapter import _SENTINEL, CopilotEventAdapter
 from src.archi.utils.output_dataclass import PipelineOutput
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────
+
 
 class FakeAsyncLoop:
     """Stub for AsyncLoopThread that runs coroutines inline."""
@@ -40,6 +40,7 @@ class FakeAsyncLoop:
 
 # ── Archi.stream() passthrough tests ──────────────────────────────────────
 
+
 class TestArchiStreamPassthrough:
     """Verify kwargs flow from Archi.stream() → pipeline.stream()."""
 
@@ -48,9 +49,15 @@ class TestArchiStreamPassthrough:
         from src.archi.archi import archi as ArchiClass
 
         mock_pipeline = MagicMock()
-        mock_pipeline.stream = MagicMock(return_value=iter([
-            PipelineOutput(answer="ok", metadata={"event_type": "final"}, final=True),
-        ]))
+        mock_pipeline.stream = MagicMock(
+            return_value=iter(
+                [
+                    PipelineOutput(
+                        answer="ok", metadata={"event_type": "final"}, final=True
+                    ),
+                ]
+            )
+        )
 
         instance = ArchiClass.__new__(ArchiClass)
         instance.pipeline = mock_pipeline
@@ -58,13 +65,15 @@ class TestArchiStreamPassthrough:
         instance.vs_connector = MagicMock()
         instance.vs_connector.get_vectorstore.return_value = MagicMock()
 
-        results = list(instance.stream(
-            history=[("user", "hi")],
-            conversation_id=1,
-            provider="anthropic",
-            model="claude-sonnet-4-20250514",
-            provider_api_key="sk-test",
-        ))
+        results = list(
+            instance.stream(
+                history=[("user", "hi")],
+                conversation_id=1,
+                provider="anthropic",
+                model="claude-sonnet-4-20250514",
+                provider_api_key="sk-test",
+            )
+        )
 
         assert len(results) == 1
         call_kwargs = mock_pipeline.stream.call_args.kwargs
@@ -94,11 +103,13 @@ class TestArchiStreamPassthrough:
 
 # ── Pipeline session config integration tests ─────────────────────────────
 
+
 class TestPipelineSessionConfig:
     """Verify _build_session_config produces correct SDK config."""
 
     def _make_pipeline(self, **overrides):
         from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = overrides.get("provider", "openai")
         p.default_model = overrides.get("model", "gpt-4o")
@@ -119,11 +130,13 @@ class TestPipelineSessionConfig:
         assert "You are helpful" in sys_msg["sections"]["identity"]["content"]
 
     def test_mcp_servers_included_when_configured(self):
-        p = self._make_pipeline(archi_config={
-            "mcp_servers": {
-                "test_server": {"transport": "stdio", "command": "test-cmd"}
+        p = self._make_pipeline(
+            archi_config={
+                "mcp_servers": {
+                    "test_server": {"transport": "stdio", "command": "test-cmd"}
+                }
             }
-        })
+        )
         cfg = p._build_session_config(tools=[], api_key="k")
         assert "mcp_servers" in cfg
         assert "test_server" in cfg["mcp_servers"]
@@ -138,6 +151,7 @@ class TestPipelineSessionConfig:
 
 # ── Adapter → Pipeline output flow ───────────────────────────────────────
 
+
 class TestAdapterOutputFlow:
     """Test that adapter produces correct PipelineOutput sequence."""
 
@@ -145,16 +159,20 @@ class TestAdapterOutputFlow:
         adapter = CopilotEventAdapter(FakeAsyncLoop())
 
         # Simulate: text chunk, then signal done
-        adapter._queue.put(PipelineOutput(
-            answer="Hello ",
-            metadata={"event_type": "text"},
-            final=False,
-        ))
-        adapter._queue.put(PipelineOutput(
-            answer="world",
-            metadata={"event_type": "text"},
-            final=False,
-        ))
+        adapter._queue.put(
+            PipelineOutput(
+                answer="Hello ",
+                metadata={"event_type": "text"},
+                final=False,
+            )
+        )
+        adapter._queue.put(
+            PipelineOutput(
+                answer="world",
+                metadata={"event_type": "text"},
+                final=False,
+            )
+        )
         adapter.signal_done()
 
         outputs = list(adapter.iter_outputs(poll_timeout=2.0))
@@ -168,8 +186,12 @@ class TestAdapterOutputFlow:
         adapter = CopilotEventAdapter(FakeAsyncLoop())
         adapter._response_buffer = "Final answer"
         adapter._tool_calls = [
-            _ToolCallRecord(id="tc-1", name="search_knowledge_base", args={"query": "test"}),
-            _ToolCallRecord(id="tc-2", name="fetch_catalog_document", args={"url": "http://x"}),
+            _ToolCallRecord(
+                id="tc-1", name="search_knowledge_base", args={"query": "test"}
+            ),
+            _ToolCallRecord(
+                id="tc-2", name="fetch_catalog_document", args={"url": "http://x"}
+            ),
         ]
         adapter._tool_calls[0].result = "found docs"
         adapter._tool_calls[1].result = "page content"
@@ -193,12 +215,14 @@ class TestAdapterOutputFlow:
 
 # ── Stream kwargs extraction ──────────────────────────────────────────────
 
+
 class TestStreamKwargsExtraction:
     """Verify CopilotAgentPipeline.stream() correctly extracts per-request
     overrides. Tests the setup logic without running the async session."""
 
     def _make_pipeline(self):
         from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = "openai"
         p.default_model = "gpt-4o"
@@ -216,9 +240,13 @@ class TestStreamKwargsExtraction:
         """Session-provided API key takes precedence over DB-stored key."""
         p = self._make_pipeline()
 
-        with patch.object(p, '_resolve_byok_key', return_value="db-stored-key"), \
-             patch.object(p, '_build_tools', return_value=[]), \
-             patch.object(p, '_build_session_config', return_value={"_tools": []}) as mock_cfg:
+        with (
+            patch.object(p, "_resolve_byok_key", return_value="db-stored-key"),
+            patch.object(p, "_build_tools", return_value=[]),
+            patch.object(
+                p, "_build_session_config", return_value={"_tools": []}
+            ) as mock_cfg,
+        ):
             # Call _build_session_config indirectly by simulating stream setup
             # We replicate the key extraction logic from stream()
             session_api_key = "session-key"
@@ -230,7 +258,7 @@ class TestStreamKwargsExtraction:
         """Without session API key, falls back to DB-stored key."""
         p = self._make_pipeline()
 
-        with patch.object(p, '_resolve_byok_key', return_value="db-key"):
+        with patch.object(p, "_resolve_byok_key", return_value="db-key"):
             session_api_key = None
             db_key = p._resolve_byok_key("u1")
             api_key = session_api_key or db_key

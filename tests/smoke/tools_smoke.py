@@ -5,6 +5,7 @@ Updated for Copilot SDK: tools are now @define_tool-decorated async
 functions. We test the underlying catalog/retriever operations directly
 and verify that the tool factories produce callable objects.
 """
+
 import asyncio
 import os
 import sys
@@ -12,15 +13,10 @@ from typing import Dict
 
 import yaml
 
-from src.archi.tools import (
-    TOOL_REGISTRY,
-    DocumentCollector,
-    build_document_fetch_tool,
-    build_file_search_tool,
-    build_metadata_search_tool,
-    build_retriever_tool,
-)
 from src.archi.pipelines.agents.tools import RemoteCatalogClient
+from src.archi.tools import (TOOL_REGISTRY, DocumentCollector,
+                             build_document_fetch_tool, build_file_search_tool,
+                             build_metadata_search_tool, build_retriever_tool)
 from src.archi.utils.vectorstore_connector import VectorstoreConnector
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 
@@ -78,10 +74,16 @@ def _run_catalog_tools(catalog: RemoteCatalogClient) -> None:
     # Verify tool factories produce callable objects
     collector = DocumentCollector()
     file_search_tool = build_file_search_tool(catalog, store_docs=collector.store)
-    metadata_search_tool = build_metadata_search_tool(catalog, store_docs=collector.store)
+    metadata_search_tool = build_metadata_search_tool(
+        catalog, store_docs=collector.store
+    )
     fetch_tool = build_document_fetch_tool(catalog)
-    assert callable(file_search_tool), "build_file_search_tool did not return a callable"
-    assert callable(metadata_search_tool), "build_metadata_search_tool did not return a callable"
+    assert callable(
+        file_search_tool
+    ), "build_file_search_tool did not return a callable"
+    assert callable(
+        metadata_search_tool
+    ), "build_metadata_search_tool did not return a callable"
     assert callable(fetch_tool), "build_document_fetch_tool did not return a callable"
     _info("Tool factories produce callable objects ✓")
 
@@ -114,9 +116,13 @@ def _run_vectorstore_tool(config: Dict) -> None:
     _map_embedding_classes(config)
     vectorstore = VectorstoreConnector(config).get_vectorstore()
 
-    retriever_cfg = config.get("data_manager", {}).get("retrievers", {}).get("hybrid_retriever")
+    retriever_cfg = (
+        config.get("data_manager", {}).get("retrievers", {}).get("hybrid_retriever")
+    )
     if not retriever_cfg:
-        _fail("Missing data_manager.retrievers.hybrid_retriever config for vectorstore tool")
+        _fail(
+            "Missing data_manager.retrievers.hybrid_retriever config for vectorstore tool"
+        )
 
     hybrid_retriever = HybridRetriever(
         vectorstore=vectorstore,

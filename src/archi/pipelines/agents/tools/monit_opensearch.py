@@ -34,6 +34,7 @@ MAX_OUTPUT_CHARS = 50_000
 
 # ── Client ───────────────────────────────────────────────────────────────────
 
+
 class MONITOpenSearchClient:
     """
     HTTP client for querying OpenSearch via CERN's MONIT Grafana API.
@@ -58,9 +59,7 @@ class MONITOpenSearchClient:
             timeout: Request timeout in seconds.
         """
         if not token:
-            raise ValueError(
-                "MONIT Grafana token must be provided."
-            )
+            raise ValueError("MONIT Grafana token must be provided.")
 
         self.url = url
         self.timeout = timeout
@@ -99,7 +98,9 @@ class MONITOpenSearchClient:
         }
 
         # Format as NDJSON (newline-delimited JSON) for _msearch
-        payload = "\n".join([json.dumps(meta_query), json.dumps(opensearch_query)]) + "\n"
+        payload = (
+            "\n".join([json.dumps(meta_query), json.dumps(opensearch_query)]) + "\n"
+        )
 
         response = requests.post(
             self.url,
@@ -160,9 +161,7 @@ class MONITOpenSearchClient:
                     ],
                 }
             },
-            "sort": [
-                {time_field: {"order": "desc"}}
-            ],
+            "sort": [{time_field: {"order": "desc"}}],
         }
 
         return self.query(opensearch_query, index=index)
@@ -211,7 +210,11 @@ class MONITOpenSearchClient:
             raise ValueError(f"Unsupported aggregation type: {agg_type}")
 
         opensearch_query = self._build_agg_query(
-            lucene_query, agg_clause, time_field, from_time, to_time,
+            lucene_query,
+            agg_clause,
+            time_field,
+            from_time,
+            to_time,
         )
 
         result = self.query(opensearch_query, index=index)
@@ -228,11 +231,16 @@ class MONITOpenSearchClient:
             if not buckets:
                 logger.debug(
                     "No buckets for '%s.keyword'; retrying with raw field '%s'",
-                    group_by, group_by,
+                    group_by,
+                    group_by,
                 )
                 agg_clause = {"terms": {"field": group_by, "size": top_n}}
                 opensearch_query = self._build_agg_query(
-                    lucene_query, agg_clause, time_field, from_time, to_time,
+                    lucene_query,
+                    agg_clause,
+                    time_field,
+                    from_time,
+                    to_time,
                 )
                 result = self.query(opensearch_query, index=index)
 
@@ -279,6 +287,7 @@ class MONITOpenSearchClient:
 
 
 # ── Response formatting helpers ──────────────────────────────────────────────
+
 
 def _format_opensearch_response(
     response: Dict[str, Any],
@@ -361,7 +370,9 @@ def _format_opensearch_response(
 
     # Truncate if output is too large
     if len(output) > MAX_OUTPUT_CHARS:
-        output = output[:MAX_OUTPUT_CHARS] + "\n\n... [OUTPUT TRUNCATED - too many results]"
+        output = (
+            output[:MAX_OUTPUT_CHARS] + "\n\n... [OUTPUT TRUNCATED - too many results]"
+        )
 
     return output
 
@@ -382,9 +393,17 @@ def _append_fields(
         for key, value in obj.items():
             full_key = f"{prefix}{key}" if not prefix else f"{prefix}.{key}"
             if isinstance(value, dict):
-                _append_fields(lines, value, indent=indent, prefix=full_key, max_depth=max_depth - 1)
+                _append_fields(
+                    lines,
+                    value,
+                    indent=indent,
+                    prefix=full_key,
+                    max_depth=max_depth - 1,
+                )
             elif isinstance(value, list):
-                if len(value) <= 5 and all(not isinstance(v, (dict, list)) for v in value):
+                if len(value) <= 5 and all(
+                    not isinstance(v, (dict, list)) for v in value
+                ):
                     lines.append(f"{pad}{full_key}: {value}")
                 else:
                     lines.append(f"{pad}{full_key}: [{len(value)} items]")
@@ -465,6 +484,7 @@ def _format_aggregation_response(
 
 # ── Tool description builders ────────────────────────────────────────────────
 
+
 def _build_search_tool_description(index: str, skill: Optional[str] = None) -> str:
     """Build the description for a search tool, optionally appending a skill."""
     base = (
@@ -499,6 +519,7 @@ def _build_aggregation_tool_description(index: str, skill: Optional[str] = None)
 
 
 # ── Tool factories ───────────────────────────────────────────────────────────
+
 
 def create_monit_opensearch_search_tool(
     client: MONITOpenSearchClient,
@@ -554,8 +575,12 @@ def create_monit_opensearch_search_tool(
                 index=index,
             )
             return _format_opensearch_response(
-                response, query.strip(), index, effective_max,
-                from_time=from_time, to_time=to_time,
+                response,
+                query.strip(),
+                index,
+                effective_max,
+                from_time=from_time,
+                to_time=to_time,
             )
 
         except requests.exceptions.Timeout:
@@ -565,7 +590,9 @@ def create_monit_opensearch_search_tool(
                 "Try narrowing the time range or making the query more specific."
             )
         except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code if e.response is not None else "unknown"
+            status_code = (
+                e.response.status_code if e.response is not None else "unknown"
+            )
             logger.warning("OpenSearch HTTP error %s for query: %s", status_code, query)
             if status_code in (401, 403):
                 return "Authentication failed. The token may be invalid or expired."
@@ -622,7 +649,9 @@ def create_monit_opensearch_aggregation_tool(
             Formatted aggregation results.
         """
         if not query or not query.strip():
-            return "Please provide a non-empty Lucene query (use '*' for all documents)."
+            return (
+                "Please provide a non-empty Lucene query (use '*' for all documents)."
+            )
 
         if not group_by or not group_by.strip():
             return "Please provide a field to aggregate on (group_by)."
@@ -638,21 +667,30 @@ def create_monit_opensearch_aggregation_tool(
                 index=index,
             )
             return _format_aggregation_response(
-                response, query.strip(), index, group_by.strip(), agg_type,
-                from_time=from_time, to_time=to_time,
+                response,
+                query.strip(),
+                index,
+                group_by.strip(),
+                agg_type,
+                from_time=from_time,
+                to_time=to_time,
             )
 
         except requests.exceptions.Timeout:
             logger.warning("OpenSearch aggregation timed out for query: %s", query)
-            return (
-                "Aggregation timed out. Try narrowing the time range or simplifying the query."
-            )
+            return "Aggregation timed out. Try narrowing the time range or simplifying the query."
         except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code if e.response is not None else "unknown"
-            logger.warning("OpenSearch HTTP error %s for aggregation: %s", status_code, query)
+            status_code = (
+                e.response.status_code if e.response is not None else "unknown"
+            )
+            logger.warning(
+                "OpenSearch HTTP error %s for aggregation: %s", status_code, query
+            )
             if status_code in (401, 403):
                 return "Authentication failed. The token may be invalid or expired."
-            return f"Aggregation failed with HTTP error {status_code}. Please try again."
+            return (
+                f"Aggregation failed with HTTP error {status_code}. Please try again."
+            )
         except Exception as e:
             logger.error("OpenSearch aggregation error: %s", e, exc_info=True)
             return f"Error running aggregation: {e}"

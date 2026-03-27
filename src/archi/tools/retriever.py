@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 # ── Helpers (shared with old code, no changes) ────────────────────────────
 
+
 def _normalize_results(
     results: Iterable[object],
 ) -> Sequence[Tuple[Document, Optional[float]]]:
@@ -27,9 +28,7 @@ def _normalize_results(
         if isinstance(item, Document):
             normalized.append((item, None))
         elif (
-            isinstance(item, tuple)
-            and len(item) >= 2
-            and isinstance(item[0], Document)
+            isinstance(item, tuple) and len(item) >= 2 and isinstance(item[0], Document)
         ):
             normalized.append((item[0], item[1]))
     return normalized
@@ -52,13 +51,16 @@ def _format_documents_for_llm(
         if len(text) > max_chars:
             text = f"{text[:max_chars].rstrip()}..."
         header = f"[{idx}] {source} (hash={hash_val})"
-        footer = f"Score: {score:.4f}" if isinstance(score, (float, int)) else "Score: n/a"
+        footer = (
+            f"Score: {score:.4f}" if isinstance(score, (float, int)) else "Score: n/a"
+        )
         snippets.append(f"{header}\n{footer}\n{text}")
 
     return "\n\n".join(snippets)
 
 
 # ── Pydantic input model ─────────────────────────────────────────────────
+
 
 class RetrieverInput(BaseModel):
     query: str = Field(description="Search query for the knowledge base.")

@@ -16,11 +16,8 @@ from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
 from src.archi.pipelines.agents.tools.local_files import (
-    RemoteCatalogClient,
-    _format_grep_hits,
-    _format_files_for_llm,
-    _render_metadata_preview,
-)
+    RemoteCatalogClient, _format_files_for_llm, _format_grep_hits,
+    _render_metadata_preview)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -28,11 +25,14 @@ logger = get_logger(__name__)
 
 # ── Pydantic input models ────────────────────────────────────────────────
 
+
 class FileSearchInput(BaseModel):
     query: str = Field(description="Search query string.")
     regex: bool = Field(default=False, description="Treat query as regex.")
     case_sensitive: bool = Field(default=False, description="Case-sensitive search.")
-    max_results_override: Optional[int] = Field(default=None, description="Override default max results.")
+    max_results_override: Optional[int] = Field(
+        default=None, description="Override default max results."
+    )
     max_matches_per_file: int = Field(default=3, description="Max matches per file.")
     before: int = Field(default=0, description="Context lines before match.")
     after: int = Field(default=0, description="Context lines after match.")
@@ -87,6 +87,7 @@ DOCUMENT_FETCH_DESCRIPTION = (
 
 # ── Factory functions ────────────────────────────────────────────────────
 
+
 def build_file_search_tool(
     catalog: RemoteCatalogClient,
     *,
@@ -135,7 +136,9 @@ def build_file_search_tool(
             for item in hits:
                 try:
                     resource_hash = item.get("hash")
-                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
+                    doc_payload = (
+                        catalog.get_document(resource_hash, max_chars=4000) or {}
+                    )
                     text = doc_payload.get("text") or ""
                     doc_meta = doc_payload.get("metadata") or item.get("metadata") or {}
                     docs.append(Document(page_content=text, metadata=doc_meta))
@@ -172,7 +175,9 @@ def build_metadata_search_tool(
         docs: List[Document] = []
 
         try:
-            results = catalog.search(query.strip(), limit=max_results, search_content=False)
+            results = catalog.search(
+                query.strip(), limit=max_results, search_content=False
+            )
         except Exception as exc:
             logger.warning("Metadata search failed: %s", exc)
             return "Metadata search failed."
@@ -180,7 +185,9 @@ def build_metadata_search_tool(
         for item in results:
             resource_hash = item.get("hash")
             path = Path(item.get("path", "")) if item.get("path") else Path("")
-            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            metadata = (
+                item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            )
             snippet = item.get("snippet") or ""
             hits.append((resource_hash, path, metadata, snippet))
             if len(hits) >= max_results:
@@ -189,7 +196,9 @@ def build_metadata_search_tool(
         if store_docs and hits:
             for resource_hash, path, metadata, _ in hits:
                 try:
-                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
+                    doc_payload = (
+                        catalog.get_document(resource_hash, max_chars=4000) or {}
+                    )
                     text = doc_payload.get("text") or ""
                     doc_meta = doc_payload.get("metadata") or metadata or {}
                     docs.append(Document(page_content=text, metadata=doc_meta))
@@ -252,7 +261,9 @@ def build_document_fetch_tool(
             return "Please provide a non-empty resource hash."
 
         try:
-            doc_payload = catalog.get_document(resource_hash.strip(), max_chars=max_chars) or {}
+            doc_payload = (
+                catalog.get_document(resource_hash.strip(), max_chars=max_chars) or {}
+            )
         except Exception as exc:
             logger.warning("Document fetch failed: %s", exc)
             return "Document fetch failed."
@@ -261,14 +272,14 @@ def build_document_fetch_tool(
             return "Document not found."
 
         path = doc_payload.get("path") or ""
-        metadata = doc_payload.get("metadata") if isinstance(doc_payload.get("metadata"), dict) else {}
+        metadata = (
+            doc_payload.get("metadata")
+            if isinstance(doc_payload.get("metadata"), dict)
+            else {}
+        )
         text = doc_payload.get("text") or ""
         meta_preview = _render_metadata_preview(metadata)
 
-        return (
-            f"Path: {path}\n"
-            f"Metadata:\n{meta_preview}\n\n"
-            f"Content:\n{text}"
-        )
+        return f"Path: {path}\n" f"Metadata:\n{meta_preview}\n\n" f"Content:\n{text}"
 
     return _fetch_document

@@ -14,11 +14,17 @@ class TestCollectFromClientErrorHandling:
 
     def _make_manager(self):
         """Create a TicketManager with mocked config dependencies."""
-        with patch("src.data_manager.collectors.tickets.ticket_manager.get_global_config") as mock_gc:
+        with patch(
+            "src.data_manager.collectors.tickets.ticket_manager.get_global_config"
+        ) as mock_gc:
             mock_gc.return_value = {"DATA_PATH": "/tmp/test_data"}
             with patch("src.data_manager.collectors.tickets.ticket_manager.JiraClient"):
-                with patch("src.data_manager.collectors.tickets.ticket_manager.RedmineClient"):
-                    from src.data_manager.collectors.tickets.ticket_manager import TicketManager
+                with patch(
+                    "src.data_manager.collectors.tickets.ticket_manager.RedmineClient"
+                ):
+                    from src.data_manager.collectors.tickets.ticket_manager import \
+                        TicketManager
+
                     dm_config = {
                         "sources": {
                             "jira": {"enabled": False},
@@ -47,7 +53,8 @@ class TestCollectFromClientErrorHandling:
 
         # Should NOT raise — the exception should be caught
         manager._collect_from_client(
-            mock_client, "Redmine",
+            mock_client,
+            "Redmine",
             persistence=persistence,
             overwrite=False,
             projects=["test-project"],
@@ -67,7 +74,8 @@ class TestCollectFromClientErrorHandling:
 
         # Should NOT raise
         manager._collect_from_client(
-            mock_client, "JIRA",
+            mock_client,
+            "JIRA",
             persistence=persistence,
             overwrite=False,
             projects=["test-project"],
@@ -84,7 +92,8 @@ class TestCollectFromClientErrorHandling:
         mock_client.collect.return_value = iter(resources)
 
         manager._collect_from_client(
-            mock_client, "JIRA",
+            mock_client,
+            "JIRA",
             persistence=persistence,
             overwrite=False,
             projects=["proj-a", "proj-b"],
@@ -97,7 +106,8 @@ class TestCollectFromClientErrorHandling:
         persistence = MagicMock()
 
         manager._collect_from_client(
-            None, "Redmine",
+            None,
+            "Redmine",
             persistence=persistence,
             overwrite=False,
             projects=["test"],
@@ -113,7 +123,8 @@ class TestCollectFromClientErrorHandling:
         mock_client.collect.return_value = iter([])
 
         manager._collect_from_client(
-            mock_client, "JIRA",
+            mock_client,
+            "JIRA",
             persistence=persistence,
             overwrite=False,
             projects=["my-project"],
@@ -129,7 +140,8 @@ class TestCollectFromClientErrorHandling:
         mock_client.collect.return_value = iter([])
 
         manager._collect_from_client(
-            mock_client, "Redmine",
+            mock_client,
+            "Redmine",
             persistence=persistence,
             overwrite=False,
             projects=["infra-project"],

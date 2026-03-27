@@ -54,6 +54,7 @@ def warn(name, condition, detail=""):
 # 1. Required environment variables
 # ---------------------------------------------------------------------------
 
+
 def check_env_vars():
     print("\n[deploy-preflight] Checking environment variables...")
 
@@ -68,18 +69,25 @@ def check_env_vars():
 
     # Important for tool functionality
     dm_api_token = os.environ.get("DM_API_TOKEN", "")
-    warn("env:DM_API_TOKEN is set", bool(dm_api_token.strip()),
-         "Tools that query data-manager will fail with auth redirects")
+    warn(
+        "env:DM_API_TOKEN is set",
+        bool(dm_api_token.strip()),
+        "Tools that query data-manager will fail with auth redirects",
+    )
 
     # Check GITHUB_TOKEN if not using BYOK-only mode
     github_token = os.environ.get("GITHUB_TOKEN", "")
-    warn("env:GITHUB_TOKEN is set (or BYOK-only)", bool(github_token.strip()),
-         "SDK auth may fail if not using BYOK-only mode")
+    warn(
+        "env:GITHUB_TOKEN is set (or BYOK-only)",
+        bool(github_token.strip()),
+        "SDK auth may fail if not using BYOK-only mode",
+    )
 
 
 # ---------------------------------------------------------------------------
 # 2. Catalog API reachable and authenticated
 # ---------------------------------------------------------------------------
+
 
 def check_catalog_api():
     print("\n[deploy-preflight] Checking catalog API...")
@@ -106,8 +114,11 @@ def check_catalog_api():
         check(
             "catalog health returns 200 (not redirect)",
             resp.status_code == 200,
-            f"got {resp.status_code}" + (
-                f" → {resp.headers.get('Location', '?')}" if resp.status_code in (301, 302, 303, 307, 308) else ""
+            f"got {resp.status_code}"
+            + (
+                f" → {resp.headers.get('Location', '?')}"
+                if resp.status_code in (301, 302, 303, 307, 308)
+                else ""
             ),
         )
     except requests.ConnectionError:
@@ -121,6 +132,7 @@ def check_catalog_api():
 # ---------------------------------------------------------------------------
 # 3. Ollama model available
 # ---------------------------------------------------------------------------
+
 
 def check_ollama():
     print("\n[deploy-preflight] Checking Ollama...")
@@ -142,8 +154,7 @@ def check_ollama():
             models = [m.get("name", "") for m in data.get("models", [])]
             # Match either exact name or name without tag
             found = any(
-                expected_model == m or expected_model == m.split(":")[0]
-                for m in models
+                expected_model == m or expected_model == m.split(":")[0] for m in models
             )
             check(
                 f"Ollama model '{expected_model}' available",
@@ -162,13 +173,14 @@ def check_ollama():
 # 4. Vectorstore non-empty
 # ---------------------------------------------------------------------------
 
+
 def check_vectorstore():
     print("\n[deploy-preflight] Checking vectorstore...")
     pg_host = os.environ.get("PGHOST", os.environ.get("PG_HOST", "localhost"))
     pg_port = os.environ.get("PGPORT", os.environ.get("PG_PORT", "5432"))
     pg_user = os.environ.get("PGUSER", os.environ.get("PG_USER", "archi"))
     pg_pass = os.environ.get("PGPASSWORD", os.environ.get("PG_PASSWORD", ""))
-    pg_db   = os.environ.get("PGDATABASE", os.environ.get("PG_DATABASE", "archi"))
+    pg_db = os.environ.get("PGDATABASE", os.environ.get("PG_DATABASE", "archi"))
 
     try:
         import psycopg2
@@ -203,7 +215,11 @@ def check_vectorstore():
                 "vectorstore is empty — ingestion may have failed",
             )
         else:
-            warn("vectorstore table exists", False, "langchain_pg_embedding table not found")
+            warn(
+                "vectorstore table exists",
+                False,
+                "langchain_pg_embedding table not found",
+            )
 
         cur.close()
         conn.close()
@@ -217,12 +233,15 @@ def check_vectorstore():
 # 5. Code version sentinel
 # ---------------------------------------------------------------------------
 
+
 def check_code_version():
     print("\n[deploy-preflight] Checking code version...")
     # Verify the adapter module has poll_timeout parameter (post-fix sentinel)
     try:
         import inspect
+
         from src.archi.copilot_event_adapter import CopilotEventAdapter
+
         sig = inspect.signature(CopilotEventAdapter.iter_outputs)
         has_poll_timeout = "poll_timeout" in sig.parameters
         check(
@@ -239,6 +258,7 @@ def check_code_version():
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     print("=" * 60)
@@ -262,7 +282,9 @@ def main():
             print(f"  - {w}")
 
     if _failures:
-        print(f"\n[deploy-preflight] FAILED — {len(_failures)} critical check(s) did not pass")
+        print(
+            f"\n[deploy-preflight] FAILED — {len(_failures)} critical check(s) did not pass"
+        )
         sys.exit(1)
     else:
         print("\n[deploy-preflight] PASSED — all critical checks OK")

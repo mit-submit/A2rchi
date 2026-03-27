@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """Test streaming events from the chat API."""
+
 import json
 import urllib.request
 
 url = "http://localhost:2786/api/get_chat_response_stream"
-payload = json.dumps({
-    "last_message": "What is the marker text in the seed files?",
-    "conversation_id": 1,
-    "config_name": "pr_preview_config",
-    "client_id": "61ca7f61-678d-4a19-857e-d6ff38ecbeb1",
-    "include_agent_steps": True,
-    "include_tool_steps": True,
-}).encode()
+payload = json.dumps(
+    {
+        "last_message": "What is the marker text in the seed files?",
+        "conversation_id": 1,
+        "config_name": "pr_preview_config",
+        "client_id": "61ca7f61-678d-4a19-857e-d6ff38ecbeb1",
+        "include_agent_steps": True,
+        "include_tool_steps": True,
+    }
+).encode()
 
-req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+req = urllib.request.Request(
+    url, data=payload, headers={"Content-Type": "application/json"}
+)
 events = []
 
 with urllib.request.urlopen(req, timeout=120) as resp:
@@ -60,7 +65,7 @@ for i, ev in enumerate(events):
         extra = f" step_id={ev.get('step_id', '?')}"
     elif t == "thinking_end":
         extra = f" step_id={ev.get('step_id', '?')}"
-    
+
     # Only print non-text events (too many text events)
     if t != "text":
         print(f"  [{i:3d}] {t}{extra}")
@@ -70,9 +75,13 @@ for i, ev in enumerate(events):
 # Summary
 print()
 text_count = sum(1 for e in events if e["type"] == "text")
-print(f"Total events: {len(events)} ({text_count} text tokens + {len(events) - text_count} control events)")
+print(
+    f"Total events: {len(events)} ({text_count} text tokens + {len(events) - text_count} control events)"
+)
 print(f"Tools seen: {sorted(tools_seen)}")
-print(f"Built-in tools detected: {tools_seen & builtin_tools if tools_seen & builtin_tools else 'NONE'}")
+print(
+    f"Built-in tools detected: {tools_seen & builtin_tools if tools_seen & builtin_tools else 'NONE'}"
+)
 
 # Check for required event types
 required = {"meta", "thinking_start", "text", "usage", "final"}

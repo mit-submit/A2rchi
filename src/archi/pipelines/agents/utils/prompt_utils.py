@@ -11,19 +11,21 @@ def get_role_context() -> str:
     Returns empty string if conditions not met or user not authenticated.
     """
     try:
-        from flask import session, has_request_context
+        from flask import has_request_context, session
+
         if not has_request_context():
             return ""
-        if not session.get('logged_in'):
+        if not session.get("logged_in"):
             return ""
 
         from src.utils.rbac.registry import get_registry
+
         registry = get_registry()
 
         if not registry.pass_descriptions_to_agent:
             return ""
 
-        roles = session.get('roles', [])
+        roles = session.get("roles", [])
         if not roles:
             return ""
 
@@ -46,4 +48,3 @@ def read_prompt(prompt_filepath: str) -> str:
         )
     except FileNotFoundError:
         raise FileNotFoundError(f"Prompt file not found: {prompt_filepath}")
-

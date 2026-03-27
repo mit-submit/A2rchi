@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.archi.copilot_event_adapter import CopilotEventAdapter, _SENTINEL
+from src.archi.copilot_event_adapter import _SENTINEL, CopilotEventAdapter
 from src.archi.utils.output_dataclass import PipelineOutput
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────
+
 
 class FakeAsyncLoop:
     """Minimal stub for AsyncLoopThread."""
@@ -40,10 +40,14 @@ class FakeAsyncLoop:
 def _make_event(event_type, **kwargs):
     """Create a mock SDK event with proper enum and data."""
     from enum import Enum
-    SessionEventType = Enum("SessionEventType", {
-        "ASSISTANT_MESSAGE_DELTA": "assistant.message_delta",
-        "SESSION_ERROR": "session.error",
-    })
+
+    SessionEventType = Enum(
+        "SessionEventType",
+        {
+            "ASSISTANT_MESSAGE_DELTA": "assistant.message_delta",
+            "SESSION_ERROR": "session.error",
+        },
+    )
     _type_map = {
         "assistant.message_delta": SessionEventType.ASSISTANT_MESSAGE_DELTA,
         "session.error": SessionEventType.SESSION_ERROR,
@@ -59,6 +63,7 @@ def _make_event(event_type, **kwargs):
 
 # ── Tests ─────────────────────────────────────────────────────────────────
 
+
 class TestSessionErrorUnblocksQueue:
     """Regression for bug #7: _run_session raises; iter_outputs() must
     terminate instead of deadlocking."""
@@ -69,16 +74,20 @@ class TestSessionErrorUnblocksQueue:
         adapter = CopilotEventAdapter(FakeAsyncLoop())
 
         # Simulate: some text arrives, then error, then signal_done
-        adapter._queue.put(PipelineOutput(
-            answer="partial",
-            metadata={"event_type": "text"},
-            final=False,
-        ))
-        adapter._queue.put(PipelineOutput(
-            answer="",
-            metadata={"event_type": "error", "error": "session crashed"},
-            final=False,
-        ))
+        adapter._queue.put(
+            PipelineOutput(
+                answer="partial",
+                metadata={"event_type": "text"},
+                final=False,
+            )
+        )
+        adapter._queue.put(
+            PipelineOutput(
+                answer="",
+                metadata={"event_type": "error", "error": "session crashed"},
+                final=False,
+            )
+        )
         adapter.signal_done()
 
         results = list(adapter.iter_outputs())
@@ -106,11 +115,13 @@ class TestSessionErrorUnblocksQueue:
         """If signal_done() never fires, iter_outputs must return after
         poll_timeout (not hang forever). Regression for bug #10."""
         adapter = CopilotEventAdapter(FakeAsyncLoop())
-        adapter._queue.put(PipelineOutput(
-            answer="ok",
-            metadata={"event_type": "text"},
-            final=False,
-        ))
+        adapter._queue.put(
+            PipelineOutput(
+                answer="ok",
+                metadata={"event_type": "text"},
+                final=False,
+            )
+        )
         # No signal_done — simulates async crash without cleanup
 
         start = time.monotonic()
@@ -153,12 +164,20 @@ class TestCancellationPropagation:
         adapter._session = mock_session
 
         # Put some items to iterate
-        adapter._queue.put(PipelineOutput(
-            answer="a", metadata={"event_type": "text"}, final=False,
-        ))
-        adapter._queue.put(PipelineOutput(
-            answer="b", metadata={"event_type": "text"}, final=False,
-        ))
+        adapter._queue.put(
+            PipelineOutput(
+                answer="a",
+                metadata={"event_type": "text"},
+                final=False,
+            )
+        )
+        adapter._queue.put(
+            PipelineOutput(
+                answer="b",
+                metadata={"event_type": "text"},
+                final=False,
+            )
+        )
         adapter._queue.put(_SENTINEL)
 
         gen = adapter.iter_outputs()
@@ -203,11 +222,13 @@ class TestConcurrentAccess:
             try:
                 time.sleep(0.05)
                 for i in range(5):
-                    adapter._queue.put(PipelineOutput(
-                        answer=f"chunk-{i}",
-                        metadata={"event_type": "text"},
-                        final=False,
-                    ))
+                    adapter._queue.put(
+                        PipelineOutput(
+                            answer=f"chunk-{i}",
+                            metadata={"event_type": "text"},
+                            final=False,
+                        )
+                    )
                     time.sleep(0.01)
                 adapter.signal_done()
             except Exception as e:
@@ -237,11 +258,13 @@ class TestConcurrentAccess:
         results = []
 
         def crashing_producer():
-            adapter._queue.put(PipelineOutput(
-                answer="before crash",
-                metadata={"event_type": "text"},
-                final=False,
-            ))
+            adapter._queue.put(
+                PipelineOutput(
+                    answer="before crash",
+                    metadata={"event_type": "text"},
+                    final=False,
+                )
+            )
             # Crash — no signal_done()
 
         def consumer():

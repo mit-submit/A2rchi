@@ -45,11 +45,14 @@ _SENTINEL = object()  # Signals end-of-stream to the queue consumer
 @dataclass
 class _ToolCallRecord:
     """Track a single tool invocation for metadata storage (decision 12)."""
+
     id: str
     name: str
     args: Dict[str, Any]
     result: Optional[str] = None
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
     _start_time: float = field(default_factory=time.time, repr=False)
 
 
@@ -116,14 +119,20 @@ class CopilotEventAdapter:
                 if delta:
                     self._end_thinking_if_active()
                     self._response_buffer += delta
-                    self._queue.put(PipelineOutput(
-                        answer=self._response_buffer,
-                        metadata={"event_type": "text"},
-                        final=False,
-                    ))
+                    self._queue.put(
+                        PipelineOutput(
+                            answer=self._response_buffer,
+                            metadata={"event_type": "text"},
+                            final=False,
+                        )
+                    )
 
             elif event_type == "assistant.reasoning_delta":
-                delta = getattr(data, "delta_content", "") or getattr(data, "reasoning_text", "") or ""
+                delta = (
+                    getattr(data, "delta_content", "")
+                    or getattr(data, "reasoning_text", "")
+                    or ""
+                )
                 if delta:
                     if not self._in_thinking:
                         self._start_thinking()
@@ -134,14 +143,20 @@ class CopilotEventAdapter:
                 if content:
                     self._end_thinking_if_active()
                     self._response_buffer = content
-                    self._queue.put(PipelineOutput(
-                        answer=self._response_buffer,
-                        metadata={"event_type": "text"},
-                        final=False,
-                    ))
+                    self._queue.put(
+                        PipelineOutput(
+                            answer=self._response_buffer,
+                            metadata={"event_type": "text"},
+                            final=False,
+                        )
+                    )
 
             elif event_type == "assistant.reasoning":
-                content = getattr(data, "content", "") or getattr(data, "reasoning_text", "") or ""
+                content = (
+                    getattr(data, "content", "")
+                    or getattr(data, "reasoning_text", "")
+                    or ""
+                )
                 if content:
                     self._thinking_buffer = content
                 self._end_thinking_if_active()
@@ -162,25 +177,33 @@ class CopilotEventAdapter:
             # ── Tool lifecycle via streaming events ───────────────────
             elif event_type == "tool.execution_start":
                 tool_call_id = getattr(data, "tool_call_id", "") or ""
-                tool_name = getattr(data, "tool_name", "") or getattr(data, "name", "") or "unknown"
+                tool_name = (
+                    getattr(data, "tool_name", "")
+                    or getattr(data, "name", "")
+                    or "unknown"
+                )
                 tool_args = getattr(data, "arguments", {}) or {}
 
-                record = _ToolCallRecord(id=tool_call_id, name=tool_name, args=tool_args)
+                record = _ToolCallRecord(
+                    id=tool_call_id, name=tool_name, args=tool_args
+                )
                 self._active_tools[tool_call_id] = record
                 self._tool_calls.append(record)
 
                 self._end_thinking_if_active()
 
-                self._queue.put(PipelineOutput(
-                    answer="",
-                    metadata={
-                        "event_type": "tool_start",
-                        "tool_call_id": tool_call_id,
-                        "tool_name": tool_name,
-                        "tool_args": tool_args,
-                    },
-                    final=False,
-                ))
+                self._queue.put(
+                    PipelineOutput(
+                        answer="",
+                        metadata={
+                            "event_type": "tool_start",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "tool_args": tool_args,
+                        },
+                        final=False,
+                    )
+                )
 
             elif event_type == "tool.execution_complete":
                 tool_call_id = getattr(data, "tool_call_id", "") or ""
@@ -202,25 +225,29 @@ class CopilotEventAdapter:
                     else None
                 )
 
-                self._queue.put(PipelineOutput(
-                    answer="",
-                    metadata={
-                        "event_type": "tool_output",
-                        "tool_call_id": tool_call_id,
-                        "output": result_str,
-                    },
-                    final=False,
-                ))
-                self._queue.put(PipelineOutput(
-                    answer="",
-                    metadata={
-                        "event_type": "tool_end",
-                        "tool_call_id": tool_call_id,
-                        "status": "success",
-                        "duration_ms": duration_ms,
-                    },
-                    final=False,
-                ))
+                self._queue.put(
+                    PipelineOutput(
+                        answer="",
+                        metadata={
+                            "event_type": "tool_output",
+                            "tool_call_id": tool_call_id,
+                            "output": result_str,
+                        },
+                        final=False,
+                    )
+                )
+                self._queue.put(
+                    PipelineOutput(
+                        answer="",
+                        metadata={
+                            "event_type": "tool_end",
+                            "tool_call_id": tool_call_id,
+                            "status": "success",
+                            "duration_ms": duration_ms,
+                        },
+                        final=False,
+                    )
+                )
 
         session.on(_on_event)
 
@@ -231,7 +258,9 @@ class CopilotEventAdapter:
         """
         self._end_thinking_if_active()
         if self._usage is None:
-            logger.warning("No usage data received from SDK — token counts will be missing from trace")
+            logger.warning(
+                "No usage data received from SDK — token counts will be missing from trace"
+            )
         self._queue.put(_SENTINEL)
 
     # ── Sync generator (consumed by Flask thread) ─────────────────────
@@ -248,7 +277,10 @@ class CopilotEventAdapter:
                 try:
                     item = self._queue.get(timeout=poll_timeout)
                 except queue.Empty:
-                    logger.warning("Adapter queue timed out after %.0fs — session may have crashed", poll_timeout)
+                    logger.warning(
+                        "Adapter queue timed out after %.0fs — session may have crashed",
+                        poll_timeout,
+                    )
                     break
                 if item is _SENTINEL:
                     break
@@ -262,7 +294,9 @@ class CopilotEventAdapter:
                 try:
                     self._async_loop.run(self._session.disconnect(), timeout=5.0)
                 except Exception:
-                    logger.debug("Error disconnecting session in cleanup", exc_info=True)
+                    logger.debug(
+                        "Error disconnecting session in cleanup", exc_info=True
+                    )
 
     def build_final_output(
         self,
@@ -309,14 +343,16 @@ class CopilotEventAdapter:
         self._thinking_step_id = str(uuid.uuid4())
         self._thinking_start_time = time.time()
         self._thinking_buffer = ""
-        self._queue.put(PipelineOutput(
-            answer="",
-            metadata={
-                "event_type": "thinking_start",
-                "step_id": self._thinking_step_id,
-            },
-            final=False,
-        ))
+        self._queue.put(
+            PipelineOutput(
+                answer="",
+                metadata={
+                    "event_type": "thinking_start",
+                    "step_id": self._thinking_step_id,
+                },
+                final=False,
+            )
+        )
 
     def _end_thinking_if_active(self) -> None:
         if not self._in_thinking:
@@ -326,16 +362,18 @@ class CopilotEventAdapter:
             if self._thinking_start_time
             else 0
         )
-        self._queue.put(PipelineOutput(
-            answer="",
-            metadata={
-                "event_type": "thinking_end",
-                "step_id": self._thinking_step_id or "",
-                "duration_ms": duration_ms,
-                "thinking_content": self._thinking_buffer,
-            },
-            final=False,
-        ))
+        self._queue.put(
+            PipelineOutput(
+                answer="",
+                metadata={
+                    "event_type": "thinking_end",
+                    "step_id": self._thinking_step_id or "",
+                    "duration_ms": duration_ms,
+                    "thinking_content": self._thinking_buffer,
+                },
+                final=False,
+            )
+        )
         self._in_thinking = False
         self._thinking_step_id = None
         self._thinking_start_time = None

@@ -4,12 +4,8 @@ from typing import Any, Dict, List, Optional
 
 from langchain_openai import ChatOpenAI
 
-from src.archi.providers.base import (
-    BaseProvider,
-    ModelInfo,
-    ProviderConfig,
-    ProviderType,
-)
+from src.archi.providers.base import (BaseProvider, ModelInfo, ProviderConfig,
+                                      ProviderType)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -102,10 +98,10 @@ DEFAULT_OPENAI_MODELS = [
 
 class OpenAIProvider(BaseProvider):
     """Provider for OpenAI models."""
-    
+
     provider_type = ProviderType.OPENAI
     display_name = "OpenAI"
-    
+
     def __init__(self, config: Optional[ProviderConfig] = None):
         if config is None:
             config = ProviderConfig(
@@ -115,7 +111,7 @@ class OpenAIProvider(BaseProvider):
                 default_model="gpt-4o",
             )
         super().__init__(config)
-    
+
     def get_chat_model(self, model_name: str, **kwargs) -> ChatOpenAI:
         """Get an OpenAI chat model instance."""
         config_stream_options = self.config.extra_kwargs.get("stream_options")
@@ -135,17 +131,20 @@ class OpenAIProvider(BaseProvider):
             **kwargs,
         }
 
-        if isinstance(model_kwargs.get("stream_options"), dict) or "stream_options" not in model_kwargs:
+        if (
+            isinstance(model_kwargs.get("stream_options"), dict)
+            or "stream_options" not in model_kwargs
+        ):
             model_kwargs["stream_options"] = merged_stream_options
-        
+
         if self._api_key:
             model_kwargs["api_key"] = self._api_key
-            
+
         if self.config.base_url:
             model_kwargs["base_url"] = self.config.base_url
-            
+
         return ChatOpenAI(**model_kwargs)
-    
+
     def list_models(self) -> List[ModelInfo]:
         """List available OpenAI models."""
         if self.config.models:

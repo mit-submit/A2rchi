@@ -3,23 +3,17 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Dict, List
 
-from src.utils.logging import get_logger
-from src.utils.env import read_secret
 from src.archi.pipelines.agents.base_react import BaseReActAgent
-from src.data_manager.vectorstore.retrievers import HybridRetriever
 from src.archi.pipelines.agents.tools import (
-    create_document_fetch_tool,
-    create_file_search_tool,
-    create_metadata_search_tool,
-    create_metadata_schema_tool,
-    create_retriever_tool,
-    initialize_mcp_client,
-    RemoteCatalogClient,
-    MONITOpenSearchClient,
-    create_monit_opensearch_search_tool,
-    create_monit_opensearch_aggregation_tool,
-)
+    MONITOpenSearchClient, RemoteCatalogClient, create_document_fetch_tool,
+    create_file_search_tool, create_metadata_schema_tool,
+    create_metadata_search_tool, create_monit_opensearch_aggregation_tool,
+    create_monit_opensearch_search_tool, create_retriever_tool,
+    initialize_mcp_client)
 from src.archi.pipelines.agents.utils.skill_utils import load_skill
+from src.data_manager.vectorstore.retrievers import HybridRetriever
+from src.utils.env import read_secret
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -38,7 +32,9 @@ class CMSCompOpsAgent(BaseReActAgent):
         self.catalog_service = RemoteCatalogClient.from_deployment_config(self.config)
         self._vector_retrievers = None
         self._vector_tool = None
-        self.enable_vector_tools = "search_vectorstore_hybrid" in self.selected_tool_names
+        self.enable_vector_tools = (
+            "search_vectorstore_hybrid" in self.selected_tool_names
+        )
 
         # Initialize MONIT clients (one per datasource proxy)
         self._monit_client = None
@@ -71,20 +67,23 @@ class CMSCompOpsAgent(BaseReActAgent):
         """
         monit_token = read_secret("MONIT_GRAFANA_TOKEN")
         if not monit_token:
-            logger.info("MONIT_GRAFANA_TOKEN not found; MONIT OpenSearch tools not available")
+            logger.info(
+                "MONIT_GRAFANA_TOKEN not found; MONIT OpenSearch tools not available"
+            )
             return
 
         tools_cfg = self._chat_app_config.get("tools", {})
         monit_cfg = tools_cfg.get("monit", {})
 
         # Rucio source
-        rucio_url = (
-            monit_cfg.get("rucio", {}).get("url")
-            or monit_cfg.get("url")  # backward compat
-        )
+        rucio_url = monit_cfg.get("rucio", {}).get("url") or monit_cfg.get(
+            "url"
+        )  # backward compat
         if rucio_url:
             try:
-                self._monit_client = MONITOpenSearchClient(url=rucio_url, token=monit_token)
+                self._monit_client = MONITOpenSearchClient(
+                    url=rucio_url, token=monit_token
+                )
                 self._rucio_events_skill = load_skill("rucio_events", self.config)
                 logger.info("MONIT rucio client initialized (proxy: %s)", rucio_url)
             except Exception as e:
@@ -96,13 +95,14 @@ class CMSCompOpsAgent(BaseReActAgent):
             )
 
         # Condor source
-        condor_url = (
-            tools_cfg.get("condor", {}).get("url")
-            or monit_cfg.get("condor", {}).get("url")
-        )
+        condor_url = tools_cfg.get("condor", {}).get("url") or monit_cfg.get(
+            "condor", {}
+        ).get("url")
         if condor_url:
             try:
-                self._condor_client = MONITOpenSearchClient(url=condor_url, token=monit_token)
+                self._condor_client = MONITOpenSearchClient(
+                    url=condor_url, token=monit_token
+                )
                 self._condor_metric_skill = load_skill("condor_raw_metric", self.config)
                 logger.info("MONIT condor client initialized (proxy: %s)", condor_url)
             except Exception as e:
@@ -114,10 +114,15 @@ class CMSCompOpsAgent(BaseReActAgent):
             )
 
     def get_tool_registry(self) -> Dict[str, Callable[[], Any]]:
-        return {name: entry["builder"] for name, entry in self._tool_definitions().items()}
+        return {
+            name: entry["builder"] for name, entry in self._tool_definitions().items()
+        }
 
     def get_tool_descriptions(self) -> Dict[str, str]:
-        return {name: entry["description"] for name, entry in self._tool_definitions().items()}
+        return {
+            name: entry["description"]
+            for name, entry in self._tool_definitions().items()
+        }
 
     def _tool_definitions(self) -> Dict[str, Dict[str, Any]]:
         defs = {
@@ -300,7 +305,9 @@ class CMSCompOpsAgent(BaseReActAgent):
             semantic_weight=semantic_weight,
         )
 
-        hybrid_description = self._tool_definitions()["search_vectorstore_hybrid"]["description"]
+        hybrid_description = self._tool_definitions()["search_vectorstore_hybrid"][
+            "description"
+        ]
 
         self._vector_retrievers = [hybrid_retriever]
         self._vector_tools = []

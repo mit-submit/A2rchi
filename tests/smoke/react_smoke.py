@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """ReAct smoke check using chat streaming endpoint."""
+
 import json
 import os
 import sys
 import time
 import uuid
-import requests
 from typing import Tuple
+
+import requests
+
 
 def _fail(message: str) -> None:
     print(f"[react-smoke] ERROR: {message}", file=sys.stderr)

@@ -11,8 +11,8 @@ import requests
 
 from src.archi.pipelines.agents.tools.local_files import RemoteCatalogClient
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────
+
 
 def _make_response(status_code, *, json_data=None, headers=None, is_redirect=False):
     """Create a mock requests.Response."""
@@ -32,6 +32,7 @@ def _make_response(status_code, *, json_data=None, headers=None, is_redirect=Fal
 
 # ── Tests: Redirect detection ────────────────────────────────────────────
 
+
 class TestRedirectDetection:
     """Regression for bug #12: catalog API returning 302 → login page
     was silently parsed as JSON, causing a confusing error."""
@@ -39,7 +40,9 @@ class TestRedirectDetection:
     def test_search_302_raises_runtime_error(self):
         """302 redirect on search must raise RuntimeError with clear message."""
         client = RemoteCatalogClient(base_url="http://test:7871")
-        resp = _make_response(302, headers={"Location": "http://test:7871/login"}, is_redirect=True)
+        resp = _make_response(
+            302, headers={"Location": "http://test:7871/login"}, is_redirect=True
+        )
 
         with patch("requests.get", return_value=resp):
             with pytest.raises(RuntimeError, match="redirected.*DM_API_TOKEN"):
@@ -80,12 +83,15 @@ class TestRedirectDetection:
 
 # ── Tests: Successful responses ──────────────────────────────────────────
 
+
 class TestSuccessfulResponses:
     """Verify normal operations continue to work."""
 
     def test_search_200_returns_hits(self):
         client = RemoteCatalogClient(base_url="http://test:7871")
-        resp = _make_response(200, json_data={"hits": [{"hash": "abc", "path": "/test.md"}]})
+        resp = _make_response(
+            200, json_data={"hits": [{"hash": "abc", "path": "/test.md"}]}
+        )
 
         with patch("requests.get", return_value=resp):
             results = client.search("test")
@@ -122,7 +128,9 @@ class TestSuccessfulResponses:
 
     def test_schema_200(self):
         client = RemoteCatalogClient(base_url="http://test:7871")
-        resp = _make_response(200, json_data={"keys": ["source_type"], "source_types": ["git"]})
+        resp = _make_response(
+            200, json_data={"keys": ["source_type"], "source_types": ["git"]}
+        )
 
         with patch("requests.get", return_value=resp):
             result = client.schema()
@@ -131,6 +139,7 @@ class TestSuccessfulResponses:
 
 
 # ── Tests: HTTP errors ───────────────────────────────────────────────────
+
 
 class TestHTTPErrors:
     """Verify proper error propagation for HTTP failures."""
@@ -160,6 +169,7 @@ class TestHTTPErrors:
 
 # ── Tests: Client construction ───────────────────────────────────────────
 
+
 class TestClientConstruction:
     """Verify RemoteCatalogClient configuration."""
 
@@ -180,12 +190,16 @@ class TestClientConstruction:
         with patch.dict("os.environ", {}, clear=True):
             # Clear all HOST_MODE variants
             import os
+
             for key in ["HOST_MODE", "HOSTMODE", "ARCHI_HOST_MODE"]:
                 os.environ.pop(key, None)
             client = RemoteCatalogClient(port=7871)
         assert "data-manager" in client.base_url
 
-    @patch("src.archi.pipelines.agents.tools.local_files.read_secret", return_value="dm-token-123")
+    @patch(
+        "src.archi.pipelines.agents.tools.local_files.read_secret",
+        return_value="dm-token-123",
+    )
     def test_from_deployment_config(self, mock_read_secret):
         config = {
             "host_mode": True,
@@ -193,13 +207,14 @@ class TestClientConstruction:
                 "data_manager": {
                     "port": 7871,
                 }
-            }
+            },
         }
         client = RemoteCatalogClient.from_deployment_config(config)
         assert client._headers.get("Authorization") == "Bearer dm-token-123"
 
 
 # ── Tests: Tool factory error handling ───────────────────────────────────
+
 
 class TestToolFactoryErrorHandling:
     """Verify tool functions handle catalog errors gracefully."""
@@ -211,9 +226,15 @@ class TestToolFactoryErrorHandling:
         client.search.side_effect = RuntimeError("redirected to /login")
 
         # Import the tool factory
-        from src.archi.pipelines.agents.tools.local_files import create_file_search_tool
+        from src.archi.pipelines.agents.tools.local_files import \
+            create_file_search_tool
+
         tool = create_file_search_tool(client)
 
         # LangChain tool.invoke() should return error message
         result = tool.invoke({"query": "test"})
-        assert "failed" in result.lower() or "error" in result.lower() or "unavailable" in result.lower()
+        assert (
+            "failed" in result.lower()
+            or "error" in result.lower()
+            or "unavailable" in result.lower()
+        )

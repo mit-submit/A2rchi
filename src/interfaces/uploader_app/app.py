@@ -1,28 +1,29 @@
 from __future__ import annotations
 
 import os
+import re
+import secrets
 import shlex
 import time
-from pathlib import Path
-from typing import Callable, Optional, Dict, List, Tuple
 from functools import wraps
-import secrets
-import re
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for, session, flash
+from flask import (Flask, flash, jsonify, redirect, render_template, request,
+                   session, url_for)
 from flask_cors import CORS
 
-from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.localfile_manager import LocalFileManager
+from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
-from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
+from src.data_manager.collectors.utils.catalog_postgres import (
+    _METADATA_COLUMN_MAP, PostgresCatalogService)
 from src.data_manager.vectorstore.loader_utils import load_text_from_path
 from src.interfaces.chat_app.document_utils import check_credentials
+from src.utils.config_access import get_full_config
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
-from src.data_manager.collectors.utils.catalog_postgres import _METADATA_COLUMN_MAP
-from src.utils.config_access import get_full_config
 
 logger = get_logger(__name__)
 
@@ -49,14 +50,20 @@ class FlaskAppWrapper:
         }
         self.persistence = PersistenceService(self.data_path, pg_config=self.pg_config)
         self.catalog = PostgresCatalogService(self.data_path, pg_config=self.pg_config)
-        self.status_file = status_file or (Path(self.data_path) / "ingestion_status.json")
+        self.status_file = status_file or (
+            Path(self.data_path) / "ingestion_status.json"
+        )
 
-        secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY") or secrets.token_hex(32)
+        secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY") or secrets.token_hex(
+            32
+        )
         self.app.secret_key = secret_key
         self.app.config["SESSION_COOKIE_NAME"] = "uploader_session"
         self.app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB upload limit
 
-        self.auth_config = (self.services_config or {}).get("data_manager", {}).get("auth", {}) or {}
+        self.auth_config = (self.services_config or {}).get("data_manager", {}).get(
+            "auth", {}
+        ) or {}
         self.auth_enabled = bool(self.auth_config.get("enabled", False))
         self.api_token = read_secret("DM_API_TOKEN") or None
         self.admin_users = {
@@ -64,13 +71,17 @@ class FlaskAppWrapper:
             for user in (self.auth_config.get("admins") or [])
             if user and user.strip()
         }
-        self.default_admin_user = (self.auth_config.get("default_admin_user") or "admin").strip()
+        self.default_admin_user = (
+            self.auth_config.get("default_admin_user") or "admin"
+        ).strip()
         self.default_admin_password = read_secret("DM_ADMIN_PASSWD")
         self.salt = read_secret("UPLOADER_SALT")
         self.accounts_path = self.global_config.get("ACCOUNTS_PATH")
         if self.auth_enabled:
             if not self.accounts_path:
-                logger.warning("ACCOUNTS_PATH not configured; only default auth account avilable. Set is as DM_ADMIN_PASSWD in your secrets file.")
+                logger.warning(
+                    "ACCOUNTS_PATH not configured; only default auth account avilable. Set is as DM_ADMIN_PASSWD in your secrets file."
+                )
                 self.auth_enabled = True
             else:
                 os.makedirs(self.accounts_path, exist_ok=True)
@@ -79,36 +90,88 @@ class FlaskAppWrapper:
 
         self.scraper_manager = ScraperManager(dm_config=self.config.get("data_manager"))
         self.ticket_manager = TicketManager(dm_config=self.config.get("data_manager"))
-        self.localfile_manager = LocalFileManager(dm_config=self.config.get("data_manager"))
+        self.localfile_manager = LocalFileManager(
+            dm_config=self.config.get("data_manager")
+        )
         self.post_update_hook = post_update_hook
 
         CORS(self.app)
 
         protected = self.require_admin
         self.add_endpoint("/api/health", "health", self.health, methods=["GET"])
-        self.add_endpoint("/document_index/upload", "upload", protected(self.upload), methods=["POST"])
-        self.add_endpoint("/document_index/delete/<file_hash>", "delete", protected(self.delete))
+        self.add_endpoint(
+            "/document_index/upload", "upload", protected(self.upload), methods=["POST"]
+        )
+        self.add_endpoint(
+            "/document_index/delete/<file_hash>", "delete", protected(self.delete)
+        )
         self.add_endpoint(
             "/document_index/delete_source/<source_type>",
             "delete_source",
             protected(self.delete_source),
         )
-        self.add_endpoint("/document_index/upload_url", "upload_url", protected(self.upload_url), methods=["POST"])
-        self.add_endpoint("/document_index/add_git_repo", "add_git_repo", protected(self.add_git_repo), methods=["POST"])
-        self.add_endpoint("/document_index/remove_git_repo", "remove_git_repo", protected(self.remove_git_repo), methods=["POST"])
-        self.add_endpoint("/document_index/add_jira_project", "add_jira_project", protected(self.add_jira_project), methods=["POST"])
-        self.add_endpoint("/document_index/update_schedule", "update_schedule", protected(self.update_schedule), methods=["POST"])
-        self.add_endpoint("/document_index/load_document/<path:file_hash>", "load_document", protected(self.load_document))
+        self.add_endpoint(
+            "/document_index/upload_url",
+            "upload_url",
+            protected(self.upload_url),
+            methods=["POST"],
+        )
+        self.add_endpoint(
+            "/document_index/add_git_repo",
+            "add_git_repo",
+            protected(self.add_git_repo),
+            methods=["POST"],
+        )
+        self.add_endpoint(
+            "/document_index/remove_git_repo",
+            "remove_git_repo",
+            protected(self.remove_git_repo),
+            methods=["POST"],
+        )
+        self.add_endpoint(
+            "/document_index/add_jira_project",
+            "add_jira_project",
+            protected(self.add_jira_project),
+            methods=["POST"],
+        )
+        self.add_endpoint(
+            "/document_index/update_schedule",
+            "update_schedule",
+            protected(self.update_schedule),
+            methods=["POST"],
+        )
+        self.add_endpoint(
+            "/document_index/load_document/<path:file_hash>",
+            "load_document",
+            protected(self.load_document),
+        )
         # API endpoints for remote catalog access
-        self.add_endpoint("/api/catalog/search", "api_catalog_search", protected(self.api_catalog_search), methods=["GET"])
-        self.add_endpoint("/api/catalog/document/<path:resource_hash>", "api_catalog_document", protected(self.api_catalog_document), methods=["GET"])
-        self.add_endpoint("/api/catalog/schema", "api_catalog_schema", protected(self.api_catalog_schema), methods=["GET"])
+        self.add_endpoint(
+            "/api/catalog/search",
+            "api_catalog_search",
+            protected(self.api_catalog_search),
+            methods=["GET"],
+        )
+        self.add_endpoint(
+            "/api/catalog/document/<path:resource_hash>",
+            "api_catalog_document",
+            protected(self.api_catalog_document),
+            methods=["GET"],
+        )
+        self.add_endpoint(
+            "/api/catalog/schema",
+            "api_catalog_schema",
+            protected(self.api_catalog_schema),
+            methods=["GET"],
+        )
         if self.auth_enabled:
             self.add_endpoint("/login", "login", self.login, methods=["GET", "POST"])
             self.add_endpoint("/logout", "logout", self.logout)
 
     def add_endpoint(self, endpoint, endpoint_name, handler, methods=None):
-        self.app.add_url_rule(endpoint, endpoint_name, handler, methods=methods or ["GET"])
+        self.app.add_url_rule(
+            endpoint, endpoint_name, handler, methods=methods or ["GET"]
+        )
 
     def run(self, **kwargs):
         self.app.run(**kwargs)
@@ -133,7 +196,10 @@ class FlaskAppWrapper:
         if not username:
             return False
         normalized = username.strip().lower()
-        if self.default_admin_user and normalized == self.default_admin_user.strip().lower():
+        if (
+            self.default_admin_user
+            and normalized == self.default_admin_user.strip().lower()
+        ):
             return True
         if not self.admin_users:
             return True
@@ -153,7 +219,9 @@ class FlaskAppWrapper:
                     and username == self.default_admin_user
                     and password == self.default_admin_password
                 )
-                if is_default_admin or check_credentials(username, password, self.salt, self.accounts_path):
+                if is_default_admin or check_credentials(
+                    username, password, self.salt, self.accounts_path
+                ):
                     session["admin_logged_in"] = True
                     session["admin_user"] = username
                     return redirect(url_for("document_index"))
@@ -183,7 +251,12 @@ class FlaskAppWrapper:
             return jsonify({"error": "ingest_failed", "detail": str(exc)}), 500
 
     def remove_git_repo(self):
-        repo_value = request.form.get("repo") or request.form.get("repo_url") or request.form.get("repo_name") or ""
+        repo_value = (
+            request.form.get("repo")
+            or request.form.get("repo_url")
+            or request.form.get("repo_name")
+            or ""
+        )
         repo_name = self._extract_git_repo_name(repo_value)
         if not repo_name:
             return jsonify({"error": "missing_repo_name"}), 400
@@ -199,14 +272,21 @@ class FlaskAppWrapper:
                     to_remove.append(resource_hash)
 
             if not to_remove:
-                return jsonify({"error": "repo_not_found", "repo": repo_name, "deleted": 0}), 404
+                return (
+                    jsonify(
+                        {"error": "repo_not_found", "repo": repo_name, "deleted": 0}
+                    ),
+                    404,
+                )
 
             for resource_hash in to_remove:
                 self.persistence.delete_resource(resource_hash, flush=False)
             self.persistence.flush_index()
             self._update_source_status("git", state="idle", last_run=self._now_iso())
             self._notify_update()
-            return jsonify({"status": "ok", "repo": repo_name, "deleted": len(to_remove)})
+            return jsonify(
+                {"status": "ok", "repo": repo_name, "deleted": len(to_remove)}
+            )
         except Exception as exc:
             logger.error("Failed to remove git repo %s: %s", repo_name, exc)
             return jsonify({"error": "delete_failed", "detail": str(exc)}), 500
@@ -245,9 +325,13 @@ class FlaskAppWrapper:
             return jsonify({"error": "unsupported_extension", "allowed": accepted}), 400
 
         try:
-            stored_path = self.localfile_manager.ingest_uploaded_file(upload, self.persistence)
+            stored_path = self.localfile_manager.ingest_uploaded_file(
+                upload, self.persistence
+            )
             self.persistence.flush_index()
-            self._update_source_status("local_files", state="idle", last_run=self._now_iso())
+            self._update_source_status(
+                "local_files", state="idle", last_run=self._now_iso()
+            )
             self._notify_update()
             return jsonify({"status": "ok", "path": str(stored_path)})
         except Exception as exc:
@@ -284,9 +368,13 @@ class FlaskAppWrapper:
         if url:
             logger.info("Uploading the following URL: %s", url)
             try:
-                scraped_count = self.scraper_manager.collect_links(self.persistence, link_urls=[url], max_depth=depth)
+                scraped_count = self.scraper_manager.collect_links(
+                    self.persistence, link_urls=[url], max_depth=depth
+                )
                 self.persistence.flush_index()
-                self._update_source_status("web", state="idle", last_run=self._now_iso())
+                self._update_source_status(
+                    "web", state="idle", last_run=self._now_iso()
+                )
                 added_to_urls = True
             except Exception as exc:
                 logger.exception("Failed to upload URL: %s", exc)
@@ -308,13 +396,16 @@ class FlaskAppWrapper:
         if not source:
             return jsonify({"error": "missing_source"}), 400
 
-        sources_cfg = (self.config.get("data_manager", {}) or {}).get("sources", {}) or {}
+        sources_cfg = (self.config.get("data_manager", {}) or {}).get(
+            "sources", {}
+        ) or {}
         if source not in sources_cfg:
             return jsonify({"error": "unknown_source", "source": source}), 404
 
         if schedule:
             try:
                 from croniter import croniter
+
                 logger.debug(f"Updating source {source} schedule to {schedule}")
 
                 croniter(schedule)
@@ -352,9 +443,13 @@ class FlaskAppWrapper:
                     else:
                         document = load_text_from_path(path) if path else ""
             except Exception as exc:
-                logger.warning("Failed to load document content for %s: %s", file_hash, exc)
+                logger.warning(
+                    "Failed to load document content for %s: %s", file_hash, exc
+                )
 
-            display_name = metadata.get("display_name") or metadata.get("file_name") or ""
+            display_name = (
+                metadata.get("display_name") or metadata.get("file_name") or ""
+            )
             title = metadata.get("title") or display_name
             return jsonify(
                 {
@@ -405,6 +500,7 @@ class FlaskAppWrapper:
     ) -> None:
         try:
             import json
+
             data = self._load_source_status()
             entry = data.get(source, {})
             if state is not None:
@@ -417,7 +513,9 @@ class FlaskAppWrapper:
                 else:
                     entry.pop("schedule", None)
             data[source] = entry
-            logger.debug(f"Updated source status with state {state}, last_run: {last_run}, schedule: {schedule}")
+            logger.debug(
+                f"Updated source status with state {state}, last_run: {last_run}, schedule: {schedule}"
+            )
             self.status_file.parent.mkdir(parents=True, exist_ok=True)
             self.status_file.write_text(json.dumps(data))
         except Exception as exc:
@@ -454,11 +552,15 @@ class FlaskAppWrapper:
             return jsonify({"hits": [], "total_duration": 0.0})
         limit = request.args.get("limit", default=5, type=int)
         window = request.args.get("window", default=-1, type=int)
-        search_content = request.args.get("search_content", default="true").lower() != "false"
+        search_content = (
+            request.args.get("search_content", default="true").lower() != "false"
+        )
         mode = (request.args.get("mode") or "").strip().lower()
         regex = _parse_bool(request.args.get("regex"), default=False)
         case_sensitive = _parse_bool(request.args.get("case_sensitive"), default=False)
-        max_matches_per_file = request.args.get("max_matches_per_file", default=3, type=int)
+        max_matches_per_file = request.args.get(
+            "max_matches_per_file", default=3, type=int
+        )
         before = request.args.get("before", default=0, type=int)
         after = request.args.get("after", default=0, type=int)
 
@@ -467,7 +569,9 @@ class FlaskAppWrapper:
         hits = []
         self.catalog.refresh()
         if not search_content:
-            results = self.catalog.search_metadata(free_query, limit=limit, filters=filters)
+            results = self.catalog.search_metadata(
+                free_query, limit=limit, filters=filters
+            )
             for item in results:
                 metadata = item.get("metadata") or {}
                 snippet = (
@@ -499,11 +603,12 @@ class FlaskAppWrapper:
                 candidate_hashes = None
                 candidate_metadata: Dict[str, Dict[str, object]] = {}
                 if filters:
-                    candidates = self.catalog.search_metadata("", limit=None, filters=filters)
+                    candidates = self.catalog.search_metadata(
+                        "", limit=None, filters=filters
+                    )
                     candidate_hashes = {item["hash"] for item in candidates}
                     candidate_metadata = {
-                        item["hash"]: item.get("metadata") or {}
-                        for item in candidates
+                        item["hash"]: item.get("metadata") or {} for item in candidates
                     }
 
                 if candidate_hashes is None:
@@ -516,7 +621,11 @@ class FlaskAppWrapper:
                             iterable.append((resource_hash, path))
 
                 for resource_hash, path in iterable:
-                    metadata = candidate_metadata.get(resource_hash) or self.catalog.get_metadata_for_hash(resource_hash) or {}
+                    metadata = (
+                        candidate_metadata.get(resource_hash)
+                        or self.catalog.get_metadata_for_hash(resource_hash)
+                        or {}
+                    )
                     text = load_text_from_path(path) or ""
                     if not text:
                         continue
@@ -552,11 +661,12 @@ class FlaskAppWrapper:
             candidate_hashes = None
             candidate_metadata: Dict[str, Dict[str, object]] = {}
             if filters:
-                candidates = self.catalog.search_metadata("", limit=None, filters=filters)
+                candidates = self.catalog.search_metadata(
+                    "", limit=None, filters=filters
+                )
                 candidate_hashes = {item["hash"] for item in candidates}
                 candidate_metadata = {
-                    item["hash"]: item.get("metadata") or {}
-                    for item in candidates
+                    item["hash"]: item.get("metadata") or {} for item in candidates
                 }
 
             if candidate_hashes is None:
@@ -569,10 +679,17 @@ class FlaskAppWrapper:
                         iterable.append((resource_hash, path))
 
             for resource_hash, path in iterable:
-                metadata = candidate_metadata.get(resource_hash) or self.catalog.get_metadata_for_hash(resource_hash) or {}
+                metadata = (
+                    candidate_metadata.get(resource_hash)
+                    or self.catalog.get_metadata_for_hash(resource_hash)
+                    or {}
+                )
                 flattened_meta = _flatten_metadata(metadata)
                 if q_lower:
-                    meta_match = any(q_lower in k.lower() or q_lower in v.lower() for k, v in flattened_meta.items())
+                    meta_match = any(
+                        q_lower in k.lower() or q_lower in v.lower()
+                        for k, v in flattened_meta.items()
+                    )
                 else:
                     meta_match = True
 
@@ -585,7 +702,9 @@ class FlaskAppWrapper:
                         idx = text.lower().find(q_lower)
                         if idx != -1:
                             content_match = True
-                            snippet = _collect_snippet(text, idx, len(free_query), window=window)
+                            snippet = _collect_snippet(
+                                text, idx, len(free_query), window=window
+                            )
                     else:
                         logger.error("No text content loaded from %s for search", path)
 
@@ -594,7 +713,10 @@ class FlaskAppWrapper:
                         if not text:
                             text = load_text_from_path(path) or ""
                             if not text:
-                                logger.error("No text content loaded from %s for metadata match", path)
+                                logger.error(
+                                    "No text content loaded from %s for metadata match",
+                                    path,
+                                )
                         snippet = text
                     else:
                         snippet = (
@@ -617,7 +739,11 @@ class FlaskAppWrapper:
                     break
 
         total_duration = time.monotonic() - start_time
-        logger.debug("Catalog search completed in %.3f seconds with %d hits", total_duration, len(hits))
+        logger.debug(
+            "Catalog search completed in %.3f seconds with %d hits",
+            total_duration,
+            len(hits),
+        )
         return jsonify({"hits": hits, "total_duration": total_duration})
 
     def api_catalog_document(self, resource_hash: str):
@@ -630,7 +756,14 @@ class FlaskAppWrapper:
         text = load_text_from_path(path) or ""
         if max_chars and len(text) > max_chars:
             text = text[:max_chars]
-        return jsonify({"hash": resource_hash, "path": str(path), "metadata": metadata, "text": text})
+        return jsonify(
+            {
+                "hash": resource_hash,
+                "path": str(path),
+                "metadata": metadata,
+                "text": text,
+            }
+        )
 
     def api_catalog_schema(self):
         """
@@ -638,11 +771,13 @@ class FlaskAppWrapper:
         """
         keys = sorted(_METADATA_COLUMN_MAP.keys())
         distinct = self.catalog.get_distinct_metadata(["source_type", "suffix"])
-        return jsonify({
-            "keys": keys,
-            "source_types": distinct.get("source_type", []),
-            "suffixes": distinct.get("suffix", []),
-        })
+        return jsonify(
+            {
+                "keys": keys,
+                "source_types": distinct.get("source_type", []),
+                "suffixes": distinct.get("suffix", []),
+            }
+        )
 
 
 def _flatten_metadata(data: Dict[str, object], prefix: str = "") -> Dict[str, str]:
@@ -662,7 +797,9 @@ _METADATA_ALIAS_MAP = {
 }
 
 
-def _parse_metadata_query(query: str) -> Tuple[Dict[str, str] | List[Dict[str, str]], str]:
+def _parse_metadata_query(
+    query: str,
+) -> Tuple[Dict[str, str] | List[Dict[str, str]], str]:
     filters_groups: List[Dict[str, str]] = []
     current_group: Dict[str, str] = {}
     free_tokens = []
@@ -707,7 +844,9 @@ def _parse_bool(value: Optional[str], *, default: bool = False) -> bool:
     return default
 
 
-def _compile_query_pattern(query: str, *, regex: bool, case_sensitive: bool) -> re.Pattern[str]:
+def _compile_query_pattern(
+    query: str, *, regex: bool, case_sensitive: bool
+) -> re.Pattern[str]:
     flags = 0 if case_sensitive else re.IGNORECASE
     pattern = query if regex else re.escape(query)
     return re.compile(pattern, flags)
@@ -740,7 +879,9 @@ def _grep_text_lines(
     return matches
 
 
-def _collect_snippet(text: str, start_idx: int, query_len: int, window: int = -1) -> str:
+def _collect_snippet(
+    text: str, start_idx: int, query_len: int, window: int = -1
+) -> str:
     start = max(start_idx - window, 0) if window >= 0 else 0
     end = min(start_idx + query_len + window, len(text)) if window >= 0 else len(text)
     prefix = "..." if start > 0 else ""

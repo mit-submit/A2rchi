@@ -7,6 +7,7 @@ Provides REST API and page endpoints for:
 - Deleting service alerts (DELETE /api/ssb/alerts/<id>)
 - Querying active banner alerts (used by the context processor in app.py)
 """
+
 from datetime import datetime, timedelta
 
 import psycopg2
@@ -15,17 +16,13 @@ from flask import Blueprint, jsonify, render_template, request, session
 from src.utils.logging import get_logger
 from src.utils.rbac.permission_enum import Permission
 from src.utils.rbac.permissions import has_permission
-from src.utils.sql import (
-    SQL_DELETE_ALERT,
-    SQL_INSERT_ALERT,
-    SQL_LIST_ACTIVE_BANNER_ALERTS,
-    SQL_LIST_ALERTS,
-    SQL_SET_ALERT_EXPIRY,
-)
+from src.utils.sql import (SQL_DELETE_ALERT, SQL_INSERT_ALERT,
+                           SQL_LIST_ACTIVE_BANNER_ALERTS, SQL_LIST_ALERTS,
+                           SQL_SET_ALERT_EXPIRY)
 
 logger = get_logger(__name__)
 
-ssb = Blueprint('ssb', __name__)
+ssb = Blueprint("ssb", __name__)
 
 # ---------------------------------------------------------------------------
 # Module-level references injected at registration time
@@ -39,6 +36,7 @@ _chat_app_config: dict = {}
 # Helpers (public — called by the context processor in app.py)
 # ---------------------------------------------------------------------------
 
+
 def is_alert_manager() -> bool:
     """Return True if the current session user may manage service alerts.
 
@@ -51,12 +49,8 @@ def is_alert_manager() -> bool:
     """
     if not _auth_enabled:
         return True
-    managers = (
-        _chat_app_config
-        .get('alerts', {})
-        .get('managers')
-    ) or []
-    username = (session.get('user') or {}).get('username', '')
+    managers = (_chat_app_config.get("alerts", {}).get("managers")) or []
+    username = (session.get("user") or {}).get("username", "")
     if username and username in managers:
         return True
     if has_permission(Permission.Alerts.MANAGE):
@@ -80,13 +74,13 @@ def get_active_banner_alerts() -> list:
             rows = cursor.fetchall()
             return [
                 {
-                    'id': row[0],
-                    'severity': row[1],
-                    'message': row[2],
-                    'description': row[3],
-                    'created_by': row[4],
-                    'created_at': row[5].isoformat() if row[5] else None,
-                    'expires_at': row[6].isoformat() if row[6] else None,
+                    "id": row[0],
+                    "severity": row[1],
+                    "message": row[2],
+                    "description": row[3],
+                    "created_by": row[4],
+                    "created_at": row[5].isoformat() if row[5] else None,
+                    "expires_at": row[6].isoformat() if row[6] else None,
                 }
                 for row in rows
             ]
@@ -102,7 +96,8 @@ def get_active_banner_alerts() -> list:
 # Routes  (URLs match the original app.py layout exactly)
 # ---------------------------------------------------------------------------
 
-@ssb.route('/ssb/status')
+
+@ssb.route("/ssb/status")
 def status_board():
     """Render the service status board page."""
     try:
@@ -113,15 +108,15 @@ def status_board():
             rows = cursor.fetchall()
             alerts = [
                 {
-                    'id': row[0],
-                    'severity': row[1],
-                    'message': row[2],
-                    'description': row[3],
-                    'created_by': row[4],
-                    'created_at': row[5],
-                    'expires_at': row[6],
-                    'active': row[7],
-                    'expired': bool(row[6] and row[6] < datetime.now()),
+                    "id": row[0],
+                    "severity": row[1],
+                    "message": row[2],
+                    "description": row[3],
+                    "created_by": row[4],
+                    "created_at": row[5],
+                    "expires_at": row[6],
+                    "active": row[7],
+                    "expired": bool(row[6] and row[6] < datetime.now()),
                 }
                 for row in rows
             ]
@@ -137,39 +132,41 @@ def status_board():
         f"is_alert_manager: {is_alert_manager()}"
     )
     return render_template(
-        'status.html',
+        "status.html",
         alerts=alerts,
         is_alert_manager=is_alert_manager(),
     )
 
 
-@ssb.route('/api/ssb/alerts', methods=['POST'])
+@ssb.route("/api/ssb/alerts", methods=["POST"])
 def create_alert():
     """Create a new service alert. Restricted to alert managers."""
     if not is_alert_manager():
-        return jsonify({'error': 'Forbidden'}), 403
+        return jsonify({"error": "Forbidden"}), 403
 
     payload = request.get_json(silent=True) or {}
-    severity = payload.get('severity', 'info')
-    message = payload.get('message', '').strip()
-    description = payload.get('description', '').strip() or None
-    expires_in_hours = payload.get('expires_in_hours')
-    expires_at_str = payload.get('expires_at')
+    severity = payload.get("severity", "info")
+    message = payload.get("message", "").strip()
+    description = payload.get("description", "").strip() or None
+    expires_in_hours = payload.get("expires_in_hours")
+    expires_at_str = payload.get("expires_at")
 
     if not message:
-        return jsonify({'error': 'message is required'}), 400
-    if severity not in ('info', 'warning', 'alarm', 'news'):
-        return jsonify({'error': 'invalid severity'}), 400
+        return jsonify({"error": "message is required"}), 400
+    if severity not in ("info", "warning", "alarm", "news"):
+        return jsonify({"error": "invalid severity"}), 400
 
     created_by = None
     if _auth_enabled:
-        created_by = (session.get('user') or {}).get('username') or None
+        created_by = (session.get("user") or {}).get("username") or None
 
     try:
         conn = psycopg2.connect(**_pg_config)
         cursor = conn.cursor()
         try:
-            cursor.execute(SQL_INSERT_ALERT, (severity, message, description, created_by))
+            cursor.execute(
+                SQL_INSERT_ALERT, (severity, message, description, created_by)
+            )
             row = cursor.fetchone()
             alert_id = row[0]
 
@@ -178,15 +175,28 @@ def create_alert():
                 try:
                     expires_at = datetime.fromisoformat(expires_at_str)
                 except ValueError:
-                    return jsonify({
-                        'error': 'expires_at must be a valid ISO-8601 datetime '
-                                 '(e.g. 2026-03-01T18:00:00)'
-                    }), 400
+                    return (
+                        jsonify(
+                            {
+                                "error": "expires_at must be a valid ISO-8601 datetime "
+                                "(e.g. 2026-03-01T18:00:00)"
+                            }
+                        ),
+                        400,
+                    )
                 if expires_at <= datetime.now():
-                    return jsonify({'error': 'expires_at must be a future date/time'}), 400
+                    return (
+                        jsonify({"error": "expires_at must be a future date/time"}),
+                        400,
+                    )
             elif expires_in_hours is not None:
                 if float(expires_in_hours) <= 0:
-                    return jsonify({'error': 'expires_in_hours must be a positive number'}), 400
+                    return (
+                        jsonify(
+                            {"error": "expires_in_hours must be a positive number"}
+                        ),
+                        400,
+                    )
                 expires_at = datetime.now() + timedelta(hours=float(expires_in_hours))
 
             if expires_at is not None:
@@ -195,22 +205,28 @@ def create_alert():
             conn.commit()
             logger.info(
                 "Service alert %d created by %s: [%s] %s",
-                alert_id, created_by, severity, message,
+                alert_id,
+                created_by,
+                severity,
+                message,
             )
-            return jsonify({'id': alert_id, 'severity': severity, 'message': message}), 201
+            return (
+                jsonify({"id": alert_id, "severity": severity, "message": message}),
+                201,
+            )
         finally:
             cursor.close()
             conn.close()
     except Exception as exc:
         logger.error("Failed to create alert: %s", exc)
-        return jsonify({'error': 'internal error'}), 500
+        return jsonify({"error": "internal error"}), 500
 
 
-@ssb.route('/api/ssb/alerts/<int:alert_id>', methods=['DELETE'])
+@ssb.route("/api/ssb/alerts/<int:alert_id>", methods=["DELETE"])
 def delete_alert(alert_id: int):
     """Delete a service alert by ID. Restricted to alert managers."""
     if not is_alert_manager():
-        return jsonify({'error': 'Forbidden'}), 403
+        return jsonify({"error": "Forbidden"}), 403
 
     try:
         conn = psycopg2.connect(**_pg_config)
@@ -223,20 +239,22 @@ def delete_alert(alert_id: int):
             cursor.close()
             conn.close()
         if not deleted:
-            return jsonify({'error': 'not found'}), 404
+            return jsonify({"error": "not found"}), 404
         logger.info("Service alert %d deleted", alert_id)
-        return jsonify({'deleted': alert_id}), 200
+        return jsonify({"deleted": alert_id}), 200
     except Exception as exc:
         logger.error("Failed to delete alert %d: %s", alert_id, exc)
-        return jsonify({'error': 'internal error'}), 500
+        return jsonify({"error": "internal error"}), 500
 
 
 # ---------------------------------------------------------------------------
 # Blueprint registration
 # ---------------------------------------------------------------------------
 
-def register_service_alerts(app, *, pg_config, auth_enabled, chat_app_config,
-                            require_auth):
+
+def register_service_alerts(
+    app, *, pg_config, auth_enabled, chat_app_config, require_auth
+):
     """Register the SSB blueprint with a Flask app.
 
     Parameters

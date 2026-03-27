@@ -5,9 +5,9 @@ synchronous (Flask) code.  Used by the Copilot SDK adapter and,
 historically, by MCP tool wrappers.
 """
 
-from typing import Optional, Any
 import asyncio
 import threading
+from typing import Any, Optional
 
 from src.utils.logging import get_logger
 

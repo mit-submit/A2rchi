@@ -12,14 +12,14 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
 from src.archi.utils.output_dataclass import PipelineOutput
 
-
 # ── Minimal context stub ─────────────────────────────────────────────────
+
 
 @dataclass
 class FakeChatContext:
@@ -35,6 +35,7 @@ class FakeChatContext:
 
 
 # ── Helper to create a minimal ChatWrapper for testing ───────────────────
+
 
 def _make_chat_wrapper(pipeline_outputs: List[PipelineOutput]):
     """Create a ChatWrapper-like object with .stream() that routes
@@ -70,9 +71,9 @@ def _make_chat_wrapper(pipeline_outputs: List[PipelineOutput]):
     wrapper.archi = mock_archi
 
     # Mock all DB/context methods
-    wrapper._prepare_chat_context = MagicMock(return_value=(
-        FakeChatContext(), None  # context, error_code
-    ))
+    wrapper._prepare_chat_context = MagicMock(
+        return_value=(FakeChatContext(), None)  # context, error_code
+    )
     wrapper._resolve_config_name = MagicMock(return_value="test")
     wrapper.update_config = MagicMock()
     wrapper.create_agent_trace = MagicMock(return_value="trace-123")
@@ -82,7 +83,9 @@ def _make_chat_wrapper(pipeline_outputs: List[PipelineOutput]):
     wrapper.insert_timing = MagicMock()
 
     # Mock _finalize_result to return the output text and message IDs
-    def _fake_finalize(result, *, context, server_received_msg_ts, timestamps, render_markdown=True):
+    def _fake_finalize(
+        result, *, context, server_received_msg_ts, timestamps, render_markdown=True
+    ):
         return result.answer or "finalized", [1, 2]
 
     wrapper._finalize_result = _fake_finalize
@@ -112,14 +115,21 @@ def _collect_events(wrapper, **kwargs) -> List[Dict[str, Any]]:
 
 # ── Tests ─────────────────────────────────────────────────────────────────
 
+
 class TestStreamTextEvents:
     """Verify text chunks are routed correctly."""
 
     def test_text_events_yield_chunks(self):
         outputs = [
-            PipelineOutput(answer="Hello", metadata={"event_type": "text"}, final=False),
-            PipelineOutput(answer="Hello world", metadata={"event_type": "text"}, final=False),
-            PipelineOutput(answer="Hello world", metadata={"event_type": "final"}, final=True),
+            PipelineOutput(
+                answer="Hello", metadata={"event_type": "text"}, final=False
+            ),
+            PipelineOutput(
+                answer="Hello world", metadata={"event_type": "text"}, final=False
+            ),
+            PipelineOutput(
+                answer="Hello world", metadata={"event_type": "final"}, final=True
+            ),
         ]
         wrapper = _make_chat_wrapper(outputs)
         events = _collect_events(wrapper)
@@ -133,8 +143,12 @@ class TestStreamTextEvents:
     def test_empty_text_not_yielded(self):
         outputs = [
             PipelineOutput(answer="", metadata={"event_type": "text"}, final=False),
-            PipelineOutput(answer="Hello", metadata={"event_type": "text"}, final=False),
-            PipelineOutput(answer="Hello", metadata={"event_type": "final"}, final=True),
+            PipelineOutput(
+                answer="Hello", metadata={"event_type": "text"}, final=False
+            ),
+            PipelineOutput(
+                answer="Hello", metadata={"event_type": "final"}, final=True
+            ),
         ]
         wrapper = _make_chat_wrapper(outputs)
         events = _collect_events(wrapper)
@@ -160,8 +174,12 @@ class TestStreamToolEvents:
                 },
                 final=False,
             ),
-            PipelineOutput(answer="result", metadata={"event_type": "text"}, final=False),
-            PipelineOutput(answer="result", metadata={"event_type": "final"}, final=True),
+            PipelineOutput(
+                answer="result", metadata={"event_type": "text"}, final=False
+            ),
+            PipelineOutput(
+                answer="result", metadata={"event_type": "final"}, final=True
+            ),
         ]
         wrapper = _make_chat_wrapper(outputs)
         events = _collect_events(wrapper)
@@ -258,8 +276,12 @@ class TestStreamThinkingEvents:
                 },
                 final=False,
             ),
-            PipelineOutput(answer="Result", metadata={"event_type": "text"}, final=False),
-            PipelineOutput(answer="Result", metadata={"event_type": "final"}, final=True),
+            PipelineOutput(
+                answer="Result", metadata={"event_type": "text"}, final=False
+            ),
+            PipelineOutput(
+                answer="Result", metadata={"event_type": "final"}, final=True
+            ),
         ]
         wrapper = _make_chat_wrapper(outputs)
         events = _collect_events(wrapper)
@@ -279,12 +301,18 @@ class TestStreamFinalEvent:
 
     def test_final_event_structure(self):
         outputs = [
-            PipelineOutput(answer="Hello", metadata={"event_type": "text"}, final=False),
+            PipelineOutput(
+                answer="Hello", metadata={"event_type": "text"}, final=False
+            ),
             PipelineOutput(
                 answer="Hello",
                 metadata={
                     "event_type": "final",
-                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 50,
+                        "total_tokens": 150,
+                    },
                 },
                 final=True,
             ),
@@ -298,7 +326,11 @@ class TestStreamFinalEvent:
         assert "response" in final
         assert "conversation_id" in final
         assert final["conversation_id"] == 42
-        assert final["usage"] == {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+        assert final["usage"] == {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        }
         assert "trace_id" in final
 
     def test_no_output_yields_error(self):
@@ -316,14 +348,18 @@ class TestStreamErrorEvent:
 
     def test_error_event_yielded(self):
         outputs = [
-            PipelineOutput(answer="partial", metadata={"event_type": "text"}, final=False),
+            PipelineOutput(
+                answer="partial", metadata={"event_type": "text"}, final=False
+            ),
             PipelineOutput(
                 answer="",
                 metadata={"event_type": "error", "error": "SDK session crashed"},
                 final=False,
             ),
             # After error, pipeline might still yield final
-            PipelineOutput(answer="partial", metadata={"event_type": "final"}, final=True),
+            PipelineOutput(
+                answer="partial", metadata={"event_type": "final"}, final=True
+            ),
         ]
         wrapper = _make_chat_wrapper(outputs)
         events = _collect_events(wrapper)
@@ -340,8 +376,12 @@ class TestStreamErrorEvent:
                 metadata={"event_type": "error", "error": "tool failed"},
                 final=False,
             ),
-            PipelineOutput(answer="recovered", metadata={"event_type": "text"}, final=False),
-            PipelineOutput(answer="recovered", metadata={"event_type": "final"}, final=True),
+            PipelineOutput(
+                answer="recovered", metadata={"event_type": "text"}, final=False
+            ),
+            PipelineOutput(
+                answer="recovered", metadata={"event_type": "final"}, final=True
+            ),
         ]
         wrapper = _make_chat_wrapper(outputs)
         events = _collect_events(wrapper)
@@ -360,7 +400,11 @@ class TestStreamUsageInTrace:
                 answer="Hi",
                 metadata={
                     "event_type": "final",
-                    "usage": {"prompt_tokens": 200, "completion_tokens": 80, "total_tokens": 280},
+                    "usage": {
+                        "prompt_tokens": 200,
+                        "completion_tokens": 80,
+                        "total_tokens": 280,
+                    },
                 },
                 final=True,
             ),
@@ -371,7 +415,9 @@ class TestStreamUsageInTrace:
         # The update_agent_trace call should have received usage in trace_events
         assert wrapper.update_agent_trace.called
         call_kwargs = wrapper.update_agent_trace.call_args
-        trace_events = call_kwargs.kwargs.get("events") or call_kwargs[1].get("events", [])
+        trace_events = call_kwargs.kwargs.get("events") or call_kwargs[1].get(
+            "events", []
+        )
         usage_events = [e for e in trace_events if e.get("type") == "usage"]
         assert len(usage_events) == 1
         assert usage_events[0]["prompt_tokens"] == 200
@@ -418,7 +464,11 @@ class TestStreamToolStepsDisabled:
             ),
             PipelineOutput(
                 answer="",
-                metadata={"event_type": "tool_output", "tool_call_id": "tc-1", "output": "data"},
+                metadata={
+                    "event_type": "tool_output",
+                    "tool_call_id": "tc-1",
+                    "output": "data",
+                },
                 final=False,
             ),
             PipelineOutput(answer="done", metadata={"event_type": "text"}, final=False),
@@ -427,7 +477,9 @@ class TestStreamToolStepsDisabled:
         wrapper = _make_chat_wrapper(outputs)
         events = _collect_events(wrapper, include_tool_steps=False)
 
-        tool_events = [e for e in events if e.get("type") in ("tool_start", "tool_output")]
+        tool_events = [
+            e for e in events if e.get("type") in ("tool_start", "tool_output")
+        ]
         assert tool_events == []
 
         chunks = [e for e in events if e.get("type") == "chunk"]
@@ -459,7 +511,9 @@ class TestStreamProviderOverride:
             PipelineOutput(answer="ok", metadata={"event_type": "final"}, final=True),
         ]
         wrapper = _make_chat_wrapper(outputs)
-        _collect_events(wrapper, provider="openai", model="gpt-4o", provider_api_key="sk-user-key")
+        _collect_events(
+            wrapper, provider="openai", model="gpt-4o", provider_api_key="sk-user-key"
+        )
 
         kwargs = wrapper.archi.stream.call_args.kwargs
         assert kwargs.get("provider_api_key") == "sk-user-key"

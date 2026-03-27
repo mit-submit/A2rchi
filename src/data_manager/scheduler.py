@@ -28,18 +28,20 @@ class CronJob:
 
 class CronScheduler:
     """Simple cron scheduler that runs jobs in a background thread.
-    
+
     Supports dynamic schedule reloading via config polling or explicit reload.
     """
 
-    def __init__(self, poll_interval: float = 1.0, config_poll_interval: float = 60.0) -> None:
+    def __init__(
+        self, poll_interval: float = 1.0, config_poll_interval: float = 60.0
+    ) -> None:
         self.poll_interval = poll_interval
         self.config_poll_interval = config_poll_interval
         self.jobs: List[CronJob] = []
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
-        
+
         # Config reload support
         self._config_loader: Optional[Callable[[], Dict[str, str]]] = None
         self._job_factory: Optional[Callable[[str], Callable[[], None]]] = None
@@ -47,12 +49,12 @@ class CronScheduler:
         self._last_config_check = datetime.now(timezone.utc)
 
     def set_config_loader(
-        self, 
-        loader: Callable[[], Dict[str, str]], 
-        job_factory: Callable[[str], Callable[[], None]]
+        self,
+        loader: Callable[[], Dict[str, str]],
+        job_factory: Callable[[str], Callable[[], None]],
     ) -> None:
         """Set callback to load schedules from database and create job callbacks.
-        
+
         Args:
             loader: Function that returns {source_name: cron_expression}
             job_factory: Function that takes source_name and returns a callback
@@ -76,7 +78,9 @@ class CronScheduler:
             job = CronJob(name=name, cron=cron, callback=callback)
             job.schedule_next(datetime.now(timezone.utc))
             self.jobs.append(job)
-            logger.info("Scheduled %s with cron '%s' (next run %s)", name, cron, job.next_run)
+            logger.info(
+                "Scheduled %s with cron '%s' (next run %s)", name, cron, job.next_run
+            )
 
     def remove_job(self, name: str) -> bool:
         """Remove a job by name. Returns True if job was found and removed."""
@@ -96,33 +100,40 @@ class CronScheduler:
                     if job.cron != cron:
                         job.cron = cron
                         job.schedule_next(datetime.now(timezone.utc))
-                        logger.info("Updated job %s: cron='%s' (next run %s)", name, cron, job.next_run)
+                        logger.info(
+                            "Updated job %s: cron='%s' (next run %s)",
+                            name,
+                            cron,
+                            job.next_run,
+                        )
                     return True
             return False
 
     def reload_schedules(self) -> Dict[str, str]:
         """Manually trigger a schedule reload. Returns the new schedules."""
         if not self._config_loader or not self._job_factory:
-            logger.warning("Cannot reload schedules: config_loader or job_factory not set")
+            logger.warning(
+                "Cannot reload schedules: config_loader or job_factory not set"
+            )
             return {}
-        
+
         return self._check_for_config_changes(force=True)
 
     def _check_for_config_changes(self, force: bool = False) -> Dict[str, str]:
         """Check for config changes and reload if needed. Returns current schedules."""
         if not self._config_loader or not self._job_factory:
             return {}
-        
+
         try:
             new_schedules = self._config_loader()
             new_hash = self._hash_config(new_schedules)
-            
+
             if force or new_hash != self._config_hash:
                 if not force:
                     logger.info("Schedule configuration changed, reloading jobs...")
                 self._reload_jobs(new_schedules)
                 self._config_hash = new_hash
-            
+
             return new_schedules
         except Exception as e:
             logger.warning("Failed to check for config changes: %s", e)
@@ -133,25 +144,30 @@ class CronScheduler:
         with self._lock:
             # Get current job names
             current_jobs = {job.name: job for job in self.jobs}
-            
+
             # Remove jobs that no longer have schedules or are disabled
             for name in list(current_jobs.keys()):
                 if name not in new_schedules or not new_schedules[name]:
                     self.jobs.remove(current_jobs[name])
                     logger.info("Removed scheduled job: %s", name)
-            
+
             # Update or add jobs
             for name, cron in new_schedules.items():
                 if not cron:
                     continue
-                
+
                 if name in current_jobs:
                     # Update existing job if cron changed
                     job = current_jobs[name]
                     if job.cron != cron:
                         job.cron = cron
                         job.schedule_next(datetime.now(timezone.utc))
-                        logger.info("Updated job %s: cron='%s' (next run %s)", name, cron, job.next_run)
+                        logger.info(
+                            "Updated job %s: cron='%s' (next run %s)",
+                            name,
+                            cron,
+                            job.next_run,
+                        )
                 else:
                     # Add new job
                     try:
@@ -159,7 +175,12 @@ class CronScheduler:
                         job = CronJob(name=name, cron=cron, callback=callback)
                         job.schedule_next(datetime.now(timezone.utc))
                         self.jobs.append(job)
-                        logger.info("Added scheduled job %s: cron='%s' (next run %s)", name, cron, job.next_run)
+                        logger.info(
+                            "Added scheduled job %s: cron='%s' (next run %s)",
+                            name,
+                            cron,
+                            job.next_run,
+                        )
                     except Exception as e:
                         logger.warning("Failed to create job for %s: %s", name, e)
 
@@ -170,7 +191,7 @@ class CronScheduler:
                 {
                     "name": job.name,
                     "cron": job.cron,
-                    "next_run": job.next_run.isoformat()
+                    "next_run": job.next_run.isoformat(),
                 }
                 for job in self.jobs
             ]
@@ -190,17 +211,21 @@ class CronScheduler:
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
             now = datetime.now(timezone.utc)
-            
+
             # Check for config changes periodically
-            if self._config_loader and (now - self._last_config_check).total_seconds() > self.config_poll_interval:
+            if (
+                self._config_loader
+                and (now - self._last_config_check).total_seconds()
+                > self.config_poll_interval
+            ):
                 self._check_for_config_changes()
                 self._last_config_check = now
-            
+
             next_wake = None
 
             with self._lock:
                 jobs_snapshot = list(self.jobs)
-            
+
             for job in jobs_snapshot:
                 if job.next_run <= now:
                     logger.info("Running scheduled job %s", job.name)
@@ -214,7 +239,9 @@ class CronScheduler:
                     next_wake = job.next_run
 
             if next_wake:
-                sleep_for = max(0.0, (next_wake - datetime.now(timezone.utc)).total_seconds())
+                sleep_for = max(
+                    0.0, (next_wake - datetime.now(timezone.utc)).total_seconds()
+                )
                 time.sleep(min(self.poll_interval, sleep_for))
             else:
                 time.sleep(self.poll_interval)

@@ -20,7 +20,8 @@ Design decisions implemented here:
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import (Any, AsyncIterator, Callable, Dict, Iterator, List,
+                    Optional, Sequence, Tuple)
 
 from src.archi.copilot_event_adapter import CopilotEventAdapter
 from src.archi.utils.async_loop import AsyncLoopThread
@@ -48,6 +49,7 @@ def _get_copilot_client_cls():
     global _CopilotClient
     if _CopilotClient is None:
         from copilot import CopilotClient
+
         _CopilotClient = CopilotClient
     return _CopilotClient
 
@@ -82,8 +84,8 @@ def _canonicalize_tool_name(name: str) -> str:
 _PROVIDER_TYPE_MAP = {
     "openai": "openai",
     "anthropic": "anthropic",
-    "openrouter": "openai",   # OpenRouter is OpenAI-compatible
-    "local": "openai",        # Ollama / vLLM expose an OpenAI-compatible API
+    "openrouter": "openai",  # OpenRouter is OpenAI-compatible
+    "local": "openai",  # Ollama / vLLM expose an OpenAI-compatible API
 }
 
 
@@ -128,7 +130,9 @@ def _build_sdk_provider(
         # The Copilot SDK uses OpenAI-compatible endpoints (/chat/completions)
         # directly under base_url.  Ollama (and similar local servers) serve
         # that API under /v1, so append it when missing.
-        if provider_name.lower() == "local" and not base_url.rstrip("/").endswith("/v1"):
+        if provider_name.lower() == "local" and not base_url.rstrip("/").endswith(
+            "/v1"
+        ):
             base_url = base_url.rstrip("/") + "/v1"
         result["base_url"] = base_url
 
@@ -137,6 +141,7 @@ def _build_sdk_provider(
     else:
         # Fallback: let the provider resolve from env
         from src.utils.env import read_secret
+
         env_map = {
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
@@ -152,6 +157,7 @@ def _build_sdk_provider(
 
 
 # ── MCP config mapping (decision 8 — task 3.5) ──────────────────────────
+
 
 def _build_mcp_servers(archi_config: dict) -> Optional[dict]:
     """Map ``archi.mcp_servers`` to the SDK's ``mcpServers`` format.
@@ -197,6 +203,7 @@ def _build_mcp_servers(archi_config: dict) -> Optional[dict]:
 #  CopilotAgentPipeline
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class CopilotAgentPipeline:
     """Agent pipeline backed by the GitHub Copilot SDK.
 
@@ -234,8 +241,12 @@ class CopilotAgentPipeline:
 
         # Providers config (for BYOK mapping)
         services_cfg = config.get("services", {})
-        chat_cfg = services_cfg.get("chat_app", {}) if isinstance(services_cfg, dict) else {}
-        self._providers_config = chat_cfg.get("providers", {}) if isinstance(chat_cfg, dict) else {}
+        chat_cfg = (
+            services_cfg.get("chat_app", {}) if isinstance(services_cfg, dict) else {}
+        )
+        self._providers_config = (
+            chat_cfg.get("providers", {}) if isinstance(chat_cfg, dict) else {}
+        )
 
         # Shared async loop
         self._async_loop = AsyncLoopThread.get_instance()
@@ -254,20 +265,30 @@ class CopilotAgentPipeline:
         # Catalog client for file/metadata tools
         try:
             from src.archi.pipelines.agents.tools import RemoteCatalogClient
-            self._catalog_client = RemoteCatalogClient.from_deployment_config(self.config)
+
+            self._catalog_client = RemoteCatalogClient.from_deployment_config(
+                self.config
+            )
         except Exception:
             logger.debug("Catalog client not available", exc_info=True)
 
         # MONIT OpenSearch client
         from src.utils.env import read_secret
+
         monit_token = read_secret("MONIT_GRAFANA_TOKEN")
         chat_cfg = self.config.get("services", {}).get("chat_app", {})
         monit_url = chat_cfg.get("tools", {}).get("monit", {}).get("url")
         if monit_token and monit_url:
             try:
-                from src.archi.pipelines.agents.tools import MONITOpenSearchClient
-                self._monit_client = MONITOpenSearchClient(url=monit_url, token=monit_token)
-                from src.archi.pipelines.agents.utils.skill_utils import load_skill
+                from src.archi.pipelines.agents.tools import \
+                    MONITOpenSearchClient
+
+                self._monit_client = MONITOpenSearchClient(
+                    url=monit_url, token=monit_token
+                )
+                from src.archi.pipelines.agents.utils.skill_utils import \
+                    load_skill
+
                 self._rucio_events_skill = load_skill("rucio_events", self.config)
                 logger.info("MONIT OpenSearch client initialised")
             except Exception:
@@ -285,16 +306,12 @@ class CopilotAgentPipeline:
         Only tools listed in ``self.selected_tool_names`` are built.
         If the list is empty all available tools are built.
         """
-        from src.archi.tools.file_search import (
-            build_document_fetch_tool,
-            build_file_search_tool,
-            build_metadata_schema_tool,
-            build_metadata_search_tool,
-        )
-        from src.archi.tools.monit_search import (
-            build_monit_aggregation_tool,
-            build_monit_search_tool,
-        )
+        from src.archi.tools.file_search import (build_document_fetch_tool,
+                                                 build_file_search_tool,
+                                                 build_metadata_schema_tool,
+                                                 build_metadata_search_tool)
+        from src.archi.tools.monit_search import (build_monit_aggregation_tool,
+                                                  build_monit_search_tool)
 
         store_docs = collector.make_store_docs_callback()
         tools: list = []
@@ -310,7 +327,9 @@ class CopilotAgentPipeline:
         if vectorstore and _want("search_knowledge_base"):
             try:
                 from src.archi.tools.retriever import build_retriever_tool
-                from src.data_manager.vectorstore.retrievers import HybridRetriever
+                from src.data_manager.vectorstore.retrievers import \
+                    HybridRetriever
+
                 retrievers_cfg = self.dm_config.get("retrievers", {})
                 hybrid_cfg = retrievers_cfg.get("hybrid_retriever", {})
                 k = hybrid_cfg.get("num_documents_to_retrieve", 5)
@@ -329,13 +348,19 @@ class CopilotAgentPipeline:
         # Catalog tools
         if self._catalog_client:
             if _want("search_local_files"):
-                tools.append(build_file_search_tool(
-                    self._catalog_client, store_docs=store_docs,
-                ))
+                tools.append(
+                    build_file_search_tool(
+                        self._catalog_client,
+                        store_docs=store_docs,
+                    )
+                )
             if _want("search_metadata_index"):
-                tools.append(build_metadata_search_tool(
-                    self._catalog_client, store_docs=store_docs,
-                ))
+                tools.append(
+                    build_metadata_search_tool(
+                        self._catalog_client,
+                        store_docs=store_docs,
+                    )
+                )
             if _want("list_metadata_schema"):
                 tools.append(build_metadata_schema_tool(self._catalog_client))
             if _want("fetch_catalog_document"):
@@ -345,19 +370,23 @@ class CopilotAgentPipeline:
         if self._monit_client:
             monit_index = "monit_prod_cms_rucio_raw_events*"
             if _want("monit_opensearch_search"):
-                tools.append(build_monit_search_tool(
-                    self._monit_client,
-                    tool_name="rucio_events_search",
-                    index=monit_index,
-                    skill=self._rucio_events_skill,
-                ))
+                tools.append(
+                    build_monit_search_tool(
+                        self._monit_client,
+                        tool_name="rucio_events_search",
+                        index=monit_index,
+                        skill=self._rucio_events_skill,
+                    )
+                )
             if _want("monit_opensearch_aggregation"):
-                tools.append(build_monit_aggregation_tool(
-                    self._monit_client,
-                    tool_name="rucio_events_aggregation",
-                    index=monit_index,
-                    skill=self._rucio_events_skill,
-                ))
+                tools.append(
+                    build_monit_aggregation_tool(
+                        self._monit_client,
+                        tool_name="rucio_events_aggregation",
+                        index=monit_index,
+                        skill=self._rucio_events_skill,
+                    )
+                )
 
         return tools
 
@@ -497,13 +526,27 @@ class CopilotAgentPipeline:
 
     def _on_error_occurred(self, hook_input, context=None):
         """Handle SDK errors — retry transient model errors, log all."""
-        error = hook_input.get("error", "") if isinstance(hook_input, dict) else getattr(hook_input, "error", "")
-        error_context = hook_input.get("errorContext", "") if isinstance(hook_input, dict) else getattr(hook_input, "errorContext", "")
-        recoverable = hook_input.get("recoverable", False) if isinstance(hook_input, dict) else getattr(hook_input, "recoverable", False)
+        error = (
+            hook_input.get("error", "")
+            if isinstance(hook_input, dict)
+            else getattr(hook_input, "error", "")
+        )
+        error_context = (
+            hook_input.get("errorContext", "")
+            if isinstance(hook_input, dict)
+            else getattr(hook_input, "errorContext", "")
+        )
+        recoverable = (
+            hook_input.get("recoverable", False)
+            if isinstance(hook_input, dict)
+            else getattr(hook_input, "recoverable", False)
+        )
 
         logger.error(
             "Copilot SDK error: context=%s recoverable=%s error=%s",
-            error_context, recoverable, error,
+            error_context,
+            recoverable,
+            error,
         )
 
         if recoverable and error_context == "model_call":
@@ -536,7 +579,11 @@ class CopilotAgentPipeline:
         if kind == PermissionRequestKind.CUSTOM_TOOL:
             if tool_name in self._allowed_custom_tool_names():
                 return PermissionRequestResult(kind="approved")
-            logger.warning("Denied custom tool permission request: tool=%s invocation=%s", tool_name or "<missing>", invocation)
+            logger.warning(
+                "Denied custom tool permission request: tool=%s invocation=%s",
+                tool_name or "<missing>",
+                invocation,
+            )
             return PermissionRequestResult(
                 kind="denied",
                 message=f"Tool '{tool_name or 'unknown'}' is not allowed in this Archi agent.",
@@ -573,6 +620,7 @@ class CopilotAgentPipeline:
 
         # Per-request document collector
         from src.archi.tools import DocumentCollector
+
         collector = DocumentCollector()
 
         # Build tools for this request
@@ -604,7 +652,9 @@ class CopilotAgentPipeline:
         async def _run_session():
             try:
                 session, was_resumed = await self._create_session(
-                    adapter, session_config, session_id=session_id,
+                    adapter,
+                    session_config,
+                    session_id=session_id,
                 )
 
                 # Build the prompt.  The SDK session is stateful so when
@@ -622,7 +672,11 @@ class CopilotAgentPipeline:
                     if len(history) > 1 and not was_resumed:
                         prior = []
                         for role, content in history[:-1]:
-                            label = "User" if role.lower() in ("user", "human") else "Assistant"
+                            label = (
+                                "User"
+                                if role.lower() in ("user", "human")
+                                else "Assistant"
+                            )
                             prior.append(f"{label}: {content}")
                         prefix = "\n".join(prior)
                         last_msg = (
@@ -635,16 +689,19 @@ class CopilotAgentPipeline:
                 await session.send_and_wait(last_msg, timeout=120.0)
             except Exception as exc:
                 logger.error("Copilot session error: %s", exc, exc_info=True)
-                adapter._queue.put(PipelineOutput(
-                    answer="",
-                    metadata={"event_type": "error", "error": str(exc)},
-                    final=False,
-                ))
+                adapter._queue.put(
+                    PipelineOutput(
+                        answer="",
+                        metadata={"event_type": "error", "error": str(exc)},
+                        final=False,
+                    )
+                )
             finally:
                 adapter.signal_done()
 
         # Schedule async work on the background loop
         import concurrent.futures
+
         future = self._async_loop.run_no_wait(_run_session())
 
         # Yield events from the sync iterator
@@ -684,6 +741,7 @@ class CopilotAgentPipeline:
         adapter uses a queue bridge, so this is a convenience wrapper.
         """
         import asyncio
+
         loop = asyncio.get_event_loop()
 
         q: "asyncio.Queue[Optional[PipelineOutput]]" = asyncio.Queue()
@@ -713,6 +771,7 @@ class CopilotAgentPipeline:
             return None
         try:
             from src.archi.providers.byok_resolver import get_byok_resolver
+
             resolver = get_byok_resolver()
             return resolver.get_byok_key(self.default_provider, user_id)
         except Exception:
@@ -724,9 +783,11 @@ class CopilotAgentPipeline:
     def get_tool_registry(self) -> Dict[str, Callable]:
         """Return tool name -> factory mapping for the agent spec editor."""
         from src.archi.tools import TOOL_REGISTRY
+
         return {name: entry["factory"] for name, entry in TOOL_REGISTRY.items()}
 
     def get_tool_descriptions(self) -> Dict[str, str]:
         """Return tool name -> description mapping for UI display."""
         from src.archi.tools import TOOL_REGISTRY
+
         return {name: entry["description"] for name, entry in TOOL_REGISTRY.items()}

@@ -1,7 +1,8 @@
 """Dataclass to standardize the output of the classic pipelines and the pipelines / agents."""
 
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Iterator
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, Iterator, List
+
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 
@@ -33,14 +34,16 @@ class PipelineOutput:
 
     def __len__(self) -> int:
         return len(self.to_dict())
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         return self.to_dict().get(key, default)
 
     def extract_tool_calls(self) -> List[Dict[str, Any]]:
         """Return a normalized list of tool calls extracted from message history."""
         tool_results: Dict[str, Any] = {}
-        tool_inputs_by_id: Dict[str, Any] = self.metadata.get("tool_inputs_by_id", {}) if self.metadata else {}
+        tool_inputs_by_id: Dict[str, Any] = (
+            self.metadata.get("tool_inputs_by_id", {}) if self.metadata else {}
+        )
         for msg in self.messages:
             tool_call_id = getattr(msg, "tool_call_id", None)
             if tool_call_id:
