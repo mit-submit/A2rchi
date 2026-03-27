@@ -1866,8 +1866,20 @@ class ChatWrapper:
                             if tool_call_id in emitted_tool_call_ids:
                                 continue
                             emitted_tool_call_ids.add(tool_call_id)
+                            emitted_tool_start_ids.add(tool_call_id)
                             pending_tool_call_ids.append(tool_call_id)
                             tool_call_count += 1
+                            trace_event = {
+                                "type": "tool_start",
+                                "tool_call_id": tool_call_id,
+                                "tool_name": tool_name,
+                                "tool_args": tool_args,
+                                "timestamp": timestamp,
+                                "conversation_id": context.conversation_id,
+                            }
+                            trace_events.append(trace_event)
+                            if include_tool_steps:
+                                yield trace_event
                     elif memory_args_by_id:
                         for memory_id, memory_call in memory_args_by_id.items():
                             if not isinstance(memory_call, dict):
@@ -1880,14 +1892,15 @@ class ChatWrapper:
                             if tool_call_id in emitted_tool_call_ids:
                                 continue
                             emitted_tool_call_ids.add(tool_call_id)
+                            emitted_tool_start_ids.add(tool_call_id)
                             pending_tool_call_ids.append(tool_call_id)
                             _remember_tool_call(tool_call_id, tool_name, tool_args)
                             tool_call_count += 1
                             trace_event = {
                                 "type": "tool_start",
-                                "tool_call_id": tool_call.get("id", ""),
-                                "tool_name": tool_call.get("name", "unknown"),
-                                "tool_args": tool_call.get("args", {}),
+                                "tool_call_id": tool_call_id,
+                                "tool_name": tool_name,
+                                "tool_args": tool_args,
                                 "timestamp": timestamp,
                                 "conversation_id": context.conversation_id,
                             }
@@ -1900,6 +1913,8 @@ class ChatWrapper:
                         meta_tool_name = output.metadata.get("tool_name", "unknown")
                         meta_tool_args = output.metadata.get("tool_args", {})
                         _remember_tool_call(meta_tool_call_id, meta_tool_name, meta_tool_args)
+                        if meta_tool_call_id and meta_tool_call_id in emitted_tool_call_ids:
+                            continue
                         if meta_tool_call_id:
                             emitted_tool_call_ids.add(meta_tool_call_id)
                             emitted_tool_start_ids.add(meta_tool_call_id)

@@ -20,7 +20,7 @@ Design decisions implemented here:
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from src.archi.copilot_event_adapter import CopilotEventAdapter
 from src.archi.utils.async_loop import AsyncLoopThread
@@ -28,15 +28,6 @@ from src.archi.utils.output_dataclass import PipelineOutput
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-_COPILOT_BUILTIN_TOOL_BLOCKLIST: tuple[str, ...] = (
-    "bash",
-    "edit",
-    "grep",
-    "read_file",
-    "str_replace_editor",
-    "task",
-)
 
 _NO_FAKE_TOOL_USE_INSTRUCTION = (
     "Only use the explicitly provided Archi custom tools. "
@@ -61,19 +52,20 @@ def _get_copilot_client_cls():
     return _CopilotClient
 
 
-def _build_tool_restriction_kwargs() -> Dict[str, list[str]]:
+def _build_tool_restriction_kwargs(custom_tools: list) -> Dict[str, list[str]]:
     """Return Copilot session tool restrictions.
 
-    We only use ``excluded_tools`` to block known built-in tool identifiers
-    (bash, edit, grep, etc.) that Archi agents should never invoke.
+    Uses ``available_tools`` as an **allowlist** containing only the names of
+    our custom Archi tools.  This blocks every SDK built-in tool (bash, edit,
+    grep, sql, report_intent, etc.) without needing to enumerate them.
 
-    NOTE: ``available_tools`` is intentionally NOT set.  The SDK docs state
-    that ``available_tools`` **takes precedence** over ``excluded_tools`` and
-    an empty list means "allow nothing" — which disables our custom tools too.
+    The SDK docs state that ``available_tools`` **takes precedence** over
+    ``excluded_tools``.  An empty list means "allow nothing".  When Archi has
+    no custom tools, we pass an empty list — which correctly disables all tools.
     """
-    blocked_tools = list(_COPILOT_BUILTIN_TOOL_BLOCKLIST)
+    allowed = [t.name for t in custom_tools]
     return {
-        "excluded_tools": blocked_tools,
+        "available_tools": allowed,
     }
 
 
@@ -133,6 +125,11 @@ def _build_sdk_provider(
         }
         base_url = _DEFAULT_BASE_URLS.get(provider_name.lower())
     if base_url:
+        # The Copilot SDK uses OpenAI-compatible endpoints (/chat/completions)
+        # directly under base_url.  Ollama (and similar local servers) serve
+        # that API under /v1, so append it when missing.
+        if provider_name.lower() == "local" and not base_url.rstrip("/").endswith("/v1"):
+            base_url = base_url.rstrip("/") + "/v1"
         result["base_url"] = base_url
 
     if api_key:
@@ -431,14 +428,20 @@ class CopilotAgentPipeline:
         config: dict,
         *,
         session_id: Optional[str] = None,
-    ):
-        """Create or resume a Copilot SDK session with hooks attached."""
+    ) -> Tuple[Any, bool]:
+        """Create or resume a Copilot SDK session with hooks attached.
+
+        Returns
+        -------
+        (session, was_resumed) : tuple
+            The SDK session and whether it was resumed from a prior session_id.
+        """
         tools = config.pop("_tools", [])
 
         hooks = {
             "on_error_occurred": self._on_error_occurred,
         }
-        tool_restrictions = _build_tool_restriction_kwargs()
+        tool_restrictions = _build_tool_restriction_kwargs(tools)
 
         if session_id:
             # Resume existing session — SDK manages conversation history
@@ -453,7 +456,7 @@ class CopilotAgentPipeline:
                     **config,
                 )
                 logger.debug("Resumed session %s", session_id)
-                return session
+                return session, True
             except Exception:
                 logger.info(
                     "Could not resume session %s — creating new",
@@ -475,16 +478,20 @@ class CopilotAgentPipeline:
         if session_id:
             create_kwargs["session_id"] = session_id
 
+        # Log provider type/model without leaking API keys
+        provider_info = config.get("provider", "default")
+        if isinstance(provider_info, dict):
+            provider_info = {k: v for k, v in provider_info.items() if k != "api_key"}
         logger.info(
             "Creating Copilot session with %d tools, restrictions=%s, provider=%s, model=%s",
             len(tools),
             tool_restrictions,
-            config.get("provider", "default"),
+            provider_info,
             config.get("model", "default"),
         )
 
         session = await self._client.create_session(**create_kwargs)
-        return session
+        return session, False
 
     # ── Error hook (decision EH) ──────────────────────────────────────
 
@@ -596,16 +603,32 @@ class CopilotAgentPipeline:
         # Create session and start consuming events (async)
         async def _run_session():
             try:
-                session = await self._create_session(
+                session, was_resumed = await self._create_session(
                     adapter, session_config, session_id=session_id,
                 )
 
-                # Extract last user message from history
+                # Build the prompt.  The SDK session is stateful so when
+                # resumed it already knows prior turns.  For a *new* session
+                # with prior history we prepend earlier turns so the model
+                # has full context.
                 last_msg = ""
                 if history:
                     last_pair = history[-1]
                     if last_pair[0].lower() in ("user", "human"):
                         last_msg = last_pair[1]
+
+                    # Prepend earlier turns when there are >1 history pairs
+                    # and the session was freshly created (not resumed).
+                    if len(history) > 1 and not was_resumed:
+                        prior = []
+                        for role, content in history[:-1]:
+                            label = "User" if role.lower() in ("user", "human") else "Assistant"
+                            prior.append(f"{label}: {content}")
+                        prefix = "\n".join(prior)
+                        last_msg = (
+                            f"[Prior conversation context]\n{prefix}\n"
+                            f"[End of prior context]\n\n{last_msg}"
+                        )
 
                 # Register event handler and send the user's message
                 adapter.attach_to_session(session)

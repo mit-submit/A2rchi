@@ -168,21 +168,29 @@ class TestToolNameAliases:
 
 
 class TestToolRestrictions:
-    """Copilot built-in tools must be hard-blocked for Archi sessions."""
+    """SDK built-in tools must be hard-blocked for Archi sessions."""
 
-    def test_known_builtin_tools_are_explicitly_excluded(self):
-        kwargs = _build_tool_restriction_kwargs()
+    def test_allowlist_contains_only_custom_tool_names(self):
+        """available_tools should list exactly the custom tools passed in."""
+        from unittest.mock import MagicMock
 
-        # available_tools must NOT be set — an empty list disables custom tools
-        assert "available_tools" not in kwargs
-        assert sorted(kwargs["excluded_tools"]) == sorted([
-            "bash",
-            "edit",
-            "grep",
-            "read_file",
-            "str_replace_editor",
-            "task",
-        ])
+        tool_a = MagicMock()
+        tool_a.name = "search_knowledge_base"
+        tool_b = MagicMock()
+        tool_b.name = "rucio_events_search"
+
+        kwargs = _build_tool_restriction_kwargs([tool_a, tool_b])
+        assert sorted(kwargs["available_tools"]) == [
+            "rucio_events_search",
+            "search_knowledge_base",
+        ]
+        assert "excluded_tools" not in kwargs
+
+    def test_empty_tools_yields_empty_allowlist(self):
+        """When no custom tools exist, available_tools is empty — blocking everything."""
+        kwargs = _build_tool_restriction_kwargs([])
+        assert kwargs["available_tools"] == []
+        assert "excluded_tools" not in kwargs
 
 
 class TestPermissionRequests:

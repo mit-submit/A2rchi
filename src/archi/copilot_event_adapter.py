@@ -255,14 +255,14 @@ class CopilotEventAdapter:
                 yield item
         except GeneratorExit:
             self._cancelled = True
+            raise
+        finally:
+            self._cancelled = True
             if self._session is not None:
                 try:
                     self._async_loop.run(self._session.disconnect(), timeout=5.0)
                 except Exception:
-                    logger.debug("Error disconnecting session on cancel", exc_info=True)
-            raise
-        finally:
-            self._cancelled = True
+                    logger.debug("Error disconnecting session in cleanup", exc_info=True)
 
     def build_final_output(
         self,
