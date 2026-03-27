@@ -1896,12 +1896,19 @@ class ChatWrapper:
                                 yield trace_event
                     elif output.metadata:
                         # Metadata-only path (Copilot adapter)
+                        meta_tool_call_id = output.metadata.get("tool_call_id", "")
+                        meta_tool_name = output.metadata.get("tool_name", "unknown")
+                        meta_tool_args = output.metadata.get("tool_args", {})
+                        _remember_tool_call(meta_tool_call_id, meta_tool_name, meta_tool_args)
+                        if meta_tool_call_id:
+                            emitted_tool_call_ids.add(meta_tool_call_id)
+                            emitted_tool_start_ids.add(meta_tool_call_id)
                         tool_call_count += 1
                         trace_event = {
                             "type": "tool_start",
-                            "tool_call_id": output.metadata.get("tool_call_id", ""),
-                            "tool_name": output.metadata.get("tool_name", "unknown"),
-                            "tool_args": output.metadata.get("tool_args", {}),
+                            "tool_call_id": meta_tool_call_id,
+                            "tool_name": meta_tool_name,
+                            "tool_args": meta_tool_args,
                             "timestamp": timestamp,
                             "conversation_id": context.conversation_id,
                         }
