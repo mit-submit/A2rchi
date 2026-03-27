@@ -1586,7 +1586,7 @@ class ChatWrapper:
                     has_tool_calls,
                     has_tool_call_id,
                 )
-        if agent_messages and message_ids:
+        if message_ids:
             archi_message_id = message_ids[-1]
             self.insert_tool_calls_from_output(context.conversation_id, archi_message_id, result)
 
@@ -1746,26 +1746,17 @@ class ChatWrapper:
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
             
-            # If provider and model are specified in the context, override the pipeline's LLM
-            provider = context.provider_used
-            model = context.model_used
+            # Build per-request kwargs for provider/model override
+            stream_kwargs: Dict[str, Any] = {
+                "history": context.history,
+                "conversation_id": context.conversation_id,
+            }
             if provider and model:
-                try:
-                    override_llm = self._create_provider_llm(provider, model, provider_api_key)
-                    if override_llm and hasattr(self.archi, 'pipeline') and hasattr(self.archi.pipeline, 'agent_llm'):
-                        original_llm = self.archi.pipeline.agent_llm
-                        self.archi.pipeline.agent_llm = override_llm
-                        # Force agent refresh to use new LLM
-                        if hasattr(self.archi.pipeline, 'refresh_agent'):
-                            self.archi.pipeline.refresh_agent(force=True)
-                        logger.info(f"Overrode pipeline LLM with {provider}/{model}")
-                except ValueError as e:
-                    logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
-                    yield {"type": "error", "status": 400, "message": str(e)}
-                    return
-                except Exception as e:
-                    logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
-                    yield {"type": "warning", "message": f"Using default model: {e}"}
+                stream_kwargs["provider"] = provider
+                stream_kwargs["model"] = model
+                logger.info(f"Requesting pipeline override: {provider}/{model}")
+            if provider_api_key:
+                stream_kwargs["provider_api_key"] = provider_api_key
             
             # Create trace for this streaming request
             trace_id = self.create_agent_trace(
@@ -1775,7 +1766,7 @@ class ChatWrapper:
                 pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
 
-            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id,model=context.model_used):
+            for output in self.archi.stream(**stream_kwargs):
                 if client_timeout and time.time() - stream_start_time > client_timeout:
                     if trace_id:
                         total_duration_ms = int((time.time() - stream_start_time) * 1000)
@@ -2839,16 +2830,18 @@ class FlaskAppWrapper(object):
                 ProviderType,
             )
 
+            session_keys = session.get('provider_api_keys', {})
             providers_data = []
             for provider_type in list_provider_types():
                 try:
                     cfg = _build_provider_config_from_payload(self.config, provider_type)
                     provider = get_provider(provider_type, config=cfg) if cfg else get_provider(provider_type)
                     models = provider.list_models()
+                    has_session_key = provider_type.value in session_keys
                     providers_data.append({
                         'type': provider_type.value,
                         'display_name': provider.display_name,
-                        'enabled': provider.is_enabled,
+                        'enabled': provider.is_enabled or has_session_key,
                         'default_model': provider.config.default_model,
                         'models': [
                             {
@@ -3208,7 +3201,7 @@ class FlaskAppWrapper(object):
                 dynamic = None
             if dynamic and dynamic.active_agent_name == name:
                 cfg = ConfigService(pg_config=self.pg_config)
-                cfg.update_dynamic_config(active_agent_name=None, updated_by=data.get("client_id") or "system")
+                cfg.update_dynamic_config(active_agent_name="", updated_by=data.get("client_id") or "system")
             return jsonify({"success": True, "deleted": name}), 200
         except Exception as exc:
             logger.error(f"Error deleting agent spec: {exc}")

@@ -12,6 +12,10 @@ Design decisions implemented here:
   8  — MCP config passthrough (archi.mcp_servers → SDK mcpServers)
   13 — Context management delegated to Copilot CLI infinite sessions
   17 — get_tool_registry()/get_tool_descriptions() from TOOL_REGISTRY
+  SP — Session persistence via resume_session() (conversation_id → session_id)
+  CM — System message customize mode (keep SDK safety defaults)
+  EH — onErrorOccurred hook for auto-retry and friendly errors
+  ET — Tool lifecycle via streaming events (native toolCallId)
 """
 
 from __future__ import annotations
@@ -25,6 +29,24 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+_COPILOT_BUILTIN_TOOL_BLOCKLIST: tuple[str, ...] = (
+    "bash",
+    "edit",
+    "grep",
+    "read_file",
+    "str_replace_editor",
+    "task",
+)
+
+_NO_FAKE_TOOL_USE_INSTRUCTION = (
+    "Only use the explicitly provided Archi custom tools. "
+    "Do not claim to have run bash, shell commands, file reads, file writes, "
+    "network fetches, or any other system action unless an allowed Archi tool "
+    "actually executed and returned that result. "
+    "If a user asks for shell or filesystem access that is not available via "
+    "the provided tools, say that capability is unavailable in this deployment."
+)
+
 # SDK type for Copilot client — resolved at import time if available.
 _CopilotClient = None  # type: ignore[assignment]
 
@@ -37,6 +59,30 @@ def _get_copilot_client_cls():
         from copilot import CopilotClient
         _CopilotClient = CopilotClient
     return _CopilotClient
+
+
+def _build_tool_restriction_kwargs() -> Dict[str, list[str]]:
+    """Return Copilot session tool restrictions.
+
+    We only use ``excluded_tools`` to block known built-in tool identifiers
+    (bash, edit, grep, etc.) that Archi agents should never invoke.
+
+    NOTE: ``available_tools`` is intentionally NOT set.  The SDK docs state
+    that ``available_tools`` **takes precedence** over ``excluded_tools`` and
+    an empty list means "allow nothing" — which disables our custom tools too.
+    """
+    blocked_tools = list(_COPILOT_BUILTIN_TOOL_BLOCKLIST)
+    return {
+        "excluded_tools": blocked_tools,
+    }
+
+
+def _canonicalize_tool_name(name: str) -> str:
+    """Normalize legacy agent-spec tool aliases to canonical registry names."""
+    aliases: Dict[str, str] = {
+        "search_vectorstore_hybrid": "search_knowledge_base",
+    }
+    return aliases.get(name, name)
 
 
 # ── Provider mapping (decision 4) ────────────────────────────────────────
@@ -80,6 +126,12 @@ def _build_sdk_provider(
     result: Dict[str, Any] = {"type": sdk_type}
 
     base_url = provider_cfg.get("base_url")
+    if not base_url:
+        # Default base URLs for known OpenAI-compatible providers
+        _DEFAULT_BASE_URLS = {
+            "openrouter": "https://openrouter.ai/api/v1",
+        }
+        base_url = _DEFAULT_BASE_URLS.get(provider_name.lower())
     if base_url:
         result["base_url"] = base_url
 
@@ -100,25 +152,6 @@ def _build_sdk_provider(
                 result["api_key"] = key
 
     return result
-
-
-# ── History formatter (decision — task 3.4) ──────────────────────────────
-
-def _format_history_as_preamble(history: list) -> str:
-    """Convert ``[(sender, content)]`` tuples to a text transcript for the
-    system message preamble.
-
-    The Copilot SDK does not accept a list of messages as history.
-    Instead, the conversation history is prepended to the system message.
-    """
-    if not history:
-        return ""
-    lines: list[str] = ["<conversation_history>"]
-    for sender, content in history:
-        role = "user" if sender.lower() in ("user", "human") else "assistant"
-        lines.append(f"[{role}]: {content}")
-    lines.append("</conversation_history>")
-    return "\n".join(lines)
 
 
 # ── MCP config mapping (decision 8 — task 3.5) ──────────────────────────
@@ -269,14 +302,9 @@ class CopilotAgentPipeline:
         store_docs = collector.make_store_docs_callback()
         tools: list = []
 
-        # Normalise legacy tool-name aliases so agent specs written with
-        # older names still match the canonical TOOL_REGISTRY entries.
-        _ALIASES: Dict[str, str] = {
-            "search_vectorstore_hybrid": "search_knowledge_base",
-        }
         names: Optional[set] = None
         if self.selected_tool_names:
-            names = {_ALIASES.get(n, n) for n in self.selected_tool_names}
+            names = {_canonicalize_tool_name(n) for n in self.selected_tool_names}
 
         def _want(name: str) -> bool:
             return names is None or name in names
@@ -341,42 +369,51 @@ class CopilotAgentPipeline:
     def _build_session_config(
         self,
         *,
-        history: Optional[list] = None,
         api_key: Optional[str] = None,
         tools: list,
+        provider_override: Optional[str] = None,
+        model_override: Optional[str] = None,
     ) -> dict:
         """Assemble the session config dict for ``client.create_session()``.
 
         Combines:
-          - System message (prompt + history preamble)
+          - System message (customize mode — keep SDK defaults)
           - Provider (BYOK)
           - MCP servers
           - Tools
         """
-        # System message = agent prompt + conversation history
-        parts: list[str] = []
-        if self.agent_prompt:
-            parts.append(self.agent_prompt)
-
-        history_text = _format_history_as_preamble(history)
-        if history_text:
-            parts.append(history_text)
-
-        system_message = "\n\n".join(parts) if parts else None
-
         cfg: Dict[str, Any] = {}
-        if system_message:
-            cfg["system_message"] = {"mode": "replace", "content": system_message}
 
-        # Provider (decision 4)
-        if self.default_provider and self.default_model:
+        # System message (customize mode — decision CM)
+        sections: Dict[str, Dict[str, str]] = {
+            "tool_instructions": {
+                "action": "append",
+                "content": _NO_FAKE_TOOL_USE_INSTRUCTION,
+            },
+        }
+        if self.agent_prompt:
+            sections["identity"] = {
+                "action": "replace",
+                "content": self.agent_prompt,
+            }
+
+        if sections:
+            cfg["system_message"] = {
+                "mode": "customize",
+                "sections": sections,
+            }
+
+        # Provider (decision 4) — per-request overrides take precedence
+        effective_provider = provider_override or self.default_provider
+        effective_model = model_override or self.default_model
+        if effective_provider and effective_model:
             cfg["provider"] = _build_sdk_provider(
-                self.default_provider,
-                self.default_model,
+                effective_provider,
+                effective_model,
                 self._providers_config,
                 api_key=api_key,
             )
-            cfg["model"] = self.default_model
+            cfg["model"] = effective_model
 
         # MCP servers (decision 8)
         mcp = _build_mcp_servers(self.archi_config)
@@ -392,23 +429,123 @@ class CopilotAgentPipeline:
         self,
         adapter: CopilotEventAdapter,
         config: dict,
+        *,
+        session_id: Optional[str] = None,
     ):
-        """Create a Copilot SDK session with hooks attached."""
+        """Create or resume a Copilot SDK session with hooks attached."""
         tools = config.pop("_tools", [])
 
-        from copilot import PermissionHandler
+        hooks = {
+            "on_error_occurred": self._on_error_occurred,
+        }
+        tool_restrictions = _build_tool_restriction_kwargs()
 
-        session = await self._client.create_session(
+        if session_id:
+            # Resume existing session — SDK manages conversation history
+            try:
+                session = await self._client.resume_session(
+                    session_id,
+                    tools=tools,
+                    on_permission_request=self._on_permission_request,
+                    streaming=True,
+                    hooks=hooks,
+                    **tool_restrictions,
+                    **config,
+                )
+                logger.debug("Resumed session %s", session_id)
+                return session
+            except Exception:
+                logger.info(
+                    "Could not resume session %s — creating new",
+                    session_id,
+                    exc_info=True,
+                )
+                # Don't reuse a failed session_id for the new session
+                session_id = None
+
+        # Create a new session
+        create_kwargs: Dict[str, Any] = dict(
             tools=tools,
-            on_permission_request=PermissionHandler.approve_all,
+            on_permission_request=self._on_permission_request,
             streaming=True,
-            hooks={
-                "on_pre_tool_use": adapter.on_pre_tool_use,
-                "on_post_tool_use": adapter.on_post_tool_use,
-            },
+            hooks=hooks,
+            **tool_restrictions,
             **config,
         )
+        if session_id:
+            create_kwargs["session_id"] = session_id
+
+        logger.info(
+            "Creating Copilot session with %d tools, restrictions=%s, provider=%s, model=%s",
+            len(tools),
+            tool_restrictions,
+            config.get("provider", "default"),
+            config.get("model", "default"),
+        )
+
+        session = await self._client.create_session(**create_kwargs)
         return session
+
+    # ── Error hook (decision EH) ──────────────────────────────────────
+
+    def _on_error_occurred(self, hook_input, context=None):
+        """Handle SDK errors — retry transient model errors, log all."""
+        error = hook_input.get("error", "") if isinstance(hook_input, dict) else getattr(hook_input, "error", "")
+        error_context = hook_input.get("errorContext", "") if isinstance(hook_input, dict) else getattr(hook_input, "errorContext", "")
+        recoverable = hook_input.get("recoverable", False) if isinstance(hook_input, dict) else getattr(hook_input, "recoverable", False)
+
+        logger.error(
+            "Copilot SDK error: context=%s recoverable=%s error=%s",
+            error_context, recoverable, error,
+        )
+
+        if recoverable and error_context == "model_call":
+            return {
+                "errorHandling": "retry",
+                "retryCount": 2,
+                "userNotification": "Model request failed, retrying...",
+            }
+
+        # Non-recoverable: let SDK handle it (session.error event will fire)
+        return None
+
+    def _allowed_custom_tool_names(self) -> set[str]:
+        """Return the set of Archi custom tools the active agent is allowed to run."""
+        from src.archi.tools import TOOL_REGISTRY
+
+        if not self.selected_tool_names:
+            return set(TOOL_REGISTRY.keys())
+        return {_canonicalize_tool_name(name) for name in self.selected_tool_names}
+
+    def _on_permission_request(self, request, invocation):
+        """Allow only declared Archi custom tools and deny SDK built-ins."""
+        from copilot.generated.session_events import PermissionRequestKind
+        from copilot.types import PermissionRequestResult
+
+        kind = getattr(request, "kind", None)
+        tool_name = _canonicalize_tool_name(getattr(request, "tool_name", "") or "")
+        command_text = getattr(request, "full_command_text", None)
+
+        if kind == PermissionRequestKind.CUSTOM_TOOL:
+            if tool_name in self._allowed_custom_tool_names():
+                return PermissionRequestResult(kind="approved")
+            logger.warning("Denied custom tool permission request: tool=%s invocation=%s", tool_name or "<missing>", invocation)
+            return PermissionRequestResult(
+                kind="denied",
+                message=f"Tool '{tool_name or 'unknown'}' is not allowed in this Archi agent.",
+            )
+
+        logger.warning(
+            "Denied non-custom permission request: kind=%s tool=%s command=%s invocation=%s",
+            getattr(kind, "value", kind),
+            tool_name or "<none>",
+            command_text or "<none>",
+            invocation,
+        )
+        return PermissionRequestResult(
+            kind="denied",
+            message="Only Archi custom tools are allowed in this deployment.",
+        )
 
     # ── Public API ────────────────────────────────────────────────────
 
@@ -416,11 +553,16 @@ class CopilotAgentPipeline:
         """Stream agent events as ``PipelineOutput`` objects.
 
         Accepted kwargs: ``history``, ``conversation_id``, ``vectorstore``,
-        ``user_id`` (for BYOK resolution).
+        ``user_id`` (for BYOK resolution), ``provider``, ``model``,
+        ``provider_api_key`` (per-request overrides from settings UI).
         """
         history = kwargs.get("history")
+        conversation_id = kwargs.get("conversation_id")
         vectorstore = kwargs.get("vectorstore")
         user_id = kwargs.get("user_id")
+        provider_override = kwargs.get("provider")
+        model_override = kwargs.get("model")
+        session_api_key = kwargs.get("provider_api_key")
 
         # Per-request document collector
         from src.archi.tools import DocumentCollector
@@ -428,16 +570,25 @@ class CopilotAgentPipeline:
 
         # Build tools for this request
         tools = self._build_tools(collector, vectorstore=vectorstore)
+        logger.info(
+            "Built %d tools for session: %s",
+            len(tools),
+            [getattr(t, "name", getattr(t, "__name__", str(t))) for t in tools],
+        )
 
-        # Resolve BYOK key (decision 4)
-        api_key = self._resolve_byok_key(user_id)
+        # Resolve BYOK key: session-provided key takes precedence over DB key
+        api_key = session_api_key or self._resolve_byok_key(user_id)
 
         # Session config
         session_config = self._build_session_config(
-            history=history,
             api_key=api_key,
             tools=tools,
+            provider_override=provider_override,
+            model_override=model_override,
         )
+
+        # Map conversation_id to session_id for persistence
+        session_id = str(conversation_id) if conversation_id is not None else None
 
         # Adapter bridges async SDK → sync generator
         adapter = CopilotEventAdapter(self._async_loop)
@@ -445,7 +596,9 @@ class CopilotAgentPipeline:
         # Create session and start consuming events (async)
         async def _run_session():
             try:
-                session = await self._create_session(adapter, session_config)
+                session = await self._create_session(
+                    adapter, session_config, session_id=session_id,
+                )
 
                 # Extract last user message from history
                 last_msg = ""

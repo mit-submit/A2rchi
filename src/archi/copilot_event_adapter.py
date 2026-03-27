@@ -14,10 +14,10 @@ Key behaviours (see design.md decisions 3, 14, 18, 20):
   explicit start/end signals.  The adapter tracks ``_in_thinking`` and
   emits paired ``thinking_start`` / ``thinking_end`` events with
   matching ``step_id``.
-* **Tool lifecycle via hooks** — Tool events come through
-  ``on_pre_tool_use`` / ``on_post_tool_use`` hooks, not the event
-  stream.  The hooks push ``tool_start`` / ``tool_output`` into the
-  shared queue.
+* **Tool lifecycle via streaming events** — Tool start/complete events
+  come through ``tool.execution_start`` / ``tool.execution_complete``
+  streaming events which carry a native ``toolCallId`` for
+  deterministic correlation.
 * **Cancellation cleanup** — ``iter_outputs()``'s ``finally`` block
   calls ``session.disconnect()`` via the async loop (decision 18).
 * **Usage metadata** — Populated from the SDK session's idle /
@@ -50,6 +50,7 @@ class _ToolCallRecord:
     args: Dict[str, Any]
     result: Optional[str] = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    _start_time: float = field(default_factory=time.time, repr=False)
 
 
 class CopilotEventAdapter:
@@ -58,8 +59,6 @@ class CopilotEventAdapter:
     Lifecycle::
 
         adapter = CopilotEventAdapter(async_loop)
-        # Pass adapter.on_pre_tool_use / adapter.on_post_tool_use as
-        # session hooks when creating the Copilot SDK session.
         # Then call adapter.consume_session(session) from the async loop.
         for output in adapter.iter_outputs():
             yield output  # PipelineOutput
@@ -90,77 +89,6 @@ class CopilotEventAdapter:
 
         # Cancellation flag
         self._cancelled: bool = False
-
-    # ── Hook callbacks (passed to SDK session creation) ───────────────
-
-    def on_pre_tool_use(self, hook_input, context=None):
-        """Fires before tool permission check (decision 3).
-
-        Called by the SDK as ``handler(hook_input_dict, context_dict)``.
-        ``hook_input`` is a dict with keys: ``toolName``, ``toolArgs``,
-        ``timestamp``, ``cwd``.
-
-        Emits ``tool_start``.
-        """
-        tool_call_id = str(uuid.uuid4())
-        tool_name = hook_input.get("toolName", "unknown") if isinstance(hook_input, dict) else getattr(hook_input, "toolName", "unknown")
-        tool_args = hook_input.get("toolArgs", {}) if isinstance(hook_input, dict) else getattr(hook_input, "toolArgs", {})
-
-        record = _ToolCallRecord(id=tool_call_id, name=tool_name, args=tool_args)
-        self._active_tools[tool_call_id] = record
-        self._tool_calls.append(record)
-
-        # End thinking if active (tool invocation breaks thinking)
-        self._end_thinking_if_active()
-
-        self._queue.put(PipelineOutput(
-            answer="",
-            metadata={
-                "event_type": "tool_start",
-                "tool_call_id": tool_call_id,
-                "tool_name": tool_name,
-                "tool_args": tool_args,
-            },
-            final=False,
-        ))
-
-    def on_post_tool_use(self, hook_input, context=None):
-        """Fires after tool execution completes (decision 3).
-
-        Called by the SDK as ``handler(hook_input_dict, context_dict)``.
-        ``hook_input`` is a dict with keys: ``toolName``, ``toolArgs``,
-        ``toolResult``, ``timestamp``, ``cwd``.
-
-        Emits ``tool_output`` and records the result for metadata storage.
-        """
-        tool_name = hook_input.get("toolName", "unknown") if isinstance(hook_input, dict) else getattr(hook_input, "toolName", "unknown")
-        result = hook_input.get("toolResult", None) if isinstance(hook_input, dict) else getattr(hook_input, "toolResult", None)
-        result_str = str(result) if result is not None else ""
-
-        # Match to active tool record by name (SDK hook inputs don't carry a call ID)
-        tool_call_id = ""
-        matched_record = None
-        for tid, record in list(self._active_tools.items()):
-            if record.name == tool_name:
-                tool_call_id = tid
-                matched_record = record
-                break
-        if matched_record is not None:
-            matched_record.result = result_str
-            self._active_tools.pop(tool_call_id, None)
-        else:
-            # No matching pre-hook (shouldn't happen, but be defensive)
-            tool_call_id = str(uuid.uuid4())
-
-        self._queue.put(PipelineOutput(
-            answer="",
-            metadata={
-                "event_type": "tool_output",
-                "tool_call_id": tool_call_id,
-                "output": result_str,
-            },
-            final=False,
-        ))
 
     # ── Event-based session consumer ─────────────────────────────────
 
@@ -231,6 +159,69 @@ class CopilotEventAdapter:
                 error_msg = getattr(data, "message", "") or ""
                 logger.error("Copilot SDK session error: %s", error_msg)
 
+            # ── Tool lifecycle via streaming events ───────────────────
+            elif event_type == "tool.execution_start":
+                tool_call_id = getattr(data, "tool_call_id", "") or ""
+                tool_name = getattr(data, "tool_name", "") or getattr(data, "name", "") or "unknown"
+                tool_args = getattr(data, "arguments", {}) or {}
+
+                record = _ToolCallRecord(id=tool_call_id, name=tool_name, args=tool_args)
+                self._active_tools[tool_call_id] = record
+                self._tool_calls.append(record)
+
+                self._end_thinking_if_active()
+
+                self._queue.put(PipelineOutput(
+                    answer="",
+                    metadata={
+                        "event_type": "tool_start",
+                        "tool_call_id": tool_call_id,
+                        "tool_name": tool_name,
+                        "tool_args": tool_args,
+                    },
+                    final=False,
+                ))
+
+            elif event_type == "tool.execution_complete":
+                tool_call_id = getattr(data, "tool_call_id", "") or ""
+                result_obj = getattr(data, "result", None)
+                result_str = str(result_obj) if result_obj is not None else ""
+
+                matched_record = self._active_tools.pop(tool_call_id, None)
+                if matched_record is not None:
+                    matched_record.result = result_str
+                else:
+                    logger.warning(
+                        "tool.execution_complete for unknown tool_call_id=%s — no matching start event",
+                        tool_call_id,
+                    )
+
+                duration_ms = (
+                    int((time.time() - matched_record._start_time) * 1000)
+                    if matched_record is not None
+                    else None
+                )
+
+                self._queue.put(PipelineOutput(
+                    answer="",
+                    metadata={
+                        "event_type": "tool_output",
+                        "tool_call_id": tool_call_id,
+                        "output": result_str,
+                    },
+                    final=False,
+                ))
+                self._queue.put(PipelineOutput(
+                    answer="",
+                    metadata={
+                        "event_type": "tool_end",
+                        "tool_call_id": tool_call_id,
+                        "status": "success",
+                        "duration_ms": duration_ms,
+                    },
+                    final=False,
+                ))
+
         session.on(_on_event)
 
     def signal_done(self) -> None:
@@ -239,6 +230,8 @@ class CopilotEventAdapter:
         Called after ``send_and_wait()`` completes.
         """
         self._end_thinking_if_active()
+        if self._usage is None:
+            logger.warning("No usage data received from SDK — token counts will be missing from trace")
         self._queue.put(_SENTINEL)
 
     # ── Sync generator (consumed by Flask thread) ─────────────────────
@@ -349,7 +342,12 @@ class CopilotEventAdapter:
         self._thinking_buffer = ""
 
     def _capture_usage(self, usage) -> None:
-        """Normalize SDK usage/data object to the frontend-expected dict."""
+        """Normalize SDK usage/data object and accumulate across events.
+
+        The SDK fires one ``assistant.usage`` event per API call.  When the
+        model invokes built-in or custom tools the session may make several
+        API calls, so we *accumulate* token counts rather than overwriting.
+        """
         if isinstance(usage, dict):
             raw = usage
         else:
@@ -370,9 +368,17 @@ class CopilotEventAdapter:
                 "total_tokens": (input_tokens or 0) + (output_tokens or 0),
             }
 
-        self._usage = {
-            "prompt_tokens": raw.get("prompt_tokens", 0),
-            "completion_tokens": raw.get("completion_tokens", 0),
-            "total_tokens": raw.get("total_tokens", 0),
-            "context_window": raw.get("context_window"),
-        }
+        if self._usage is None:
+            self._usage = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "context_window": None,
+            }
+
+        self._usage["prompt_tokens"] += raw.get("prompt_tokens", 0)
+        self._usage["completion_tokens"] += raw.get("completion_tokens", 0)
+        self._usage["total_tokens"] += raw.get("total_tokens", 0)
+        # context_window is a fixed property — take the latest reported value
+        if raw.get("context_window") is not None:
+            self._usage["context_window"] = raw["context_window"]

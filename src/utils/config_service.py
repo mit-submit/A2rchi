@@ -655,7 +655,7 @@ class ConfigService:
 
         if active_agent_name is not None:
             updates.append("active_agent_name = %s")
-            params.append(active_agent_name)
+            params.append(active_agent_name if active_agent_name else None)
         
         if temperature is not None:
             updates.append("temperature = %s")
@@ -833,7 +833,7 @@ class ConfigService:
                     f"must be one of {static.available_models}"
                 )
 
-        if active_agent_name is not None and (not isinstance(active_agent_name, str) or not active_agent_name.strip()):
+        if active_agent_name and (not isinstance(active_agent_name, str) or not active_agent_name.strip()):
             raise ConfigValidationError(
                 "active_agent_name",
                 "must be a non-empty string"
