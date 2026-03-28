@@ -9,12 +9,12 @@ Implements the Configuration requirements from the consolidate-to-postgres spec:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import psycopg2
 import psycopg2.extras
+import json
 
 from src.utils.logging import get_logger
 
@@ -24,28 +24,28 @@ logger = get_logger(__name__)
 @dataclass
 class StaticConfig:
     """Deploy-time configuration (immutable at runtime)."""
-
+    
     deployment_name: str
     config_version: str
-
+    
     # Paths
     data_path: str
-
+    
     # Embedding configuration
     embedding_model: str
     embedding_dimensions: int
     chunk_size: int
     chunk_overlap: int
     distance_metric: str
-
+    
     # Paths with defaults
     prompts_path: str = "/root/archi/data/prompts/"
-
+    
     # Available options
     available_pipelines: List[str] = field(default_factory=list)
     available_models: List[str] = field(default_factory=list)
     available_providers: List[str] = field(default_factory=list)
-
+    
     # Auth
     auth_enabled: bool = False
     session_lifetime_days: int = 30
@@ -57,14 +57,14 @@ class StaticConfig:
     archi_config: Dict[str, Any] = field(default_factory=dict)
     global_config: Dict[str, Any] = field(default_factory=dict)
     mcp_servers_config: Dict[str, Any] = field(default_factory=dict)
-
+    
     created_at: Optional[str] = None
 
 
 @dataclass
 class DynamicConfig:
     """Runtime-modifiable configuration."""
-
+    
     # Model settings
     active_pipeline: str = "QAPipeline"
     active_model: str = "openai/gpt-4o"
@@ -72,39 +72,37 @@ class DynamicConfig:
     temperature: float = 0.7
     max_tokens: int = 4096
     system_prompt: Optional[str] = None
-
+    
     # Additional generation params
     top_p: float = 0.9
     top_k: int = 50
     repetition_penalty: float = 1.0
-
+    
     # Prompt selection (file names without extension)
     active_condense_prompt: str = "default"
     active_chat_prompt: str = "default"
     active_system_prompt: str = "default"
-
+    
     # Retrieval settings
     num_documents_to_retrieve: int = 10
     use_hybrid_search: bool = True
     bm25_weight: float = 0.3
     semantic_weight: float = 0.7
-
+    
     # Schedules
     ingestion_schedule: str = ""
-    source_schedules: Dict[str, str] = field(
-        default_factory=dict
-    )  # source_name -> cron expression
-
+    source_schedules: Dict[str, str] = field(default_factory=dict)  # source_name -> cron expression
+    
     # Logging
     verbosity: int = 3
-
+    
     updated_at: Optional[str] = None
     updated_by: Optional[str] = None
 
 
 class ConfigValidationError(Exception):
     """Raised when config validation fails."""
-
+    
     def __init__(self, field: str, message: str):
         self.field = field
         self.message = message
@@ -114,23 +112,21 @@ class ConfigValidationError(Exception):
 class ConfigService:
     """
     Service for managing application configuration in PostgreSQL.
-
+    
     Handles both static (deploy-time) and dynamic (runtime) configuration.
     Static config is cached in memory after initial load.
-
+    
     Example:
         >>> service = ConfigService(pg_config={'host': 'localhost', ...})
         >>> static = service.get_static_config()
         >>> dynamic = service.get_dynamic_config()
         >>> service.update_dynamic_config(temperature=0.5, updated_by="admin")
     """
-
-    def __init__(
-        self, pg_config: Optional[Dict[str, Any]] = None, *, connection_pool=None
-    ):
+    
+    def __init__(self, pg_config: Optional[Dict[str, Any]] = None, *, connection_pool=None):
         """
         Initialize ConfigService.
-
+        
         Args:
             pg_config: PostgreSQL connection parameters (fallback)
             connection_pool: ConnectionPool instance (preferred)
@@ -143,7 +139,7 @@ class ConfigService:
             self._ensure_config_tables()
         except Exception as exc:
             logger.debug("Could not ensure config tables: %s", exc)
-
+    
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get a database connection."""
         if self._pool:
@@ -166,7 +162,8 @@ class ConfigService:
         try:
             with conn.cursor() as cursor:
                 # Create base tables if they don't exist
-                cursor.execute("""
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS static_config (
                         id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
                         deployment_name VARCHAR(100) NOT NULL,
@@ -213,20 +210,25 @@ class ConfigService:
                         updated_at TIMESTAMP,
                         updated_by VARCHAR(100)
                     );
-                    """)
+                    """
+                )
                 # Ensure JSONB columns present (idempotent)
-                cursor.execute("""
+                cursor.execute(
+                    """
                     ALTER TABLE static_config
                     ADD COLUMN IF NOT EXISTS services_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS data_manager_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS archi_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS mcp_servers_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS global_config JSONB DEFAULT '{}'::jsonb
-                    """)
-                cursor.execute("""
+                    """
+                )
+                cursor.execute(
+                    """
                     ALTER TABLE dynamic_config
                     ADD COLUMN IF NOT EXISTS active_agent_name VARCHAR(200)
-                    """)
+                    """
+                )
                 conn.commit()
         except psycopg2.Error as e:
             logger.debug("Could not ensure config tables/columns: %s", e)
@@ -240,9 +242,7 @@ class ConfigService:
     # raw_config removed; use explicit sections in static_config
 
     @staticmethod
-    def _normalize_sources_config(
-        sources_config: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+    def _normalize_sources_config(sources_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not isinstance(sources_config, dict):
             return {}
         normalized = dict(sources_config)
@@ -252,46 +252,39 @@ class ConfigService:
         return normalized
 
     @staticmethod
-    def _derive_chat_defaults(
-        config: Dict[str, Any],
-    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        chat_cfg = (
-            config.get("services", {}).get("chat_app", {})
-            if isinstance(config, dict)
-            else {}
-        )
+    def _derive_chat_defaults(config: Dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        chat_cfg = config.get("services", {}).get("chat_app", {}) if isinstance(config, dict) else {}
         agent_class = chat_cfg.get("agent_class") or chat_cfg.get("pipeline")
         provider = chat_cfg.get("default_provider")
         model = chat_cfg.get("default_model")
         return agent_class, provider, model
-
+    
     # =========================================================================
     # Static Configuration
     # =========================================================================
-
-    def get_static_config(
-        self, *, force_reload: bool = False
-    ) -> Optional[StaticConfig]:
+    
+    def get_static_config(self, *, force_reload: bool = False) -> Optional[StaticConfig]:
         """
         Get static configuration.
-
+        
         Implements: Static config loading at startup with caching
-
+        
         Args:
             force_reload: If True, bypass cache and reload from database
-
+            
         Returns:
             StaticConfig object, or None if not initialized
         """
         if self._static_cache is not None and not force_reload:
             return self._static_cache
-
+        
         # Ensure schema exists before attempting to read
         self._ensure_config_tables()
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT deployment_name, config_version, data_path, prompts_path,
                            embedding_model, embedding_dimensions,
                            chunk_size, chunk_overlap, distance_metric,
@@ -301,12 +294,13 @@ class ConfigService:
                            created_at
                     FROM static_config
                     WHERE id = 1
-                    """)
+                    """
+                )
                 row = cursor.fetchone()
-
+                
                 if row is None:
                     return None
-
+                
                 self._static_cache = StaticConfig(
                     deployment_name=row["deployment_name"],
                     config_version=row["config_version"],
@@ -330,11 +324,11 @@ class ConfigService:
                     global_config=row.get("global_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
-
+                
                 return self._static_cache
         finally:
             self._release_connection(conn)
-
+    
     def initialize_static_config(
         self,
         *,
@@ -359,10 +353,10 @@ class ConfigService:
     ) -> StaticConfig:
         """
         Initialize static configuration (typically called once at deployment).
-
+        
         This should only be called during initial setup or redeployment.
         Subsequent calls will fail due to the unique constraint.
-
+        
         Args:
             deployment_name: Name of this deployment
             config_version: Schema version
@@ -379,7 +373,7 @@ class ConfigService:
             mcp_servers_config: Configuration for MCP servers
         Returns:
             Created StaticConfig
-
+            
         Raises:
             psycopg2.IntegrityError: If static config already exists
         """
@@ -431,14 +425,9 @@ class ConfigService:
                               created_at
                     """,
                     (
-                        deployment_name,
-                        config_version,
-                        data_path,
-                        embedding_model,
-                        embedding_dimensions,
-                        chunk_size,
-                        chunk_overlap,
-                        distance_metric,
+                        deployment_name, config_version, data_path,
+                        embedding_model, embedding_dimensions,
+                        chunk_size, chunk_overlap, distance_metric,
                         available_pipelines or [],
                         available_models or [],
                         available_providers or [],
@@ -449,11 +438,11 @@ class ConfigService:
                         psycopg2.extras.Json(archi_section),
                         psycopg2.extras.Json(mcp_servers_section),
                         psycopg2.extras.Json(global_section),
-                    ),
+                    )
                 )
                 row = cursor.fetchone()
                 conn.commit()
-
+                
                 self._static_cache = StaticConfig(
                     deployment_name=row["deployment_name"],
                     config_version=row["config_version"],
@@ -475,7 +464,7 @@ class ConfigService:
                     global_config=row.get("global_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
-
+                
                 logger.info(f"Initialized static config: {deployment_name}")
                 return self._static_cache
         finally:
@@ -486,9 +475,7 @@ class ConfigService:
     # =========================================================================
 
     @staticmethod
-    def _resolve_embedding_classes(
-        embedding_class_map: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    def _resolve_embedding_classes(embedding_class_map: Dict[str, Any]) -> Dict[str, Any]:
         """
         Resolve known embedding class names to callables.
 
@@ -526,9 +513,7 @@ class ConfigService:
         static = self.get_static_config()
         if not static or not static.data_manager_config:
             return {}
-        embedding_class_map = (
-            static.data_manager_config.get("embedding_class_map", {}) or {}
-        )
+        embedding_class_map = static.data_manager_config.get("embedding_class_map", {}) or {}
         if resolved:
             return self._resolve_embedding_classes(embedding_class_map)
         return embedding_class_map
@@ -536,13 +521,13 @@ class ConfigService:
     # =========================================================================
     # Dynamic Configuration
     # =========================================================================
-
+    
     def get_dynamic_config(self) -> DynamicConfig:
         """
         Get current dynamic configuration.
-
+        
         Implements: Dynamic config read
-
+        
         Returns:
             DynamicConfig object
         """
@@ -555,8 +540,9 @@ class ConfigService:
                     ADD COLUMN IF NOT EXISTS source_schedules JSONB NOT NULL DEFAULT '{}'::jsonb
                 """)
                 conn.commit()
-
-                cursor.execute("""
+                
+                cursor.execute(
+                    """
                     SELECT active_pipeline, active_model, active_agent_name, temperature, max_tokens,
                            system_prompt, top_p, top_k, repetition_penalty,
                            active_condense_prompt, active_chat_prompt, active_system_prompt,
@@ -564,18 +550,19 @@ class ConfigService:
                            ingestion_schedule, source_schedules, verbosity, updated_at, updated_by
                     FROM dynamic_config
                     WHERE id = 1
-                    """)
+                    """
+                )
                 row = cursor.fetchone()
-
+                
                 if row is None:
                     # Return defaults if not initialized
                     return DynamicConfig()
-
+                
                 # Parse source_schedules JSONB
                 source_schedules = row.get("source_schedules") or {}
                 if isinstance(source_schedules, str):
                     source_schedules = json.loads(source_schedules)
-
+                
                 return DynamicConfig(
                     active_pipeline=row["active_pipeline"],
                     active_model=row["active_model"],
@@ -601,7 +588,7 @@ class ConfigService:
                 )
         finally:
             self._release_connection(conn)
-
+    
     def update_dynamic_config(
         self,
         *,
@@ -619,12 +606,12 @@ class ConfigService:
     ) -> DynamicConfig:
         """
         Update dynamic configuration.
-
+        
         Implements:
         - Dynamic config update via API
         - Dynamic config validation error (raises ConfigValidationError)
         - Model selection validation
-
+        
         Args:
             active_pipeline: New active pipeline
             active_model: New active model (must be in available_models)
@@ -637,10 +624,10 @@ class ConfigService:
             bm25_weight: Weight for BM25 in hybrid search
             semantic_weight: Weight for semantic in hybrid search
             updated_by: User ID making the change
-
+            
         Returns:
             Updated DynamicConfig
-
+            
         Raises:
             ConfigValidationError: If validation fails
         """
@@ -654,14 +641,14 @@ class ConfigService:
             bm25_weight=bm25_weight,
             semantic_weight=semantic_weight,
         )
-
+        
         updates = []
         params: List[Any] = []
-
+        
         if active_pipeline is not None:
             updates.append("active_pipeline = %s")
             params.append(active_pipeline)
-
+        
         if active_model is not None:
             updates.append("active_model = %s")
             params.append(active_model)
@@ -669,42 +656,42 @@ class ConfigService:
         if active_agent_name is not None:
             updates.append("active_agent_name = %s")
             params.append(active_agent_name if active_agent_name else None)
-
+        
         if temperature is not None:
             updates.append("temperature = %s")
             params.append(temperature)
-
+        
         if max_tokens is not None:
             updates.append("max_tokens = %s")
             params.append(max_tokens)
-
+        
         if system_prompt is not None:
             updates.append("system_prompt = %s")
             params.append(system_prompt if system_prompt else None)
-
+        
         if num_documents_to_retrieve is not None:
             updates.append("num_documents_to_retrieve = %s")
             params.append(num_documents_to_retrieve)
-
+        
         if use_hybrid_search is not None:
             updates.append("use_hybrid_search = %s")
             params.append(use_hybrid_search)
-
+        
         if bm25_weight is not None:
             updates.append("bm25_weight = %s")
             params.append(bm25_weight)
-
+        
         if semantic_weight is not None:
             updates.append("semantic_weight = %s")
             params.append(semantic_weight)
-
+        
         if not updates:
             return self.get_dynamic_config()
-
+        
         updates.append("updated_at = NOW()")
         updates.append("updated_by = %s")
         params.append(updated_by)
-
+        
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -718,11 +705,11 @@ class ConfigService:
                               use_hybrid_search, bm25_weight, semantic_weight,
                               updated_at, updated_by
                     """,
-                    params,
+                    params
                 )
                 row = cursor.fetchone()
                 conn.commit()
-
+                
                 if row is None:
                     # Initialize if not exists
                     cursor.execute(
@@ -730,9 +717,9 @@ class ConfigService:
                     )
                     conn.commit()
                     return self.get_dynamic_config()
-
+                
                 logger.info(f"Updated dynamic config by {updated_by}")
-
+                
                 return DynamicConfig(
                     active_pipeline=row["active_pipeline"],
                     active_model=row["active_model"],
@@ -749,7 +736,7 @@ class ConfigService:
                 )
         finally:
             self._release_connection(conn)
-
+    
     def update_source_schedule(
         self,
         source_name: str,
@@ -759,24 +746,24 @@ class ConfigService:
     ) -> Dict[str, str]:
         """
         Update the schedule for a specific data source.
-
+        
         Args:
             source_name: Name of the source (e.g., 'jira', 'git', 'links')
             schedule: Cron expression or schedule key (e.g., '0 */6 * * *', 'hourly', 'disabled')
             updated_by: User making the change
-
+            
         Returns:
             Updated source_schedules dict
         """
         # Map UI-friendly values to cron expressions
         schedule_map = {
-            "disabled": "",
-            "hourly": "0 * * * *",
-            "every_6h": "0 */6 * * *",
-            "daily": "0 0 * * *",
+            'disabled': '',
+            'hourly': '0 * * * *',
+            'every_6h': '0 */6 * * *',
+            'daily': '0 0 * * *',
         }
         cron_expr = schedule_map.get(schedule, schedule)
-
+        
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -790,25 +777,23 @@ class ConfigService:
                     WHERE id = 1
                     RETURNING source_schedules
                     """,
-                    (json.dumps({source_name: cron_expr}), updated_by),
+                    (json.dumps({source_name: cron_expr}), updated_by)
                 )
                 row = cursor.fetchone()
                 conn.commit()
-
+                
                 if row is None:
                     return {}
-
-                logger.info(
-                    f"Updated schedule for {source_name} to '{cron_expr}' by {updated_by}"
-                )
+                
+                logger.info(f"Updated schedule for {source_name} to '{cron_expr}' by {updated_by}")
                 return row.get("source_schedules", {})
         finally:
             self._release_connection(conn)
-
+    
     def get_source_schedules(self) -> Dict[str, str]:
         """
         Get all source schedules.
-
+        
         Returns:
             Dict mapping source names to cron expressions
         """
@@ -828,73 +813,75 @@ class ConfigService:
     ) -> None:
         """
         Validate dynamic config values.
-
+        
         Raises:
             ConfigValidationError: If validation fails
         """
         static = self.get_static_config()
-
+        
         if active_pipeline is not None and static:
-            if (
-                static.available_pipelines
-                and active_pipeline not in static.available_pipelines
-            ):
+            if static.available_pipelines and active_pipeline not in static.available_pipelines:
                 raise ConfigValidationError(
-                    "active_pipeline", f"must be one of {static.available_pipelines}"
+                    "active_pipeline",
+                    f"must be one of {static.available_pipelines}"
                 )
-
+        
         if active_model is not None and static:
             if static.available_models and active_model not in static.available_models:
                 raise ConfigValidationError(
-                    "active_model", f"must be one of {static.available_models}"
+                    "active_model",
+                    f"must be one of {static.available_models}"
                 )
 
-        if active_agent_name and (
-            not isinstance(active_agent_name, str) or not active_agent_name.strip()
-        ):
+        if active_agent_name is not None and (not isinstance(active_agent_name, str) or not active_agent_name.strip()):
             raise ConfigValidationError(
-                "active_agent_name", "must be a non-empty string"
+                "active_agent_name",
+                "must be a non-empty string"
             )
-
+        
         if temperature is not None:
             if not (0.0 <= temperature <= 2.0):
                 raise ConfigValidationError(
-                    "temperature", "must be between 0.0 and 2.0"
+                    "temperature",
+                    "must be between 0.0 and 2.0"
                 )
-
+        
         if max_tokens is not None:
             if max_tokens < 1:
-                raise ConfigValidationError("max_tokens", "must be at least 1")
-
+                raise ConfigValidationError(
+                    "max_tokens",
+                    "must be at least 1"
+                )
+        
         if bm25_weight is not None:
             if not (0.0 <= bm25_weight <= 1.0):
                 raise ConfigValidationError(
-                    "bm25_weight", "must be between 0.0 and 1.0"
+                    "bm25_weight",
+                    "must be between 0.0 and 1.0"
                 )
-
+        
         if semantic_weight is not None:
             if not (0.0 <= semantic_weight <= 1.0):
                 raise ConfigValidationError(
-                    "semantic_weight", "must be between 0.0 and 1.0"
+                    "semantic_weight",
+                    "must be between 0.0 and 1.0"
                 )
-
+    
     # =========================================================================
     # Helper methods for config.yaml migration
     # =========================================================================
-
+    
     @staticmethod
-    def from_config_yaml(
-        config: Dict[str, Any], pg_config: Dict[str, Any]
-    ) -> "ConfigService":
+    def from_config_yaml(config: Dict[str, Any], pg_config: Dict[str, Any]) -> "ConfigService":
         """
         Create ConfigService and initialize from config.yaml.
-
+        
         This is the main entry point for migrating from config.yaml to database.
-
+        
         Args:
             config: Parsed config.yaml dictionary
             pg_config: PostgreSQL connection parameters
-
+            
         Returns:
             Initialized ConfigService
         """
@@ -904,11 +891,11 @@ class ConfigService:
             service.set_raw_config(config)
         except Exception as exc:
             logger.warning("Failed to persist raw config to Postgres: %s", exc)
-
+        
         data_manager = config.get("data_manager", {})
         embedding_class_map = data_manager.get("embedding_class_map", {})
         embedding_name = data_manager.get("embedding_name", "HuggingFaceEmbeddings")
-
+        
         # Determine embedding dimensions
         default_dimensions = {
             "all-MiniLM-L6-v2": 384,
@@ -920,13 +907,13 @@ class ConfigService:
             embedding_dimensions = embedding_class_map[embedding_name].get(
                 "dimensions", embedding_dimensions
             )
-
+        
         # Get available providers/models from chat defaults
         agent_class, provider, model = ConfigService._derive_chat_defaults(config)
         available_pipelines = [agent_class] if agent_class else []
         available_providers = [provider] if provider else []
         available_models = [f"{provider}/{model}"] if provider and model else []
-
+        
         # Initialize static config
         service.initialize_static_config(
             deployment_name=config.get("name", "default"),
@@ -939,39 +926,34 @@ class ConfigService:
             available_pipelines=available_pipelines,
             available_models=available_models,
             available_providers=available_providers,
-            auth_enabled=config.get("services", {})
-            .get("chat_app", {})
-            .get("auth", {})
-            .get("enabled", False),
+            auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
             sources_config=data_manager.get("sources", {}),
             mcp_servers_config=config.get("mcp_servers", {}),
         )
-
+        
         # Initialize dynamic config from data_manager settings
         retrievers = data_manager.get("retrievers", {})
         hybrid = retrievers.get("hybrid_retriever", {})
-
+        
         active_model = f"{provider}/{model}" if provider and model else None
         service.update_dynamic_config(
-            active_pipeline=config.get("services", {})
-            .get("chat_app", {})
-            .get("agent_class", "CMSCompOpsAgent"),
+            active_pipeline=config.get("services", {}).get("chat_app", {}).get("agent_class", "CMSCompOpsAgent"),
             active_model=active_model,
             num_documents_to_retrieve=hybrid.get("num_documents_to_retrieve", 10),
             bm25_weight=hybrid.get("bm25_weight", 0.3),
             semantic_weight=hybrid.get("semantic_weight", 0.7),
             updated_by="system",
         )
-
+        
         return service
 
     def initialize_from_yaml(self, config: Dict[str, Any]) -> None:
         """
         Initialize or sync static/dynamic config from YAML config dictionary.
-
+        
         Call this on service startup to ensure database config matches YAML.
         Uses UPSERT semantics - will update existing config or create if missing.
-
+        
         Args:
             config: Parsed config.yaml dictionary
         """
@@ -984,7 +966,7 @@ class ConfigService:
         data_manager = config.get("data_manager", {})
         embedding_class_map = data_manager.get("embedding_class_map", {})
         embedding_name = data_manager.get("embedding_name", "HuggingFaceEmbeddings")
-
+        
         # Determine embedding dimensions
         default_dimensions = {
             "all-MiniLM-L6-v2": 384,
@@ -996,13 +978,13 @@ class ConfigService:
             embedding_dimensions = embedding_class_map[embedding_name].get(
                 "dimensions", embedding_dimensions
             )
-
+        
         # Get available providers/models from chat defaults
         agent_class, provider, model = ConfigService._derive_chat_defaults(config)
         available_pipelines = [agent_class] if agent_class else []
         available_providers = [provider] if provider else []
         available_models = [f"{provider}/{model}"] if provider and model else []
-
+        
         existing_static = self.get_static_config()
         sources_config = data_manager.get("sources", {})
         if existing_static and existing_static.sources_config:
@@ -1020,27 +1002,22 @@ class ConfigService:
             available_pipelines=available_pipelines,
             available_models=available_models,
             available_providers=available_providers,
-            auth_enabled=config.get("services", {})
-            .get("chat_app", {})
-            .get("auth", {})
-            .get("enabled", False),
+            auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
             sources_config=sources_config,
             mcp_servers_config=config.get("mcp_servers", {}),
         )
-
+        
         # Initialize dynamic config from data_manager settings
         retrievers = data_manager.get("retrievers", {})
         hybrid = retrievers.get("hybrid_retriever", {})
-
+        
         # Only set dynamic config if not already present (avoid overwriting admin changes)
         existing_dynamic = self.get_dynamic_config()
         if existing_dynamic.updated_by is None:
             # First initialization - set from YAML
             active_model = f"{provider}/{model}" if provider and model else None
             self.update_dynamic_config(
-                active_pipeline=config.get("services", {})
-                .get("chat_app", {})
-                .get("agent_class", "CMSCompOpsAgent"),
+                active_pipeline=config.get("services", {}).get("chat_app", {}).get("agent_class", "CMSCompOpsAgent"),
                 active_model=active_model,
                 num_documents_to_retrieve=hybrid.get("num_documents_to_retrieve", 10),
                 bm25_weight=hybrid.get("bm25_weight", 0.3),
@@ -1050,21 +1027,19 @@ class ConfigService:
             )
             logger.info("Initialized dynamic config from YAML")
         else:
-            logger.debug(
-                "Skipping dynamic config initialization - already configured by admin"
-            )
+            logger.debug("Skipping dynamic config initialization - already configured by admin")
 
     # =========================================================================
     # User Preferences
     # =========================================================================
-
+    
     def get_user_preferences(self, user_id: str) -> Dict[str, Any]:
         """
         Get preferences for a specific user.
-
+        
         Args:
             user_id: The user ID
-
+            
         Returns:
             Dict of user preferences (non-null values only)
         """
@@ -1080,18 +1055,18 @@ class ConfigService:
                     FROM users
                     WHERE id = %s
                     """,
-                    (user_id,),
+                    (user_id,)
                 )
                 row = cursor.fetchone()
-
+                
                 if row is None:
                     return {}
-
+                
                 # Return only non-null preferences
                 return {k: v for k, v in dict(row).items() if v is not None}
         finally:
             self._release_connection(conn)
-
+    
     def update_user_preferences(
         self,
         user_id: str,
@@ -1109,65 +1084,63 @@ class ConfigService:
     ) -> Dict[str, Any]:
         """
         Update user preferences.
-
+        
         Args:
             user_id: The user ID
             **preferences: Preference values to update
-
+            
         Returns:
             Updated preferences dict
         """
         updates = []
         params: List[Any] = []
-
+        
         if preferred_model is not None:
             updates.append("preferred_model = %s")
             params.append(preferred_model if preferred_model else None)
-
+        
         if preferred_temperature is not None:
             updates.append("preferred_temperature = %s")
             params.append(preferred_temperature)
-
+        
         if preferred_max_tokens is not None:
             updates.append("preferred_max_tokens = %s")
             params.append(preferred_max_tokens)
-
+        
         if preferred_num_documents is not None:
             updates.append("preferred_num_documents = %s")
             params.append(preferred_num_documents)
-
+        
         if preferred_condense_prompt is not None:
             updates.append("preferred_condense_prompt = %s")
-            params.append(
-                preferred_condense_prompt if preferred_condense_prompt else None
-            )
-
+            params.append(preferred_condense_prompt if preferred_condense_prompt else None)
+        
         if preferred_chat_prompt is not None:
             updates.append("preferred_chat_prompt = %s")
             params.append(preferred_chat_prompt if preferred_chat_prompt else None)
-
+        
         if preferred_system_prompt is not None:
             updates.append("preferred_system_prompt = %s")
             params.append(preferred_system_prompt if preferred_system_prompt else None)
-
+        
         if preferred_top_p is not None:
             updates.append("preferred_top_p = %s")
             params.append(preferred_top_p)
-
+        
         if preferred_top_k is not None:
             updates.append("preferred_top_k = %s")
             params.append(preferred_top_k)
-
+        
         if theme is not None:
             updates.append("theme = %s")
             params.append(theme)
-
+        
         if not updates:
             return self.get_user_preferences(user_id)
-
+        
         updates.append("updated_at = NOW()")
         params.append(user_id)
-
+        
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
@@ -1177,18 +1150,18 @@ class ConfigService:
                     SET {', '.join(updates)}
                     WHERE id = %s
                     """,
-                    params,
+                    params
                 )
                 conn.commit()
-
+                
                 return self.get_user_preferences(user_id)
         finally:
             self._release_connection(conn)
-
+    
     # =========================================================================
     # Effective Configuration (User -> Dynamic -> Defaults)
     # =========================================================================
-
+    
     # Mapping of effective field names to (dynamic_field, user_pref_field)
     _EFFECTIVE_FIELDS: Dict[str, tuple] = {
         "model": ("active_model", "preferred_model"),
@@ -1196,33 +1169,30 @@ class ConfigService:
         "temperature": ("temperature", "preferred_temperature"),
         "max_tokens": ("max_tokens", "preferred_max_tokens"),
         "num_documents": ("num_documents_to_retrieve", "preferred_num_documents"),
-        "num_documents_to_retrieve": (
-            "num_documents_to_retrieve",
-            "preferred_num_documents",
-        ),
+        "num_documents_to_retrieve": ("num_documents_to_retrieve", "preferred_num_documents"),
         "condense_prompt": ("active_condense_prompt", "preferred_condense_prompt"),
         "chat_prompt": ("active_chat_prompt", "preferred_chat_prompt"),
         "system_prompt": ("active_system_prompt", "preferred_system_prompt"),
         "top_p": ("top_p", "preferred_top_p"),
         "top_k": ("top_k", "preferred_top_k"),
     }
-
+    
     def get_effective(self, field: str, user_id: Optional[str] = None) -> Any:
         """
         Get the effective value for a configuration field.
-
+        
         Resolution order:
         1. User preference (if user_id provided and preference set)
         2. Deployment dynamic config
         3. Default from DynamicConfig dataclass
-
+        
         Args:
             field: Configuration field name (e.g., "temperature", "active_model")
             user_id: Optional user ID to check preferences
-
+            
         Returns:
             The effective configuration value
-
+            
         Raises:
             KeyError: If field is not recognized
         """
@@ -1232,68 +1202,57 @@ class ConfigService:
             if hasattr(dynamic, field):
                 return getattr(dynamic, field)
             raise KeyError(f"Unknown config field: {field}")
-
+        
         dynamic_field, pref_field = self._EFFECTIVE_FIELDS[field]
-
+        
         # Check user preference first
         if user_id:
             prefs = self.get_user_preferences(user_id)
             if pref_field in prefs and prefs[pref_field] is not None:
                 return prefs[pref_field]
-
+        
         # Fall back to dynamic config
         dynamic = self.get_dynamic_config()
         return getattr(dynamic, dynamic_field)
-
+    
     def get_effective_config(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Get all effective configuration values for a user.
-
+        
         Args:
             user_id: Optional user ID to include preferences
-
+            
         Returns:
             Dict with effective values for all fields
         """
         dynamic = self.get_dynamic_config()
         prefs = self.get_user_preferences(user_id) if user_id else {}
-
+        
         result = {
             "active_pipeline": dynamic.active_pipeline,
             "active_model": prefs.get("preferred_model") or dynamic.active_model,
             "active_agent_name": dynamic.active_agent_name,
-            "temperature": (
-                prefs.get("preferred_temperature")
-                if prefs.get("preferred_temperature") is not None
-                else dynamic.temperature
-            ),
+            "temperature": prefs.get("preferred_temperature") if prefs.get("preferred_temperature") is not None else dynamic.temperature,
             "max_tokens": prefs.get("preferred_max_tokens") or dynamic.max_tokens,
-            "top_p": (
-                prefs.get("preferred_top_p")
-                if prefs.get("preferred_top_p") is not None
-                else dynamic.top_p
-            ),
+            "top_p": prefs.get("preferred_top_p") if prefs.get("preferred_top_p") is not None else dynamic.top_p,
             "top_k": prefs.get("preferred_top_k") or dynamic.top_k,
             "repetition_penalty": dynamic.repetition_penalty,
             "system_prompt": dynamic.system_prompt,
-            "condense_prompt": prefs.get("preferred_condense_prompt")
-            or dynamic.active_condense_prompt,
-            "chat_prompt": prefs.get("preferred_chat_prompt")
-            or dynamic.active_chat_prompt,
-            "num_documents_to_retrieve": prefs.get("preferred_num_documents")
-            or dynamic.num_documents_to_retrieve,
+            "condense_prompt": prefs.get("preferred_condense_prompt") or dynamic.active_condense_prompt,
+            "chat_prompt": prefs.get("preferred_chat_prompt") or dynamic.active_chat_prompt,
+            "num_documents_to_retrieve": prefs.get("preferred_num_documents") or dynamic.num_documents_to_retrieve,
             "use_hybrid_search": dynamic.use_hybrid_search,
             "bm25_weight": dynamic.bm25_weight,
             "semantic_weight": dynamic.semantic_weight,
             "verbosity": dynamic.verbosity,
         }
-
+        
         return result
-
+    
     # =========================================================================
     # Audit Logging
     # =========================================================================
-
+    
     def _log_audit(
         self,
         user_id: str,
@@ -1304,7 +1263,7 @@ class ConfigService:
     ) -> None:
         """
         Log a configuration change to the audit table.
-
+        
         Args:
             user_id: User who made the change
             config_type: Type of config ('dynamic' or 'user_pref')
@@ -1320,20 +1279,14 @@ class ConfigService:
                     INSERT INTO config_audit (user_id, config_type, field_name, old_value, new_value)
                     VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (
-                        user_id,
-                        config_type,
-                        field_name,
-                        str(old_value) if old_value is not None else None,
-                        str(new_value) if new_value is not None else None,
-                    ),
+                    (user_id, config_type, field_name, str(old_value) if old_value is not None else None, str(new_value) if new_value is not None else None)
                 )
                 conn.commit()
         except Exception as e:
             logger.warning(f"Failed to log audit: {e}")
         finally:
             self._release_connection(conn)
-
+    
     def get_audit_log(
         self,
         *,
@@ -1343,12 +1296,12 @@ class ConfigService:
     ) -> List[Dict[str, Any]]:
         """
         Get configuration audit log entries.
-
+        
         Args:
             user_id: Filter by user ID
             config_type: Filter by config type ('dynamic' or 'user_pref')
             limit: Maximum entries to return
-
+            
         Returns:
             List of audit log entries
         """
@@ -1357,17 +1310,17 @@ class ConfigService:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 conditions = []
                 params: List[Any] = []
-
+                
                 if user_id:
                     conditions.append("user_id = %s")
                     params.append(user_id)
-
+                
                 if config_type:
                     conditions.append("config_type = %s")
                     params.append(config_type)
-
+                
                 where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
+                
                 cursor.execute(
                     f"""
                     SELECT id, user_id, changed_at, config_type, field_name, old_value, new_value
@@ -1376,31 +1329,34 @@ class ConfigService:
                     ORDER BY changed_at DESC
                     LIMIT %s
                     """,
-                    params + [limit],
+                    params + [limit]
                 )
-
+                
                 return [dict(row) for row in cursor.fetchall()]
         finally:
             self._release_connection(conn)
-
+    
     # =========================================================================
     # Admin Check
     # =========================================================================
-
+    
     def is_admin(self, user_id: str) -> bool:
         """
         Check if a user is an admin.
-
+        
         Args:
             user_id: The user ID to check
-
+            
         Returns:
             True if user is admin, False otherwise
         """
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,))
+                cursor.execute(
+                    "SELECT is_admin FROM users WHERE id = %s",
+                    (user_id,)
+                )
                 row = cursor.fetchone()
                 return bool(row and row[0])
         finally:

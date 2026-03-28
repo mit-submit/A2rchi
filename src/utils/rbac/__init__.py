@@ -16,35 +16,45 @@ Usage:
         ...
 """
 
-from src.utils.rbac.decorators import (require_any_permission,
-                                       require_authenticated,
-                                       require_permission)
-from src.utils.rbac.jwt_parser import (assign_default_role,
-                                       extract_roles_from_token,
-                                       get_user_roles)
 from src.utils.rbac.permission_enum import Permission
-from src.utils.rbac.permissions import (check_permission, get_user_permissions,
-                                        has_permission)
-from src.utils.rbac.registry import (RBACRegistry, get_registry,
-                                     load_rbac_config)
+from src.utils.rbac.registry import (
+    RBACRegistry,
+    get_registry,
+    load_rbac_config,
+)
+from src.utils.rbac.decorators import (
+    require_permission,
+    require_any_permission,
+    require_authenticated,
+)
+from src.utils.rbac.permissions import (
+    has_permission,
+    get_user_permissions,
+    check_permission,
+)
+from src.utils.rbac.jwt_parser import (
+    extract_roles_from_token,
+    get_user_roles,
+    assign_default_role,
+)
 
 __all__ = [
     # Permission enum
-    "Permission",
+    'Permission',
     # Registry
-    "RBACRegistry",
-    "get_registry",
-    "load_rbac_config",
+    'RBACRegistry',
+    'get_registry',
+    'load_rbac_config',
     # Decorators
-    "require_permission",
-    "require_any_permission",
-    "require_authenticated",
+    'require_permission',
+    'require_any_permission',
+    'require_authenticated',
     # Permissions
-    "has_permission",
-    "get_user_permissions",
-    "check_permission",
+    'has_permission',
+    'get_user_permissions',
+    'check_permission',
     # JWT Parser
-    "extract_roles_from_token",
-    "get_user_roles",
-    "assign_default_role",
+    'extract_roles_from_token',
+    'get_user_roles',
+    'assign_default_role',
 ]
