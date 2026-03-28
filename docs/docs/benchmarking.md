@@ -126,3 +126,88 @@ To analyze results, see `scripts/benchmarking/` which contains:
 
 - Plotting functions
 - An IPython notebook with usage examples (`benchmark_handler.ipynb`)
+
+---
+
+## A/B Comparison Mode
+
+Compare two agent configurations side-by-side by running exactly two config files with `ab_mode: true`.
+
+### Setup
+
+Create two config files that differ in the dimension you want to test (model, provider, agent class, etc.) and set `ab_mode: true` in the benchmarking section of each:
+
+```yaml
+# config_a.yaml
+services:
+  benchmarking:
+    ab_mode: true
+    agent_class: CMSCompOpsAgent
+    provider: openai
+    model: gpt-4o
+    queries_path: examples/benchmarking/queries.json
+    out_dir: bench_out
+    modes:
+      - "SOURCES"
+```
+
+```yaml
+# config_b.yaml
+services:
+  benchmarking:
+    ab_mode: true
+    agent_class: CMSCompOpsAgent
+    provider: local
+    model: gemma3
+    queries_path: examples/benchmarking/queries.json
+    out_dir: bench_out
+    modes:
+      - "SOURCES"
+```
+
+### Running
+
+Place both configs in a directory and point `--config-dir` at it:
+
+```bash
+archi evaluate -n ab-test -cd examples/benchmarking/ab_configs/ -e .secrets.env
+```
+
+### Output
+
+In addition to the standard per-config results, A/B mode produces:
+
+- **JSON `ab_comparison` section**: paired per-question results with winner-by-metric, plus aggregate wins/losses/ties and mean scores.
+- **HTML report**: side-by-side comparison showing both answers and metric scores for each question.
+
+See `examples/benchmarking/ab_configs/` for sample A/B config files.
+
+---
+
+## Langfuse Integration
+
+Optionally export benchmark results to [Langfuse](https://langfuse.com) for human annotation and grading.
+
+### Setup
+
+1. Set Langfuse credentials in your `.env` file:
+
+    ```env
+    LANGFUSE_SECRET_KEY=sk-lf-...
+    LANGFUSE_PUBLIC_KEY=pk-lf-...
+    LANGFUSE_HOST=https://cloud.langfuse.com
+    ```
+
+2. Add the `--langfuse` flag when running:
+
+    ```bash
+    archi evaluate -n benchmark -cd configs/ -e .secrets.env --langfuse
+    ```
+
+### What Gets Exported
+
+- A **Langfuse Dataset** is created with one item per question (input = question, expected output = reference answer).
+- For A/B mode: two **experiment runs** (one per config) are attached to the dataset with pre-computed answers and RAGAS scores as evaluations.
+- For single-config mode: one experiment run is created.
+
+Scores appear as Langfuse evaluations that can be reviewed, filtered, and augmented with human annotations in the Langfuse UI.

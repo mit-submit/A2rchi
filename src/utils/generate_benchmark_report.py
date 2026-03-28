@@ -472,6 +472,120 @@ def format_html_output(config_data, config_name, timestamp,questions, total_resu
     html_parts.append('</body></html>')
     return '\n'.join(html_parts)
 
+def format_ab_html_output(ab_comparison):
+    """Format A/B comparison results as a side-by-side HTML report."""
+    config_a = ab_comparison.get("config_a", {})
+    config_b = ab_comparison.get("config_b", {})
+    aggregate = ab_comparison.get("aggregate", {})
+    per_question = ab_comparison.get("per_question", [])
+
+    label_a = f"{config_a.get('agent_class', '?')}/{config_a.get('provider', '?')}/{config_a.get('model', '?')}"
+    label_b = f"{config_b.get('agent_class', '?')}/{config_b.get('provider', '?')}/{config_b.get('model', '?')}"
+
+    wins_a = aggregate.get("wins_a", 0)
+    wins_b = aggregate.get("wins_b", 0)
+    ties = aggregate.get("ties", 0)
+    mean_a = aggregate.get("mean_scores_a", {})
+    mean_b = aggregate.get("mean_scores_b", {})
+
+    parts = ["""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>A/B Benchmark Comparison</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1400px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+.header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }
+.card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.answer-box { background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #667eea; margin: 10px 0; white-space: pre-wrap; font-family: 'Monaco', 'Courier New', monospace; font-size: 0.9em; }
+.box-b { border-left-color: #e85d04; }
+.winner { background: #d4edda; border-color: #28a745; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 10px 14px; border: 1px solid #dee2e6; text-align: center; }
+th { background: #f8f9fa; }
+.win-a { color: #667eea; font-weight: bold; }
+.win-b { color: #e85d04; font-weight: bold; }
+.tie { color: #6c757d; }
+.metric-value { font-size: 2em; font-weight: bold; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px; }
+.metric-item { background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center; }
+</style></head><body>"""]
+
+    parts.append(f"""
+<div class="header">
+    <h1>A/B Benchmark Comparison</h1>
+    <p><strong>Config A:</strong> {html.escape(label_a)}</p>
+    <p><strong>Config B:</strong> {html.escape(label_b)}</p>
+    <p><strong>Questions:</strong> {len(per_question)}</p>
+</div>""")
+
+    # Aggregate summary
+    parts.append('<div class="card"><h2>Aggregate Results</h2>')
+    parts.append('<div class="metrics-grid">')
+    parts.append(f'<div class="metric-item"><div class="metric-value win-a">{wins_a}</div><div>Wins A</div></div>')
+    parts.append(f'<div class="metric-item"><div class="metric-value win-b">{wins_b}</div><div>Wins B</div></div>')
+    parts.append(f'<div class="metric-item"><div class="metric-value tie">{ties}</div><div>Ties</div></div>')
+    parts.append('</div>')
+
+    # Mean scores table
+    all_metrics = sorted(set(list(mean_a.keys()) + list(mean_b.keys())))
+    if all_metrics:
+        parts.append('<table style="margin-top:20px;"><tr><th>Metric</th><th>Config A</th><th>Config B</th><th>Winner</th></tr>')
+        for m in all_metrics:
+            sa = mean_a.get(m, 0.0)
+            sb = mean_b.get(m, 0.0)
+            if abs(sa - sb) < 1e-9:
+                w_class, w_text = "tie", "Tie"
+            elif sa > sb:
+                w_class, w_text = "win-a", "A"
+            else:
+                w_class, w_text = "win-b", "B"
+            parts.append(f'<tr><td>{html.escape(m.replace("_", " ").title())}</td><td>{sa:.4f}</td><td>{sb:.4f}</td><td class="{w_class}">{w_text}</td></tr>')
+        parts.append('</table>')
+    parts.append('</div>')
+
+    # Per-question cards
+    for idx, qr in enumerate(per_question, 1):
+        question_text = html.escape(qr.get("question", ""))
+        ref = html.escape(qr.get("reference_answer", ""))
+        ans_a = html.escape(qr.get("answer_a", ""))
+        ans_b = html.escape(qr.get("answer_b", ""))
+        time_a = qr.get("time_a", 0.0)
+        time_b = qr.get("time_b", 0.0)
+        ragas_a = qr.get("ragas_a", {})
+        ragas_b = qr.get("ragas_b", {})
+        winner_by = qr.get("winner_by_metric", {})
+
+        parts.append(f'<div class="card"><h2>Question {idx}</h2>')
+        parts.append(f'<p><strong>Q:</strong> {question_text}</p>')
+        if ref:
+            parts.append(f'<p><strong>Reference:</strong> {ref}</p>')
+
+        parts.append('<div class="side-by-side">')
+        # Config A answer
+        a_cls = " winner" if sum(1 for w in winner_by.values() if w == "a") > sum(1 for w in winner_by.values() if w == "b") else ""
+        b_cls = " winner" if sum(1 for w in winner_by.values() if w == "b") > sum(1 for w in winner_by.values() if w == "a") else ""
+        parts.append(f'<div><h4>Config A ({time_a:.2f}s)</h4><div class="answer-box{a_cls}">{ans_a}</div></div>')
+        parts.append(f'<div><h4>Config B ({time_b:.2f}s)</h4><div class="answer-box box-b{b_cls}">{ans_b}</div></div>')
+        parts.append('</div>')
+
+        # Per-question metrics table
+        q_metrics = sorted(set(list(ragas_a.keys()) + list(ragas_b.keys())))
+        if q_metrics:
+            parts.append('<table style="margin-top:10px;"><tr><th>Metric</th><th>A</th><th>B</th><th>Winner</th></tr>')
+            for m in q_metrics:
+                sa = ragas_a.get(m, float("nan"))
+                sb = ragas_b.get(m, float("nan"))
+                w = winner_by.get(m, "tie")
+                w_class = "win-a" if w == "a" else "win-b" if w == "b" else "tie"
+                w_text = "A" if w == "a" else "B" if w == "b" else "Tie"
+                parts.append(f'<tr><td>{html.escape(m.replace("_", " ").title())}</td><td>{sa:.4f}</td><td>{sb:.4f}</td><td class="{w_class}">{w_text}</td></tr>')
+            parts.append('</table>')
+
+        parts.append('</div>')
+
+    parts.append('</body></html>')
+    return '\n'.join(parts)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Compare expected vs actual outputs from archi benchmarking',

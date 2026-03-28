@@ -1,9 +1,10 @@
 import json
 import os
 import time
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib import error as url_error
 from urllib import request as url_request
 
@@ -24,7 +25,7 @@ from src.archi.pipelines.agents.agent_spec import AgentSpecError, load_agent_spe
 from src.archi.providers import get_model
 from src.utils.env import read_secret
 from src.utils.logging import get_logger, setup_logging
-from src.utils.generate_benchmark_report import parse_benchmark_results, format_html_output
+from src.utils.generate_benchmark_report import parse_benchmark_results, format_html_output, format_ab_html_output
 from src.utils.postgres_service_factory import PostgresServiceFactory
 
 CONFIG_PATH = "/root/archi/config.yaml"
@@ -34,6 +35,24 @@ OUTPUT_DIR = Path(OUTPUT_PATH)
 
 setup_logging()
 logger = get_logger(__name__)
+
+
+@dataclass
+class ABResult:
+    """Paired A/B comparison result for a single question."""
+    question: str
+    reference_answer: str
+    answer_a: str
+    answer_b: str
+    time_a: float
+    time_b: float
+    ragas_a: Dict[str, float] = field(default_factory=dict)
+    ragas_b: Dict[str, float] = field(default_factory=dict)
+    sources_a: List[Dict[str, Any]] = field(default_factory=list)
+    sources_b: List[Dict[str, Any]] = field(default_factory=list)
+    messages_a: List[Dict[str, Any]] = field(default_factory=list)
+    messages_b: List[Dict[str, Any]] = field(default_factory=list)
+    winner_by_metric: Dict[str, str] = field(default_factory=dict)
 
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
 os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
@@ -46,6 +65,7 @@ PostgresServiceFactory.set_instance(factory)
 class ResultHandler:
     results = [] # store the results for each config
     metadata = {} # store the metadata about the benchmark run 
+    ab_comparison = {} # store the A/B comparison results (populated only in ab_mode)
 
     @staticmethod
     def map_prompts(config: Dict[str, Any]):
@@ -98,14 +118,15 @@ class ResultHandler:
     @staticmethod 
     def dump_html(benchmark_name: Path):
 
-        config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(ResultHandler.results, ResultHandler.metadata)
-
-        logger.info(config_data)
-
-        html_content = format_html_output(config_data, config_name, timestamp,questions, total_results)
-
         filename = f"{benchmark_name}-{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_report.html"
         file_path = OUTPUT_DIR / filename
+
+        if ResultHandler.ab_comparison:
+            html_content = format_ab_html_output(ResultHandler.ab_comparison)
+        else:
+            config_data, config_name, timestamp, questions, total_results = parse_benchmark_results(ResultHandler.results, ResultHandler.metadata)
+            logger.info(config_data)
+            html_content = format_html_output(config_data, config_name, timestamp, questions, total_results)
 
         logger.info(f"Dumping results to {file_path}")
 
@@ -127,8 +148,120 @@ class ResultHandler:
             "benchmarking_results": ResultHandler.results,
             "metadata": ResultHandler.metadata,
         }
+        if ResultHandler.ab_comparison:
+            output["ab_comparison"] = ResultHandler.ab_comparison
         with open(file_path, "w") as f:
             json.dump(output, f, indent=4)
+
+    @staticmethod
+    def pair_ab_results() -> List[ABResult]:
+        """Pair results from two benchmark configs into ABResult objects."""
+        if len(ResultHandler.results) != 2:
+            raise ValueError(f"A/B mode requires exactly 2 config results, got {len(ResultHandler.results)}")
+
+        results_a = ResultHandler.results[0]["single_question_results"]
+        results_b = ResultHandler.results[1]["single_question_results"]
+
+        ragas_metrics = ["answer_relevancy", "faithfulness", "context_precision", "context_recall"]
+
+        paired: List[ABResult] = []
+        for key in results_a:
+            if key not in results_b:
+                logger.warning("Question key %s not found in config B results, skipping.", key)
+                continue
+            qa = results_a[key]
+            qb = results_b[key]
+
+            ragas_a = {m: qa.get(m, float("nan")) for m in ragas_metrics if m in qa}
+            ragas_b = {m: qb.get(m, float("nan")) for m in ragas_metrics if m in qb}
+
+            winner_by_metric: Dict[str, str] = {}
+            for m in ragas_a:
+                sa, sb = ragas_a.get(m, float("nan")), ragas_b.get(m, float("nan"))
+                if sa != sa or sb != sb:  # NaN check
+                    winner_by_metric[m] = "tie"
+                elif abs(sa - sb) < 1e-9:
+                    winner_by_metric[m] = "tie"
+                elif sa > sb:
+                    winner_by_metric[m] = "a"
+                else:
+                    winner_by_metric[m] = "b"
+
+            paired.append(ABResult(
+                question=qa["question"],
+                reference_answer=qa.get("reference_answer", ""),
+                answer_a=qa.get("answer", ""),
+                answer_b=qb.get("answer", ""),
+                time_a=qa.get("time_elapsed", 0.0),
+                time_b=qb.get("time_elapsed", 0.0),
+                ragas_a=ragas_a,
+                ragas_b=ragas_b,
+                sources_a=qa.get("sources_metadata", []),
+                sources_b=qb.get("sources_metadata", []),
+                messages_a=qa.get("messages", []),
+                messages_b=qb.get("messages", []),
+                winner_by_metric=winner_by_metric,
+            ))
+
+        return paired
+
+    @staticmethod
+    def dump_ab_comparison(paired: List[ABResult]):
+        """Build the ab_comparison section from paired results."""
+        config_a = ResultHandler.results[0].get("configuration", {})
+        config_b = ResultHandler.results[1].get("configuration", {})
+        bench_a = config_a.get("services", {}).get("benchmarking", {})
+        bench_b = config_b.get("services", {}).get("benchmarking", {})
+
+        config_a_meta = {
+            "agent_class": bench_a.get("agent_class", ""),
+            "model": bench_a.get("model", ""),
+            "provider": bench_a.get("provider", ""),
+            "config_file": ResultHandler.results[0].get("configuration_file", ""),
+        }
+        config_b_meta = {
+            "agent_class": bench_b.get("agent_class", ""),
+            "model": bench_b.get("model", ""),
+            "provider": bench_b.get("provider", ""),
+            "config_file": ResultHandler.results[1].get("configuration_file", ""),
+        }
+
+        per_question = [asdict(r) for r in paired]
+
+        # Aggregate wins/losses/ties across all metrics
+        wins_a, wins_b, ties = 0, 0, 0
+        all_metrics = set()
+        for r in paired:
+            for m, w in r.winner_by_metric.items():
+                all_metrics.add(m)
+                if w == "a":
+                    wins_a += 1
+                elif w == "b":
+                    wins_b += 1
+                else:
+                    ties += 1
+
+        # Mean scores per metric per config
+        mean_scores_a: Dict[str, float] = {}
+        mean_scores_b: Dict[str, float] = {}
+        for m in all_metrics:
+            vals_a = [r.ragas_a.get(m) for r in paired if r.ragas_a.get(m) is not None and r.ragas_a.get(m) == r.ragas_a.get(m)]
+            vals_b = [r.ragas_b.get(m) for r in paired if r.ragas_b.get(m) is not None and r.ragas_b.get(m) == r.ragas_b.get(m)]
+            mean_scores_a[m] = sum(vals_a) / len(vals_a) if vals_a else 0.0
+            mean_scores_b[m] = sum(vals_b) / len(vals_b) if vals_b else 0.0
+
+        ResultHandler.ab_comparison = {
+            "config_a": config_a_meta,
+            "config_b": config_b_meta,
+            "per_question": per_question,
+            "aggregate": {
+                "wins_a": wins_a,
+                "wins_b": wins_b,
+                "ties": ties,
+                "mean_scores_a": mean_scores_a,
+                "mean_scores_b": mean_scores_b,
+            },
+        }
 
 
 class Benchmarker: 
@@ -146,6 +279,18 @@ class Benchmarker:
 
         self.load_new_configuration()
         self.data_path = self.config["global"]["DATA_PATH"]
+
+        # A/B mode: check if enabled and validate config count
+        self.ab_mode = self.benchmarking_configs.get("ab_mode", False)
+        if self.ab_mode:
+            # Count actual configs (exclude the 'FINISHED' sentinel)
+            num_configs = len([c for c in self.all_config_files if c != 'FINISHED']) + 1  # +1 for already-loaded config
+            if num_configs != 2:
+                raise ValueError(
+                    f"A/B mode requires exactly 2 benchmark config files, but found {num_configs}. "
+                    "Provide exactly 2 config files in the configs directory when ab_mode is enabled."
+                )
+            logger.info("A/B comparison mode enabled.")
     
     def get_all_configs(self, configs_dir):
         all_paths = []
@@ -569,6 +714,53 @@ class Benchmarker:
             self.load_new_configuration()
 
         ResultHandler.add_metadata()
+
+        # A/B comparison: pair results and generate comparison output
+        if self.ab_mode and len(ResultHandler.results) == 2:
+            logger.info("Pairing A/B results across configs...")
+            paired = ResultHandler.pair_ab_results()
+            ResultHandler.dump_ab_comparison(paired)
+            logger.info(
+                "A/B comparison: %d questions paired. Wins A=%d, Wins B=%d, Ties=%d",
+                len(paired),
+                ResultHandler.ab_comparison["aggregate"]["wins_a"],
+                ResultHandler.ab_comparison["aggregate"]["wins_b"],
+                ResultHandler.ab_comparison["aggregate"]["ties"],
+            )
+
+            # Langfuse export (if configured)
+            if os.environ.get("LANGFUSE_EXPORT", "").lower() in ("1", "true", "yes"):
+                try:
+                    from src.utils.benchmark_langfuse import export_ab_to_langfuse
+                    export_ab_to_langfuse(
+                        paired=paired,
+                        ab_comparison=ResultHandler.ab_comparison,
+                        benchmark_name=self.benchmark_name,
+                    )
+                except ImportError:
+                    logger.error(
+                        "Langfuse export requested but 'langfuse' package is not installed. "
+                        "Install it with: pip install langfuse"
+                    )
+                except Exception:
+                    logger.exception("Langfuse export failed; benchmark results are still saved locally.")
+        elif not self.ab_mode and os.environ.get("LANGFUSE_EXPORT", "").lower() in ("1", "true", "yes"):
+            # Single-config Langfuse export
+            try:
+                from src.utils.benchmark_langfuse import export_single_to_langfuse
+                export_single_to_langfuse(
+                    results=ResultHandler.results,
+                    metadata=ResultHandler.metadata,
+                    benchmark_name=self.benchmark_name,
+                )
+            except ImportError:
+                logger.error(
+                    "Langfuse export requested but 'langfuse' package is not installed. "
+                    "Install it with: pip install langfuse"
+                )
+            except Exception:
+                logger.exception("Langfuse export failed; benchmark results are still saved locally.")
+
         ResultHandler.dump(self.benchmark_name)
         ResultHandler.dump_html(self.benchmark_name)
         return

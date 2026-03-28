@@ -1,0 +1,24 @@
+name: AB-Config-A
+
+global:
+  TRAINED_ON: "the SubMIT Cluster"
+
+data_manager:
+  sources:
+    links:
+      enabled: true
+      input_lists:
+        - examples/benchmarking/ppc.list
+  embedding_name: OpenAIEmbeddings
+
+services:
+  benchmarking:
+    ab_mode: true
+    agent_class: CMSCompOpsAgent
+    agent_md_file: examples/agents/cms-comp-ops.md
+    provider: openai
+    model: gpt-4o
+    queries_path: examples/benchmarking/queries.json
+    out_dir: bench_out
+    modes:
+      - "SOURCES"

@@ -480,6 +480,7 @@ def list_deployments():
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
+@click.option('--langfuse', is_flag=True, help="Export benchmark results to Langfuse for human annotation")
 def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force: bool, verbosity: int, **other_flags):
     """Create an ARCHI deployment with selected services and data sources."""
     if not (bool(config_file) ^ bool(config_dir)): 
@@ -545,6 +546,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
         other_flags['query_file'] = benchmarking_configs.get('queries_path', ".")
         other_flags['benchmarking_dest'] = os.path.abspath(benchmarking_configs.get('out_dir', '.'))
         other_flags['host_mode'] = other_flags.get('host_mode', False)
+        other_flags['langfuse_export'] = other_flags.pop('langfuse', False)
 
         compose_config = ServiceBuilder.build_compose_config(
                 name=name, verbosity=verbosity, base_dir=base_dir, 
