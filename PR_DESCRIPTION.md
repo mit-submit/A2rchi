@@ -4,7 +4,7 @@
 
 This PR replaces the LangGraph-based agent runtime with the **GitHub Copilot SDK**, providing a more maintainable and extensible agent pipeline while preserving full backward compatibility with the existing LangGraph pipeline via config-driven selection (`agent_class`).
 
-**123 files changed** | ~18,800 insertions | ~4,500 deletions | 114 non-merge commits
+**47 files changed** | ~6,850 insertions | ~190 deletions
 
 ---
 
@@ -42,47 +42,30 @@ This PR replaces the LangGraph-based agent runtime with the **GitHub Copilot SDK
 - **Fix**: Replaced `excluded_tools` blocklist with `available_tools` **allowlist** — only the 7 custom Archi tools are permitted. Any new SDK built-in tools are automatically blocked.
 - Removed `_COPILOT_BUILTIN_TOOL_BLOCKLIST` constant entirely
 
-### RBAC System (`src/utils/rbac/`)
-- New role-based access control system with JWT parsing, permission enums, decorators, audit logging, and a permission registry
-- Integrated across chat app, data viewer, and agent editor endpoints
-
 ---
 
-## Additional Features
+## Integration Changes
 
-### CERN LiteLLM Provider (`src/archi/providers/cern_litellm_provider.py`)
-- New provider class for CERN's LiteLLM proxy service
+### Chat App Streaming (`src/interfaces/chat_app/app.py`)
+- Metadata-based tool call extraction path for Copilot adapter (alongside existing messages-based path for LangGraph)
+- `stream_kwargs` pattern replaces direct LLM override for provider/model selection
+- Error event handling from agent pipeline
+- Tool start trace events emitted for both messages-based and metadata-only paths
 
-### Service Status Board (`src/interfaces/chat_app/service_alerts.py`)
-- Alert management with REST API endpoints
-- Alert banner template integration in chat UI
-
-### Agent Editor Improvements
+### Agent Editor API (`src/interfaces/chat_app/api.py`)
 - Agent editor API now returns `{name, description}` objects for tools (was bare strings)
 - Only custom Archi tools appear in the editor — SDK built-in tools are excluded
 
-### Provider Management
-- Enable/disable providers via config
-- Per-message model label tracking and display
-- Provider override support with `model_used` field in conversation history
+### Pipeline Registry (`src/archi/pipelines/__init__.py`)
+- `CopilotAgentPipeline` registered as selectable pipeline class
 
-### Data Manager
-- Scheduler improvements (runs even with no schedules, updates vectorstore after jobs)
-- SSO scraper improvements with remote Selenium driver support
-- Catalog postgres enhancements
-- Ticket manager refactoring
-
-### UI Improvements
-- Context meter with hover explanation
-- Collapsible sources display
-- Upload UI improvements
-- Status page (`status.html`)
-- Tool name/args now display correctly in streaming UI (was showing "unknown")
-
-### Timestamps
-- All `TIMESTAMP` columns migrated to `TIMESTAMPTZ`
-- `utcnow()` replaced with timezone-aware `now()`
-- API responses include Z suffix for ISO timestamps
+### Minor Fixes
+- Gemini provider removed from provider registry (`src/archi/providers/__init__.py`)
+- Default pipeline changed to `CopilotAgentPipeline` in redmine integration
+- `config_service.py`: empty string instead of NULL for cleared `active_agent_name`
+- `ticket_manager.py`: try/except around collector iteration to prevent crashes
+- `local_files.py`: redirect detection for catalog API auth failures
+- `mcp_utils.py`: refactored MCP server configuration utilities
 
 ---
 
@@ -103,10 +86,10 @@ Both pipelines pass the same 38-test feature parity matrix.
 
 | Suite | Count | Status |
 |-------|-------|--------|
-| Unit tests | 209 | ✅ All pass |
-| Pipeline matrix (both pipelines) | 38 | ✅ All pass |
-| Playwright UI tests | 398 | ✅ All pass |
-| Live E2E browser tests (submit76) | 8 | ✅ All pass |
+| Unit tests | 209 | All pass |
+| Pipeline matrix (both pipelines) | 38 | All pass |
+| Playwright UI tests (submit76) | 392 | All pass |
+| Smoke test (submit76 live API) | 1 | Pass |
 
 ### New Test Files
 - `tests/unit/test_copilot_pipeline.py` — 36 tests for pipeline helpers, tool restrictions, session management
@@ -116,6 +99,7 @@ Both pipelines pass the same 38-test feature parity matrix.
 - `tests/unit/test_pipeline_integration.py` — pipeline integration tests
 - `tests/unit/test_tool_error_handling.py` — tool error handling
 - `tests/unit/test_import_sanity.py` — import validation
+- `tests/unit/test_ticket_manager.py` — ticket manager error handling
 - `tests/test_pipeline_matrix.py` — 38-test feature parity matrix (runs both pipelines)
 - `tests/ui/workflows/21-agent-management.spec.ts` — agent editor Playwright tests
 - `tests/ui/workflows/22-copilot-streaming.spec.ts` — Copilot streaming Playwright tests
@@ -124,24 +108,9 @@ Both pipelines pass the same 38-test feature parity matrix.
 
 ---
 
-## Key Commits
-
-| Commit | Description |
-|--------|-------------|
-| `0e33105d` | Replace agent runtime with Copilot SDK |
-| `e546f491` | Fix critical bugs in Copilot SDK integration |
-| `4ab1256b` | Fix tool restrictions, session resume, event adapter edge cases |
-| `9efb9b53` | Switch SDK tool restrictions to allowlist |
-| `64a61ab2` | Security: tool allowlist, multi-turn history fix, session leak fix |
-| `5b3a079e` | Implement RBAC system |
-| `98cfb844` | Add service alert management |
-| `f643cfdf` | Migrate TIMESTAMP to TIMESTAMPTZ |
-
----
-
 ## Deployment Notes
 
 - Requires `copilot-sdk` Python package (added to `requirements-base.txt`)
-- No database migration script — new columns/tables are created via `init.sql` for fresh deployments
+- No database migration needed
 - Existing deployments using `BaseReActAgent` require no config changes
 - To switch to Copilot pipeline: set `agent_class: CopilotAgentPipeline` in config and provide a GitHub token or compatible BYOK provider credentials
