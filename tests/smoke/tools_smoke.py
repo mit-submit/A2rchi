@@ -73,9 +73,9 @@ def _run_catalog_tools(catalog: RemoteCatalogClient) -> None:
 
     # Verify tool factories produce Tool objects
     collector = DocumentCollector()
-    file_search_tool = build_file_search_tool(catalog, store_docs=collector.store)
+    file_search_tool = build_file_search_tool(catalog, store_docs=collector.store_docs)
     metadata_search_tool = build_metadata_search_tool(
-        catalog, store_docs=collector.store
+        catalog, store_docs=collector.store_docs
     )
     fetch_tool = build_document_fetch_tool(catalog)
     assert file_search_tool is not None, "build_file_search_tool returned None"
@@ -129,7 +129,7 @@ def _run_vectorstore_tool(config: Dict) -> None:
 
     # Verify factory produces a Tool object
     collector = DocumentCollector()
-    retriever_tool = build_retriever_tool(hybrid_retriever, store_docs=collector.store)
+    retriever_tool = build_retriever_tool(hybrid_retriever, store_docs=collector.store_docs)
     assert retriever_tool is not None, "build_retriever_tool returned None"
     _info("Retriever tool factory produces Tool object ✓")
 
