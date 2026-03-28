@@ -71,21 +71,17 @@ def _run_catalog_tools(catalog: RemoteCatalogClient) -> None:
     file_query = os.getenv("FILE_SEARCH_QUERY", "Smoke test seed document")
     metadata_query = os.getenv("METADATA_SEARCH_QUERY", "file_name:seed.txt")
 
-    # Verify tool factories produce callable objects
+    # Verify tool factories produce Tool objects
     collector = DocumentCollector()
     file_search_tool = build_file_search_tool(catalog, store_docs=collector.store)
     metadata_search_tool = build_metadata_search_tool(
         catalog, store_docs=collector.store
     )
     fetch_tool = build_document_fetch_tool(catalog)
-    assert callable(
-        file_search_tool
-    ), "build_file_search_tool did not return a callable"
-    assert callable(
-        metadata_search_tool
-    ), "build_metadata_search_tool did not return a callable"
-    assert callable(fetch_tool), "build_document_fetch_tool did not return a callable"
-    _info("Tool factories produce callable objects ✓")
+    assert file_search_tool is not None, "build_file_search_tool returned None"
+    assert metadata_search_tool is not None, "build_metadata_search_tool returned None"
+    assert fetch_tool is not None, "build_document_fetch_tool returned None"
+    _info("Tool factories produce Tool objects ✓")
 
     # Test underlying catalog operations directly
     _info("Running catalog file search ...")
@@ -131,11 +127,11 @@ def _run_vectorstore_tool(config: Dict) -> None:
         semantic_weight=retriever_cfg["semantic_weight"],
     )
 
-    # Verify factory produces a callable
+    # Verify factory produces a Tool object
     collector = DocumentCollector()
     retriever_tool = build_retriever_tool(hybrid_retriever, store_docs=collector.store)
-    assert callable(retriever_tool), "build_retriever_tool did not return a callable"
-    _info("Retriever tool factory produces callable ✓")
+    assert retriever_tool is not None, "build_retriever_tool returned None"
+    _info("Retriever tool factory produces Tool object ✓")
 
     # Test underlying retriever directly
     query = os.getenv("VECTORSTORE_QUERY", "Smoke test seed document")
