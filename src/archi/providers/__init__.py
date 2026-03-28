@@ -6,11 +6,11 @@ Each provider wraps a specific LLM service (OpenAI, Anthropic, Google, OpenRoute
 
 Usage:
     from src.archi.providers import get_provider, list_enabled_providers
-
+    
     # Get a specific provider
     provider = get_provider("openai")
     model = provider.get_chat_model("gpt-4o")
-
+    
     # List all enabled providers
     providers = list_enabled_providers()
 """
@@ -18,8 +18,12 @@ Usage:
 import os
 from typing import Dict, List, Optional, Type
 
-from src.archi.providers.base import (BaseProvider, ModelInfo, ProviderConfig,
-                                      ProviderType)
+from src.archi.providers.base import (
+    BaseProvider,
+    ModelInfo,
+    ProviderConfig,
+    ProviderType,
+)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -56,9 +60,7 @@ def _ensure_provider_config_api_key_env(
     return config
 
 
-def register_provider(
-    provider_type: ProviderType, provider_class: Type[BaseProvider]
-) -> None:
+def register_provider(provider_type: ProviderType, provider_class: Type[BaseProvider]) -> None:
     """Register a provider class for a provider type."""
     _PROVIDER_REGISTRY[provider_type] = provider_class
 
@@ -67,15 +69,14 @@ def _ensure_providers_registered() -> None:
     """Lazily register all built-in providers."""
     if _PROVIDER_REGISTRY:
         return
-
+    
     # Import and register all providers
-    from src.archi.providers.anthropic_provider import AnthropicProvider
-    from src.archi.providers.cern_litellm_provider import CERNLiteLLMProvider
-    from src.archi.providers.gemini_provider import GeminiProvider
-    from src.archi.providers.local_provider import LocalProvider
     from src.archi.providers.openai_provider import OpenAIProvider
+    from src.archi.providers.anthropic_provider import AnthropicProvider
     from src.archi.providers.openrouter_provider import OpenRouterProvider
-
+    from src.archi.providers.local_provider import LocalProvider
+    from src.archi.providers.cern_litellm_provider import CERNLiteLLMProvider
+    
     register_provider(ProviderType.OPENAI, OpenAIProvider)
     register_provider(ProviderType.ANTHROPIC, AnthropicProvider)
     register_provider(ProviderType.OPENROUTER, OpenRouterProvider)
@@ -86,24 +87,24 @@ def _ensure_providers_registered() -> None:
 def get_provider(
     provider_type: str | ProviderType,
     config: Optional[ProviderConfig] = None,
-    use_cache: bool = True,
+    use_cache: bool = True
 ) -> BaseProvider:
     """
     Get a provider instance by type.
-
+    
     Args:
         provider_type: The provider type (string or ProviderType enum)
         config: Optional provider configuration. If not provided, uses defaults.
         use_cache: Whether to use cached provider instances. Default True.
-
+    
     Returns:
         A provider instance
-
+    
     Raises:
         ValueError: If the provider type is unknown
     """
     _ensure_providers_registered()
-
+    
     # Convert string to ProviderType if needed
     if isinstance(provider_type, str):
         try:
@@ -113,46 +114,46 @@ def get_provider(
                 f"Unknown provider type: {provider_type}. "
                 f"Available: {[p.value for p in ProviderType]}"
             )
-
+    
     if provider_type not in _PROVIDER_REGISTRY:
         raise ValueError(f"No provider registered for type: {provider_type}")
-
+    
     config = _ensure_provider_config_api_key_env(provider_type, config)
 
     # Return cached instance if available and no custom config
     if use_cache and config is None and provider_type in _PROVIDER_INSTANCES:
         return _PROVIDER_INSTANCES[provider_type]
-
+    
     # Create new instance
     provider_class = _PROVIDER_REGISTRY[provider_type]
     provider = provider_class(config)
-
+    
     # Cache if using default config
     if use_cache and config is None:
         _PROVIDER_INSTANCES[provider_type] = provider
-
+    
     return provider
 
 
 def get_provider_by_name(name: str, **kwargs) -> BaseProvider:
     """
     Get a provider instance by display name or type name.
-
+    
     This is a convenience function that accepts common names like:
     - "openai", "OpenAI"
     - "anthropic", "claude", "Anthropic"
     - "openrouter", "OpenRouter"
     - "local", "ollama", "Local"
-
+    
     Args:
         name: The provider name
         **kwargs: Additional arguments passed to get_provider
-
+    
     Returns:
         A provider instance
     """
     name_lower = name.lower()
-
+    
     # Map common names to provider types
     name_map = {
         "openai": ProviderType.OPENAI,
@@ -165,7 +166,7 @@ def get_provider_by_name(name: str, **kwargs) -> BaseProvider:
         "vllm": ProviderType.LOCAL,
         "cern_litellm": ProviderType.CERN_LITELLM,
     }
-
+    
     provider_type = name_map.get(name_lower)
     if provider_type is None:
         # Try direct conversion
@@ -176,7 +177,7 @@ def get_provider_by_name(name: str, **kwargs) -> BaseProvider:
                 f"Unknown provider name: {name}. "
                 f"Try one of: {list(name_map.keys())}"
             )
-
+    
     return get_provider(provider_type, **kwargs)
 
 
@@ -189,14 +190,14 @@ def list_provider_types() -> List[ProviderType]:
 def list_enabled_providers() -> List[BaseProvider]:
     """
     List all providers that have valid API keys or connections configured.
-
+    
     This checks each provider's is_enabled property to determine if it can be used.
-
+    
     Returns:
         List of enabled provider instances
     """
     _ensure_providers_registered()
-
+    
     enabled = []
     for provider_type in _PROVIDER_REGISTRY.keys():
         try:
@@ -205,14 +206,14 @@ def list_enabled_providers() -> List[BaseProvider]:
                 enabled.append(provider)
         except Exception as e:
             logger.debug(f"Provider {provider_type} not available: {e}")
-
+    
     return enabled
 
 
 def list_all_models() -> Dict[str, List[ModelInfo]]:
     """
     List all models from all enabled providers.
-
+    
     Returns:
         Dict mapping provider display name to list of ModelInfo
     """
@@ -223,21 +224,19 @@ def list_all_models() -> Dict[str, List[ModelInfo]]:
             result[provider.display_name] = models
         except Exception as e:
             logger.warning(f"Failed to list models from {provider.display_name}: {e}")
-
+    
     return result
 
 
-def get_model(
-    provider_type: str | ProviderType, model_name: str, provider_config: dict, **kwargs
-):
+def get_model(provider_type: str | ProviderType, model_name: str, provider_config: dict, **kwargs):
     """
     Convenience function to get a chat model directly.
-
+    
     Args:
         provider_type: The provider type
         model_name: The model name
         **kwargs: Additional model configuration
-
+    
     Returns:
         A LangChain chat model instance
     """
@@ -261,22 +260,10 @@ def get_model(
     config = ProviderConfig(
         provider_type=provider_type_enum,
         api_key_env=_DEFAULT_API_KEY_ENV_BY_PROVIDER.get(provider_type_enum, ""),
-        base_url=(
-            provider_config.get("base_url", None)
-            if isinstance(provider_config, dict)
-            else None
-        ),
+        base_url=provider_config.get("base_url", None) if isinstance(provider_config, dict) else None,
         enabled=True,
-        models=(
-            provider_config.get("models", [])
-            if isinstance(provider_config, dict)
-            else []
-        ),
-        default_model=(
-            provider_config.get("default_model", None)
-            if isinstance(provider_config, dict)
-            else None
-        ),
+        models=provider_config.get("models", []) if isinstance(provider_config, dict) else [],
+        default_model=provider_config.get("default_model", None) if isinstance(provider_config, dict) else None,
         extra_kwargs=extra_kwargs,
     )
     provider = get_provider(provider_type_enum, config)
@@ -294,19 +281,19 @@ def get_provider_with_api_key(
 ) -> BaseProvider:
     """
     Get a provider instance with a custom API key.
-
+    
     This creates a new provider instance with the specified API key,
     bypassing the cache and environment variable lookup.
-
+    
     Args:
         provider_type: The provider type (string or ProviderType enum)
         api_key: The API key to use for this provider
-
+    
     Returns:
         A provider instance configured with the specified API key
     """
     _ensure_providers_registered()
-
+    
     # Convert string to ProviderType if needed
     if isinstance(provider_type, str):
         try:
@@ -316,10 +303,10 @@ def get_provider_with_api_key(
                 f"Unknown provider type: {provider_type}. "
                 f"Available: {[p.value for p in ProviderType]}"
             )
-
+    
     if provider_type not in _PROVIDER_REGISTRY:
         raise ValueError(f"No provider registered for type: {provider_type}")
-
+    
     # Create new instance with custom config containing the API key
     provider_class = _PROVIDER_REGISTRY[provider_type]
     config = ProviderConfig(
@@ -331,20 +318,23 @@ def get_provider_with_api_key(
 
 
 def get_chat_model_with_api_key(
-    provider_type: str | ProviderType, model_name: str, api_key: str, **kwargs
+    provider_type: str | ProviderType,
+    model_name: str,
+    api_key: str,
+    **kwargs
 ):
     """
     Get a chat model directly with a custom API key.
-
+    
     This is a convenience function that creates a provider with the specified
     API key and immediately returns a chat model.
-
+    
     Args:
         provider_type: The provider type
         model_name: The model name
         api_key: The API key to use
         **kwargs: Additional model configuration
-
+    
     Returns:
         A LangChain chat model instance
     """

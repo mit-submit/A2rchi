@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import requests
+
 from langchain.tools import tool
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
-from src.archi.pipelines.agents.tools.base import require_tool_permission
-from src.utils.env import read_secret
 from src.utils.logging import get_logger
+from src.utils.env import read_secret
+from src.archi.pipelines.agents.tools.base import require_tool_permission
 
 logger = get_logger(__name__)
 
@@ -46,17 +47,11 @@ class RemoteCatalogClient:
             self._headers["Authorization"] = f"Bearer {api_token}"
 
     @classmethod
-    def from_deployment_config(
-        cls, config: Optional[Dict[str, object]]
-    ) -> "RemoteCatalogClient":
+    def from_deployment_config(cls, config: Optional[Dict[str, object]]) -> "RemoteCatalogClient":
         """Create a client using the standard archi deployment config structure."""
         cfg = config or {}
         services_cfg = cfg.get("services", {}) if isinstance(cfg, dict) else {}
-        data_manager_cfg = (
-            services_cfg.get("data_manager", {})
-            if isinstance(services_cfg, dict)
-            else {}
-        )
+        data_manager_cfg = services_cfg.get("data_manager", {}) if isinstance(services_cfg, dict) else {}
 
         api_token = read_secret("DM_API_TOKEN") or None
 
@@ -79,6 +74,7 @@ class RemoteCatalogClient:
             )
             return str(env_host_mode).lower() in {"1", "true", "yes", "on"}
         return bool(host_mode)
+
 
     def search(
         self,
@@ -123,9 +119,7 @@ class RemoteCatalogClient:
         data = resp.json()
         return data.get("hits", []) or []
 
-    def get_document(
-        self, resource_hash: str, *, max_chars: int = 4000
-    ) -> Optional[Dict[str, object]]:
+    def get_document(self, resource_hash: str, *, max_chars: int = 4000) -> Optional[Dict[str, object]]:
         resp = requests.get(
             f"{self.base_url}/api/catalog/document/{resource_hash}",
             params={"max_chars": max_chars},
@@ -159,9 +153,7 @@ class RemoteCatalogClient:
         return resp.json()
 
 
-def _render_metadata_preview(
-    metadata: Optional[Dict[str, object]], *, max_chars: int = 800
-) -> str:
+def _render_metadata_preview(metadata: Optional[Dict[str, object]], *, max_chars: int = 800) -> str:
     if not metadata:
         return "(no metadata)"
     # render key: value lines
@@ -174,12 +166,7 @@ def _render_metadata_preview(
     return meta_str
 
 
-def _format_files_for_llm(
-    hits: List[Tuple[str, Path, Optional[Dict[str, object]], str]],
-    *,
-    max_meta_chars: int = 800,
-    max_content_chars: int = 800,
-) -> str:
+def _format_files_for_llm(hits: List[Tuple[str, Path, Optional[Dict[str, object]], str]], *, max_meta_chars: int = 800, max_content_chars: int = 800) -> str:
     if not hits:
         return "No local files matched that search query."
     lines: List[str] = []
@@ -201,9 +188,7 @@ def _format_grep_hits(hits: List[Dict[str, object]]) -> str:
     for idx, item in enumerate(hits, start=1):
         resource_hash = item.get("hash")
         path = item.get("path", "")
-        metadata = (
-            item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        )
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         display_name = metadata.get("display_name") or metadata.get("file_name") or ""
         source_type = metadata.get("source_type") or ""
         meta_line = " ".join(part for part in [source_type, display_name] if part)
@@ -216,12 +201,8 @@ def _format_grep_hits(hits: List[Dict[str, object]]) -> str:
                 line_no = match.get("line", "?")
                 text = (match.get("text") or "").strip()
                 lines.append(f"L{line_no}: {text}")
-                before_lines = (
-                    match.get("before") if isinstance(match.get("before"), list) else []
-                )
-                after_lines = (
-                    match.get("after") if isinstance(match.get("after"), list) else []
-                )
+                before_lines = match.get("before") if isinstance(match.get("before"), list) else []
+                after_lines = match.get("after") if isinstance(match.get("after"), list) else []
                 for ctx in before_lines:
                     lines.append(f"B: {ctx}")
                 for ctx in after_lines:
@@ -254,7 +235,7 @@ def create_file_search_tool(
     store_tool_input: Optional[Callable[[str, object], None]] = None,
 ) -> Callable[[str], str]:
     """Create a LangChain tool that performs keyword search in catalogued files.
-
+    
     Args:
         catalog: The RemoteCatalogClient instance.
         name: The name of the tool.
@@ -271,9 +252,12 @@ def create_file_search_tool(
         "Input: query (string), regex=false, case_sensitive=false, max_results_override=None, "
         "max_matches_per_file=3, before=0, after=0.\n"
         "Output: lines grouped by file with hash/path and matching line numbers, plus context lines.\n"
-        'Example input: "timeout error" (regex=false).'
+        "Example input: \"timeout error\" (regex=false)."
     )
-    tool_description = description or _default_description
+    tool_description = (
+        description
+        or _default_description
+    )
 
     @tool(name, description=tool_description)
     @require_tool_permission(required_permission)
@@ -303,9 +287,7 @@ def create_file_search_tool(
                     },
                 )
             except Exception:
-                logger.debug(
-                    "Failed to store runtime input for tool '%s'", name, exc_info=True
-                )
+                logger.debug("Failed to store runtime input for tool '%s'", name, exc_info=True)
 
         hits: List[Dict[str, object]] = []
         docs: List[Document] = []
@@ -334,9 +316,7 @@ def create_file_search_tool(
             for item in hits:
                 try:
                     resource_hash = item.get("hash")
-                    doc_payload = (
-                        catalog.get_document(resource_hash, max_chars=4000) or {}
-                    )
+                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
                     text = doc_payload.get("text") or ""
                     doc_meta = doc_payload.get("metadata") or item.get("metadata") or {}
                     docs.append(Document(page_content=text, metadata=doc_meta))
@@ -373,7 +353,7 @@ def create_metadata_search_tool(
     store_tool_input: Optional[Callable[[str, object], None]] = None,
 ) -> Callable[[str], str]:
     """Create a LangChain tool to search resource metadata catalogues.
-
+    
     Args:
         catalog: The RemoteCatalogClient instance.
         name: The name of the tool.
@@ -384,15 +364,18 @@ def create_metadata_search_tool(
             If None, no permission check is performed (allow all).
     """
 
-    tool_description = description or (
-        "Search document metadata stored in PostgreSQL (tickets, git, local files).\n"
-        "Input: query string with key:value filters; filters are exact matches and ANDed within a group, OR across groups.\n"
-        "Canonical filter keys with examples: "
-        'source_type:ticket | ticket_id:CMSPROD-1234 | display_name:"Release Notes" | '
-        "relative_path:docs/readme.md | file_path:/data/foo.txt | url:github.com/org/repo | "
-        "git_repo:org/repo | suffix:.py | created_at:2024-11-01 | ingested_at:2024-11-02.\n"
-        "Legacy keys resource_type/resource_id are aliased automatically. Free text matches display_name/url/paths when used without filters.\n"
-        "Output: list of matches with hash, path, metadata, and a short snippet."
+    tool_description = (
+        description
+        or (
+            "Search document metadata stored in PostgreSQL (tickets, git, local files).\n"
+            "Input: query string with key:value filters; filters are exact matches and ANDed within a group, OR across groups.\n"
+            "Canonical filter keys with examples: "
+            "source_type:ticket | ticket_id:CMSPROD-1234 | display_name:\"Release Notes\" | "
+            "relative_path:docs/readme.md | file_path:/data/foo.txt | url:github.com/org/repo | "
+            "git_repo:org/repo | suffix:.py | created_at:2024-11-01 | ingested_at:2024-11-02.\n"
+            "Legacy keys resource_type/resource_id are aliased automatically. Free text matches display_name/url/paths when used without filters.\n"
+            "Output: list of matches with hash, path, metadata, and a short snippet."
+        )
     )
 
     @tool(name, description=tool_description)
@@ -404,17 +387,13 @@ def create_metadata_search_tool(
             try:
                 store_tool_input(name, {"query": query})
             except Exception:
-                logger.debug(
-                    "Failed to store runtime input for tool '%s'", name, exc_info=True
-                )
+                logger.debug("Failed to store runtime input for tool '%s'", name, exc_info=True)
 
         hits: List[Tuple[str, Path, Optional[Dict[str, object]], str]] = []
         docs: List[Document] = []
 
         try:
-            results = catalog.search(
-                query.strip(), limit=max_results, search_content=False
-            )
+            results = catalog.search(query.strip(), limit=max_results, search_content=False)
         except Exception as exc:
             logger.warning("Metadata search failed: %s", exc)
             return "Metadata search failed."
@@ -422,9 +401,7 @@ def create_metadata_search_tool(
         for item in results:
             resource_hash = item.get("hash")
             path = Path(item.get("path", "")) if item.get("path") else Path("")
-            metadata = (
-                item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-            )
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
             snippet = item.get("snippet") or ""
             hits.append((resource_hash, path, metadata, snippet))
             if len(hits) >= max_results:
@@ -433,9 +410,7 @@ def create_metadata_search_tool(
         if store_docs and hits:
             for resource_hash, path, metadata, _ in hits:
                 try:
-                    doc_payload = (
-                        catalog.get_document(resource_hash, max_chars=4000) or {}
-                    )
+                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
                     text = doc_payload.get("text") or ""
                     doc_meta = doc_payload.get("metadata") or metadata or {}
                     docs.append(Document(page_content=text, metadata=doc_meta))
@@ -458,7 +433,7 @@ def create_metadata_schema_tool(
     required_permission: Optional[str] = None,
 ) -> Callable[[], str]:
     """Create a tool that returns supported metadata keys and distinct values.
-
+    
     Args:
         catalog: The RemoteCatalogClient instance.
         name: The name of the tool.
@@ -467,9 +442,12 @@ def create_metadata_schema_tool(
             If None, no permission check is performed (allow all).
     """
 
-    tool_description = description or (
-        "Return metadata schema hints: supported keys, distinct source_type values, and suffixes. "
-        "Use this to learn which key:value filters are available."
+    tool_description = (
+        description
+        or (
+            "Return metadata schema hints: supported keys, distinct source_type values, and suffixes. "
+            "Use this to learn which key:value filters are available."
+        )
     )
 
     @tool(name, description=tool_description)
@@ -502,7 +480,7 @@ def create_document_fetch_tool(
     store_tool_input: Optional[Callable[[str, object], None]] = None,
 ) -> Callable[..., str]:
     """Create a LangChain tool to fetch a full document by resource hash.
-
+    
     Args:
         catalog: The RemoteCatalogClient instance.
         name: The name of the tool.
@@ -512,11 +490,14 @@ def create_document_fetch_tool(
             If None, no permission check is performed (allow all).
     """
 
-    tool_description = description or (
-        "Fetch a catalog document by resource hash after a search hit.\n"
-        "Input: resource_hash (string), max_chars=4000.\n"
-        "Output: path, metadata, and document text (truncated).\n"
-        'Example input: "abcd1234".'
+    tool_description = (
+        description
+        or (
+            "Fetch a catalog document by resource hash after a search hit.\n"
+            "Input: resource_hash (string), max_chars=4000.\n"
+            "Output: path, metadata, and document text (truncated).\n"
+            "Example input: \"abcd1234\"."
+        )
     )
 
     @tool(name, description=tool_description)
@@ -526,18 +507,12 @@ def create_document_fetch_tool(
             return "Please provide a non-empty resource hash."
         if store_tool_input:
             try:
-                store_tool_input(
-                    name, {"resource_hash": resource_hash, "max_chars": max_chars}
-                )
+                store_tool_input(name, {"resource_hash": resource_hash, "max_chars": max_chars})
             except Exception:
-                logger.debug(
-                    "Failed to store runtime input for tool '%s'", name, exc_info=True
-                )
+                logger.debug("Failed to store runtime input for tool '%s'", name, exc_info=True)
 
         try:
-            doc_payload = (
-                catalog.get_document(resource_hash.strip(), max_chars=max_chars) or {}
-            )
+            doc_payload = catalog.get_document(resource_hash.strip(), max_chars=max_chars) or {}
         except Exception as exc:
             logger.warning("Document fetch failed: %s", exc)
             return "Document fetch failed."
@@ -546,15 +521,15 @@ def create_document_fetch_tool(
             return "Document not found."
 
         path = doc_payload.get("path") or ""
-        metadata = (
-            doc_payload.get("metadata")
-            if isinstance(doc_payload.get("metadata"), dict)
-            else {}
-        )
+        metadata = doc_payload.get("metadata") if isinstance(doc_payload.get("metadata"), dict) else {}
         text = doc_payload.get("text") or ""
         meta_preview = _render_metadata_preview(metadata)
 
-        return f"Path: {path}\n" f"Metadata:\n{meta_preview}\n\n" f"Content:\n{text}"
+        return (
+            f"Path: {path}\n"
+            f"Metadata:\n{meta_preview}\n\n"
+            f"Content:\n{text}"
+        )
 
     return _fetch_document
 
