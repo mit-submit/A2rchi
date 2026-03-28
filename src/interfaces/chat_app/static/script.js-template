@@ -593,7 +593,7 @@ function startNewConversation(options = {}) {
                             <p>Start a conversation and explore the power of archi, specially trained on XX-TRAINED_ON-XX.<br> 
                             Your chat history will be displayed here. <br> <br>
                             Remember, the more context you provide in your question, the better archi will be able to answer your question! <br> <br>
-                            By using this website, you agree to the <a href="/terms">terms and conditions</a>.</p>
+                            By using this website, you agree to the <a href="/terms">terms of service</a>.</p>
                         </div>`;
     chatContainer.innerHTML = defaultText;
     localStorage.setItem("all-chats", defaultText);
