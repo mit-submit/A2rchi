@@ -28,7 +28,7 @@ from __future__ import annotations
 from functools import singledispatch
  
 from src.data_manager.collectors.scrapers.scraped_resource import ScrapedResource
-from src.data_manager.collectors.scrapers.items import PDFItem, WebPageItem, TWikiPageItem
+from src.data_manager.collectors.scrapers.items import WebPageItem, IndicoPageItem
  
  
 @singledispatch
@@ -39,14 +39,21 @@ def to_scraped_resource(item) -> ScrapedResource:
         "Add @to_scraped_resource.register(YourItemClass) in this module."
     )
  
+
 @to_scraped_resource.register(WebPageItem)
-@to_scraped_resource.register(TWikiPageItem)
 def _html_page(item) -> ScrapedResource:
+    """
+    Handles all HTML-family pages regardless of auth method.
+ 
+    PDFs scraped from the web also route here — the parser sets
+    suffix="pdf" and content=bytes in the item, so no branch needed.
+    The adapter passes suffix and source_type through without inspection.
+    """
     return ScrapedResource(
         url=item["url"],
         content=item["content"],
         suffix=item.get("suffix", "html"),
-        source_type="web",
+        source_type=item["source_type"],
         metadata={
             "content_type": item.get("content_type"),
             "encoding": item.get("encoding"),
@@ -54,16 +61,22 @@ def _html_page(item) -> ScrapedResource:
         },
     )
 
-@to_scraped_resource.register(PDFItem)
-def _pdf(item) -> ScrapedResource:
+
+@to_scraped_resource.register(IndicoPageItem)
+def _indico(item) -> ScrapedResource:
+    """
+    Indico items carry event_id and category as extra metadata.
+    These are the only fields that justify a separate dispatch branch.
+    """
     return ScrapedResource(
         url=item["url"],
         content=item["content"],
-        suffix=item.get("suffix", "pdf"),
-        source_type="web",
+        suffix=item.get("suffix", "html"),
+        source_type=item["source_type"],
         metadata={
             "content_type": item.get("content_type"),
-            "encoding": item.get("encoding"),
             "title": item.get("title"),
+            "event_id": item.get("event_id"),
+            "category": item.get("category"),
         },
     )

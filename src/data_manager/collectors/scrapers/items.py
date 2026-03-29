@@ -1,22 +1,73 @@
-from scrapy import Item, Field
- 
-class ArchiBaseItem(Item):
-    """Fields shared by every source type."""
-    url = Field()          # canonical URL of the page
-    content = Field()      # str (HTML/Markdown/text) or bytes (PDF)
-    suffix = Field()       # "html" | "pdf" | "md" | ...
-    title = Field()        # page title, may be empty
+"""
+Scrapy intuition — Items as the data contract (FR-7a):
 
-class WebPageItem(ArchiBaseItem):
-    """Item produced by the plain-Link spider."""
-    content_type = Field()   # value of Content-Type response header
-    encoding = Field()       # response encoding (e.g. "utf-8")
+    Items sit between Parser and Adapter.
+    Their field schema must be driven by what the Adapter needs
+    to construct a ScrapedResource — not by what's convenient
+    to inspect during development.
 
-class PDFItem(ArchiBaseItem):
-    """Binary PDF scraped from a web URL."""
-    content_type = Field()
+    Wrong mental model: "what fields help me debug?"
+    Right mental model: "what fields does ScrapedResource.__init__ need?"
 
-class TWikiPageItem(WebPageItem):
-    """Item produced by the trivial Twiki spider."""
-    body_length = Field()
-    body_preview = Field()
+    ScrapedResource fields (from scraped_resource.py):
+        url          — required
+        content      — required (str or bytes)
+        suffix       — required
+        source_type  — required ("web", "sso", "git")
+        metadata     — dict, optional (title, content_type, encoding, etc.)
+        file_name    — optional
+        relative_path — optional
+
+    So items carry exactly those fields.
+    Debug fields (body_preview, body_length) belong in logger calls,
+    not in the item schema — otherwise the adapter becomes a translation
+    layer for data that should never have been structured in the first place.
+
+SOLID note — Open/Closed:
+    Add new Item subclasses for new source types.
+    Do not add source-specific fields to the base class.
+    The adapter is the extension point, not the Item.
+"""
+
+import scrapy
+
+
+class BasePageItem(scrapy.Item):
+    """
+    Common fields shared across all scraped source types.
+    Maps directly to ScrapedResource constructor arguments.
+    """
+    url = scrapy.Field()
+    content = scrapy.Field()       # Full text or bytes — NOT a preview
+    suffix = scrapy.Field()        # "html", "pdf", "md" etc.
+    source_type = scrapy.Field()   # "web" | "sso" | "twiki" | 'indico" | "discourse"
+
+    # Metadata fields — become ScrapedResource.metadata dict
+    title = scrapy.Field()
+    content_type = scrapy.Field()  # HTTP Content-Type header value
+    encoding = scrapy.Field()      # HTTP response encoding
+
+    # Optional — used by git/SSO scrapers for filesystem layout
+    file_name = scrapy.Field()
+    relative_path = scrapy.Field()
+
+
+class WebPageItem(BasePageItem):
+    """
+    Generic page item, works for SSO-*, ordinary web page.
+    No extra fields needed beyond BasePageItem.
+    Subclassing is the extension point (OCP) — Twiki quirks
+    belong in parse_twiki_page(), not in a bloated base class.
+    """
+    pass
+
+
+class IndicoPageItem(BasePageItem):
+    """
+    Indico-specific item.
+    Indico API responses carry an event_id and category — useful
+    for metadata routing in the adapter without polluting the base.
+    """
+    event_id = scrapy.Field()
+    category = scrapy.Field()
+
