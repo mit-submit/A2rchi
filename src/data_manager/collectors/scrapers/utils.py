@@ -2,20 +2,20 @@ from typing import List
 from urllib.parse import urlparse
 
 from scrapy.http import Response
+from src.data_manager.collectors.scrapers.types import Url
 
 _IMAGE_EXTS = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico", ".webp"
 })
 
-def same_host_links(base_host, response: Response) -> List[str]:
+def same_host_links(base_host: str, urls: list[Url]) -> list[Url]:
     """
-    Return deduplicated same-host, non-image absolute URLs on this page.
+    Return deduplicated same-host, non-image absolute URLs preserving the original order.
     """
 
     seen = set()
     links = []
-    for href in response.css("a::attr(href)").getall():
-        url = response.urljoin(href)
+    for url in urls:
         parsed = urlparse(url)
         if parsed.netloc != base_host:
             continue
