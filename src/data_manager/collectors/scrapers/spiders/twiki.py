@@ -1,6 +1,5 @@
-import logging
 from typing import Iterator
-from scrapy import Spider, Request
+from scrapy import Request
 from scrapy.http import Response
 from src.data_manager.collectors.scrapers.items import WebPageItem
 from src.data_manager.collectors.scrapers.spiders.link import LinkSpider
@@ -25,19 +24,15 @@ class TwikiSpider(LinkSpider):
         "RETRY_TIMES": 0,
     }
 
-    def parse_item(self, response: Response) -> Iterator[WebPageItem]:
+    def parse(self, response: Response) -> Iterator[WebPageItem | Request]:
         """
         Twiki pages render their main content inside #patternMain or .twikiMain.
         @url https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile
         @returns items 1 1
         @scrapes url title
-        """
-        yield from parse_twiki_page(response)
-
-    def parse_follow_links(self, response: Response) -> Iterator[Link]:
-        """
-        Follow links to other Twiki pages.
-        @url https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile
         @returns requests 1
         """
-        yield from super().parse_follow_links(response)
+        yield from super().parse(response)
+
+    def parse_item(self, response: Response) -> Iterator[WebPageItem]:
+        yield from parse_twiki_page(response)

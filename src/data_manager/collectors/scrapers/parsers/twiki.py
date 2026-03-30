@@ -19,7 +19,7 @@ def parse_twiki_page(response: Response) -> Iterator[WebPageItem]:
     yield WebPageItem(
         url=response.url,
         title=title,
-        body_length=len(body_text),
-        body_preview=body_text[:300],
-        content_type=get_content_type(response)
+        content=body_text,
+        suffix="html",
+        content_type=get_content_type(response),
     )
