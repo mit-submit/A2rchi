@@ -15,13 +15,17 @@ class TwikiSpider(LinkSpider):
 
     name = "twiki"
     
-    _DEFAULT_START_URLS = ["https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile"]
-    
+    _DEFAULT_START_URLS = [
+        "https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile"
+    ]
+
     custom_settings = {
         "ROBOTSTXT_OBEY": False,
-        "DOWNLOAD_DELAY": 60,
         "DOWNLOAD_TIMEOUT": 120,
-        "RETRY_TIMES": 0,
+        "RETRY_TIMES": 0, # Very Safe no retries
+        "DEPTH_LIMIT": 1, # Default max depth
+        "DOWNLOAD_DELAY": 60, # Default (download) delay
+        "CLOSESPIDER_PAGECOUNT": 1 # Very Safe Default max pages
     }
 
     def parse(self, response: Response) -> Iterator[WebPageItem | Request]:

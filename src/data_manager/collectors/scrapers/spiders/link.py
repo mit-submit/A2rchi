@@ -15,26 +15,29 @@ class LinkSpider(Spider):
 
     name = "link"
 
+    custom_settings = {
+        "DEPTH_LIMIT": 1, # Default max depth
+        "DOWNLOAD_DELAY": 2, # Default (download) delay
+        "CLOSESPIDER_PAGECOUNT": 500 # Default max pages
+    }
+
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
-        max_depth = int(kwargs.get("max_depth", 1))
-        max_pages = int(kwargs.get("max_pages", 0))
-        crawler.settings.set("DEPTH_LIMIT", max_depth, priority="spider")
-        if max_pages:
-            crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_pages, priority="spider")    
+        max_depth = kwargs.get("max_depth")
+        max_pages = kwargs.get("max_pages")
         delay = kwargs.get("delay")
-        if delay is not None:
-            crawler.settings.set("DOWNLOAD_DELAY", int(delay), priority="spider")
+        if max_depth:
+            crawler.settings.set("DEPTH_LIMIT", max_depth, priority="spider")
+        if max_pages:
+            crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_pages, priority="spider")
+        if delay:
+            crawler.settings.set("DOWNLOAD_DELAY", delay, priority="spider")
         return super().from_crawler(crawler, *args, **kwargs)
 
-    def __init__(self, start_urls: list[str] = None, max_depth: int = 1, max_pages: int = 0, allow: list[str] = None, deny: list[str] = None, delay: int = None, canonicalize: bool = False, *args, **kwargs):
+    def __init__(self, start_urls: list[str] = None, max_depth: int = None, max_pages: int = None, allow: list[str] = None, deny: list[str] = None, delay: int = None, canonicalize: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._start_urls = start_urls or getattr(self, "_DEFAULT_START_URLS", [])
         self._base_host = urlparse(start_urls[0]).netloc if start_urls else None
-        self._max_depth = int(max_depth)
-        # Stored for introspection only — enforcement is via Scrapy settings set in from_crawler.
-        self._max_pages = int(max_pages)
-        self._delay = int(delay) if delay is not None else None
         self._le = LinkExtractor(
             allow=allow or [],
             deny=deny or [],
@@ -65,16 +68,12 @@ class LinkSpider(Spider):
     
     def follow_links(self, response: Response) -> Iterator[Request]:
         current_depth = response.meta.get("depth", 0)
-        if current_depth >= self._max_depth:
+        if current_depth >= self.settings.get("DEPTH_LIMIT"):
+            self.logger.info("Reached max depth %d", self.settings.get("DEPTH_LIMIT"))
             return
         for link in self.parse_follow_links(response):
             self.logger.info("Following %s at depth %d", link.url, current_depth)
-            yield Request(
-                link.url,
-                callback=self.parse,
-                errback=self.errback,
-                meta={"depth": current_depth + 1},
-            )
+            yield Request(link.url, callback=self.parse, errback=self.errback, meta={"depth": current_depth + 1})
     
     def errback(self, failure):
         self.logger.error(
