@@ -19,15 +19,30 @@ class TwikiSpider(LinkSpider):
     ]
 
     _DEFAULT_DENY = [
-        "/bin/edit",
-        "/bin/logon", 
-        "/bin/oops",
-        "/bin/attach",
-        "/bin/search",
-        "/bin/rdiff",
-        "/bin/history",
-        "/bin/raw",
-        "/LeftBarLeftBar",
+        # CGI endpoints — no content, mostly we allow just /bin/view/ or /bin/viewauth/
+        r"/bin/edit",
+        r"/bin/logon", 
+        r"/bin/oops",
+        r"/bin/attach",
+        r"/bin/search",
+        r"/bin/rdiff",
+        r"/bin/history",
+        r"/bin/raw",
+        r"/bin/genpdf",      # PDF generation — not content
+        r"/bin/view/Main",   # user profile pages, not content
+        # Navigation/structural pages
+        r"LeftBarLeftBar",
+        r"/bin/view/[^/]+/WebLeftBar", # sidebar navigation template
+        r"/bin/view/[^/]+/WebTopBar", # top navigation bar
+        r"/bin/view/[^/]+/WebChanges", # recent changes — floods with links
+        r"/bin/view/[^/]+/WebIndex", # alphabetical index — floods with links
+        r"/bin/view/[^/]+/WebStatistics", # statistics pages
+        r"/bin/view/[^/]+/WebNotify", # notification subscriptions
+        r"/bin/view/[^/]+/WebPreferences", # wiki preferences
+        # Discard Topic List page, too many links in https://twiki.cern.ch/twiki/bin/view/CMSPublic/WebTopicList
+        r"/bin/view/[^/]+/WebTopicList", # too many links, or should been put as seeds_urls.
+        r"/bin/view/[^/]+/WebSearch",  # search page — floods with links
+        r"/bin/view/[^/]+/WebChanges", # recent changes — floods with links
     ]
 
     custom_settings = {
@@ -52,7 +67,7 @@ class TwikiSpider(LinkSpider):
         @url https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide
         @returns items 1 1
         @scrapes url title
-        @returns requests 110 110
+        @returns requests 1 100
         """
         yield from super().parse(response)
 
