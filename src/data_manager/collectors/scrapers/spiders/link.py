@@ -1,7 +1,7 @@
-from typing import Iterator
+from typing import Iterator, Callable
 from urllib.parse import urlparse
-from scrapy import Request, Spider
-from scrapy.http import Response
+from scrapy import Spider
+from scrapy.http import Response, Request
 from scrapy.linkextractors import LinkExtractor
 from scrapy.link import Link
 from src.data_manager.collectors.scrapers.utils import _IMAGE_EXTS
@@ -34,16 +34,19 @@ class LinkSpider(Spider):
             crawler.settings.set("DOWNLOAD_DELAY", delay, priority="spider")
         return super().from_crawler(crawler, *args, **kwargs)
 
-    def __init__(self, start_urls: list[str] = None, max_depth: int = None, max_pages: int = None, allow: list[str] = None, deny: list[str] = None, delay: int = None, canonicalize: bool = False, *args, **kwargs):
+    def __init__(self, start_urls: list[str] = None, max_depth: int = None, max_pages: int = None, allow: list[str] = None, deny: list[str] = None, delay: int = None, canonicalize: bool = False, process_value: Callable[[str], str] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._start_urls = start_urls or getattr(self, "_DEFAULT_START_URLS", [])
-        self._base_host = urlparse(start_urls[0]).netloc if start_urls else None
+        self._base_host = urlparse(self._start_urls[0]).netloc if self._start_urls else None
+        default_deny = getattr(self, "_DEFAULT_DENY", [])
+        default_process_value = getattr(self, "_DEFAULT_PROCESS_VALUE", None)
         self._le = LinkExtractor(
             allow=allow or [],
-            deny=deny or [],
+            deny=(deny or []) + default_deny, 
             allow_domains=[self._base_host] if self._base_host else [],
             deny_extensions=list(_IMAGE_EXTS),
             canonicalize=canonicalize,
+            process_value=process_value or default_process_value,
             unique=True,
         )
 
