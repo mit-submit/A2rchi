@@ -12,6 +12,8 @@ class ToscrapeSpider(LinkSpider):
 
     name = "toscrape"
 
+    _DEFAULT_START_URLS = ["https://quotes.toscrape.com/"]
+
     def parse_item(self, response: Response) -> Iterator[WebPageItem]:
         """
         @url https://quotes.toscrape.com/

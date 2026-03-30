@@ -4,6 +4,7 @@ from scrapy import Request, Spider
 from scrapy.http import Response
 from scrapy.linkextractors import LinkExtractor
 from scrapy.link import Link
+from src.data_manager.collectors.scrapers.utils import _IMAGE_EXTS
 from src.data_manager.collectors.scrapers.items import WebPageItem
 
 class LinkSpider(Spider):
@@ -17,26 +18,29 @@ class LinkSpider(Spider):
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         max_depth = int(kwargs.get("max_depth", 1))
-        max_page = int(kwargs.get("max_page", 0))
+        max_pages = int(kwargs.get("max_pages", 0))
         crawler.settings.set("DEPTH_LIMIT", max_depth, priority="spider")
-        if max_page:
-            crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_page, priority="spider")
+        if max_pages:
+            crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_pages, priority="spider")    
+        delay = kwargs.get("delay")
+        if delay is not None:
+            crawler.settings.set("DOWNLOAD_DELAY", int(delay), priority="spider")
         return super().from_crawler(crawler, *args, **kwargs)
 
-    def __init__(self, start_urls: list[str] = None, max_depth: int = 1, max_page: int = 0, allow: list[str] = None, deny: list[str] = None, *args, **kwargs):
+    def __init__(self, start_urls: list[str] = None, max_depth: int = 1, max_pages: int = 0, allow: list[str] = None, deny: list[str] = None, delay: int = None, canonicalize: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if start_urls is None:
-            raise ValueError("LinkSpider requires start_urls list parameter")
-        self._start_urls = start_urls
-        self._base_host = urlparse(start_urls[0]).netloc
+        self._start_urls = start_urls or getattr(self, "_DEFAULT_START_URLS", [])
+        self._base_host = urlparse(start_urls[0]).netloc if start_urls else None
         self._max_depth = int(max_depth)
-        self._max_page = int(max_page)
+        # Stored for introspection only — enforcement is via Scrapy settings set in from_crawler.
+        self._max_pages = int(max_pages)
+        self._delay = int(delay) if delay is not None else None
         self._le = LinkExtractor(
             allow=allow or [],
             deny=deny or [],
-            allow_domains=[self._base_host],
-            deny_extensions=[".jpg", ".jpeg", ".png", ".gif",
-                            ".bmp", ".svg", ".ico", ".webp"],
+            allow_domains=[self._base_host] if self._base_host else [],
+            deny_extensions=list(_IMAGE_EXTS),
+            canonicalize=canonicalize,
             unique=True,
         )
 
@@ -46,6 +50,8 @@ class LinkSpider(Spider):
         Building the habit: always attach errback here, never rely on
         start_urls shortcut in production spiders.
         """
+        if not self._start_urls:
+            raise ValueError("LinkSpider requires start_urls to be set")
         for url in self._start_urls:
             yield Request(url=url, callback=self.parse, errback=self.errback, meta={"depth": 0})
 
@@ -78,7 +84,7 @@ class LinkSpider(Spider):
         )
 
     # ------------------------------------------------------------------ #
-    # Extension points — pure, unit-testable without a reactor
+    # Extension points — pure, unit-testable/checkable without a reactor
     # ------------------------------------------------------------------ #
 
     def parse_item(self, response: Response) -> Iterator[WebPageItem]:

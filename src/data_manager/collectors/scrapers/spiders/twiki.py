@@ -16,7 +16,7 @@ class TwikiSpider(LinkSpider):
 
     name = "twiki"
     
-    _DEFAULT_START_URL = "https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile"
+    _DEFAULT_START_URLS = ["https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile"]
     
     custom_settings = {
         "ROBOTSTXT_OBEY": False,
