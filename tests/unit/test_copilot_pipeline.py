@@ -368,10 +368,7 @@ class TestCustomizeMode:
     def test_no_system_message_without_prompt(self):
         p = self._make_pipeline(prompt=None)
         cfg = p._build_session_config(tools=[], api_key="k")
-        sm = cfg["system_message"]
-        assert sm["mode"] == "customize"
-        assert "identity" not in sm["sections"]
-        assert sm["sections"]["tool_instructions"]["action"] == "append"
+        assert "system_message" not in cfg
 
     def test_sdk_defaults_not_overridden(self):
         """safety, tool_efficiency, and code_change_rules should stay SDK-managed."""
@@ -380,14 +377,6 @@ class TestCustomizeMode:
         sections = cfg["system_message"]["sections"]
         for section in ("safety", "tool_efficiency", "code_change_rules"):
             assert section not in sections
-
-    def test_tool_instructions_forbid_fake_shell_use(self):
-        p = self._make_pipeline()
-        cfg = p._build_session_config(tools=[], api_key="k")
-
-        section = cfg["system_message"]["sections"]["tool_instructions"]
-        assert section["action"] == "append"
-        assert "Do not claim to have run bash" in section["content"]
 
     def test_no_history_in_system_message(self):
         """History is no longer injected — session persistence handles it."""

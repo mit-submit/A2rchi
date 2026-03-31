@@ -28,6 +28,9 @@ class FakeChatContext:
     conversation_id: int = 42
     history: list = None
     is_refresh: bool = False
+    model_used: str = None
+    provider_used: str = None
+    pipeline_used: str = None
 
     def __post_init__(self):
         if self.history is None:

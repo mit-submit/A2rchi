@@ -38,7 +38,6 @@ _PROVIDER_INSTANCES: Dict[ProviderType, BaseProvider] = {}
 _DEFAULT_API_KEY_ENV_BY_PROVIDER: Dict[ProviderType, str] = {
     ProviderType.OPENAI: "OPENAI_API_KEY",
     ProviderType.ANTHROPIC: "ANTHROPIC_API_KEY",
-    ProviderType.GEMINI: "GEMINI_API_KEY",
     ProviderType.OPENROUTER: "OPENROUTER_API_KEY",
     ProviderType.CERN_LITELLM: "CERN_LITELLM_API_KEY",
 }

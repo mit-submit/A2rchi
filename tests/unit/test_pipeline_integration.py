@@ -305,7 +305,7 @@ class TestCopilotSessionPersistence:
     """Verify persisted SDK session IDs flow through the pipeline."""
 
     def test_stream_uses_persisted_session_id_and_returns_active_id(self):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         class FakeSession:
             session_id = "sdk-session-created"
@@ -359,7 +359,7 @@ class TestCopilotSessionPersistence:
         p._create_session = fake_create_session
 
         with patch(
-            "src.archi.pipelines.copilot_agent.CopilotEventAdapter", FakeAdapter
+            "src.archi.pipelines.copilot_agents.copilot_agent.CopilotEventAdapter", FakeAdapter
         ):
             outputs = list(
                 p.stream(
