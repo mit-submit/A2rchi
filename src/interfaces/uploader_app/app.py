@@ -14,7 +14,8 @@ from flask_cors import CORS
 
 from src.data_manager.collectors.persistence import PersistenceService
 from src.data_manager.collectors.localfile_manager import LocalFileManager
-from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
+from src.data_manager.collectors.scraper_manager import ScraperManager
+from src.data_manager.collectors.git_manager import GitManager
 from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.vectorstore.loader_utils import load_text_from_path
@@ -78,6 +79,7 @@ class FlaskAppWrapper:
                     logger.warning("UPLOADER_SALT not set; account checks may fail.")
 
         self.scraper_manager = ScraperManager(dm_config=self.config.get("data_manager"))
+        self.git_manager = GitManager(dm_config=self.config.get("data_manager"))
         self.ticket_manager = TicketManager(dm_config=self.config.get("data_manager"))
         self.localfile_manager = LocalFileManager(dm_config=self.config.get("data_manager"))
         self.post_update_hook = post_update_hook
@@ -174,7 +176,8 @@ class FlaskAppWrapper:
             return jsonify({"error": "missing_repo_url"}), 400
 
         try:
-            self.scraper_manager.collect_git(self.persistence, [repo_url.strip()])
+            self.git_manager.collect([repo_url.strip()], self.persistence)
+            self.persistence.flush_index()
             self._update_source_status("git", state="idle", last_run=self._now_iso())
             self._notify_update()
             return jsonify({"status": "ok"})

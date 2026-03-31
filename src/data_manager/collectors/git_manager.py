@@ -72,11 +72,22 @@ class GitManager:
 
     def collect_all_from_config(self, persistence: PersistenceService) -> None:
         if not self.enabled:
-            logger.info("Git source disabled; skipping")
             return
         urls: List[str] = self.config.get("urls", [])
         if not urls:
             logger.info("No git URLs configured; skipping")
+            return
+        self.collect(urls, persistence)
+
+    def schedule_collect_git(
+        self, persistence: PersistenceService, last_run: Optional[str] = None
+    ) -> None:
+        """Re-harvest all repos known to the catalog (config + dynamically added)."""
+        metadata = persistence.catalog.get_metadata_by_filter(
+            "source_type", source_type="git", metadata_keys=["repo_url"]
+        )
+        urls = list({m[1]["repo_url"] for m in metadata if m[1].get("repo_url")})
+        if not urls:
             return
         self.collect(urls, persistence)
 
