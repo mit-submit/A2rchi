@@ -19,6 +19,8 @@ mcp_servers:
 
 services:
   benchmarking:
+    name: {{ services.benchmarking.name | default("", true) }}
+    ab_mode: {{ services.benchmarking.ab_mode | default(false, true) }}
     agent_class: {{ services.benchmarking.agent_class | default("", true) }}
     agent_md_file: "{{ services.benchmarking.agent_md_file | default("", true) }}"
     provider: {{ services.benchmarking.provider | default("", true) }}

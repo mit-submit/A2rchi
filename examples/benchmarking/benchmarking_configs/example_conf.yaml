@@ -18,3 +18,6 @@ services:
     provider: local
     model: gemma3
     queries_path: examples/benchmarking/queries.json
+    out_dir: bench_out
+    modes:
+      - "SOURCES"

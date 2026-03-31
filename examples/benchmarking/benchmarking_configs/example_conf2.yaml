@@ -4,8 +4,11 @@ global:
   TRAINED_ON: "the SubMIT Cluster"
 
 data_manager:
-  input_lists:
-    - configs/benchmarking/ppc.list
+  sources:
+    links:
+      enabled: true
+      input_lists:
+        - examples/benchmarking/ppc.list
   # Vector storage uses PostgreSQL with pgvector (only supported backend)
   embedding_name: OpenAIEmbeddings
 
@@ -15,7 +18,7 @@ services:
     agent_md_file: examples/agents/cms-comp-ops.md
     provider: openai
     model: gpt-4o
-    queries_path: configs/benchmarking/queries.json
+    queries_path: examples/benchmarking/queries.json
     out_dir: bench_out
     modes:
       - "RAGAS"

@@ -480,9 +480,14 @@ def list_deployments():
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
-@click.option('--langfuse', is_flag=True, help="Export benchmark results to Langfuse for human annotation")
+@click.option('--langfuse', is_flag=True, hidden=True, help="Deprecated: use --argilla instead")
+@click.option('--langfuse-server', 'langfuse_server', is_flag=True, hidden=True, help="Deprecated: use --argilla-server instead")
+@click.option('--argilla', is_flag=True, help="Export benchmark results to Argilla for team annotation")
+@click.option('--argilla-server', 'argilla_server', is_flag=True, help="Deploy a self-hosted Argilla instance alongside benchmark services")
+@click.option('--questions', '-q', type=str, default=None, help="Path to questions JSON file (overrides queries_path in all configs)")
+@click.option('--resume', is_flag=True, help="Resume an interrupted benchmark run from its checkpoint")
 def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force: bool, verbosity: int, **other_flags):
-    """Create an ARCHI deployment with selected services and data sources."""
+    """Run benchmarks against one or more ARCHI configurations."""
     if not (bool(config_file) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
     if config_dir: 
@@ -511,10 +516,11 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
 
         if base_dir.exists():
             raise click.ClickException(
-                    f"Benchmarking runtime '{name}' already exists at {base_dir}"
+                    f"Benchmarking runtime '{name}' already exists at {base_dir}. "
+                    f"Use --force to overwrite or 'archi delete --name {name}' to remove it first."
                     )
 
-        config_manager = ConfigurationManager(config_files,env)
+        config_manager = ConfigurationManager(config_files, env)
         secrets_manager = SecretsManager(env_file, config_manager)
 
         # Services for benchmarking: PostgreSQL is required
@@ -543,10 +549,42 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
         benchmarking_configs = config_manager.get_interface_config("benchmarking")
 
         other_flags['benchmarking'] = True
-        other_flags['query_file'] = benchmarking_configs.get('queries_path', ".")
-        other_flags['benchmarking_dest'] = os.path.abspath(benchmarking_configs.get('out_dir', '.'))
+        # --questions CLI flag overrides queries_path in all configs
+        questions_override = other_flags.pop('questions', None)
+        if questions_override:
+            questions_path = Path(questions_override)
+            if not questions_path.exists():
+                raise click.ClickException(f"Questions file not found: {questions_override}")
+            try:
+                import json
+                json.loads(questions_path.read_text())
+            except (json.JSONDecodeError, OSError) as e:
+                raise click.ClickException(f"Invalid questions file '{questions_override}': {e}")
+            other_flags['query_file'] = str(questions_path)
+        else:
+            other_flags['query_file'] = benchmarking_configs.get('queries_path', ".")
+        out_dir = os.path.abspath(benchmarking_configs.get('out_dir', './benchmark_results'))
+        os.makedirs(out_dir, exist_ok=True)
+        other_flags['benchmarking_dest'] = out_dir
         other_flags['host_mode'] = other_flags.get('host_mode', False)
-        other_flags['langfuse_export'] = other_flags.pop('langfuse', False)
+
+        # Handle deprecated --langfuse flags
+        if other_flags.pop('langfuse', False):
+            raise click.ClickException(
+                "--langfuse has been removed. Use --argilla instead.\n"
+                "Example: archi evaluate --name mybot --argilla -c config.yaml"
+            )
+        if other_flags.pop('langfuse_server', False):
+            raise click.ClickException(
+                "--langfuse-server has been removed. Use --argilla-server instead.\n"
+                "Example: archi evaluate --name mybot --argilla-server -c config.yaml"
+            )
+
+        other_flags['argilla_export'] = other_flags.pop('argilla', False)
+        other_flags['argilla_server'] = other_flags.pop('argilla_server', False)
+        # --argilla-server implies --argilla
+        if other_flags['argilla_server']:
+            other_flags['argilla_export'] = True
 
         compose_config = ServiceBuilder.build_compose_config(
                 name=name, verbosity=verbosity, base_dir=base_dir, 
@@ -560,6 +598,19 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
         
         secrets_manager.write_secrets_to_files(base_dir, all_secrets)
 
+        # Generate Argilla credentials for managed deployment
+        if other_flags.get('argilla_server'):
+            import secrets as secrets_mod
+            argilla_auth_secret = secrets_mod.token_hex(32)
+            argilla_api_key = secrets_mod.token_hex(16)
+            env_file_path = base_dir / ".env"
+            with open(env_file_path, 'a') as f:
+                f.write(f"ARGILLA_AUTH_SECRET_KEY={argilla_auth_secret}\n")
+                f.write(f"ARGILLA_API_KEY={argilla_api_key}\n")
+                f.write("ARGILLA_API_URL=http://localhost:6900\n")
+            click.echo("Argilla server will be available at http://localhost:6900")
+            click.echo(f"  API key: {argilla_api_key}")
+
         volume_manager = VolumeManager(compose_config.use_podman)
         volume_manager.create_required_volumes(compose_config, config_manager.config)
         
@@ -572,11 +623,73 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
 
         deployment_manager = DeploymentManager(compose_config.use_podman)
         deployment_manager.start_deployment(base_dir)
+
+        click.echo(f"\nBenchmark results will be written to: {out_dir}")
+
+        # Write state file on the host with out_dir so `archi grade` can find results
+        try:
+            from src.utils.benchmark_argilla import write_state_file
+            write_state_file(dataset_name="", out_dir=out_dir)
+        except Exception:
+            pass  # non-critical
+
+        if other_flags.get('argilla_export'):
+            click.echo(
+                "Argilla export is enabled. After the benchmark completes, run:\n"
+                "  archi grade --serve    # open Argilla UI in browser\n"
+                "  archi grade --export   # pull annotations to JSON"
+            )
     except Exception as e:
         if verbosity >=4: 
             traceback.print_exc()
         else: 
             raise click.ClickException(f"Failed due to the following exception: {e}")
+
+
+@click.command()
+@click.option('--dataset', '-d', type=str, required=False, default=None, help="Argilla dataset name (defaults to last benchmark run)")
+@click.option('--export', '-e', 'do_export', is_flag=True, help="Pull grades from Argilla and save to JSON")
+@click.option('--output', '-o', type=str, default=None, help="Output path for grades JSON (default: grades.json)")
+@click.option('--serve', 'do_serve', is_flag=True, help="Open the Argilla UI in your browser")
+def grade(dataset: str, do_export: bool, output: str, do_serve: bool):
+    """Grade benchmark results using Argilla.
+
+    Use --serve to open the Argilla annotation UI, and --export to pull
+    submitted annotations to a local JSON file.
+    """
+    from src.utils.benchmark_argilla import pull_grades_from_argilla, read_state_file
+
+    if not do_export and not do_serve:
+        raise click.ClickException(
+            "Specify --serve to open Argilla UI, or --export to pull annotations.\n"
+            "Example: archi grade --serve"
+        )
+
+    # Resolve dataset name: explicit flag > state file > error
+    if not dataset:
+        dataset = read_state_file()
+        if not dataset:
+            raise click.ClickException(
+                "No --dataset specified and no previous benchmark found. "
+                "Run 'archi evaluate --argilla' first or specify --dataset explicitly."
+            )
+        click.echo(f"Using last benchmark dataset: {dataset}")
+
+    if do_serve:
+        import webbrowser
+        api_url = os.environ.get("ARGILLA_API_URL", "http://localhost:6900")
+        url = f"{api_url.rstrip('/')}/datasets"
+        click.echo(f"Opening Argilla UI: {url}")
+        webbrowser.open(url)
+
+    if do_export:
+        out_path = output or "grades.json"
+        try:
+            grades = pull_grades_from_argilla(dataset, output_path=out_path)
+            annotated = sum(1 for g in grades.values() if g.get("responses"))
+            click.echo(f"Exported {annotated}/{len(grades)} annotated questions to {out_path}")
+        except (ValueError, RuntimeError) as e:
+            raise click.ClickException(str(e))
 
 
 def main():
@@ -590,4 +703,5 @@ def main():
     cli.add_command(list_services)
     cli.add_command(list_deployments)
     cli.add_command(evaluate)
+    cli.add_command(grade)
     cli()

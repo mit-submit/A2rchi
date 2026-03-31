@@ -79,7 +79,7 @@ services:
     shm_size: 1gb
   
   config-seed:
-    image: {{ chatbot_image | default(benchmarking_image) }}:{{ chatbot_tag | default(benchmarking_tag) }}
+    image: {{ chatbot_image | default('config-seed-' ~ name) }}:{{ chatbot_tag | default(benchmarking_tag) }}
     build:
       context: .
       dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-chat
@@ -584,6 +584,10 @@ services:
         condition: service_healthy
       config-seed:
         condition: service_completed_successfully
+{%- if argilla_server %}
+      argilla:
+        condition: service_healthy
+{%- endif %}
     {% endif -%}
     environment:
       PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
@@ -599,7 +603,11 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
       VERBOSITY: {{ verbosity }}
-      LANGFUSE_EXPORT: {{ 'true' if langfuse_export else 'false' }}
+      ARGILLA_EXPORT: {{ 'true' if argilla_export else 'false' }}
+      {% if argilla_export -%}
+      ARGILLA_API_URL: {{ 'http://localhost:6900' if host_mode else 'http://argilla:6900' }}
+      ARGILLA_API_KEY: ${ARGILLA_API_KEY}
+      {% endif -%}
       container_name: {{ benchmarking_container_name }}
     env_file:
       - .env
@@ -623,6 +631,7 @@ services:
       - ./data/prompts:/root/archi/data/prompts:ro
       - ./data/agents:/root/archi/agents:ro
       - ./data/skills:/root/archi/skills:ro
+      - ./configs:/root/archi/configs:ro
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
       {% endfor %}
@@ -647,6 +656,26 @@ services:
       {%- endfor %}
     {%- endif %}
     {%- endif %}
+  {%- endif %}
+
+  {% if argilla_server -%}
+  argilla:
+    image: argilla/argilla-quickstart:latest
+    container_name: argilla-{{ name }}
+    ports:
+      - "6900:6900"
+    environment:
+      ARGILLA_AUTH_SECRET_KEY: ${ARGILLA_AUTH_SECRET_KEY}
+      OWNER_API_KEY: ${ARGILLA_API_KEY}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:6900/')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    logging:
+      options:
+        max-size: 10m
   {%- endif %}
 
 

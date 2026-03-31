@@ -126,7 +126,7 @@ Archi has benchmarking functionality via the `archi evaluate` CLI command:
 - **SOURCES mode**: Checks if retrieved documents contain the correct sources
 - **RAGAS mode**: Uses the Ragas evaluator for answer relevancy, faithfulness, context precision, and context relevancy
 
-**[Read more →](benchmarking.md)**
+**[Configuration Reference →](benchmarking.md)** — All config options, modes, and settings
 
 ---
 

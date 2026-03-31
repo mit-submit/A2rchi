@@ -329,7 +329,7 @@ class TemplateManager:
 
         archi_configs = context.config_manager.get_configs()
         single_mode = len(archi_configs) == 1
-        for archi_config in archi_configs:
+        for idx, archi_config in enumerate(archi_configs):
             name = archi_config["name"]
             updated_config = copy.deepcopy(archi_config)
 
@@ -354,7 +354,17 @@ class TemplateManager:
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)
 
-            target_name = "config.yaml" if single_mode else f"{name}.yaml"
+            if single_mode:
+                target_name = "config.yaml"
+            else:
+                # Use benchmarking name if available, otherwise index-based
+                bench_name = archi_config.get("services", {}).get("benchmarking", {}).get("name")
+                target_name = f"{bench_name or name}.yaml" if bench_name else f"config_{idx}.yaml"
+                # Also write config.yaml from the first config so non-benchmark
+                # services (config-seed, data-manager) can find it.
+                if idx == 0:
+                    with open(configs_path / "config.yaml", "w") as f:
+                        f.write(config_rendered)
             with open(configs_path / target_name, "w") as f:
                 f.write(config_rendered)
             logger.info(f"Rendered configuration file {configs_path / target_name}")

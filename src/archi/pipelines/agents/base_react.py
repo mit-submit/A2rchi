@@ -252,13 +252,17 @@ class BaseReActAgent:
     def invoke(self, **kwargs) -> PipelineOutput:
         """Synchronously invoke the agent graph and return the final output."""
         logger.debug("Invoking %s", self.__class__.__name__)
+        callbacks = kwargs.pop("callbacks", None)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
         if self.agent is None:
             self.refresh_agent(force=True)
         logger.debug("Agent refreshed, invoking now")
         recursion_limit = self._recursion_limit()
+        config = {"recursion_limit": recursion_limit}
+        if callbacks:
+            config["callbacks"] = callbacks
         try:
-            answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": recursion_limit})
+            answer_output = self.agent.invoke(agent_inputs, config)
             logger.debug("Agent invocation completed")
             logger.debug(answer_output)
             messages = self._extract_messages(answer_output)

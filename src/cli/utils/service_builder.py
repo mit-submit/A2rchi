@@ -46,7 +46,8 @@ class DeploymentPlan:
         host_mode: bool,
         verbosity: int,
         benchmarking_dest: str,
-        langfuse_export: bool = False,
+        argilla_export: bool = False,
+        argilla_server: bool = False,
     ) -> None:
         self.name = name
         self.base_dir = base_dir
@@ -56,7 +57,8 @@ class DeploymentPlan:
         self.host_mode = host_mode
         self.verbosity = verbosity
         self.benchmarking_dest = benchmarking_dest
-        self.langfuse_export = langfuse_export
+        self.argilla_export = argilla_export
+        self.argilla_server = argilla_server
 
         self.enabled_sources: Set[str] = set()
         self._required_secrets: Set[str] = set()
@@ -123,7 +125,8 @@ class DeploymentPlan:
             "required_volumes": self.get_required_volumes(),
             "required_secrets": sorted(self._required_secrets),
             "benchmarking_dest": self.benchmarking_dest,
-            "langfuse_export": self.langfuse_export,
+            "argilla_export": self.argilla_export,
+            "argilla_server": self.argilla_server,
             "enabled_sources": sorted(self.enabled_sources),
         }
 
@@ -169,7 +172,8 @@ class ServiceBuilder:
         gpu_ids = other_flags.get("gpu_ids")
         host_mode = other_flags.get("hostmode", other_flags.get("host_mode", False))
         benchmarking_dest = other_flags.get("benchmarking_dest", "")
-        langfuse_export = bool(other_flags.get("langfuse_export", False))
+        argilla_export = bool(other_flags.get("argilla_export", False))
+        argilla_server = bool(other_flags.get("argilla_server", False))
 
         plan = DeploymentPlan(
             name=name,
@@ -180,7 +184,8 @@ class ServiceBuilder:
             host_mode=host_mode,
             verbosity=verbosity,
             benchmarking_dest=benchmarking_dest,
-            langfuse_export=langfuse_export,
+            argilla_export=argilla_export,
+            argilla_server=argilla_server,
         )
 
         plan.enabled_sources = set(enabled_sources)

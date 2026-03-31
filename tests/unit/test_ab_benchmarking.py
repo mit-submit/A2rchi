@@ -46,6 +46,10 @@ for mod_name in _STUB_MODULES:
             stub.faithfulness = MagicMock()
             stub.context_precision = MagicMock()
             stub.context_recall = MagicMock()
+            stub.ContextPrecision = MagicMock()
+            stub.ContextRecall = MagicMock()
+            stub.Faithfulness = MagicMock()
+            stub.ResponseRelevancy = MagicMock()
         elif mod_name == "ragas.embeddings":
             stub.LangchainEmbeddingsWrapper = MagicMock()
         elif mod_name == "ragas.llms":
@@ -70,21 +74,13 @@ for mod_name in _STUB_MODULES:
             stub.get_model = MagicMock()
         sys.modules[mod_name] = stub
 
-# Also stub the generate_benchmark_report since it's imported at module level
-# (we'll import the real one separately for our HTML tests)
-_report_stub = types.ModuleType("src.utils.generate_benchmark_report")
-_report_stub.parse_benchmark_results = MagicMock()
-_report_stub.format_html_output = MagicMock(return_value="<html></html>")
-_report_stub.format_ab_html_output = MagicMock(return_value="<html></html>")
-sys.modules["src.utils.generate_benchmark_report"] = _report_stub
-
 os.environ.setdefault("PG_PASSWORD", "fake")
 os.environ.setdefault("PGHOST", "localhost")
 os.environ.setdefault("PGPORT", "5432")
 os.environ.setdefault("PGDATABASE", "test")
 os.environ.setdefault("PGUSER", "test")
 
-from src.bin.service_benchmark import ABResult, ResultHandler  # noqa: E402
+from src.bin.service_benchmark import ABResult, ResultHandler, _result_handler  # noqa: E402
 
 # For the HTML tests, import the real function directly from the file
 import importlib.util
@@ -133,14 +129,16 @@ def _sample_question(question, answer, relevancy=0.8, faithfulness=0.9, time=1.0
 
 @pytest.fixture(autouse=True)
 def _reset_result_handler():
-    """Ensure ResultHandler class state is reset between tests."""
-    ResultHandler.results = []
-    ResultHandler.metadata = {}
-    ResultHandler.ab_comparison = {}
+    """Ensure ResultHandler instance state is reset between tests."""
+    _result_handler.results = []
+    _result_handler.metadata = {}
+    _result_handler.ab_comparison = {}
+    _result_handler.ab_comparisons = []
     yield
-    ResultHandler.results = []
-    ResultHandler.metadata = {}
-    ResultHandler.ab_comparison = {}
+    _result_handler.results = []
+    _result_handler.metadata = {}
+    _result_handler.ab_comparison = {}
+    _result_handler.ab_comparisons = []
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +176,7 @@ class TestPairABResults:
     def test_basic_pairing(self):
         q_a = {"question_1": _sample_question("What?", "ans_a", relevancy=0.9, faithfulness=0.8)}
         q_b = {"question_1": _sample_question("What?", "ans_b", relevancy=0.7, faithfulness=0.85)}
-        ResultHandler.results = [
+        _result_handler.results = [
             _make_config_results("AgentA", "openai", "gpt-4o", q_a),
             _make_config_results("AgentB", "local", "gemma3", q_b),
         ]
@@ -196,7 +194,7 @@ class TestPairABResults:
             "question_2": _sample_question("Q2", "a2"),
         }
         q_b = {"question_1": _sample_question("Q1", "b1")}
-        ResultHandler.results = [
+        _result_handler.results = [
             _make_config_results("A", "x", "x", q_a),
             _make_config_results("B", "x", "x", q_b),
         ]
@@ -204,8 +202,8 @@ class TestPairABResults:
         assert len(paired) == 1
 
     def test_raises_with_wrong_count(self):
-        ResultHandler.results = [_make_config_results("A", "x", "x", {})]
-        with pytest.raises(ValueError, match="exactly 2"):
+        _result_handler.results = [_make_config_results("A", "x", "x", {})]
+        with pytest.raises(ValueError, match="out of range"):
             ResultHandler.pair_ab_results()
 
     def test_nan_scores_produce_tie(self):
@@ -214,7 +212,7 @@ class TestPairABResults:
         # Inject NaN
         q_a["q1"]["answer_relevancy"] = float("nan")
         q_b["q1"]["answer_relevancy"] = float("nan")
-        ResultHandler.results = [
+        _result_handler.results = [
             _make_config_results("A", "x", "x", q_a),
             _make_config_results("B", "x", "x", q_b),
         ]
@@ -224,7 +222,7 @@ class TestPairABResults:
     def test_tie_on_equal_scores(self):
         q_a = {"q1": _sample_question("Q", "a", relevancy=0.8)}
         q_b = {"q1": _sample_question("Q", "b", relevancy=0.8)}
-        ResultHandler.results = [
+        _result_handler.results = [
             _make_config_results("A", "x", "x", q_a),
             _make_config_results("B", "x", "x", q_b),
         ]
@@ -246,29 +244,29 @@ class TestDumpABComparison:
             "q1": _sample_question("Q1", "b1", relevancy=0.7, faithfulness=0.8),
             "q2": _sample_question("Q2", "b2", relevancy=0.6, faithfulness=0.4),
         }
-        ResultHandler.results = [
+        _result_handler.results = [
             _make_config_results("A", "openai", "gpt-4o", q_a),
             _make_config_results("B", "local", "gemma3", q_b),
         ]
         paired = ResultHandler.pair_ab_results()
         ResultHandler.dump_ab_comparison(paired)
 
-        agg = ResultHandler.ab_comparison["aggregate"]
+        agg = _result_handler.ab_comparison["aggregate"]
         total = agg["wins_a"] + agg["wins_b"] + agg["ties"]
         # 2 questions x 2 metrics = 4 metric comparisons
         assert total == 4
-        assert len(ResultHandler.ab_comparison["per_question"]) == 2
+        assert len(_result_handler.ab_comparison["per_question"]) == 2
 
     def test_config_metadata_populated(self):
         q = {"q1": _sample_question("Q", "a")}
-        ResultHandler.results = [
+        _result_handler.results = [
             _make_config_results("AgentX", "openai", "gpt-4o", q),
             _make_config_results("AgentY", "local", "gemma3", q),
         ]
         paired = ResultHandler.pair_ab_results()
         ResultHandler.dump_ab_comparison(paired)
-        assert ResultHandler.ab_comparison["config_a"]["agent_class"] == "AgentX"
-        assert ResultHandler.ab_comparison["config_b"]["model"] == "gemma3"
+        assert _result_handler.ab_comparison["config_a"]["agent_class"] == "AgentX"
+        assert _result_handler.ab_comparison["config_b"]["model"] == "gemma3"
 
 
 # ---------------------------------------------------------------------------
@@ -318,3 +316,80 @@ class TestFormatABHTML:
         }
         html_out = format_ab_html_output(ab_comparison)
         assert "Questions" in html_out
+
+
+# ---------------------------------------------------------------------------
+# generate_pairwise_combinations
+# ---------------------------------------------------------------------------
+
+class TestGeneratePairwiseCombinations:
+    def test_two_configs(self):
+        pairs = ResultHandler.generate_pairwise_combinations(2)
+        assert pairs == [(0, 1)]
+
+    def test_three_configs(self):
+        pairs = ResultHandler.generate_pairwise_combinations(3)
+        assert pairs == [(0, 1), (0, 2), (1, 2)]
+
+    def test_four_configs(self):
+        pairs = ResultHandler.generate_pairwise_combinations(4)
+        assert len(pairs) == 6
+
+    def test_one_config(self):
+        pairs = ResultHandler.generate_pairwise_combinations(1)
+        assert pairs == []
+
+
+# ---------------------------------------------------------------------------
+# Multi-config pair_ab_results
+# ---------------------------------------------------------------------------
+
+class TestMultiConfigPairing:
+    def test_pair_with_custom_indices(self):
+        """Test pairing configs at arbitrary indices."""
+        q_a = {"q1": _sample_question("Q1", "a1")}
+        q_b = {"q1": _sample_question("Q1", "b1")}
+        q_c = {"q1": _sample_question("Q1", "c1")}
+        _result_handler.results = [
+            _make_config_results("A", "x", "x", q_a),
+            _make_config_results("B", "x", "x", q_b),
+            _make_config_results("C", "x", "x", q_c),
+        ]
+        paired = ResultHandler.pair_ab_results(0, 2)
+        assert len(paired) == 1
+        assert paired[0].answer_a == "a1"
+        assert paired[0].answer_b == "c1"
+
+    def test_multi_pair_dump_ab_comparison(self):
+        """Multiple dump_ab_comparison calls build ab_comparisons list."""
+        q = {"q1": _sample_question("Q", "ans")}
+        _result_handler.results = [
+            _make_config_results("A", "x", "x", q),
+            _make_config_results("B", "x", "x", q),
+            _make_config_results("C", "x", "x", q),
+        ]
+
+        for idx_a, idx_b in ResultHandler.generate_pairwise_combinations(3):
+            paired = ResultHandler.pair_ab_results(idx_a, idx_b)
+            ResultHandler.dump_ab_comparison(paired, idx_a, idx_b)
+
+        assert len(_result_handler.ab_comparisons) == 3
+        # First pair (0,1) also sets backward-compat ab_comparison
+        assert _result_handler.ab_comparison is not None
+        assert len(_result_handler.ab_comparison.get("per_question", [])) > 0
+
+    def test_non_first_pair_no_backward_compat(self):
+        """Only the (0,1) pair sets the backward-compat ab_comparison."""
+        q = {"q1": _sample_question("Q", "ans")}
+        _result_handler.results = [
+            _make_config_results("A", "x", "x", q),
+            _make_config_results("B", "x", "x", q),
+            _make_config_results("C", "x", "x", q),
+        ]
+
+        # Only pair (1,2) — not (0,1), so ab_comparison should stay empty
+        paired = ResultHandler.pair_ab_results(1, 2)
+        ResultHandler.dump_ab_comparison(paired, 1, 2)
+
+        assert len(_result_handler.ab_comparisons) == 1
+        assert _result_handler.ab_comparison == {}  # not set for non-first pair

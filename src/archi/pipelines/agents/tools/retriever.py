@@ -110,7 +110,11 @@ def create_retriever_tool(
                 logger.debug("Failed to store runtime input for tool '%s'", name, exc_info=True)
         if query is None or not str(query).strip():
             logger.warning("Retriever tool '%s' received empty query", name)
-        results = retriever.invoke(query)
+        try:
+            results = retriever.invoke(query)
+        except Exception as exc:
+            logger.warning("Retriever tool '%s' failed for query=%r: %s", name, query, exc)
+            return f"Search failed: unable to query the knowledge base. Please answer from conversation context."
         docs = _normalize_results(results or [])
         if store_docs:
             store_docs(f"{name}: {query}", [doc for doc, _ in docs])

@@ -64,7 +64,17 @@ class ConfigurationManager:
                     if not static_field in config.keys():
                         raise ValueError(f"The field {static_field} must be present in all configurations.")
 
-                    if previous_config[static_field] != config[static_field]:
+                    prev_val = previous_config[static_field]
+                    curr_val = config[static_field]
+
+                    # Allow services.benchmarking to differ across configs
+                    # (multi-config A/B benchmarking uses different names/models)
+                    if static_field == 'services' and isinstance(prev_val, dict) and isinstance(curr_val, dict):
+                        prev_compare = {k: v for k, v in prev_val.items() if k != 'benchmarking'}
+                        curr_compare = {k: v for k, v in curr_val.items() if k != 'benchmarking'}
+                        if prev_compare != curr_compare:
+                            raise ValueError(f"The field {static_field} must be consistent across all configurations (excluding benchmarking).")
+                    elif prev_val != curr_val:
                         raise ValueError(f"The field {static_field} must be consistent across all configurations.")
 
             self.configs.append(config)
@@ -236,6 +246,42 @@ class ConfigurationManager:
             raise ValueError(f"agent_md_file must be a file: '{agent_md_file}'")
         if agent_md_file.suffix.lower() != ".md":
             raise ValueError(f"agent_md_file must be a markdown file (.md): '{agent_md_file}'")
+
+        # Validate modes enum
+        VALID_MODES = {"SOURCES", "RAGAS"}
+        modes = benchmarking_cfg.get("modes", [])
+        if modes:
+            if not isinstance(modes, list):
+                raise ValueError("'services.benchmarking.modes' must be a list")
+            invalid_modes = set(modes) - VALID_MODES
+            if invalid_modes:
+                raise ValueError(
+                    f"Invalid benchmarking mode(s): {sorted(invalid_modes)}. "
+                    f"Valid modes are: {sorted(VALID_MODES)}"
+                )
+
+        # Validate provider enum
+        VALID_PROVIDERS = {"openai", "ollama", "local", "huggingface", "anthropic"}
+        provider = str(benchmarking_cfg.get("provider", "")).lower()
+        if provider and provider not in VALID_PROVIDERS:
+            raise ValueError(
+                f"Invalid benchmarking provider: '{provider}'. "
+                f"Valid providers are: {sorted(VALID_PROVIDERS)}"
+            )
+
+        # Validate enabled_metrics enum
+        VALID_METRICS = {"answer_relevancy", "faithfulness", "context_precision", "context_recall"}
+        ragas_settings = benchmarking_cfg.get("mode_settings", {}).get("ragas_settings", {}) or {}
+        enabled_metrics = ragas_settings.get("enabled_metrics")
+        if enabled_metrics:
+            if not isinstance(enabled_metrics, list):
+                raise ValueError("'enabled_metrics' must be a list")
+            invalid_metrics = set(enabled_metrics) - VALID_METRICS
+            if invalid_metrics:
+                raise ValueError(
+                    f"Invalid RAGAS metric(s): {sorted(invalid_metrics)}. "
+                    f"Valid metrics are: {sorted(VALID_METRICS)}"
+                )
 
     def _validate_source_fields(self, config: Dict[str, Any], sources: List[str]) -> None:
         if not sources:

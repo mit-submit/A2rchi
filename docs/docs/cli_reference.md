@@ -170,15 +170,49 @@ archi evaluate --name <name> --env-file <secrets.env> --config <config.yaml> [OP
 
 Supports the same flags as `create` (`--podman`, `--gpu-ids`, `--tag`, `--hostmode`, `--verbosity`, `--force`). Configuration files should define the `services.benchmarking` section.
 
+| Flag | Description |
+|------|-------------|
+| `--argilla` | Push benchmark results to an external Argilla instance for team grading |
+| `--argilla-server` | Start a managed Argilla instance alongside the benchmark (implies `--argilla`) |
+
 **Example:**
 
 ```bash
 archi evaluate -n benchmark \
   -c examples/benchmarking/benchmark_configs/example_conf.yaml \
-  -e .secrets.env --gpu-ids all
+  -e .secrets.env --argilla-server
 ```
 
 See [Benchmarking](benchmarking.md) for full details on query format and evaluation modes.
+
+---
+
+### `archi grade`
+
+Grade benchmark results using Argilla.
+
+```bash
+archi grade [OPTIONS]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--serve` | Open the Argilla UI in your browser |
+| `--export` | Pull submitted annotations from Argilla to a local JSON file |
+| `--dataset` | Specify an Argilla dataset name (defaults to last benchmark) |
+| `--output` | Output file path for exported grades |
+
+**Examples:**
+
+```bash
+# Open Argilla UI for team grading
+archi grade --serve
+
+# Export Argilla annotations to JSON
+archi grade --export --output results/grades.json
+```
+
+See [Benchmarking](benchmarking.md) for the complete grading workflow.
 
 ---
 
