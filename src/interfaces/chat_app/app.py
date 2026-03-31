@@ -54,6 +54,10 @@ from src.utils.sql import (
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_LIST_CONVERSATIONS_BY_USER, SQL_GET_CONVERSATION_METADATA_BY_USER,
     SQL_DELETE_CONVERSATION_BY_USER, SQL_UPDATE_CONVERSATION_TIMESTAMP_BY_USER,
+    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID,
+    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
+    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID,
+    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
     SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
     SQL_GET_REACTION_FEEDBACK,
     SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
@@ -244,6 +248,7 @@ class ChatWrapper:
             "password": read_secret("PG_PASSWORD"),
             **self.services_config["postgres"],
         }
+        self._ensure_conversation_metadata_schema()
 
         # initialize data manager (ingestion handled by data-manager service)
         # self.data_manager = DataManager(run_ingestion=False)
@@ -318,6 +323,119 @@ class ChatWrapper:
         # activate default config
         if self.default_config_name:
             self.update_config(config_name=self.default_config_name)
+
+    def _ensure_conversation_metadata_schema(self) -> None:
+        """Backfill chat metadata columns needed by newer pipelines."""
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                ALTER TABLE conversation_metadata
+                ADD COLUMN IF NOT EXISTS pipeline_session_id TEXT
+                """
+            )
+            conn.commit()
+        except psycopg2.Error as exc:
+            conn.rollback()
+            logger.debug("Could not ensure conversation metadata columns: %s", exc)
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _pipeline_supports_persisted_session_id(self) -> bool:
+        """Return whether the active pipeline uses persisted SDK sessions."""
+        pipeline = getattr(self.archi, "pipeline", None)
+        return bool(
+            pipeline
+            and callable(getattr(pipeline, "supports_persisted_session_id", None))
+            and pipeline.supports_persisted_session_id()
+        )
+
+    def get_pipeline_session_id(
+        self,
+        conversation_id: int,
+        client_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Return the persisted pipeline session ID for a conversation, if used."""
+        if not self._pipeline_supports_persisted_session_id():
+            return None
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            if user_id:
+                cursor.execute(
+                    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
+                    (conversation_id, user_id, client_id),
+                )
+            else:
+                cursor.execute(
+                    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID,
+                    (conversation_id, client_id),
+                )
+            row = cursor.fetchone()
+            return row[0] if row else None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def set_pipeline_session_id(
+        self,
+        conversation_id: int,
+        client_id: str,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Persist the pipeline session ID for future resume attempts."""
+        if not self._pipeline_supports_persisted_session_id():
+            return
+        if not session_id:
+            return
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            if user_id:
+                cursor.execute(
+                    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
+                    (session_id, conversation_id, user_id, client_id),
+                )
+            else:
+                cursor.execute(
+                    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID,
+                    (session_id, conversation_id, client_id),
+                )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _persist_pipeline_session_id_from_output(
+        self,
+        output: PipelineOutput,
+        *,
+        conversation_id: int,
+        client_id: str,
+        current_session_id: Optional[str],
+        user_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Store the pipeline session ID exposed by pipeline outputs."""
+        if not self._pipeline_supports_persisted_session_id():
+            return None
+        metadata = getattr(output, "metadata", None) or {}
+        session_id = metadata.get("pipeline_session_id")
+        if not isinstance(session_id, str) or not session_id.strip():
+            return current_session_id
+        session_id = session_id.strip()
+        if session_id == current_session_id:
+            return current_session_id
+        self.set_pipeline_session_id(
+            conversation_id,
+            client_id,
+            session_id,
+            user_id=user_id,
+        )
+        return session_id
 
     def update_config(self, config_name=None):
         """
@@ -1620,7 +1738,23 @@ class ChatWrapper:
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
 
-            result = self.archi(history=context.history, conversation_id=context.conversation_id)
+            pipeline_session_id = self.get_pipeline_session_id(
+                context.conversation_id,
+                client_id,
+                user_id=user_id,
+            )
+            result = self.archi(
+                history=context.history,
+                conversation_id=context.conversation_id,
+                pipeline_session_id=pipeline_session_id,
+            )
+            self._persist_pipeline_session_id_from_output(
+                result,
+                conversation_id=context.conversation_id,
+                client_id=client_id,
+                current_session_id=pipeline_session_id,
+                user_id=user_id,
+            )
             timestamps["chain_finished_ts"] = datetime.now(timezone.utc)
 
             # keep track of total number of queries and log this amount
@@ -1751,6 +1885,13 @@ class ChatWrapper:
                 "history": context.history,
                 "conversation_id": context.conversation_id,
             }
+            pipeline_session_id = self.get_pipeline_session_id(
+                context.conversation_id,
+                client_id,
+                user_id=user_id,
+            )
+            if pipeline_session_id:
+                stream_kwargs["pipeline_session_id"] = pipeline_session_id
             if provider and model:
                 stream_kwargs["provider"] = provider
                 stream_kwargs["model"] = model
@@ -2116,6 +2257,14 @@ class ChatWrapper:
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
+
+            pipeline_session_id = self._persist_pipeline_session_id_from_output(
+                last_output,
+                conversation_id=context.conversation_id,
+                client_id=client_id,
+                current_session_id=pipeline_session_id,
+                user_id=user_id,
+            )
 
             output, message_ids = self._finalize_result(
                 last_output,

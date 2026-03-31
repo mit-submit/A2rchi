@@ -12,7 +12,7 @@ Design decisions implemented here:
   8  — MCP config passthrough (archi.mcp_servers → SDK mcpServers)
   13 — Context management delegated to Copilot CLI infinite sessions
   17 — get_tool_registry()/get_tool_descriptions() from TOOL_REGISTRY
-  SP — Session persistence via resume_session() (conversation_id → session_id)
+  SP — Session persistence via resume_session() (stored pipeline_session_id)
   CM — System message customize mode (keep SDK safety defaults)
   EH — onErrorOccurred hook for auto-retry and friendly errors
   ET — Tool lifecycle via streaming events (native toolCallId)
@@ -606,9 +606,10 @@ class CopilotAgentPipeline:
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
         """Stream agent events as ``PipelineOutput`` objects.
 
-        Accepted kwargs: ``history``, ``conversation_id``, ``vectorstore``,
-        ``user_id`` (for BYOK resolution), ``provider``, ``model``,
-        ``provider_api_key`` (per-request overrides from settings UI).
+        Accepted kwargs: ``history``, ``conversation_id``,
+        ``pipeline_session_id``, ``vectorstore``, ``user_id`` (for BYOK
+        resolution), ``provider``, ``model``, ``provider_api_key``
+        (per-request overrides from settings UI).
         """
         history = kwargs.get("history")
         conversation_id = kwargs.get("conversation_id")
@@ -642,20 +643,23 @@ class CopilotAgentPipeline:
             model_override=model_override,
         )
 
-        # Map conversation_id to session_id for persistence
-        session_id = str(conversation_id) if conversation_id is not None else None
+        # Resume only when chat metadata has a real Copilot SDK session ID.
+        session_id = kwargs.get("pipeline_session_id")
 
         # Adapter bridges async SDK → sync generator
         adapter = CopilotEventAdapter(self._async_loop)
+        active_session_id: Optional[str] = None
 
         # Create session and start consuming events (async)
         async def _run_session():
+            nonlocal active_session_id
             try:
                 session, was_resumed = await self._create_session(
                     adapter,
                     session_config,
                     session_id=session_id,
                 )
+                active_session_id = getattr(session, "session_id", None)
 
                 # Build the prompt.  The SDK session is stateful so when
                 # resumed it already knows prior turns.  For a *new* session
@@ -720,7 +724,13 @@ class CopilotAgentPipeline:
             source_documents=collector.unique_documents(),
             retriever_scores=collector.scores(),
         )
+        if active_session_id:
+            final.metadata["pipeline_session_id"] = active_session_id
         yield final
+
+    def supports_persisted_session_id(self) -> bool:
+        """Copilot sessions can be resumed using a persisted SDK session ID."""
+        return True
 
     def invoke(self, **kwargs) -> PipelineOutput:
         """Run the agent and return the final ``PipelineOutput``.

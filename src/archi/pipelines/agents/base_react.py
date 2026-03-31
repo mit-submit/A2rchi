@@ -79,6 +79,10 @@ class BaseReActAgent:
         """Instantiate a fresh run memory for an agent run."""
         return RunMemory()
 
+    def supports_persisted_session_id(self) -> bool:
+        """Classic ReAct agents are stateless beyond the provided history."""
+        return False
+
     def start_run_memory(self) -> RunMemory:
         """Create and store the active memory for the current run."""
         memory = self.create_run_memory()

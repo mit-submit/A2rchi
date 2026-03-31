@@ -5,6 +5,7 @@ and Archi.stream() without requiring a real Copilot SDK session.
 """
 
 import asyncio
+import concurrent.futures
 import queue
 import threading
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -36,6 +37,22 @@ class FakeAsyncLoop:
         """Schedule coro and return immediately."""
         loop = asyncio.new_event_loop()
         return asyncio.run_coroutine_threadsafe(coro, loop)
+
+
+class ImmediateAsyncLoop:
+    """Run background coroutines synchronously and return a settled Future."""
+
+    def run_no_wait(self, coro):
+        future = concurrent.futures.Future()
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(coro)
+            future.set_result(result)
+        except Exception as exc:
+            future.set_exception(exc)
+        finally:
+            loop.close()
+        return future
 
 
 # ── Archi.stream() passthrough tests ──────────────────────────────────────
@@ -282,3 +299,76 @@ class TestStreamKwargsExtraction:
         cfg = p._build_session_config(tools=[], api_key="k")
         assert cfg["model"] == "gpt-4o"
         assert cfg["provider"]["type"] == "openai"
+
+
+class TestCopilotSessionPersistence:
+    """Verify persisted SDK session IDs flow through the pipeline."""
+
+    def test_stream_uses_persisted_session_id_and_returns_active_id(self):
+        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+
+        class FakeSession:
+            session_id = "sdk-session-created"
+
+            async def send_and_wait(self, *_args, **_kwargs):
+                return None
+
+        class FakeAdapter:
+            def __init__(self, _async_loop):
+                self._session = None
+
+            def attach_to_session(self, session):
+                self._session = session
+
+            def iter_outputs(self):
+                return iter([])
+
+            def signal_done(self):
+                return None
+
+            def build_final_output(
+                self, *, source_documents=None, retriever_scores=None
+            ):
+                return PipelineOutput(
+                    answer="ok",
+                    source_documents=source_documents or [],
+                    metadata={"event_type": "final"},
+                    final=True,
+                )
+
+        p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
+        p.default_provider = "openai"
+        p.default_model = "gpt-4o"
+        p._providers_config = {}
+        p.agent_prompt = "test"
+        p.archi_config = {}
+        p.dm_config = {}
+        p._catalog_client = None
+        p._monit_client = None
+        p.selected_tool_names = []
+        p._async_loop = ImmediateAsyncLoop()
+        p._build_tools = MagicMock(return_value=[])
+        p._resolve_byok_key = MagicMock(return_value=None)
+
+        captured = {}
+
+        async def fake_create_session(adapter, config, *, session_id=None):
+            captured["session_id"] = session_id
+            return FakeSession(), True
+
+        p._create_session = fake_create_session
+
+        with patch(
+            "src.archi.pipelines.copilot_agent.CopilotEventAdapter", FakeAdapter
+        ):
+            outputs = list(
+                p.stream(
+                    history=[("user", "Hello")],
+                    conversation_id=42,
+                    pipeline_session_id="sdk-session-existing",
+                    vectorstore=None,
+                )
+            )
+
+        assert captured["session_id"] == "sdk-session-existing"
+        assert outputs[-1].metadata["pipeline_session_id"] == "sdk-session-created"

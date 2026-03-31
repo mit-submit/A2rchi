@@ -68,6 +68,8 @@ def _make_chat_wrapper(pipeline_outputs: List[PipelineOutput]):
     mock_archi = MagicMock()
     mock_archi.stream = MagicMock(return_value=iter(pipeline_outputs))
     mock_archi.pipeline_name = "CopilotAgentPipeline"
+    mock_archi.pipeline = MagicMock()
+    mock_archi.pipeline.supports_persisted_session_id = MagicMock(return_value=True)
     wrapper.archi = mock_archi
 
     # Mock all DB/context methods
@@ -81,6 +83,8 @@ def _make_chat_wrapper(pipeline_outputs: List[PipelineOutput]):
     wrapper._init_timestamps = MagicMock(return_value={})
     wrapper._create_provider_llm = MagicMock(return_value=None)
     wrapper.insert_timing = MagicMock()
+    wrapper.get_pipeline_session_id = MagicMock(return_value=None)
+    wrapper.set_pipeline_session_id = MagicMock()
 
     # Mock _finalize_result to return the output text and message IDs
     def _fake_finalize(
@@ -530,3 +534,42 @@ class TestStreamProviderOverride:
         assert "provider" not in kwargs
         assert "model" not in kwargs
         assert "provider_api_key" not in kwargs
+
+
+class TestCopilotSessionPersistence:
+    """Persist and reuse real Copilot SDK session IDs across turns."""
+
+    def test_stored_session_id_forwarded_to_pipeline(self):
+        outputs = [
+            PipelineOutput(answer="ok", metadata={"event_type": "final"}, final=True),
+        ]
+        wrapper = _make_chat_wrapper(outputs)
+        wrapper.get_pipeline_session_id.return_value = "sdk-session-123"
+
+        _collect_events(wrapper)
+
+        kwargs = wrapper.archi.stream.call_args.kwargs
+        assert kwargs.get("pipeline_session_id") == "sdk-session-123"
+
+    def test_final_output_persists_new_session_id(self):
+        outputs = [
+            PipelineOutput(
+                answer="ok",
+                metadata={
+                    "event_type": "final",
+                    "pipeline_session_id": "sdk-session-456",
+                },
+                final=True,
+            ),
+        ]
+        wrapper = _make_chat_wrapper(outputs)
+        wrapper.get_pipeline_session_id.return_value = None
+
+        _collect_events(wrapper)
+
+        wrapper.set_pipeline_session_id.assert_called_once_with(
+            42,
+            "test-client",
+            "sdk-session-456",
+            user_id=None,
+        )
