@@ -1373,9 +1373,9 @@ class ChatWrapper:
                     try:
                         ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                     except (ValueError, TypeError):
-                        ts = datetime.now()
+                        ts = datetime.now(timezone.utc)
                 else:
-                    ts = datetime.now()
+                    ts = datetime.now(timezone.utc)
                 insert_tups.append((
                     conversation_id, message_id, step_number,
                     tool_name,

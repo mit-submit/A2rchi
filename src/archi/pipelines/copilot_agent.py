@@ -39,19 +39,12 @@ _NO_FAKE_TOOL_USE_INSTRUCTION = (
     "the provided tools, say that capability is unavailable in this deployment."
 )
 
-# SDK type for Copilot client — resolved at import time if available.
-_CopilotClient = None  # type: ignore[assignment]
-
-
 def _get_copilot_client_cls():
     """Lazy import so units that don't have the SDK installed can still
     import this module for ``get_tool_registry()`` / ``get_tool_descriptions()``."""
-    global _CopilotClient
-    if _CopilotClient is None:
-        from copilot import CopilotClient
+    from copilot import CopilotClient
 
-        _CopilotClient = CopilotClient
-    return _CopilotClient
+    return CopilotClient
 
 
 def _build_tool_restriction_kwargs(custom_tools: list) -> Dict[str, list[str]]:
@@ -373,7 +366,6 @@ class CopilotAgentPipeline:
                 tools.append(
                     build_monit_search_tool(
                         self._monit_client,
-                        tool_name="rucio_events_search",
                         index=monit_index,
                         skill=self._rucio_events_skill,
                     )
@@ -382,7 +374,6 @@ class CopilotAgentPipeline:
                 tools.append(
                     build_monit_aggregation_tool(
                         self._monit_client,
-                        tool_name="rucio_events_aggregation",
                         index=monit_index,
                         skill=self._rucio_events_skill,
                     )

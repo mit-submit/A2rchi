@@ -37,3 +37,4 @@ git/
 local_files/
 raw_local_files/
 websites/
+.env_tmp_smoke

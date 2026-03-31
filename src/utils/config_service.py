@@ -655,7 +655,7 @@ class ConfigService:
 
         if active_agent_name is not None:
             updates.append("active_agent_name = %s")
-            params.append(active_agent_name if active_agent_name else None)
+            params.append(active_agent_name)
         
         if temperature is not None:
             updates.append("temperature = %s")

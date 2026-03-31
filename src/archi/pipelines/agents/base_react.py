@@ -19,7 +19,7 @@ from src.archi.providers import get_model
 from src.archi.providers.base import ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.run_memory import RunMemory
-from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
+from src.archi.utils.async_loop import AsyncLoopThread
 from src.archi.pipelines.agents.tools import initialize_mcp_client
 from src.utils.logging import get_logger
 

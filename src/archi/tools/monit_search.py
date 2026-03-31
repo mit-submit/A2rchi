@@ -90,8 +90,6 @@ def build_monit_search_tool(
         effective_max = min(max_results, MAX_RESULTS_HARD_LIMIT)
 
         try:
-            import requests as req_lib
-
             response = client.search_with_lucene(
                 lucene_query=query.strip(),
                 from_time=from_time,

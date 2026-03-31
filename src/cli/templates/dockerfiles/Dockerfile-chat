@@ -35,7 +35,7 @@ RUN GECKO_VERSION="v0.36.0" && \
     && rm "geckodriver-${GECKO_VERSION}-${GECKO_ARCH}.tar.gz"
 
 # Install GitHub Copilot CLI (used by the Copilot SDK agent runtime)
-ARG COPILOT_CLI_VERSION=latest
+ARG COPILOT_CLI_VERSION=v1.0.12
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ]; then CLI_ARCH="arm64"; else CLI_ARCH="x64"; fi && \
     if [ "$COPILOT_CLI_VERSION" = "latest" ]; then \

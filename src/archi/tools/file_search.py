@@ -256,7 +256,7 @@ def build_document_fetch_tool(
     @define_tool(name=name, description=tool_description)
     async def _fetch_document(params: DocumentFetchInput) -> str:
         resource_hash = params.resource_hash
-        max_chars = params.max_chars
+        max_chars = params.max_chars or default_max_chars
         if not resource_hash.strip():
             return "Please provide a non-empty resource hash."
 
