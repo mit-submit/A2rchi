@@ -23,21 +23,13 @@ from __future__ import annotations
 from typing import (Any, AsyncIterator, Callable, Dict, Iterator, List,
                     Optional, Sequence, Tuple)
 
-from src.archi.copilot_event_adapter import CopilotEventAdapter
+from src.archi.pipelines.copilot_agents.copilot_event_adapter import CopilotEventAdapter
 from src.archi.utils.async_loop import AsyncLoopThread
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-_NO_FAKE_TOOL_USE_INSTRUCTION = (
-    "Only use the explicitly provided Archi custom tools. "
-    "Do not claim to have run bash, shell commands, file reads, file writes, "
-    "network fetches, or any other system action unless an allowed Archi tool "
-    "actually executed and returned that result. "
-    "If a user asks for shell or filesystem access that is not available via "
-    "the provided tools, say that capability is unavailable in this deployment."
-)
 
 def _get_copilot_client_cls():
     """Lazy import so units that don't have the SDK installed can still
@@ -299,12 +291,11 @@ class CopilotAgentPipeline:
         Only tools listed in ``self.selected_tool_names`` are built.
         If the list is empty all available tools are built.
         """
-        from src.archi.tools.file_search import (build_document_fetch_tool,
-                                                 build_file_search_tool,
-                                                 build_metadata_schema_tool,
-                                                 build_metadata_search_tool)
-        from src.archi.tools.monit_search import (build_monit_aggregation_tool,
-                                                  build_monit_search_tool)
+        from src.archi.pipelines.copilot_agents.tools.file_search import (
+            build_document_fetch_tool, build_file_search_tool,
+            build_metadata_schema_tool, build_metadata_search_tool)
+        from src.archi.pipelines.copilot_agents.tools.monit_search import (
+            build_monit_aggregation_tool, build_monit_search_tool)
 
         store_docs = collector.make_store_docs_callback()
         tools: list = []
@@ -319,7 +310,7 @@ class CopilotAgentPipeline:
         # Vectorstore retriever tool
         if vectorstore and _want("search_knowledge_base"):
             try:
-                from src.archi.tools.retriever import build_retriever_tool
+                from src.archi.pipelines.copilot_agents.tools.retriever import build_retriever_tool
                 from src.data_manager.vectorstore.retrievers import \
                     HybridRetriever
 
@@ -402,22 +393,15 @@ class CopilotAgentPipeline:
         cfg: Dict[str, Any] = {}
 
         # System message (customize mode — decision CM)
-        sections: Dict[str, Dict[str, str]] = {
-            "tool_instructions": {
-                "action": "append",
-                "content": _NO_FAKE_TOOL_USE_INSTRUCTION,
-            },
-        }
         if self.agent_prompt:
-            sections["identity"] = {
-                "action": "replace",
-                "content": self.agent_prompt,
-            }
-
-        if sections:
             cfg["system_message"] = {
                 "mode": "customize",
-                "sections": sections,
+                "sections": {
+                    "identity": {
+                        "action": "replace",
+                        "content": self.agent_prompt,
+                    },
+                },
             }
 
         # Provider (decision 4) — per-request overrides take precedence
@@ -552,7 +536,7 @@ class CopilotAgentPipeline:
 
     def _allowed_custom_tool_names(self) -> set[str]:
         """Return the set of Archi custom tools the active agent is allowed to run."""
-        from src.archi.tools import TOOL_REGISTRY
+        from src.archi.pipelines.copilot_agents.tools import TOOL_REGISTRY
 
         if not self.selected_tool_names:
             return set(TOOL_REGISTRY.keys())
@@ -611,7 +595,7 @@ class CopilotAgentPipeline:
         session_api_key = kwargs.get("provider_api_key")
 
         # Per-request document collector
-        from src.archi.tools import DocumentCollector
+        from src.archi.pipelines.copilot_agents.tools import DocumentCollector
 
         collector = DocumentCollector()
 
@@ -783,12 +767,12 @@ class CopilotAgentPipeline:
 
     def get_tool_registry(self) -> Dict[str, Callable]:
         """Return tool name -> factory mapping for the agent spec editor."""
-        from src.archi.tools import TOOL_REGISTRY
+        from src.archi.pipelines.copilot_agents.tools import TOOL_REGISTRY
 
         return {name: entry["factory"] for name, entry in TOOL_REGISTRY.items()}
 
     def get_tool_descriptions(self) -> Dict[str, str]:
         """Return tool name -> description mapping for UI display."""
-        from src.archi.tools import TOOL_REGISTRY
+        from src.archi.pipelines.copilot_agents.tools import TOOL_REGISTRY
 
         return {name: entry["description"] for name, entry in TOOL_REGISTRY.items()}

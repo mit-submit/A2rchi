@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
-from src.archi.copilot_event_adapter import _SENTINEL, CopilotEventAdapter
+from src.archi.pipelines.copilot_agents.copilot_event_adapter import _SENTINEL, CopilotEventAdapter
 from src.archi.utils.output_dataclass import PipelineOutput
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ class TestPipelineSessionConfig:
     """Verify _build_session_config produces correct SDK config."""
 
     def _make_pipeline(self, **overrides):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = overrides.get("provider", "openai")
@@ -198,7 +198,7 @@ class TestAdapterOutputFlow:
         assert outputs[1].answer == "world"
 
     def test_build_final_aggregates_tool_calls(self):
-        from src.archi.copilot_event_adapter import _ToolCallRecord
+        from src.archi.pipelines.copilot_agents.copilot_event_adapter import _ToolCallRecord
 
         adapter = CopilotEventAdapter(FakeAsyncLoop())
         adapter._response_buffer = "Final answer"
@@ -238,7 +238,7 @@ class TestStreamKwargsExtraction:
     overrides. Tests the setup logic without running the async session."""
 
     def _make_pipeline(self):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = "openai"

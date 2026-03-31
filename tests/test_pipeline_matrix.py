@@ -89,7 +89,7 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+    from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
     print("  CopilotAgentPipeline: OK")
 except Exception as e:

@@ -14,7 +14,7 @@ from typing import Dict
 import yaml
 
 from src.archi.pipelines.agents.tools import RemoteCatalogClient
-from src.archi.tools import (TOOL_REGISTRY, DocumentCollector,
+from src.archi.pipelines.copilot_agents.tools import (TOOL_REGISTRY, DocumentCollector,
                              build_document_fetch_tool, build_file_search_tool,
                              build_metadata_search_tool, build_retriever_tool)
 from src.archi.utils.vectorstore_connector import VectorstoreConnector

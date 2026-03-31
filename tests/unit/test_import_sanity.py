@@ -17,7 +17,7 @@ class TestNoCircularImports:
         "module",
         [
             "src.archi.archi",
-            "src.archi.copilot_event_adapter",
+            "src.archi.pipelines.copilot_agents.copilot_event_adapter",
             "src.archi.utils.output_dataclass",
             "src.archi.pipelines.agents.tools.local_files",
         ],

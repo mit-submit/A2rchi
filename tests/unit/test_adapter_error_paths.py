@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.archi.copilot_event_adapter import _SENTINEL, CopilotEventAdapter
+from src.archi.pipelines.copilot_agents.copilot_event_adapter import _SENTINEL, CopilotEventAdapter
 from src.archi.utils.output_dataclass import PipelineOutput
 
 # ── Helpers ───────────────────────────────────────────────────────────────

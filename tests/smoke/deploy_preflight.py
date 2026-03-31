@@ -240,7 +240,7 @@ def check_code_version():
     try:
         import inspect
 
-        from src.archi.copilot_event_adapter import CopilotEventAdapter
+        from src.archi.pipelines.copilot_agents.copilot_event_adapter import CopilotEventAdapter
 
         sig = inspect.signature(CopilotEventAdapter.iter_outputs)
         has_poll_timeout = "poll_timeout" in sig.parameters

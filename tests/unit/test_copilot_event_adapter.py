@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.archi.copilot_event_adapter import (CopilotEventAdapter,
+from src.archi.pipelines.copilot_agents.copilot_event_adapter import (CopilotEventAdapter,
                                              _ToolCallRecord)
 from src.archi.utils.output_dataclass import PipelineOutput
 
@@ -459,7 +459,7 @@ class TestIterOutputs:
         adapter._queue.put(
             PipelineOutput(answer="b", metadata={"event_type": "text"}, final=False)
         )
-        from src.archi.copilot_event_adapter import _SENTINEL
+        from src.archi.pipelines.copilot_agents.copilot_event_adapter import _SENTINEL
 
         adapter._queue.put(_SENTINEL)
 

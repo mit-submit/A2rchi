@@ -6,7 +6,7 @@ from .classic_pipelines.base import BasePipeline
 from .classic_pipelines.grading import GradingPipeline
 from .classic_pipelines.image_processing import ImageProcessingPipeline
 from .classic_pipelines.qa import QAPipeline
-from .copilot_agent import CopilotAgentPipeline
+from .copilot_agents.copilot_agent import CopilotAgentPipeline
 
 __all__ = [
     "BasePipeline",

@@ -6,7 +6,7 @@ and tool registry without requiring the Copilot SDK to be installed.
 
 import pytest
 
-from src.archi.pipelines.copilot_agent import (_build_mcp_servers,
+from src.archi.pipelines.copilot_agents.copilot_agent import (_build_mcp_servers,
                                                _build_sdk_provider,
                                                _build_tool_restriction_kwargs)
 
@@ -108,7 +108,7 @@ class TestToolRegistry:
     """Decision 17: TOOL_REGISTRY from tools module."""
 
     def test_registry_has_expected_tools(self):
-        from src.archi.tools import TOOL_REGISTRY
+        from src.archi.pipelines.copilot_agents.tools import TOOL_REGISTRY
 
         expected = {
             "search_knowledge_base",
@@ -122,7 +122,7 @@ class TestToolRegistry:
         assert expected == set(TOOL_REGISTRY.keys())
 
     def test_registry_entries_have_factory_and_description(self):
-        from src.archi.tools import TOOL_REGISTRY
+        from src.archi.pipelines.copilot_agents.tools import TOOL_REGISTRY
 
         for name, entry in TOOL_REGISTRY.items():
             assert "factory" in entry, f"{name} missing factory"
@@ -137,7 +137,7 @@ class TestToolNameAliases:
     def test_search_vectorstore_hybrid_normalizes(self):
         """Agent specs with 'search_vectorstore_hybrid' should match
         the canonical 'search_knowledge_base' tool."""
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         # Build a bare pipeline with the old tool name
         pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
@@ -152,7 +152,7 @@ class TestToolNameAliases:
         # _build_tools needs a collector; tools will be empty because there's
         # no vectorstore or catalog client, but the alias resolution itself
         # should not raise.
-        from src.archi.tools import DocumentCollector
+        from src.archi.pipelines.copilot_agents.tools import DocumentCollector
 
         tools = pipeline._build_tools(DocumentCollector())
         # No tools built (no vectorstore/catalog), but no crash either
@@ -160,7 +160,7 @@ class TestToolNameAliases:
 
     def test_canonical_name_still_works(self):
         """The canonical 'search_knowledge_base' should still work."""
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         pipeline.selected_tool_names = ["search_knowledge_base"]
@@ -168,7 +168,7 @@ class TestToolNameAliases:
         pipeline._catalog_client = None
         pipeline._monit_client = None
 
-        from src.archi.tools import DocumentCollector
+        from src.archi.pipelines.copilot_agents.tools import DocumentCollector
 
         tools = pipeline._build_tools(DocumentCollector())
         assert isinstance(tools, list)
@@ -204,7 +204,7 @@ class TestPermissionRequests:
     """Only declared Archi custom tools should be approved."""
 
     def _make_pipeline(self, selected_tool_names=None):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         pipeline.selected_tool_names = list(selected_tool_names or [])
@@ -259,7 +259,7 @@ class TestGetToolRegistrySignature:
     via the same pattern as app.py: agent_cls.method(dummy_instance)."""
 
     def test_get_tool_registry_instance_call(self):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         dummy = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         # This is how app.py calls it — must not raise
@@ -268,7 +268,7 @@ class TestGetToolRegistrySignature:
         assert "search_knowledge_base" in registry
 
     def test_get_tool_descriptions_instance_call(self):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         dummy = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         descriptions = CopilotAgentPipeline.get_tool_descriptions(dummy)
@@ -281,7 +281,7 @@ class TestSessionConfigOverrides:
     """Bug #15/#16: per-request provider/model/api_key overrides."""
 
     def _make_pipeline(self):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = "openai"
@@ -348,7 +348,7 @@ class TestSessionResume:
         import asyncio
         from unittest.mock import AsyncMock, MagicMock
 
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = "openai"
@@ -386,7 +386,7 @@ class TestCustomizeMode:
     """System message uses customize mode with per-section overrides."""
 
     def _make_pipeline(self, prompt="You are a test bot"):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         p.default_provider = "openai"
@@ -447,7 +447,7 @@ class TestErrorHook:
     """onErrorOccurred hook: retry transient model errors."""
 
     def _make_pipeline(self):
-        from src.archi.pipelines.copilot_agent import CopilotAgentPipeline
+        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
 
         p = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         return p

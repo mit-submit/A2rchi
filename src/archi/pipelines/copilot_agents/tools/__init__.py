@@ -5,28 +5,21 @@ entries.  ``CopilotAgentPipeline.get_tool_registry()`` reads this mapping so tha
 the agent spec editor can display available tools and their descriptions.
 """
 
-from src.archi.tools.document_collector import DocumentCollector
-from src.archi.tools.file_search import (DOCUMENT_FETCH_DESCRIPTION,
-                                         DOCUMENT_FETCH_NAME,
-                                         FILE_SEARCH_DESCRIPTION,
-                                         FILE_SEARCH_NAME,
-                                         METADATA_SCHEMA_DESCRIPTION,
-                                         METADATA_SCHEMA_NAME,
-                                         METADATA_SEARCH_DESCRIPTION,
-                                         METADATA_SEARCH_NAME,
-                                         build_document_fetch_tool,
-                                         build_file_search_tool,
-                                         build_metadata_schema_tool,
-                                         build_metadata_search_tool)
-from src.archi.tools.monit_search import (AGGREGATION_TOOL_DESCRIPTION,
-                                          AGGREGATION_TOOL_NAME,
-                                          SEARCH_TOOL_DESCRIPTION,
-                                          SEARCH_TOOL_NAME,
-                                          build_monit_aggregation_tool,
-                                          build_monit_search_tool)
-from src.archi.tools.retriever import TOOL_DESCRIPTION as RETRIEVER_DESCRIPTION
-from src.archi.tools.retriever import TOOL_NAME as RETRIEVER_NAME
-from src.archi.tools.retriever import build_retriever_tool
+from .document_collector import DocumentCollector
+from .file_search import (DOCUMENT_FETCH_DESCRIPTION, DOCUMENT_FETCH_NAME,
+                          FILE_SEARCH_DESCRIPTION, FILE_SEARCH_NAME,
+                          METADATA_SCHEMA_DESCRIPTION, METADATA_SCHEMA_NAME,
+                          METADATA_SEARCH_DESCRIPTION, METADATA_SEARCH_NAME,
+                          build_document_fetch_tool, build_file_search_tool,
+                          build_metadata_schema_tool,
+                          build_metadata_search_tool)
+from .monit_search import (AGGREGATION_TOOL_DESCRIPTION, AGGREGATION_TOOL_NAME,
+                           SEARCH_TOOL_DESCRIPTION, SEARCH_TOOL_NAME,
+                           build_monit_aggregation_tool,
+                           build_monit_search_tool)
+from .retriever import TOOL_DESCRIPTION as RETRIEVER_DESCRIPTION
+from .retriever import TOOL_NAME as RETRIEVER_NAME
+from .retriever import build_retriever_tool
 
 # Central tool registry: name → {factory, description}.
 # Each factory is a callable(**deps) → @define_tool-decorated function.
