@@ -281,13 +281,12 @@ class FlaskAppWrapper:
                 return jsonify({"error": "invalid_depth"}), 400
             if depth < 0:
                 return jsonify({"error": "invalid_depth"}), 400
-            # LinkScraper currently uses max_depth >= 1 for the initial URL fetch.
             if depth == 0:
                 depth = 1
         if url:
             logger.info("Uploading the following URL: %s", url)
             try:
-                scraped_count = self.scraper_manager.collect_links(self.persistence, link_urls=[url], max_depth=depth)
+                scraped_count = self.scraper_manager.collect_links(self.persistence, link_urls=[url])
                 self.persistence.flush_index()
                 self._update_source_status("web", state="idle", last_run=self._now_iso())
                 added_to_urls = True
