@@ -44,8 +44,8 @@ class SourceRegistry:
         self.register(
             SourceDefinition(
                 name="git",
-                description="Git repository scraping for MkDocs-based documentation",
-                required_secrets=["GIT_USERNAME", "GIT_TOKEN"],
+                description="Git repository scraping for MkDocs-based documentation, Optional GIT_USERNAME/GIT_TOKEN for private repos.",
+                required_secrets=[],  # was ["GIT_USERNAME", "GIT_TOKEN"]
                 depends_on=["links"],
             )
         )
