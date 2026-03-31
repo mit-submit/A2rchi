@@ -11,7 +11,7 @@ from src.data_manager.collectors.scrapers.parsers.link import parse_link_page
 class LinkSpider(Spider):
     """
     Generic link-following spider for unauthenticated pages.
-    Stays within the same hostname as start_url, up to max_depth.
+    Stays within the hostnames of all start_urls, up to max_depth.
     """
 
     name = "link"
@@ -40,13 +40,17 @@ class LinkSpider(Spider):
     def __init__(self, start_urls: list[str] = None, max_depth: int = None, max_pages: int = None, allow: list[str] = None, deny: list[str] = None, delay: int = None, canonicalize: bool = False, process_value: Callable[[str], str] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._start_urls = start_urls or getattr(self, "_DEFAULT_START_URLS", [])
-        self._base_host = urlparse(self._start_urls[0]).netloc if self._start_urls else None
+        self._allowed_domains: set[str] = {
+            urlparse(u).netloc
+            for u in self._start_urls
+            if urlparse(u).netloc
+        }
         default_deny = getattr(self, "_DEFAULT_DENY", [])
         default_process_value = getattr(self, "_DEFAULT_PROCESS_VALUE", None)
         self._le = LinkExtractor(
             allow=allow or [],
             deny=(deny or []) + default_deny, 
-            allow_domains=[self._base_host] if self._base_host else [],
+            allow_domains=list(self._allowed_domains),
             deny_extensions=list(_IMAGE_EXTS),
             canonicalize=canonicalize,
             process_value=process_value or default_process_value,
