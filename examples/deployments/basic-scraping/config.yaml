@@ -46,8 +46,15 @@ data_manager:
       link:
         allow:
           - ".*/blog/.*"
+          - ".*quotes.*"
+          - ".*/(page|author)/.*"
+        urls: # Meant for Demo scraping
+        - https://quotes.toscrape.com/  # typically easy on robots.txt and rate limits
+        max_depth: 2
+        max_pages: 200
+        delay: 2
         input_lists:
-          - examples/deployments/basic-agent/miscellanea.list
+          - examples/deployments/basic-scraping/miscellanea.list
       twiki:
         enabled: true
         auth_provider_name: cern_sso   # remove if crawling public pages only
@@ -66,7 +73,7 @@ data_manager:
         deny:
           - ".*WorkBook.*"
         max_depth: 2
-        max_pages: 100
+        max_pages: 500
         delay: 60
     git:
       enabled: true

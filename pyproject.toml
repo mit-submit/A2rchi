@@ -27,7 +27,8 @@ dependencies = [
     "isort==6.0.1",
     "pre-commit>=4",
     "psycopg2-binary==2.9.10",
-    "Scrapy>=2.14.2"
+    "Scrapy>=2.14.2",
+    "playwright>=1.49.0,<2"
 ]
 
 [project.scripts]

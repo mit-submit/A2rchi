@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
 
@@ -31,25 +32,32 @@ class ScraperManager:
         global_config = get_global_config()
         self.data_path = Path(global_config["DATA_PATH"])
         self.persistence = persistence
+        self.settings = Settings()
+        self.settings.setmodule(
+            "src.data_manager.collectors.scrapers.settings",
+            priority="project",
+        )
 
         sources_config = (dm_config or {}).get("sources", {}) or {}
 
+        logger.info("sources_config: %s", json.dumps(sources_config, indent=2, default=str))
         self.config = sources_config.get("web", {}) if isinstance(sources_config, dict) else {}
         self.enabled = self.config.get("enabled", True)
 
     # ── Public interface ──────────────────────────────────────────────────────
 
     def collect_all_from_config(self) -> None:
+        logger.info("collect_all_from_config")
         self._run(self._config_urls)
 
     def schedule_collect(self, last_run: Optional[str] = None) -> None:
         self._run(self._catalog_urls)
     
     def collect(self, spider_key: str, urls: List[str]) -> None:
-        settings = get_project_settings()
-        process = CrawlerProcess(settings)
+        process = CrawlerProcess(self.settings)
+        logger.info("project_settings: %s", json.dumps(self.settings, indent=2, default=str))
         try:
-            SpiderClass = _make_spider_loader(settings)(spider_key)
+            SpiderClass = _make_spider_loader(self.settings)(spider_key)
         except KeyError:
             logger.error("Unknown spider: %s", spider_key)
             return
@@ -62,13 +70,13 @@ class ScraperManager:
         if not self.enabled:
             logger.info("Web scraping disabled; skipping")
             return
-        settings = get_project_settings()
-        process = CrawlerProcess(settings)
-        load_spider = _make_spider_loader(settings)
+        process = CrawlerProcess(self.settings)
+        load_spider = _make_spider_loader(self.settings)
         (self.data_path / "websites").mkdir(parents=True, exist_ok=True)
 
         added = False
         for spider_key, cfg in self.config.items():
+            logger.info("spider_key: %s, cfg: %s", spider_key, json.dumps(cfg, indent=2, default=str))
             if not isinstance(cfg, dict):
                 continue
             try:
@@ -76,9 +84,11 @@ class ScraperManager:
             except KeyError:
                 continue
             urls = url_fn(spider_key, cfg)
+            logger.info("urls: %s", urls)
             if urls:
                 self._add_crawler(process, SpiderClass, urls, cfg)
                 added = True
+        logger.info("added: %s", added)
         if added:
             process.start()
 
@@ -106,6 +116,7 @@ class ScraperManager:
 
     def _config_urls(self, spider_key: str, cfg: Dict) -> List[str]:
         urls = list(cfg.get("urls") or [])
+        logger.info("cfg_urls: urls: %s", urls)
         for list_path in cfg.get("input_lists") or []:
             path = Path(list_path)
             if not path.exists():
@@ -118,6 +129,7 @@ class ScraperManager:
         if not self.persistence:
             return []
 
+        logger.info("catalog_urls: spider_key: %s, cfg: %s", spider_key, json.dumps(cfg, indent=2, default=str))
         metadata = self.persistence.catalog.get_metadata_by_filter(
             "source_type", source_type="web", metadata_keys=["url", "spider_name"]
         )
