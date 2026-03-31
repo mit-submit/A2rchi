@@ -9,13 +9,16 @@ from src.data_manager.collectors.scrapers.parsers.twiki import parse_twiki_page
 class TwikiSpider(LinkSpider):
     """
     Minimal Twiki spider against a real Twiki target.
-    Public page — no SSO needed — isolates lifecycle learning from auth complexity.
+    Support CERN SSO authentication.
     """
 
     name = "twiki"
     
+    auth_provider_name = "cern_sso"
+    
     _DEFAULT_START_URLS = [
-        "https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide"
+        "https://twiki.cern.ch/twiki/bin/view/CMS/HeavyIons",      # private page
+        "https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide", # public page
     ]
 
     _DEFAULT_DENY = [
@@ -51,7 +54,8 @@ class TwikiSpider(LinkSpider):
         "RETRY_TIMES": 0, # Very Safe no retries
         "DEPTH_LIMIT": 1, # Default max depth
         "DOWNLOAD_DELAY": 60, # Default (download) delay
-        "CLOSESPIDER_PAGECOUNT": 1 # Very Safe Default max pages
+        "CLOSESPIDER_PAGECOUNT": 1, # Very Safe Default max pages
+        "COOKIES_ENABLED": False,      # disable CookiesMiddleware jar
     }
 
     @staticmethod

@@ -79,7 +79,18 @@ DUPEFILTER_CLASS = "scrapy.dupefilters.RFPDupeFilter"
 # ---------------------------------------------------------------------------
 # Middlewares, Pipelines and Extensions Priorities
 # ---------------------------------------------------------------------------
-DOWNLOADER_MIDDLEWARES = { }
+DOWNLOADER_MIDDLEWARES = {
+    "src.data_manager.collectors.scrapers.middlewares.AuthDownloaderMiddleware": 500,
+    "scrapy.downloadermiddlewares.retry.RetryMiddleware": 550,
+    # RedirectMiddleware stays at its default 600 — no entry needed
+}
+
+SPIDER_AUTH_PROVIDERS = {
+    "cern_sso": {
+        "class": "src.data_manager.collectors.scrapers.auth.cern_sso.CERNSSOProvider",
+        "kwargs": {"headless": True},
+    },
+}
 
 ITEM_PIPELINES = { }
 
