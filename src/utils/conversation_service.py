@@ -12,6 +12,8 @@ from uuid import UUID, uuid4
 import psycopg2
 from psycopg2.extras import execute_values
 
+import os
+
 from src.utils.sql import (
     SQL_INSERT_CONVO,
     SQL_INSERT_AB_COMPARISON,
@@ -20,6 +22,9 @@ from src.utils.sql import (
     SQL_GET_PENDING_AB_COMPARISON,
     SQL_DELETE_AB_COMPARISON,
     SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
+    SQL_MM_GET_CONV_ID_BY_SOURCE_REF,
+    SQL_MM_CREATE_CONVERSATION,
+    SQL_MM_UPDATE_CONVERSATION_TIMESTAMP,
 )
 
 
@@ -27,7 +32,7 @@ from src.utils.sql import (
 class Message:
     """A conversation message."""
     message_id: Optional[int] = None
-    conversation_id: str = ""
+    conversation_id: Any = ""  # int (FK to conversation_metadata) or "" when unset
     sender: str = ""  # 'user' or 'assistant'
     content: str = ""
     link: Optional[str] = None
@@ -253,9 +258,71 @@ class ConversationService:
             self._release_connection(conn)
     
     # =========================================================================
+    # Cross-platform Conversation Operations
+    # =========================================================================
+
+    def get_or_create_conversation_for_ref(
+        self,
+        source_ref: str,
+        mm_client_id: str = "",
+        title: str = "",
+    ) -> int:
+        """Return the integer conversation_id for a Mattermost source_ref.
+
+        Looks up `conversation_metadata` by `source_ref`.  If no row exists yet,
+        creates one with `archi_service = 'mattermost'` and returns the new id.
+
+        Args:
+            source_ref:    Stable external key, e.g. "mm_thread_<post_id>" or
+                           "mm_channel_<ch>_user_<uid>".
+            mm_client_id:  Bridge key used by the web-chat list query, typically
+                           "mm_user_<preferred_username>".
+            title:         Short title for the conversation (truncated to 50 chars).
+
+        Returns:
+            Integer conversation_id from conversation_metadata.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(SQL_MM_GET_CONV_ID_BY_SOURCE_REF, (source_ref,))
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+
+                # Create new metadata row
+                now = datetime.now(timezone.utc)
+                title_clean = (title[:50] if title else source_ref[:50]) or "Mattermost conversation"
+                version = os.getenv("APP_VERSION", "unknown")
+                cur.execute(
+                    SQL_MM_CREATE_CONVERSATION,
+                    (title_clean, now, now, mm_client_id, version, source_ref),
+                )
+                conv_id = cur.fetchone()[0]
+                conn.commit()
+                return conv_id
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._release_connection(conn)
+
+    def update_conversation_timestamp_for_ref(self, conv_int_id: int) -> None:
+        """Update last_message_at for a Mattermost conversation to now."""
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(SQL_MM_UPDATE_CONVERSATION_TIMESTAMP, (datetime.now(timezone.utc), conv_int_id))
+                conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            self._release_connection(conn)
+
+    # =========================================================================
     # A/B Comparison Operations
     # =========================================================================
-    
+
     def create_ab_comparison(
         self,
         conversation_id: str,

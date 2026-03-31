@@ -26,6 +26,9 @@ class Permission:
         HISTORY = "chat:history"
         FEEDBACK = "chat:feedback"
 
+    class Mattermost(str, Enum):
+        ACCESS = "mattermost:access"  # Gate for Mattermost bot access (not granted to base-user)
+
     class Documents(str, Enum):
         VIEW = "documents:view"
         SELECT = "documents:select"

@@ -15,6 +15,7 @@ mcp_servers:
   {{ server_name }}:
     transport: {{ server_config.transport | default('streamable_http', true) }}
     url: {{ server_config.url | default('', true) }}
+    sso_auth: {{ server_config.sso_auth | default(false, true) }}
   {%- endfor %}
 
 services:
@@ -51,6 +52,31 @@ services:
     update_time: {{ services.piazza.update_time | default(60, true) }}
   mattermost:
     update_time: {{ services.mattermost.update_time | default(60, true) }}
+    port: {{ services.mattermost.port | default(5000, true) }}
+    external_port: {{ services.mattermost.external_port | default(5000, true) }}
+    base_url: "{{ services.mattermost.base_url | default('https://mattermost.web.cern.ch/', true) }}"
+    # Bot account Mattermost user ID — used to skip self-replies and add reactions.
+    # Leave blank to auto-fetch from GET /api/v4/users/me on startup (requires MATTERMOST_PAK).
+    bot_user_id: "{{ services.mattermost.bot_user_id | default('', true) }}"
+    # How many prior conversation turns (user+AI pairs) to pass to the AI pipeline per thread.
+    context_window: {{ services.mattermost.context_window | default(20, true) }}
+    # Path to JSON file used for polling-mode deduplication.
+    tracking_file: "{{ services.mattermost.tracking_file | default('/root/data/mattermost/answered_posts.json', true) }}"
+    # Emoji reactions to add while processing / on success / on error.
+    reactions:
+      processing: "{{ services.mattermost.reactions.processing | default('eyes', true) }}"
+      done: "{{ services.mattermost.reactions.done | default('white_check_mark', true) }}"
+      error: "{{ services.mattermost.reactions.error | default('x', true) }}"
+    auth:
+      enabled: {{ services.mattermost.auth.enabled | default(false, true) }}
+      token_store: {{ services.mattermost.auth.token_store | default('config', true) }}
+      default_role: {{ services.mattermost.auth.default_role | default('mattermost-restricted', true) }}
+      session_lifetime_days: {{ services.mattermost.auth.session_lifetime_days | default(30, true) }}
+      roles_refresh_hours: {{ services.mattermost.auth.roles_refresh_hours | default(24, true) }}
+      login_base_url: {{ services.mattermost.auth.login_base_url | default('', true) }}
+      sso:
+        token_endpoint: {{ services.mattermost.auth.sso.token_endpoint | default('', true) }}
+      user_roles: {{ services.mattermost.auth.user_roles | default({}, true) | tojson }}
   redmine_mailbox:
     agent_class: {{ services.redmine_mailbox.agent_class | default('CMSCompOpsAgent', true) }}
     agents_dir: "{{ services.redmine_mailbox.agents_dir | default('', true) }}"
@@ -142,6 +168,13 @@ services:
   grafana:
     port: {{ services.grafana.port | default(3000, true) }}
     external_port: {{ services.grafana.external_port | default(3000, true) }}
+  mcp_server:
+    enabled: {{ services.mcp_server.enabled | default(false, true) }}
+    # Public URL of the chat service that MCP clients will connect to.
+    # Defaults to the chat app's hostname and external port.
+    url: "{{ services.mcp_server.url | default('http://' + (services.chat_app.hostname | default('localhost', true)) + ':' + (services.chat_app.external_port | default(7861, true) | string), true) }}"
+    # HTTP request timeout in seconds.
+    timeout: {{ services.mcp_server.timeout | default(120, true) }}
 
 data_manager:
   collection_name: {{ collection_name | default("default_collection", true) }}

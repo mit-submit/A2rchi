@@ -160,6 +160,55 @@ WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
 """
 
 # =============================================================================
+# Cross-platform (Mattermost ↔ web-chat) conversation queries
+# =============================================================================
+
+# Look up integer conversation_id by external source_ref (e.g. "mm_thread_xxx")
+SQL_MM_GET_CONV_ID_BY_SOURCE_REF = """
+SELECT conversation_id FROM conversation_metadata
+WHERE source_ref = %s
+LIMIT 1;
+"""
+
+# Create a conversation_metadata row for a Mattermost thread/channel
+SQL_MM_CREATE_CONVERSATION = """
+INSERT INTO conversation_metadata (
+    title, created_at, last_message_at, client_id, archi_version, archi_service, source_ref
+)
+VALUES (%s, %s, %s, %s, %s, 'mattermost', %s)
+RETURNING conversation_id;
+"""
+
+# Update last_message_at for a Mattermost conversation (matched by integer id + source_ref)
+SQL_MM_UPDATE_CONVERSATION_TIMESTAMP = """
+UPDATE conversation_metadata
+SET last_message_at = %s
+WHERE conversation_id = %s;
+"""
+
+# List conversations for an authenticated user, including Mattermost ones linked by
+# mm_client_id = "mm_user_{preferred_username}".  Three ownership checks:
+#   1. user_id matches (web-chat SSO conversations)
+#   2. client_id matches (anonymous / browser-keyed conversations)
+#   3. client_id = mm_client_id  (Mattermost-originated conversations)
+SQL_LIST_CONVERSATIONS_ALL_SOURCES = """
+SELECT conversation_id, title, created_at, last_message_at,
+       COALESCE(archi_service, 'chat') AS archi_service
+FROM conversation_metadata
+WHERE user_id = %s OR client_id = %s OR client_id = %s
+ORDER BY last_message_at DESC
+LIMIT %s;
+"""
+
+# Fetch metadata for a single conversation, accepting any of the three ownership proofs
+SQL_GET_CONVERSATION_METADATA_ALL_SOURCES = """
+SELECT conversation_id, title, created_at, last_message_at,
+       COALESCE(archi_service, 'chat') AS archi_service
+FROM conversation_metadata
+WHERE conversation_id = %s AND (user_id = %s OR client_id = %s OR client_id = %s);
+"""
+
+# =============================================================================
 # Tool Calls Queries
 # =============================================================================
 

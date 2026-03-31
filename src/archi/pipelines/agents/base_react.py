@@ -998,19 +998,38 @@ class BaseReActAgent:
         extra_tools: Optional[Sequence[Callable]] = None,
         middleware: Optional[Sequence[Callable]] = None,
         force: bool = False,
+        user_id: Optional[str] = None,
     ) -> CompiledStateGraph:
         """Ensure the LangGraph agent reflects the latest tool set."""
         base_tools = list(static_tools) if static_tools is not None else self.tools
         toolset: List[Callable] = list(base_tools)
 
         if "mcp" in self.selected_tool_names:
-            if self._mcp_tools is None:
-                built = self._build_mcp_tools()
-                self._mcp_tools = list(built or [])
-            toolset.extend(self._mcp_tools)
+            # When user_id is present, always rebuild so each request fetches a
+            # fresh (possibly refreshed) token from the DB for SSO-auth servers.
+            # Without a user_id (anonymous), cache the tools as before.
+            if self._mcp_tools is None or user_id:
+                built = self._build_mcp_tools(user_id=user_id)
+                if not user_id:
+                    self._mcp_tools = list(built or [])
+                toolset.extend(built or [])
+            else:
+                toolset.extend(self._mcp_tools)
 
         if extra_tools:
             toolset.extend(extra_tools)
+
+        # OpenAI enforces a hard 128-tool limit per request.
+        _OPENAI_MAX_TOOLS = 128
+        if len(toolset) > _OPENAI_MAX_TOOLS:
+            logger.warning(
+                f"Toolset has {len(toolset)} tools, exceeding OpenAI max of {_OPENAI_MAX_TOOLS}. "
+                f"Truncating MCP tools to fit. Static tools ({len(base_tools)}) are preserved."
+            )
+            # Keep all static/extra tools; trim only the MCP portion
+            n_static = len(base_tools) + (len(list(extra_tools)) if extra_tools else 0)
+            mcp_budget = max(0, _OPENAI_MAX_TOOLS - n_static)
+            toolset = toolset[:n_static] + toolset[n_static:n_static + mcp_budget]
 
         middleware = list(middleware) if middleware is not None else self.middleware
 
@@ -1057,14 +1076,14 @@ class BaseReActAgent:
         static_names = [name for name in selected if name != "mcp"]
         return self._select_tools_from_registry(static_names)
 
-    def _build_mcp_tools(self) -> List[Callable]:
+    def _build_mcp_tools(self, user_id: Optional[str] = None) -> List[Callable]:
         """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
         try:
             self._async_runner = AsyncLoopThread.get_instance()
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools = self._async_runner.run(initialize_mcp_client())
+            client, mcp_tools = self._async_runner.run(initialize_mcp_client(user_id=user_id))
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None
@@ -1153,7 +1172,8 @@ class BaseReActAgent:
         if hasattr(self, "_vector_tools"):
             extra_tools = self._vector_tools if self._vector_tools else None  # type: ignore[attr-defined]
 
-        self.refresh_agent(extra_tools=extra_tools)
+        user_id = kwargs.get("user_id")
+        self.refresh_agent(extra_tools=extra_tools, user_id=user_id)
 
         inputs = self._prepare_inputs(history=kwargs.get("history"))
         history_messages = inputs["history"]

@@ -141,6 +141,9 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
+      {% if ssl_cert_file -%}
+      SSL_CERT_FILE: {{ ssl_cert_file }}
+      {%- endif %}
     env_file:
       - .env
     {% if gpu_ids and not use_podman -%}
@@ -167,6 +170,9 @@ services:
       {% endfor %}
       {% if gpu_ids -%}
       - archi-models:/root/models/
+      {%- endif %}
+      {% if ssl_cert_host and ssl_cert_file -%}
+      - {{ ssl_cert_host }}:{{ ssl_cert_file }}:ro
       {%- endif %}
     logging:
       options:
@@ -386,6 +392,7 @@ services:
       PGPORT: {{ postgres_port }}
       PGDATABASE: archi-db
       PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
       {% for secret in required_secrets | default([]) -%}
       {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
       {% endfor %}
@@ -394,6 +401,9 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
       VERBOSITY: {{ verbosity }}
+      {% if ssl_cert_file -%}
+      SSL_CERT_FILE: {{ ssl_cert_file }}
+      {%- endif %}
     env_file:
       - .env
     {% if gpu_ids and not use_podman -%}
@@ -409,8 +419,10 @@ services:
       {% for secret in required_secrets | default([]) -%}
       - {{ secret.lower() }}
       {% endfor %}
+    ports:
+      - "{{ services.mattermost.external_port | default(5000) }}:{{ services.mattermost.port | default(5000) }}"
     volumes:
-      - {{ data_volume_name }}:/root/data/
+      - {{ data_manager_volume_name }}:/root/data/
       - ./configs:/root/archi/configs
       - ./data/prompts:/root/archi/data/prompts:ro
       - ./data/agents:/root/archi/agents:ro
@@ -420,6 +432,9 @@ services:
       {% endfor %}
       {% if gpu_ids -%}
       - archi-models:/root/models/
+      {%- endif %}
+      {% if ssl_cert_host and ssl_cert_file -%}
+      - {{ ssl_cert_host }}:{{ ssl_cert_file }}:ro
       {%- endif %}
     logging:
       options:

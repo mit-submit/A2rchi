@@ -219,14 +219,58 @@ class ConfigService:
                     ADD COLUMN IF NOT EXISTS services_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS data_manager_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS archi_config JSONB DEFAULT '{}'::jsonb,
-                    ADD COLUMN IF NOT EXISTS mcp_servers_config JSONB DEFAULT '{}'::jsonb,
-                    ADD COLUMN IF NOT EXISTS global_config JSONB DEFAULT '{}'::jsonb
+                    ADD COLUMN IF NOT EXISTS global_config JSONB DEFAULT '{}'::jsonb,
+                    ADD COLUMN IF NOT EXISTS mcp_servers_config JSONB DEFAULT '{}'::jsonb
                     """
                 )
                 cursor.execute(
                     """
                     ALTER TABLE dynamic_config
                     ADD COLUMN IF NOT EXISTS active_agent_name VARCHAR(200)
+                    """
+                )
+                # SSO token table for MCP Bearer auth (added for sso_auth MCP support)
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS sso_tokens (
+                        user_id                 VARCHAR(200) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                        access_token            BYTEA,
+                        refresh_token           BYTEA,
+                        access_token_expires_at TIMESTAMPTZ,
+                        session_expires_at      TIMESTAMPTZ,
+                        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                # MCP OAuth2 client registrations and per-user tokens
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+                        server_name   VARCHAR(200) PRIMARY KEY,
+                        server_url    TEXT NOT NULL,
+                        client_id     TEXT NOT NULL,
+                        client_secret TEXT NOT NULL DEFAULT '',
+                        redirect_uri  TEXT NOT NULL,
+                        auth_meta     JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
+                        user_id                 VARCHAR(200) REFERENCES users(id) ON DELETE CASCADE,
+                        server_name             VARCHAR(200) NOT NULL,
+                        access_token            BYTEA,
+                        refresh_token           BYTEA,
+                        access_token_expires_at TIMESTAMPTZ,
+                        session_expires_at      TIMESTAMPTZ,
+                        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        PRIMARY KEY (user_id, server_name)
+                    )
                     """
                 )
                 conn.commit()

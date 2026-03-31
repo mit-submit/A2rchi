@@ -468,6 +468,16 @@ body {
   color: var(--error-text);
 }
 
+/* Mattermost-originated conversations get a subtle left accent */
+.conversation-item.from-mattermost {
+  border-left: 2px solid var(--accent-color, #1565c0);
+  padding-left: 10px;
+}
+
+.conversation-item.from-mattermost .conversation-item-icon {
+  color: var(--accent-color, #1565c0);
+}
+
 /* -----------------------------------------------------------------------------
    User Profile Widget (Bottom of Sidebar)
    ----------------------------------------------------------------------------- */

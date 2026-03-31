@@ -478,6 +478,11 @@ class TemplateManager:
         template_vars.setdefault("prompt_files", [])
         template_vars.setdefault("rubrics", [])
 
+        # SSL cert file for HTTPS verification (e.g. CERN CA bundle)
+        chat_config = context.config_manager.config.get("services", {}).get("chat_app", {})
+        template_vars.setdefault("ssl_cert_host", chat_config.get("ssl_cert_host", ""))
+        template_vars.setdefault("ssl_cert_file", chat_config.get("ssl_cert_file", ""))
+
         if context.plan.get_service("grader").enabled:
             template_vars["rubrics"] = self._get_grader_rubrics(context.config_manager)
 

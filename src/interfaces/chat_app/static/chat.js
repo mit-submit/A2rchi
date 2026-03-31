@@ -1777,13 +1777,22 @@ const UI = {
       for (const conv of items) {
         const isActive = conv.conversation_id === activeId;
         const title = Utils.escapeHtml(conv.title || `Conversation ${conv.conversation_id}`);
-        
+        const isMattermost = conv.archi_service === 'mattermost';
+
+        // Icon: Mattermost grid for MM conversations, chat bubble for web-chat
+        const icon = isMattermost
+          ? `<svg class="conversation-item-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" title="Started in Mattermost">
+               <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/>
+             </svg>`
+          : `<svg class="conversation-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+             </svg>`;
+
         html += `
-          <div class="conversation-item ${isActive ? 'active' : ''}" 
-               data-id="${conv.conversation_id}">
-            <svg class="conversation-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>
+          <div class="conversation-item ${isActive ? 'active' : ''} ${isMattermost ? 'from-mattermost' : ''}"
+               data-id="${conv.conversation_id}"
+               ${isMattermost ? `title="Started in Mattermost — continue here"` : ''}>
+            ${icon}
             <span class="conversation-item-title">${title}</span>
             <button class="conversation-item-delete" data-id="${conv.conversation_id}" aria-label="Delete conversation" title="Delete conversation">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
