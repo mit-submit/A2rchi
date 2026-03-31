@@ -40,7 +40,7 @@ class BasePageItem(scrapy.Item):
     url = scrapy.Field()
     content = scrapy.Field()       # Full text or bytes — NOT a preview
     suffix = scrapy.Field()        # "html", "pdf", "md" etc.
-    source_type = scrapy.Field()   # "web" | "sso" | "twiki" | 'indico" | "discourse"
+    source_type = scrapy.Field()   # "web" | "twiki" | "indico" | "discourse"
 
     # Metadata fields — become ScrapedResource.metadata dict
     title = scrapy.Field()
