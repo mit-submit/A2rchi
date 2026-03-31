@@ -111,7 +111,7 @@ class TestToolRegistry:
         from src.archi.pipelines.copilot_agents.tools import TOOL_REGISTRY
 
         expected = {
-            "search_knowledge_base",
+            "search_vectorstore_hybrid",
             "search_local_files",
             "search_metadata_index",
             "list_metadata_schema",
@@ -139,14 +139,14 @@ class TestToolRestrictions:
         from unittest.mock import MagicMock
 
         tool_a = MagicMock()
-        tool_a.name = "search_knowledge_base"
+        tool_a.name = "search_vectorstore_hybrid"
         tool_b = MagicMock()
         tool_b.name = "rucio_events_search"
 
         kwargs = _build_tool_restriction_kwargs([tool_a, tool_b])
         assert sorted(kwargs["available_tools"]) == [
             "rucio_events_search",
-            "search_knowledge_base",
+            "search_vectorstore_hybrid",
         ]
         assert "excluded_tools" not in kwargs
 
@@ -222,7 +222,7 @@ class TestGetToolRegistrySignature:
         # This is how app.py calls it — must not raise
         registry = CopilotAgentPipeline.get_tool_registry(dummy)
         assert isinstance(registry, dict)
-        assert "search_knowledge_base" in registry
+        assert "search_vectorstore_hybrid" in registry
 
     def test_get_tool_descriptions_instance_call(self):
         from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
@@ -230,8 +230,8 @@ class TestGetToolRegistrySignature:
         dummy = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
         descriptions = CopilotAgentPipeline.get_tool_descriptions(dummy)
         assert isinstance(descriptions, dict)
-        assert "search_knowledge_base" in descriptions
-        assert isinstance(descriptions["search_knowledge_base"], str)
+        assert "search_vectorstore_hybrid" in descriptions
+        assert isinstance(descriptions["search_vectorstore_hybrid"], str)
 
 
 class TestSessionConfigOverrides:

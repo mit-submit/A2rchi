@@ -32,7 +32,7 @@ class RetrieverInput(BaseModel):
 
 # ── Factory ──────────────────────────────────────────────────────────────
 
-TOOL_NAME = "search_knowledge_base"
+TOOL_NAME = "search_vectorstore_hybrid"
 TOOL_DESCRIPTION = (
     "Search the indexed knowledge base for relevant passages.\n"
     "Input: query string.\n"

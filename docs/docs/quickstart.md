@@ -49,7 +49,7 @@ tools:
   - search_metadata_index
   - list_metadata_schema
   - fetch_catalog_document
-  - search_knowledge_base
+  - search_vectorstore_hybrid
 ---
 
 You are a CMS CompOps assistant.

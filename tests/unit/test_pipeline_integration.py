@@ -204,7 +204,7 @@ class TestAdapterOutputFlow:
         adapter._response_buffer = "Final answer"
         adapter._tool_calls = [
             _ToolCallRecord(
-                id="tc-1", name="search_knowledge_base", args={"query": "test"}
+                id="tc-1", name="search_vectorstore_hybrid", args={"query": "test"}
             ),
             _ToolCallRecord(
                 id="tc-2", name="fetch_catalog_document", args={"url": "http://x"}
@@ -220,7 +220,7 @@ class TestAdapterOutputFlow:
         assert final.source_documents == ["doc1"]
         assert final.metadata["event_type"] == "final"
         assert len(final.metadata["tool_calls"]) == 2
-        assert final.metadata["tool_calls"][0]["name"] == "search_knowledge_base"
+        assert final.metadata["tool_calls"][0]["name"] == "search_vectorstore_hybrid"
         assert final.metadata["usage"]["prompt_tokens"] == 100
 
     def test_build_final_no_usage_omits_key(self):

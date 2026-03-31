@@ -5,7 +5,7 @@ tools:
   - search_metadata_index
   - list_metadata_schema
   - fetch_catalog_document
-  - search_knowledge_base
+  - search_vectorstore_hybrid
 ---
 
 You are the PR preview assistant. Help validate that the chat service can load, search, and respond.

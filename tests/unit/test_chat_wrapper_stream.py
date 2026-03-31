@@ -173,7 +173,7 @@ class TestStreamToolEvents:
                 metadata={
                     "event_type": "tool_start",
                     "tool_call_id": "tc-1",
-                    "tool_name": "search_knowledge_base",
+                    "tool_name": "search_vectorstore_hybrid",
                     "tool_args": {"query": "test"},
                 },
                 final=False,
@@ -190,7 +190,7 @@ class TestStreamToolEvents:
 
         tool_starts = [e for e in events if e.get("type") == "tool_start"]
         assert len(tool_starts) == 1
-        assert tool_starts[0]["tool_name"] == "search_knowledge_base"
+        assert tool_starts[0]["tool_name"] == "search_vectorstore_hybrid"
         assert tool_starts[0]["tool_call_id"] == "tc-1"
         assert tool_starts[0]["tool_args"] == {"query": "test"}
 
@@ -461,7 +461,7 @@ class TestStreamToolStepsDisabled:
                 metadata={
                     "event_type": "tool_start",
                     "tool_call_id": "tc-1",
-                    "tool_name": "search_knowledge_base",
+                    "tool_name": "search_vectorstore_hybrid",
                     "tool_args": {},
                 },
                 final=False,

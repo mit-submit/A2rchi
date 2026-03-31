@@ -300,7 +300,7 @@ class CopilotAgentPipeline:
             return names is None or name in names
 
         # Vectorstore retriever tool
-        if vectorstore and _want("search_knowledge_base"):
+        if vectorstore and _want("search_vectorstore_hybrid"):
             try:
                 from src.archi.pipelines.copilot_agents.tools.retriever import build_retriever_tool
                 from src.data_manager.vectorstore.retrievers import \

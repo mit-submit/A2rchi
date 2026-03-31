@@ -146,7 +146,7 @@ def _verify_tool_registry() -> None:
     """Verify TOOL_REGISTRY is consistent and all factories are callable."""
     _info("Verifying TOOL_REGISTRY ...")
     expected_tools = {
-        "search_knowledge_base",
+        "search_vectorstore_hybrid",
         "search_local_files",
         "search_metadata_index",
         "list_metadata_schema",

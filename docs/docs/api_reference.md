@@ -212,7 +212,7 @@ Create or update an agent spec.
 ```json
 {
   "name": "My Agent",
-  "tools": ["search_knowledge_base", "fetch_catalog_document"],
+  "tools": ["search_vectorstore_hybrid", "fetch_catalog_document"],
   "prompt": "You are a helpful assistant..."
 }
 ```

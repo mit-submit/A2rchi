@@ -100,7 +100,7 @@ Agent specs are discovered via `list_agent_files()` and loaded via `load_agent_s
 
 ### Pipeline Classes
 
-- `CMSCompOpsAgent` — default ReAct agent with 6 built-in tools (search_local_files, search_metadata_index, list_metadata_schema, fetch_catalog_document, search_knowledge_base, mcp)
+- `CMSCompOpsAgent` — default ReAct agent with 6 built-in tools (search_local_files, search_metadata_index, list_metadata_schema, fetch_catalog_document, search_vectorstore_hybrid, mcp)
 - `QAPipeline` — simpler retrieval-augmented QA without tool calling
 
 ### Adding a New Tool

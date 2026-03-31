@@ -18,7 +18,7 @@ tools:
   - search_metadata_index
   - list_metadata_schema
   - fetch_catalog_document
-  - search_knowledge_base
+  - search_vectorstore_hybrid
   - mcp
 ---
 
@@ -46,7 +46,7 @@ tools:
   - search_metadata_index
   - list_metadata_schema
   - fetch_catalog_document
-  - search_knowledge_base
+  - search_vectorstore_hybrid
 ---
 
 You are a CMS CompOps assistant.
@@ -64,7 +64,7 @@ Rules:
 ---
 name: CMS CompOps + MCP
 tools:
-  - search_knowledge_base
+  - search_vectorstore_hybrid
   - fetch_catalog_document
   - mcp
 ---
@@ -82,7 +82,7 @@ Always distinguish internal evidence from MCP-derived evidence.
 ---
 name: CMS CompOps MONIT
 tools:
-  - search_knowledge_base
+  - search_vectorstore_hybrid
   - fetch_catalog_document
   - monit_opensearch_search
   - monit_opensearch_aggregation
@@ -134,7 +134,7 @@ Pull the full text of a specific file by its hash. Supports truncation with `max
 
 - **Use for:** Reading a specific document after finding it via search
 
-### `search_knowledge_base`
+### `search_vectorstore_hybrid`
 
 Semantic and keyword (BM25) hybrid retrieval of relevant passages from the vector store.
 
@@ -234,7 +234,7 @@ Include `mcp` in the tools list to enable MCP tools for an agent:
 ---
 name: Research Assistant
 tools:
-  - search_knowledge_base
+  - search_vectorstore_hybrid
   - fetch_catalog_document
   - mcp
 ---
