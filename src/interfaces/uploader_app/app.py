@@ -78,7 +78,7 @@ class FlaskAppWrapper:
                 if not self.salt:
                     logger.warning("UPLOADER_SALT not set; account checks may fail.")
 
-        self.scraper_manager = ScraperManager(dm_config=self.config.get("data_manager"))
+        self.scraper_manager = ScraperManager(dm_config=self.config.get("data_manager"), persistence=self.persistence)
         self.git_manager = GitManager(dm_config=self.config.get("data_manager"))
         self.ticket_manager = TicketManager(dm_config=self.config.get("data_manager"))
         self.localfile_manager = LocalFileManager(dm_config=self.config.get("data_manager"))
@@ -286,7 +286,7 @@ class FlaskAppWrapper:
         if url:
             logger.info("Uploading the following URL: %s", url)
             try:
-                scraped_count = self.scraper_manager.collect_links(self.persistence, link_urls=[url])
+                scraped_count = self.scraper_manager.collect("link", [url])
                 self.persistence.flush_index()
                 self._update_source_status("web", state="idle", last_run=self._now_iso())
                 added_to_urls = True

@@ -34,7 +34,7 @@ class ScraperManager:
 
         sources_config = (dm_config or {}).get("sources", {}) or {}
 
-        self.config = sources_config if isinstance(sources_config, dict) else {}
+        self.config = sources_config.get("web", {}) if isinstance(sources_config, dict) else {}
         self.enabled = self.config.get("enabled", True)
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -46,7 +46,17 @@ class ScraperManager:
         self._run(self._catalog_urls)
     
     def collect(self, spider_key: str, urls: List[str]) -> None:
-        self._run(lambda key, cfg: urls if key == spider_key else [])
+        settings = get_project_settings()
+        process = CrawlerProcess(settings)
+        try:
+            SpiderClass = _make_spider_loader(settings)(spider_key)
+        except KeyError:
+            logger.error("Unknown spider: %s", spider_key)
+            return
+        cfg = self.config.get(spider_key, {})   # use config settings if present, else defaults
+        if urls:
+            self._add_crawler(process, SpiderClass, urls, cfg)
+            process.start()
 
     def _run(self, url_fn: Callable[[str, Dict], List[str]]) -> None:
         if not self.enabled:
@@ -57,6 +67,7 @@ class ScraperManager:
         load_spider = _make_spider_loader(settings)
         (self.data_path / "websites").mkdir(parents=True, exist_ok=True)
 
+        added = False
         for spider_key, cfg in self.config.items():
             if not isinstance(cfg, dict):
                 continue
@@ -67,8 +78,8 @@ class ScraperManager:
             urls = url_fn(spider_key, cfg)
             if urls:
                 self._add_crawler(process, SpiderClass, urls, cfg)
-
-        if process._crawlers:
+                added = True
+        if added:
             process.start()
 
     # ── CrawlerProcess wiring ─────────────────────────────────────────────────
