@@ -365,7 +365,7 @@ class Benchmarker:
 
         self.config = config 
         self.benchmarking_configs = config['services']['benchmarking']
-        modes = self.benchmarking_configs.get('modes', [])
+        modes = self.benchmarking_configs.get('modes') or []
         self.required_fields = ['question']
         if 'SOURCES' in modes:
             self.required_fields.append('sources')
@@ -660,7 +660,7 @@ class Benchmarker:
     def run(self):
         self.wait_for_ingestion_completion()
 
-        modes_being_run = set(self.benchmarking_configs['modes'])
+        modes_being_run = set(self.benchmarking_configs.get('modes') or [])
 
         logger.info("")
         logger.info("====== Starting benchmark: %s ======", self.benchmark_name)
@@ -704,7 +704,7 @@ class Benchmarker:
 
             if config_path != self.current_config:
                 self._load_config_by_path(config_path)
-                modes_being_run = set(self.benchmarking_configs['modes'])
+                modes_being_run = set(self.benchmarking_configs.get('modes') or [])
 
             question_id = 0
 
@@ -764,11 +764,15 @@ class Benchmarker:
                 # format the messages
                 q_results['messages'] = self.prepare_messages(result.get("messages", []))
 
-                # format the reference sources
-                match_fields_list = self.prepare_match_fields(question_item)
-                formatted_reference_sources = self.prepare_reference_sources(reference_sources, match_fields_list)
-                q_results["reference_sources_match_fields"] = match_fields_list
-                q_results["reference_sources_metadata"] = formatted_reference_sources
+                # format the reference sources (only when SOURCES mode is active)
+                if "SOURCES" in modes_being_run:
+                    match_fields_list = self.prepare_match_fields(question_item)
+                    formatted_reference_sources = self.prepare_reference_sources(reference_sources, match_fields_list)
+                    q_results["reference_sources_match_fields"] = match_fields_list
+                    q_results["reference_sources_metadata"] = formatted_reference_sources
+                else:
+                    q_results["reference_sources_match_fields"] = []
+                    q_results["reference_sources_metadata"] = []
 
                 if "RAGAS" in modes_being_run:
                     # collect necessary info for RAGAS evaluation
