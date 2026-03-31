@@ -6,6 +6,7 @@ from scrapy.linkextractors import LinkExtractor
 from scrapy.link import Link
 from src.data_manager.collectors.scrapers.utils import _IMAGE_EXTS
 from src.data_manager.collectors.scrapers.items import WebPageItem
+from src.data_manager.collectors.scrapers.parsers.link import parse_link_page
 
 class LinkSpider(Spider):
     """
@@ -14,6 +15,8 @@ class LinkSpider(Spider):
     """
 
     name = "link"
+
+    _DEFAULT_START_URLS = ["https://quotes.toscrape.com/"]
 
     custom_settings = {
         "DEPTH_LIMIT": 1, # Default max depth
@@ -64,8 +67,12 @@ class LinkSpider(Spider):
     def parse(self, response: Response) -> Iterator[WebPageItem | Request]:
         """
         Extract one item per response, then yield follow Requests up to max_depth.
+        @url https://quotes.toscrape.com/
+        @returns items 1
+        @returns requests 1
+        @scrapes url title
         """
-        yield from self.parse_item(response) # Yield Items
+        yield from self.parse_item(response) # Yield Item
         yield from self.follow_links(response) # Yield Requests
 
     
@@ -88,9 +95,9 @@ class LinkSpider(Spider):
     # ------------------------------------------------------------------ #
     # Extension points — pure, unit-testable/checkable without a reactor
     # ------------------------------------------------------------------ #
-
+    
     def parse_item(self, response: Response) -> Iterator[WebPageItem]:
-        raise NotImplementedError("parse_item must be implemented by the subclass")
+        yield from parse_link_page(response)
 
     def parse_follow_links(self, response: Response) -> Iterator[Link]:
         yield from self._le.extract_links(response)
