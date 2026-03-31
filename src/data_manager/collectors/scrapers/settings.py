@@ -92,7 +92,9 @@ SPIDER_AUTH_PROVIDERS = {
     },
 }
 
-ITEM_PIPELINES = { }
+ITEM_PIPELINES = {
+    "src.data_manager.collectors.scrapers.pipelines.PersistencePipeline": 300,
+}
 
 EXTENSIONS = { 
     "scrapy.extensions.closespider.CloseSpider": 500,

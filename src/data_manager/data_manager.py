@@ -38,7 +38,7 @@ class DataManager():
 
         self.localfile_manager = LocalFileManager(dm_config=self.config["data_manager"])
         self.git_manager = GitManager(dm_config=self.config["data_manager"])
-        self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"])
+        self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"], persistence=self.persistence)
         self.ticket_manager = TicketManager(dm_config=self.config["data_manager"])
 
         self.vector_manager = VectorStoreManager(
@@ -64,7 +64,7 @@ class DataManager():
         source_aggregation = [
             ("Copying configured local files", lambda: self.localfile_manager.collect_all_from_config(self.persistence)),
             ("Collecting git repos", lambda: self.git_manager.collect_all_from_config(self.persistence)),
-            ("Scraping web sources onto filesystem", lambda: self.scraper_manager.collect_all_from_config(self.persistence)),
+            ("Scraping web sources onto filesystem", lambda: self.scraper_manager.collect_all_from_config()),
             ("Fetching ticket data onto filesystem", lambda: self.ticket_manager.collect_all_from_config(self.persistence)),
         ]
 
