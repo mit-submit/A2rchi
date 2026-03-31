@@ -14,11 +14,8 @@ class TwikiSpider(LinkSpider):
 
     name = "twiki"
     
-    auth_provider_name = "cern_sso"
-    
     _DEFAULT_START_URLS = [
-        "https://twiki.cern.ch/twiki/bin/view/CMS/HeavyIons",      # private page
-        "https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide", # public page
+        "https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide",  # public page
     ]
 
     _DEFAULT_DENY = [
