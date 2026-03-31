@@ -1,7 +1,7 @@
 ---
 name: CMS Comp Ops
 tools:
-  - search_vectorstore_hybrid
+  - search_knowledge_base
   - search_local_files
   - search_metadata_index
   - list_metadata_schema

@@ -131,49 +131,6 @@ class TestToolRegistry:
             assert isinstance(entry["description"], str), f"{name} description not str"
 
 
-class TestToolNameAliases:
-    """Tool-name alias normalization in _build_tools."""
-
-    def test_search_vectorstore_hybrid_normalizes(self):
-        """Agent specs with 'search_vectorstore_hybrid' should match
-        the canonical 'search_knowledge_base' tool."""
-        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
-
-        # Build a bare pipeline with the old tool name
-        pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
-        pipeline.selected_tool_names = [
-            "search_vectorstore_hybrid",
-            "search_local_files",
-        ]
-        pipeline.dm_config = {}
-        pipeline._catalog_client = None
-        pipeline._monit_client = None
-
-        # _build_tools needs a collector; tools will be empty because there's
-        # no vectorstore or catalog client, but the alias resolution itself
-        # should not raise.
-        from src.archi.pipelines.copilot_agents.tools import DocumentCollector
-
-        tools = pipeline._build_tools(DocumentCollector())
-        # No tools built (no vectorstore/catalog), but no crash either
-        assert isinstance(tools, list)
-
-    def test_canonical_name_still_works(self):
-        """The canonical 'search_knowledge_base' should still work."""
-        from src.archi.pipelines.copilot_agents.copilot_agent import CopilotAgentPipeline
-
-        pipeline = CopilotAgentPipeline.__new__(CopilotAgentPipeline)
-        pipeline.selected_tool_names = ["search_knowledge_base"]
-        pipeline.dm_config = {}
-        pipeline._catalog_client = None
-        pipeline._monit_client = None
-
-        from src.archi.pipelines.copilot_agents.tools import DocumentCollector
-
-        tools = pipeline._build_tools(DocumentCollector())
-        assert isinstance(tools, list)
-
-
 class TestToolRestrictions:
     """SDK built-in tools must be hard-blocked for Archi sessions."""
 

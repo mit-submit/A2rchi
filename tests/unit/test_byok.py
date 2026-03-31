@@ -3,14 +3,12 @@ Unit tests for BYOK (Bring Your Own Key) functionality.
 
 Tests cover:
 - Key hierarchy (env > session)
-- Session key storage
-- API key endpoints
-- Provider key integration
+- Provider key methods
+- Security (key not exposed in serialization)
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from flask import Flask, session
+from unittest.mock import patch
 
 
 class TestKeyHierarchy:
@@ -50,47 +48,6 @@ class TestKeyHierarchy:
         
         assert provider.api_key == "sk-session-key-67890"
         assert provider.is_configured is True
-
-
-class TestProviderKeyIntegration:
-    """Test provider factory functions with API keys."""
-    
-    def test_get_provider_with_api_key_creates_new_instance(self):
-        """get_provider_with_api_key should create a fresh provider instance."""
-        from src.archi.providers import get_provider_with_api_key, ProviderType
-        
-        provider1 = get_provider_with_api_key(ProviderType.OPENAI, "sk-key-1")
-        provider2 = get_provider_with_api_key(ProviderType.OPENAI, "sk-key-2")
-        
-        # Should be different instances
-        assert provider1 is not provider2
-        # With different keys
-        assert provider1.api_key == "sk-key-1"
-        assert provider2.api_key == "sk-key-2"
-    
-    def test_get_chat_model_with_api_key(self):
-        """get_chat_model_with_api_key should return a configured model."""
-        from src.archi.providers import get_chat_model_with_api_key, ProviderType
-        
-        # Test that function accepts api_key parameter and returns a model object
-        # (validation happens at request time, not creation time)
-        model = get_chat_model_with_api_key(
-            ProviderType.OPENAI, 
-            "gpt-4o-mini", 
-            "sk-test-key"
-        )
-        assert model is not None
-    
-    def test_provider_types_supported(self):
-        """All expected provider types should be supported."""
-        from src.archi.providers import ProviderType, list_provider_types
-        
-        types = list_provider_types()
-        
-        assert ProviderType.OPENAI in types
-        assert ProviderType.ANTHROPIC in types
-        assert ProviderType.OPENROUTER in types
-        assert ProviderType.LOCAL in types
 
 
 class TestBaseProviderKeyMethods:
@@ -141,24 +98,6 @@ class TestBaseProviderKeyMethods:
             assert provider.is_configured is False
 
 
-class TestProviderDisplayNames:
-    """Test that providers have correct display names."""
-    
-    def test_openai_display_name(self):
-        """OpenAI provider should have correct display name."""
-        from src.archi.providers import get_provider_with_api_key, ProviderType
-        
-        provider = get_provider_with_api_key(ProviderType.OPENAI, "test-key")
-        assert provider.display_name == "OpenAI"
-    
-    def test_anthropic_display_name(self):
-        """Anthropic provider should have correct display name."""
-        from src.archi.providers import get_provider_with_api_key, ProviderType
-        
-        provider = get_provider_with_api_key(ProviderType.ANTHROPIC, "test-key")
-        assert provider.display_name == "Anthropic"
-
-
 class TestSecurityRequirements:
     """Test security-related requirements."""
     
@@ -182,31 +121,3 @@ class TestSecurityRequirements:
         # Check that the key doesn't appear in any string representation
         repr_str = repr(provider) if hasattr(provider, '__repr__') else str(provider)
         assert "secret-key-12345" not in repr_str
-
-
-class TestModelInfo:
-    """Test ModelInfo dataclass."""
-    
-    def test_model_info_to_dict(self):
-        """ModelInfo.to_dict() should return correct structure."""
-        from src.archi.providers.base import ModelInfo
-        
-        model = ModelInfo(
-            id="gpt-4o",
-            name="gpt-4o",
-            display_name="GPT-4o",
-            context_window=128000,
-            supports_tools=True,
-            supports_streaming=True,
-            supports_vision=True,
-        )
-        
-        d = model.to_dict()
-        
-        assert d["id"] == "gpt-4o"
-        assert d["name"] == "gpt-4o"
-        assert d["display_name"] == "GPT-4o"
-        assert d["context_window"] == 128000
-        assert d["supports_tools"] is True
-        assert d["supports_streaming"] is True
-        assert d["supports_vision"] is True

@@ -56,14 +56,6 @@ def _build_tool_restriction_kwargs(custom_tools: list) -> Dict[str, list[str]]:
     }
 
 
-def _canonicalize_tool_name(name: str) -> str:
-    """Normalize legacy agent-spec tool aliases to canonical registry names."""
-    aliases: Dict[str, str] = {
-        "search_vectorstore_hybrid": "search_knowledge_base",
-    }
-    return aliases.get(name, name)
-
-
 # ── Provider mapping (decision 4) ────────────────────────────────────────
 
 _PROVIDER_TYPE_MAP = {
@@ -302,7 +294,7 @@ class CopilotAgentPipeline:
 
         names: Optional[set] = None
         if self.selected_tool_names:
-            names = {_canonicalize_tool_name(n) for n in self.selected_tool_names}
+            names = set(self.selected_tool_names)
 
         def _want(name: str) -> bool:
             return names is None or name in names
@@ -540,7 +532,7 @@ class CopilotAgentPipeline:
 
         if not self.selected_tool_names:
             return set(TOOL_REGISTRY.keys())
-        return {_canonicalize_tool_name(name) for name in self.selected_tool_names}
+        return set(self.selected_tool_names)
 
     def _on_permission_request(self, request, invocation):
         """Allow only declared Archi custom tools and deny SDK built-ins."""
@@ -548,7 +540,7 @@ class CopilotAgentPipeline:
         from copilot.types import PermissionRequestResult
 
         kind = getattr(request, "kind", None)
-        tool_name = _canonicalize_tool_name(getattr(request, "tool_name", "") or "")
+        tool_name = getattr(request, "tool_name", "") or ""
         command_text = getattr(request, "full_command_text", None)
 
         if kind == PermissionRequestKind.CUSTOM_TOOL:

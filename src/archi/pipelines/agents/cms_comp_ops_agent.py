@@ -38,7 +38,7 @@ class CMSCompOpsAgent(BaseReActAgent):
         self.catalog_service = RemoteCatalogClient.from_deployment_config(self.config)
         self._vector_retrievers = None
         self._vector_tool = None
-        self.enable_vector_tools = "search_vectorstore_hybrid" in self.selected_tool_names
+        self.enable_vector_tools = "search_knowledge_base" in self.selected_tool_names
 
         # Initialize MONIT clients (one per datasource proxy)
         self._monit_client = None
@@ -151,7 +151,7 @@ class CMSCompOpsAgent(BaseReActAgent):
                     "Use this sparingly to pull only the most relevant files."
                 ),
             },
-            "search_vectorstore_hybrid": {
+            "search_knowledge_base": {
                 "builder": self._build_vector_tool_placeholder,
                 "description": (
                     "Hybrid search over the knowledge base that combines lexical (BM25) and semantic (vector) matching.\n"
@@ -300,14 +300,14 @@ class CMSCompOpsAgent(BaseReActAgent):
             semantic_weight=semantic_weight,
         )
 
-        hybrid_description = self._tool_definitions()["search_vectorstore_hybrid"]["description"]
+        hybrid_description = self._tool_definitions()["search_knowledge_base"]["description"]
 
         self._vector_retrievers = [hybrid_retriever]
         self._vector_tools = []
         self._vector_tools.append(
             create_retriever_tool(
                 hybrid_retriever,
-                name="search_vectorstore_hybrid",
+                name="search_knowledge_base",
                 description=hybrid_description,
                 store_docs=self._store_documents,
                 store_tool_input=getattr(self, "_store_tool_input", None),
