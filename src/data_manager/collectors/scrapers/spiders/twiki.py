@@ -31,7 +31,7 @@ class TwikiSpider(LinkSpider):
         r"/bin/genpdf",      # PDF generation — not content
         r"/bin/view/Main",   # user profile pages, not content
         # Navigation/structural pages
-        r"LeftBarLeftBar",
+        r"LeftBar$",         # just ignore all left bar pages
         r"/bin/view/[^/]+/WebLeftBar", # sidebar navigation template
         r"/bin/view/[^/]+/WebTopBar", # top navigation bar
         r"/bin/view/[^/]+/WebChanges", # recent changes — floods with links
