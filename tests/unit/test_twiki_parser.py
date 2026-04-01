@@ -1,8 +1,9 @@
 # tests/unit/test_twiki_parser.py
 from pathlib import Path
-from scrapy.http import HtmlResponse, Request
-from src.data_manager.collectors.scrapers.adapters import to_scraped_resource
-from src.data_manager.collectors.scrapers.spiders.twiki import parse_twiki_page
+
+from scrapy.http import HtmlResponse, Request, Response
+
+from src.data_manager.collectors.scrapers.parsers.twiki import parse_twiki_page
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -22,7 +23,7 @@ def fake_html_response(url: str, fixture_name: str, charset: str) -> HtmlRespons
 
 class TestParseTwikiPage:
 
-    def test_valid_response(self):
+    def test_conventional_twiki_page(self):
         response = fake_html_response(
             "https://twiki.cern.ch/twiki/bin/view/CMSPublic/CRAB3ConfigurationFile",
             "twiki_twiki_bin_view_cmspublic_crab3_configuration_file.html",
@@ -34,4 +35,20 @@ class TestParseTwikiPage:
         assert item['source_type'] == "web"
         assert item['content_type'] == "text/html; charset=iso-8859-1"
         assert item['encoding'] == "cp1252"
-        assert item['content'] != ""  # should be non-empty
+        # HTML fragment (outer tag + children), not flattened text — for MarkItDown etc.
+        assert "<" in item["content"] and ">" in item["content"]
+        assert "patternMainContents" in item["content"]
+        assert "href=" in item["content"]
+
+    def test_pdf_yields_bytes_like_link_parser(self):
+        url = "https://twiki.cern.ch/twiki/pub/CMSPublic/Topic/file.pdf"
+        response = Response(
+            url=url,
+            body=b"%PDF-1.4 minimal",
+            headers={b"Content-Type": [b"application/pdf"]},
+            request=Request(url=url),
+        )
+        item = next(parse_twiki_page(response))
+        assert item["suffix"] == "pdf"
+        assert item["content"] == b"%PDF-1.4 minimal"
+        assert item["title"] == "file"
