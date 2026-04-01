@@ -34,9 +34,9 @@ class SourceRegistry:
                 description="SSO-backed web crawling",
                 required_secrets=["SSO_USERNAME", "SSO_PASSWORD"],
                 required_config_fields=[
-                    "data_manager.sources.links.selenium_scraper.selenium_class",
+                    "data_manager.sources.web",
                 ],
-                depends_on=["links"],
+                depends_on=["web"],
             )
         )
         self.register(
@@ -44,7 +44,7 @@ class SourceRegistry:
                 name="git",
                 description="Git repository scraping for MkDocs-based documentation, Optional GIT_USERNAME/GIT_TOKEN for private repos.",
                 required_secrets=[],  # was ["GIT_USERNAME", "GIT_TOKEN"]
-                depends_on=["links"],
+                depends_on=[], # no longer depends on links or webs, considered to be standalone manager.
             )
         )
         self.register(
