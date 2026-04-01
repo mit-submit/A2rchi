@@ -533,6 +533,8 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
         elif base_dir.exists():
             # Deployment exists — rerun by default, or reingest if requested
             fresh_setup = False
+            # Ports are already bound by our own deployment; skip port probing
+            other_flags['allow_port_reuse'] = True
             if reingest:
                 click.echo(f"Re-ingesting data for deployment '{name}'...")
             else:
@@ -653,6 +655,12 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
             deployment_manager.start_deployment(base_dir)
         else:
             # Rerun: only rebuild and restart the benchmark container
+            # Clear stale checkpoint unless --resume is set, so the new config runs fresh
+            if not other_flags.get('resume', False):
+                checkpoint_file = Path(out_dir) / f"benchmarking-{name}.checkpoint.json"
+                if checkpoint_file.exists():
+                    checkpoint_file.unlink()
+                    logger.info(f"Cleared previous checkpoint: {checkpoint_file}")
             deployment_manager.restart_service(base_dir, "benchmark",
                                                build=True, no_deps=True, force_recreate=True)
 
