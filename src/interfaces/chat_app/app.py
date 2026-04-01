@@ -1285,8 +1285,6 @@ class ChatWrapper:
         user_content = _sanitize(user_content)
         archi_content = _sanitize(archi_content)
         link = _sanitize(link)
-        model_provider = f"{context.provider_used}/{context.model_used}"
-        pipeline_used = type(context.pipeline_used).__name__
         archi_context = _sanitize(archi_context)
 
         # construct insert_tups with model_used and pipeline_used
@@ -1684,7 +1682,6 @@ class ChatWrapper:
             archi_message,
             best_reference,
             context_data,
-            context,
             context.is_refresh,
         )
         timestamps["insert_convo_ts"] = datetime.now(timezone.utc)
