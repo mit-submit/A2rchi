@@ -119,7 +119,7 @@ class ScraperManager:
     def _config_urls(self, spider_key: str, cfg: Dict) -> List[str]:
         urls = list(cfg.get("urls") or [])
         for list_path in cfg.get("input_lists") or []:
-            path = Path(list_path)
+            path = Path("weblists") / list_path.lstrip("/")
             if not path.exists():
                 logger.warning("Input list not found: %s", path)
                 continue

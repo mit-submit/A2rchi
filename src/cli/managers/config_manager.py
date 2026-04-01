@@ -13,6 +13,8 @@ logger = get_logger(__name__)
 
 STATIC_FIELDS = ['global', 'services']
 
+_WEB_TOP_LEVEL_STATIC_KEYS = ["enabled", "visible"]
+
 class ConfigurationManager:
     """Manages archi configuration loading and validation"""
     
@@ -266,10 +268,19 @@ class ConfigurationManager:
         for conf in self.configs:
             data_manager = conf.get('data_manager', {})
             sources_section = data_manager.get('sources', {}) or {}
-            links_section = sources_section.get('links', {}) if isinstance(sources_section, dict) else {}
-            lists = links_section.get('input_lists') or []
-            if isinstance(lists, list):
-                collected.extend(lists)
+            if not isinstance(sources_section, dict):
+                continue
+            web = sources_section.get("web", {}) or {}
+            if not isinstance(web, dict):
+                continue
+            for spider_key, sub in web.items():
+                if spider_key in _WEB_TOP_LEVEL_STATIC_KEYS:
+                    continue
+                if not isinstance(sub, dict):
+                    continue
+                wlists = sub.get("input_lists") or []
+                if isinstance(wlists, list):
+                    collected.extend(wlists)
         self.input_list = sorted(set(collected)) if collected else []
 
     def get_enabled_sources(self) -> List[str]:
