@@ -38,7 +38,6 @@ _PROVIDER_INSTANCES: Dict[ProviderType, BaseProvider] = {}
 _DEFAULT_API_KEY_ENV_BY_PROVIDER: Dict[ProviderType, str] = {
     ProviderType.OPENAI: "OPENAI_API_KEY",
     ProviderType.ANTHROPIC: "ANTHROPIC_API_KEY",
-    ProviderType.GEMINI: "GEMINI_API_KEY",
     ProviderType.OPENROUTER: "OPENROUTER_API_KEY",
     ProviderType.CERN_LITELLM: "CERN_LITELLM_API_KEY",
 }
@@ -73,14 +72,12 @@ def _ensure_providers_registered() -> None:
     # Import and register all providers
     from src.archi.providers.openai_provider import OpenAIProvider
     from src.archi.providers.anthropic_provider import AnthropicProvider
-    from src.archi.providers.gemini_provider import GeminiProvider
     from src.archi.providers.openrouter_provider import OpenRouterProvider
     from src.archi.providers.local_provider import LocalProvider
     from src.archi.providers.cern_litellm_provider import CERNLiteLLMProvider
     
     register_provider(ProviderType.OPENAI, OpenAIProvider)
     register_provider(ProviderType.ANTHROPIC, AnthropicProvider)
-    register_provider(ProviderType.GEMINI, GeminiProvider)
     register_provider(ProviderType.OPENROUTER, OpenRouterProvider)
     register_provider(ProviderType.LOCAL, LocalProvider)
     register_provider(ProviderType.CERN_LITELLM, CERNLiteLLMProvider)
@@ -144,7 +141,6 @@ def get_provider_by_name(name: str, **kwargs) -> BaseProvider:
     This is a convenience function that accepts common names like:
     - "openai", "OpenAI"
     - "anthropic", "claude", "Anthropic"
-    - "gemini", "google", "Gemini"
     - "openrouter", "OpenRouter"
     - "local", "ollama", "Local"
     
@@ -163,8 +159,6 @@ def get_provider_by_name(name: str, **kwargs) -> BaseProvider:
         "gpt": ProviderType.OPENAI,
         "anthropic": ProviderType.ANTHROPIC,
         "claude": ProviderType.ANTHROPIC,
-        "gemini": ProviderType.GEMINI,
-        "google": ProviderType.GEMINI,
         "openrouter": ProviderType.OPENROUTER,
         "local": ProviderType.LOCAL,
         "ollama": ProviderType.LOCAL,

@@ -22,7 +22,6 @@ class ProviderType(str, Enum):
     """Enumeration of supported provider types."""
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
-    GEMINI = "gemini"
     OPENROUTER = "openrouter"
     LOCAL = "local"
     CERN_LITELLM = "cern_litellm"

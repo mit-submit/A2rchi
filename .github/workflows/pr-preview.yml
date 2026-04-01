@@ -48,7 +48,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install . || true
           pip install -r requirements/requirements-base.txt
-          pip install pytest
+          pip install pytest pytest-asyncio
 
       - name: Run unit tests
         run: python -m pytest tests/unit/ -v --tb=short
@@ -255,11 +255,38 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-      # ── Cleanup ─────────────────────────────────────────────────────────
-      - name: Cleanup smoke deployment
+      # ── Copilot SDK smoke (BYOK via local Ollama) ─────────────────────
+      # NOTE: The Copilot SDK requires GitHub auth even in BYOK mode.
+      # This step validates build + boot but react_smoke will time out
+      # until CI has a Copilot-authenticated token.  Non-fatal for now.
+      - name: Cleanup CMSCompOps deployment before Copilot smoke
         if: ${{ always() }}
         run: |
           yes | archi delete --name ci-${{ github.run_id }} || true
+
+      - name: Run Copilot SDK smoke deployment
+        continue-on-error: true
+        uses: ./.github/actions/run-smoke
+        with:
+          deployment-name: ci-copilot-${{ github.run_id }}
+          config-path: tests/pr_preview_config/pr_preview_copilot_config.yaml
+          config-destination: configs/ci/ci_copilot_config.generated.yaml
+          services: chatbot
+          hostmode: "true"
+          wait-url: http://localhost:2786/api/health
+          base-url: http://localhost:2786
+          extra-env: |
+            ARCHI_COMPOSE_UP_FLAGS=--build --force-recreate
+            SMOKE_OLLAMA_MODEL=qwen3:4b
+            SMOKE_OLLAMA_URL=http://localhost:11434
+            SMOKE_OLLAMA_HOST=http://localhost:11434
+          use-podman: "false"
+
+      # ── Cleanup ─────────────────────────────────────────────────────────
+      - name: Cleanup smoke deployments
+        if: ${{ always() }}
+        run: |
+          yes | archi delete --name ci-copilot-${{ github.run_id }} || true
 
       - name: Cleanup local base images
         if: ${{ always() && needs.build-base-images.outputs.changed == 'true' }}

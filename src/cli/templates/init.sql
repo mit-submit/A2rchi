@@ -355,8 +355,12 @@ CREATE TABLE IF NOT EXISTS conversation_metadata (
     title TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    archi_version VARCHAR(50)
+    archi_version VARCHAR(50),
+    pipeline_session_id TEXT
 );
+
+ALTER TABLE conversation_metadata
+ADD COLUMN IF NOT EXISTS pipeline_session_id TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_conv_meta_user ON conversation_metadata(user_id);
 CREATE INDEX IF NOT EXISTS idx_conv_meta_client ON conversation_metadata(client_id);

@@ -62,7 +62,7 @@ def _format_documents_for_llm(
 def create_retriever_tool(
     retriever: BaseRetriever,
     *,
-    name: str = "search_knowledge_base",
+    name: str = "search_vectorstore_hybrid",
     description: Optional[str] = None,
     max_documents: int = 4,
     max_chars: int = 800,

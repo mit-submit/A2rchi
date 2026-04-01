@@ -40,3 +40,4 @@ raw_local_files/
 websites/
 data/
 bench_out/
+.env_tmp_smoke

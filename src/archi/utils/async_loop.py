@@ -1,16 +1,26 @@
-from typing import Optional, Any
+"""Dedicated background thread running a single asyncio event loop.
+
+Provides a thread-safe bridge for scheduling async coroutines from
+synchronous (Flask) code.  Used by the Copilot SDK adapter and,
+historically, by MCP tool wrappers.
+"""
+
 import asyncio
 import threading
+from typing import Any, Optional
+
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
 
 class AsyncLoopThread:
     """
     A dedicated background thread running a single event loop.
 
-    This ensures all async operations (MCP client init, tool calls) happen
-    on the same event loop, preventing ClosedResourceError.
+    This ensures all async operations (Copilot SDK calls, MCP client init,
+    tool calls) happen on the same event loop, preventing
+    ClosedResourceError.
 
     Usage:
         runner = AsyncLoopThread.get_instance()
@@ -26,14 +36,14 @@ class AsyncLoopThread:
         self.thread = threading.Thread(
             target=self._run,
             daemon=True,
-            name="mcp-async-loop"
+            name="async-loop",
         )
         self.thread.start()
 
         # Wait for the loop to actually start before returning
         if not self._started.wait(timeout=10.0):
             raise RuntimeError("Failed to start async loop thread")
-        logger.info("Background async loop started for MCP operations")
+        logger.info("Background async loop started")
 
     def _run(self):
         """Run the event loop forever in the background thread."""
@@ -47,7 +57,7 @@ class AsyncLoopThread:
 
         Args:
             coro: An awaitable coroutine
-            timeout: Maximum seconds to wait (default 120s for MCP operations)
+            timeout: Maximum seconds to wait (default 120s)
 
         Returns:
             The result of the coroutine
@@ -59,10 +69,17 @@ class AsyncLoopThread:
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
         return future.result(timeout=timeout)
 
+    def run_no_wait(self, coro) -> "asyncio.Future":
+        """Schedule a coroutine on the background loop without blocking.
+
+        Returns the ``concurrent.futures.Future`` so the caller can check
+        completion later (e.g. ``future.result(timeout=...)``).
+        """
+        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+
     def in_loop_thread(self) -> bool:
         """Return True if called from the background event-loop thread."""
         return threading.current_thread() is self.thread
-        # or: return threading.get_ident() == self.thread.ident
 
     @classmethod
     def get_instance(cls) -> "AsyncLoopThread":

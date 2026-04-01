@@ -108,7 +108,13 @@ class RemoteCatalogClient:
             params=params,
             headers=self._headers,
             timeout=self.timeout,
+            allow_redirects=False,
         )
+        if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+            raise RuntimeError(
+                f"Catalog API redirected to {resp.headers.get('Location', '?')} — "
+                "check DM_API_TOKEN or data_manager auth config"
+            )
         resp.raise_for_status()
         data = resp.json()
         return data.get("hits", []) or []
@@ -119,9 +125,15 @@ class RemoteCatalogClient:
             params={"max_chars": max_chars},
             headers=self._headers,
             timeout=self.timeout,
+            allow_redirects=False,
         )
         if resp.status_code == 404:
             return None
+        if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+            raise RuntimeError(
+                f"Catalog API redirected to {resp.headers.get('Location', '?')} \u2014 "
+                "check DM_API_TOKEN or data_manager auth config"
+            )
         resp.raise_for_status()
         return resp.json()
 
@@ -130,7 +142,13 @@ class RemoteCatalogClient:
             f"{self.base_url}/api/catalog/schema",
             headers=self._headers,
             timeout=self.timeout,
+            allow_redirects=False,
         )
+        if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+            raise RuntimeError(
+                f"Catalog API redirected to {resp.headers.get('Location', '?')} \u2014 "
+                "check DM_API_TOKEN or data_manager auth config"
+            )
         resp.raise_for_status()
         return resp.json()
 

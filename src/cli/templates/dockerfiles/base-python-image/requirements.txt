@@ -22,6 +22,7 @@ httptools==0.6.1
 httpx==0.27.2
 humanfriendly==10.0
 croniter==2.0.5
+github-copilot-sdk>=0.2.0
 langgraph==1.0.2
 langchain-mcp-adapters==0.1.11
 langchain==1.0.3

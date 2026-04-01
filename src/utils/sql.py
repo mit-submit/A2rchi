@@ -126,6 +126,12 @@ FROM conversation_metadata
 WHERE conversation_id = %s AND client_id = %s;
 """
 
+SQL_GET_CONVERSATION_PIPELINE_SESSION_ID = """
+SELECT pipeline_session_id
+FROM conversation_metadata
+WHERE conversation_id = %s AND client_id = %s;
+"""
+
 SQL_DELETE_CONVERSATION = """
 DELETE FROM conversation_metadata
 WHERE conversation_id = %s AND client_id = %s;
@@ -148,6 +154,12 @@ FROM conversation_metadata
 WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
 """
 
+SQL_GET_CONVERSATION_PIPELINE_SESSION_ID_BY_USER = """
+SELECT pipeline_session_id
+FROM conversation_metadata
+WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
+"""
+
 SQL_DELETE_CONVERSATION_BY_USER = """
 DELETE FROM conversation_metadata
 WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
@@ -156,6 +168,18 @@ WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
 SQL_UPDATE_CONVERSATION_TIMESTAMP_BY_USER = """
 UPDATE conversation_metadata
 SET last_message_at = %s
+WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
+"""
+
+SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID = """
+UPDATE conversation_metadata
+SET pipeline_session_id = %s
+WHERE conversation_id = %s AND client_id = %s;
+"""
+
+SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID_BY_USER = """
+UPDATE conversation_metadata
+SET pipeline_session_id = %s
 WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
 """
 

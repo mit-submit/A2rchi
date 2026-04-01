@@ -41,7 +41,13 @@ def _get_agent_class_name_from_config() -> Optional[str]:
     return chat_cfg.get("agent_class") or chat_cfg.get("pipeline")
 
 
-def _get_agent_tool_registry(agent_class_name: Optional[str]) -> List[str]:
+def _get_agent_tool_registry(agent_class_name: Optional[str]) -> List[dict]:
+    """Return tool objects ``{name, description}`` for the agent editor palette.
+
+    These are Archi's own custom tools from ``TOOL_REGISTRY``.  SDK built-in
+    tools (bash, sql, report_intent, etc.) are deliberately excluded — they are
+    blocked at the session level via ``available_tools`` allowlist.
+    """
     if not agent_class_name:
         return []
     try:
@@ -55,15 +61,26 @@ def _get_agent_tool_registry(agent_class_name: Optional[str]) -> List[str]:
     try:
         dummy = agent_cls.__new__(agent_cls)
         registry = agent_cls.get_tool_registry(dummy) or {}
-        return sorted([name for name in registry.keys() if isinstance(name, str)])
+        descriptions = {}
+        if hasattr(agent_cls, "get_tool_descriptions"):
+            descriptions = agent_cls.get_tool_descriptions(dummy) or {}
+        return sorted(
+            [
+                {"name": name, "description": descriptions.get(name, "")}
+                for name in registry
+                if isinstance(name, str)
+            ],
+            key=lambda t: t["name"],
+        )
     except Exception as exc:
         logger.warning("Failed to read tool registry for %s: %s", agent_class_name, exc)
         return []
 
 
-def _build_agent_template(name: str, tools: List[str]) -> str:
-    tools_block = "\n".join(f"- {tool}" for tool in tools) if tools else "- <tool_name>"
-    tools_comment = "\n".join(f"- {tool}" for tool in tools) if tools else "- (no tools available)"
+def _build_agent_template(name: str, tools: List[dict]) -> str:
+    tool_names = [t["name"] if isinstance(t, dict) else t for t in tools]
+    tools_block = "\n".join(f"- {n}" for n in tool_names) if tool_names else "- <tool_name>"
+    tools_comment = "\n".join(f"- {n}" for n in tool_names) if tool_names else "- (no tools available)"
     return (
         f"# {name}\n\n"
         "## Tools\n"

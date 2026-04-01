@@ -54,6 +54,10 @@ from src.utils.sql import (
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_LIST_CONVERSATIONS_BY_USER, SQL_GET_CONVERSATION_METADATA_BY_USER,
     SQL_DELETE_CONVERSATION_BY_USER, SQL_UPDATE_CONVERSATION_TIMESTAMP_BY_USER,
+    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID,
+    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
+    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID,
+    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
     SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
     SQL_GET_REACTION_FEEDBACK,
     SQL_INSERT_AB_COMPARISON, SQL_UPDATE_AB_PREFERENCE, SQL_GET_AB_COMPARISON,
@@ -218,6 +222,10 @@ class ChatRequestContext:
     conversation_id: int
     history: List
     is_refresh: bool
+    config_name: Optional[str] = None
+    model_used: Optional[str] = None
+    provider_used: Optional[str] = None
+    pipeline_used: Optional[str] = None
 
 
 class ChatWrapper:
@@ -240,6 +248,7 @@ class ChatWrapper:
             "password": read_secret("PG_PASSWORD"),
             **self.services_config["postgres"],
         }
+        self._ensure_conversation_metadata_schema()
 
         # initialize data manager (ingestion handled by data-manager service)
         # self.data_manager = DataManager(run_ingestion=False)
@@ -316,6 +325,119 @@ class ChatWrapper:
         # activate default config
         if self.default_config_name:
             self.update_config(config_name=self.default_config_name)
+
+    def _ensure_conversation_metadata_schema(self) -> None:
+        """Backfill chat metadata columns needed by newer pipelines."""
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                ALTER TABLE conversation_metadata
+                ADD COLUMN IF NOT EXISTS pipeline_session_id TEXT
+                """
+            )
+            conn.commit()
+        except psycopg2.Error as exc:
+            conn.rollback()
+            logger.debug("Could not ensure conversation metadata columns: %s", exc)
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _pipeline_supports_persisted_session_id(self) -> bool:
+        """Return whether the active pipeline uses persisted SDK sessions."""
+        pipeline = getattr(self.archi, "pipeline", None)
+        return bool(
+            pipeline
+            and callable(getattr(pipeline, "supports_persisted_session_id", None))
+            and pipeline.supports_persisted_session_id()
+        )
+
+    def get_pipeline_session_id(
+        self,
+        conversation_id: int,
+        client_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Return the persisted pipeline session ID for a conversation, if used."""
+        if not self._pipeline_supports_persisted_session_id():
+            return None
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            if user_id:
+                cursor.execute(
+                    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
+                    (conversation_id, user_id, client_id),
+                )
+            else:
+                cursor.execute(
+                    SQL_GET_CONVERSATION_PIPELINE_SESSION_ID,
+                    (conversation_id, client_id),
+                )
+            row = cursor.fetchone()
+            return row[0] if row else None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def set_pipeline_session_id(
+        self,
+        conversation_id: int,
+        client_id: str,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Persist the pipeline session ID for future resume attempts."""
+        if not self._pipeline_supports_persisted_session_id():
+            return
+        if not session_id:
+            return
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        try:
+            if user_id:
+                cursor.execute(
+                    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID_BY_USER,
+                    (session_id, conversation_id, user_id, client_id),
+                )
+            else:
+                cursor.execute(
+                    SQL_UPDATE_CONVERSATION_PIPELINE_SESSION_ID,
+                    (session_id, conversation_id, client_id),
+                )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _persist_pipeline_session_id_from_output(
+        self,
+        output: PipelineOutput,
+        *,
+        conversation_id: int,
+        client_id: str,
+        current_session_id: Optional[str],
+        user_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Store the pipeline session ID exposed by pipeline outputs."""
+        if not self._pipeline_supports_persisted_session_id():
+            return None
+        metadata = getattr(output, "metadata", None) or {}
+        session_id = metadata.get("pipeline_session_id")
+        if not isinstance(session_id, str) or not session_id.strip():
+            return current_session_id
+        session_id = session_id.strip()
+        if session_id == current_session_id:
+            return current_session_id
+        self.set_pipeline_session_id(
+            conversation_id,
+            client_id,
+            session_id,
+            user_id=user_id,
+        )
+        return session_id
 
     def update_config(self, config_name=None):
         """
@@ -1231,10 +1353,49 @@ class ChatWrapper:
         """
         Extract and store agent tool calls from the pipeline output.
 
-        AIMessage with tool_calls contains the tool name, args, and timestamp.
-        ToolMessage contains the result, matched by tool_call_id.
+        Checks ``metadata["tool_calls"]`` first (Copilot adapter format,
+        decision 12), then falls back to messages-based extraction
+        (classic pipelines).
         """
-        if not output or not output.messages:
+        if not output:
+            return
+
+        # ── Path 1: metadata-based tool calls (Copilot adapter) ──────
+        meta_tool_calls = (output.metadata or {}).get("tool_calls")
+        if meta_tool_calls:
+            insert_tups = []
+            for step_number, tc in enumerate(meta_tool_calls, start=1):
+                tool_name = tc.get("name", "unknown")
+                tool_args = tc.get("args", {})
+                tool_result = tc.get("result", "")
+                if len(tool_result) > 500:
+                    tool_result = tool_result[:500] + "..."
+                created_at = tc.get("created_at")
+                if created_at:
+                    try:
+                        ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        ts = datetime.now(timezone.utc)
+                else:
+                    ts = datetime.now(timezone.utc)
+                insert_tups.append((
+                    conversation_id, message_id, step_number,
+                    tool_name,
+                    json.dumps(tool_args) if tool_args else None,
+                    tool_result, ts,
+                ))
+            if insert_tups:
+                logger.debug("Inserting %d tool calls (metadata) for message %d", len(insert_tups), message_id)
+                conn = psycopg2.connect(**self.pg_config)
+                cursor = conn.cursor()
+                psycopg2.extras.execute_values(cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
+                conn.commit()
+                cursor.close()
+                conn.close()
+            return
+
+        # ── Path 2: messages-based extraction (classic pipelines) ────
+        if not output.messages:
             return
 
         tool_calls = output.extract_tool_calls()
@@ -1343,7 +1504,11 @@ class ChatWrapper:
         client_sent_msg_ts: float,
         client_timeout: float,
         timestamps: Dict[str, datetime],
+        config_name: str,
         user_id: Optional[str] = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+        pipeline: Optional[str] = None
     ) -> tuple[Optional[ChatRequestContext], Optional[int]]:
         if not client_id:
             raise ValueError("client_id is required to process chat messages")
@@ -1371,6 +1536,13 @@ class ChatWrapper:
         if len(history) >= QUERY_LIMIT:
             return None, 500
 
+        if model is None:
+            logger.debug(f"Model for chat context is None. Setting to default.")
+            chat_cfg = self.config.get("services", {}).get("chat_app", {})
+            provider = chat_cfg.get("default_provider")
+            model = chat_cfg.get("default_model")
+
+        logger.debug(f"Preparing chat context with model {model} provider {provider}")
         return (
             ChatRequestContext(
                 sender=sender,
@@ -1378,6 +1550,10 @@ class ChatWrapper:
                 conversation_id=conversation_id,
                 history=history,
                 is_refresh=is_refresh,
+                config_name=config_name,
+                model_used=model,
+                provider_used=provider,
+                pipeline_used=pipeline,
             ),
             None,
         )
@@ -1529,7 +1705,7 @@ class ChatWrapper:
                     has_tool_calls,
                     has_tool_call_id,
                 )
-        if agent_messages and message_ids:
+        if message_ids:
             archi_message_id = message_ids[-1]
             self.insert_tool_calls_from_output(context.conversation_id, archi_message_id, result)
 
@@ -1554,6 +1730,7 @@ class ChatWrapper:
                 client_sent_msg_ts,
                 client_timeout,
                 timestamps,
+                config_name,
                 user_id=user_id,
             )
             if error_code is not None:
@@ -1562,7 +1739,23 @@ class ChatWrapper:
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
 
-            result = self.archi(history=context.history, conversation_id=context.conversation_id)
+            pipeline_session_id = self.get_pipeline_session_id(
+                context.conversation_id,
+                client_id,
+                user_id=user_id,
+            )
+            result = self.archi(
+                history=context.history,
+                conversation_id=context.conversation_id,
+                pipeline_session_id=pipeline_session_id,
+            )
+            self._persist_pipeline_session_id_from_output(
+                result,
+                conversation_id=context.conversation_id,
+                client_id=client_id,
+                current_session_id=pipeline_session_id,
+                user_id=user_id,
+            )
             timestamps["chain_finished_ts"] = datetime.now(timezone.utc)
 
             # keep track of total number of queries and log this amount
@@ -1670,7 +1863,11 @@ class ChatWrapper:
                 client_sent_msg_ts,
                 client_timeout,
                 timestamps,
+                config_name,
                 user_id=user_id,
+                model=model,
+                provider=provider,
+                pipeline=self.archi.pipeline
             )
             if error_code is not None:
                 error_message = "server error; see chat logs for message"
@@ -1680,29 +1877,28 @@ class ChatWrapper:
                     error_message = "conversation not found"
                 yield {"type": "error", "status": error_code, "message": error_message}
                 return
-
+            
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
             
-            # If provider and model are specified, override the pipeline's LLM
+            # Build per-request kwargs for provider/model override
+            stream_kwargs: Dict[str, Any] = {
+                "history": context.history,
+                "conversation_id": context.conversation_id,
+            }
+            pipeline_session_id = self.get_pipeline_session_id(
+                context.conversation_id,
+                client_id,
+                user_id=user_id,
+            )
+            if pipeline_session_id:
+                stream_kwargs["pipeline_session_id"] = pipeline_session_id
             if provider and model:
-                try:
-                    override_llm = self._create_provider_llm(provider, model, provider_api_key)
-                    if override_llm and hasattr(self.archi, 'pipeline') and hasattr(self.archi.pipeline, 'agent_llm'):
-                        original_llm = self.archi.pipeline.agent_llm
-                        self.archi.pipeline.agent_llm = override_llm
-                        # Force agent refresh to use new LLM
-                        if hasattr(self.archi.pipeline, 'refresh_agent'):
-                            self.archi.pipeline.refresh_agent(force=True)
-                        logger.info(f"Overrode pipeline LLM with {provider}/{model}")
-                        self.current_model_used = f"{provider}/{model}"
-                except ValueError as e:
-                    logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
-                    yield {"type": "error", "status": 400, "message": str(e)}
-                    return
-                except Exception as e:
-                    logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
-                    yield {"type": "warning", "message": f"Using default model: {e}"}
+                stream_kwargs["provider"] = provider
+                stream_kwargs["model"] = model
+                logger.info(f"Requesting pipeline override: {provider}/{model}")
+            if provider_api_key:
+                stream_kwargs["provider_api_key"] = provider_api_key
             
             # Create trace for this streaming request
             trace_id = self.create_agent_trace(
@@ -1712,7 +1908,7 @@ class ChatWrapper:
                 pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
 
-            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id):
+            for output in self.archi.stream(**stream_kwargs):
                 if client_timeout and time.time() - stream_start_time > client_timeout:
                     if trace_id:
                         total_duration_ms = int((time.time() - stream_start_time) * 1000)
@@ -1728,12 +1924,14 @@ class ChatWrapper:
                     return
                 last_output = output
                 
-                # Extract event_type from metadata (new structured events from BaseReActAgent)
+                # Extract event_type from metadata (structured events from agent pipeline)
                 event_type = output.metadata.get("event_type", "text") if output.metadata else "text"
                 timestamp = datetime.now(timezone.utc).isoformat()
                 
                 # Handle different event types
                 if event_type == "tool_start":
+                    # Try messages-based path first (classic pipelines),
+                    # fall back to metadata-only (Copilot adapter, decision 16).
                     tool_messages = getattr(output, "messages", []) or []
                     tool_message = tool_messages[0] if tool_messages else None
                     tool_calls = getattr(tool_message, "tool_calls", None) if tool_message else None
@@ -1810,8 +2008,20 @@ class ChatWrapper:
                             if tool_call_id in emitted_tool_call_ids:
                                 continue
                             emitted_tool_call_ids.add(tool_call_id)
+                            emitted_tool_start_ids.add(tool_call_id)
                             pending_tool_call_ids.append(tool_call_id)
                             tool_call_count += 1
+                            trace_event = {
+                                "type": "tool_start",
+                                "tool_call_id": tool_call_id,
+                                "tool_name": tool_name,
+                                "tool_args": tool_args,
+                                "timestamp": timestamp,
+                                "conversation_id": context.conversation_id,
+                            }
+                            trace_events.append(trace_event)
+                            if include_tool_steps:
+                                yield trace_event
                     elif memory_args_by_id:
                         for memory_id, memory_call in memory_args_by_id.items():
                             if not isinstance(memory_call, dict):
@@ -1824,19 +2034,60 @@ class ChatWrapper:
                             if tool_call_id in emitted_tool_call_ids:
                                 continue
                             emitted_tool_call_ids.add(tool_call_id)
+                            emitted_tool_start_ids.add(tool_call_id)
                             pending_tool_call_ids.append(tool_call_id)
                             _remember_tool_call(tool_call_id, tool_name, tool_args)
                             tool_call_count += 1
+                            trace_event = {
+                                "type": "tool_start",
+                                "tool_call_id": tool_call_id,
+                                "tool_name": tool_name,
+                                "tool_args": tool_args,
+                                "timestamp": timestamp,
+                                "conversation_id": context.conversation_id,
+                            }
+                            trace_events.append(trace_event)
+                            if include_tool_steps:
+                                yield trace_event
+                    elif output.metadata:
+                        # Metadata-only path (Copilot adapter)
+                        meta_tool_call_id = output.metadata.get("tool_call_id", "")
+                        meta_tool_name = output.metadata.get("tool_name", "unknown")
+                        meta_tool_args = output.metadata.get("tool_args", {})
+                        _remember_tool_call(meta_tool_call_id, meta_tool_name, meta_tool_args)
+                        if meta_tool_call_id and meta_tool_call_id in emitted_tool_call_ids:
+                            continue
+                        if meta_tool_call_id:
+                            emitted_tool_call_ids.add(meta_tool_call_id)
+                            emitted_tool_start_ids.add(meta_tool_call_id)
+                        tool_call_count += 1
+                        trace_event = {
+                            "type": "tool_start",
+                            "tool_call_id": meta_tool_call_id,
+                            "tool_name": meta_tool_name,
+                            "tool_args": meta_tool_args,
+                            "timestamp": timestamp,
+                            "conversation_id": context.conversation_id,
+                        }
+                        trace_events.append(trace_event)
+                        if include_tool_steps:
+                            yield trace_event
                         
                 elif event_type == "tool_output":
+                    # Messages-based path (classic) or metadata-only (Copilot adapter)
                     tool_messages = getattr(output, "messages", []) or []
                     tool_message = tool_messages[0] if tool_messages else None
-                    tool_output = self._message_content(tool_message) if tool_message else ""
-                    truncated = len(tool_output) > max_step_chars
-                    full_length = len(tool_output) if truncated else None
-                    display_output = self._truncate_text(tool_output, max_step_chars)
+                    if tool_message:
+                        tool_output_text = self._message_content(tool_message)
+                        tool_call_id = getattr(tool_message, "tool_call_id", "")
+                    else:
+                        tool_output_text = output.metadata.get("output", "") if output.metadata else ""
+                        tool_call_id = output.metadata.get("tool_call_id", "") if output.metadata else ""
+                    truncated = len(tool_output_text) > max_step_chars
+                    full_length = len(tool_output_text) if truncated else None
+                    display_output = self._truncate_text(tool_output_text, max_step_chars)
                     
-                    output_tool_call_id = getattr(tool_message, "tool_call_id", "") if tool_message else ""
+                    output_tool_call_id = getattr(tool_message, "tool_call_id", "") if tool_message else tool_call_id
                     if not output_tool_call_id and pending_tool_call_ids:
                         output_tool_call_id = pending_tool_call_ids.pop(0)
                     elif output_tool_call_id in pending_tool_call_ids:
@@ -1939,6 +2190,14 @@ class ChatWrapper:
                 elif event_type == "final":
                     # Final event handled below after loop
                     pass
+                elif event_type == "error":
+                    error_msg = output.metadata.get("error", "Unknown error")
+                    logger.error("Agent pipeline error: %s", error_msg)
+                    yield {
+                        "type": "error",
+                        "message": error_msg,
+                        "timestamp": timestamp,
+                    }
                 else:
                     # Fallback: legacy event handling for non-agent pipelines
                     if getattr(output, "final", False):
@@ -2000,6 +2259,14 @@ class ChatWrapper:
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
+            pipeline_session_id = self._persist_pipeline_session_id_from_output(
+                last_output,
+                conversation_id=context.conversation_id,
+                client_id=client_id,
+                current_session_id=pipeline_session_id,
+                user_id=user_id,
+            )
+
             output, message_ids = self._finalize_result(
                 last_output,
                 context=context,
@@ -2060,8 +2327,9 @@ class ChatWrapper:
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now(timezone.utc).timestamp(),
                 "usage": usage,
-                "model": model,
-                "model_used": self.current_model_used,
+                "model_used": model or context.model_used,
+                "provider_used": provider or context.provider_used,
+                "pipeline_used": context.pipeline_used,
             }
 
         except GeneratorExit:
@@ -2734,16 +3002,18 @@ class FlaskAppWrapper(object):
                 ProviderType,
             )
 
+            session_keys = session.get('provider_api_keys', {})
             providers_data = []
             for provider_type in list_provider_types():
                 try:
                     cfg = _build_provider_config_from_payload(self.config, provider_type)
                     provider = get_provider(provider_type, config=cfg) if cfg else get_provider(provider_type)
                     models = provider.list_models()
+                    has_session_key = provider_type.value in session_keys
                     providers_data.append({
                         'type': provider_type.value,
                         'display_name': provider.display_name,
-                        'enabled': provider.is_enabled,
+                        'enabled': provider.is_enabled or has_session_key,
                         'default_model': provider.config.default_model,
                         'models': [
                             {
@@ -3103,7 +3373,7 @@ class FlaskAppWrapper(object):
                 dynamic = None
             if dynamic and dynamic.active_agent_name == name:
                 cfg = ConfigService(pg_config=self.pg_config)
-                cfg.update_dynamic_config(active_agent_name=None, updated_by=data.get("client_id") or "system")
+                cfg.update_dynamic_config(active_agent_name="", updated_by=data.get("client_id") or "system")
             return jsonify({"success": True, "deleted": name}), 200
         except Exception as exc:
             logger.error(f"Error deleting agent spec: {exc}")
@@ -3476,6 +3746,7 @@ class FlaskAppWrapper(object):
             # Provider-based model selection
             "provider": payload.get("provider"),
             "model": payload.get("model"),
+            "pipeline": payload.get("pipeline"),
         }
 
 
@@ -3506,6 +3777,7 @@ class FlaskAppWrapper(object):
         client_sent_msg_ts = request_data["client_sent_msg_ts"]
         client_timeout = request_data["client_timeout"]
         client_id = request_data["client_id"]
+        model = request_data["model"]
 
         if not client_id:
             return jsonify({'error': 'client_id missing'}), 400

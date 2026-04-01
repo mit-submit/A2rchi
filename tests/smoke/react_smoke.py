@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """ReAct smoke check using chat streaming endpoint."""
+
 import json
 import os
 import sys
 import time
 import uuid
-import requests
 from typing import Tuple
+
+import requests
+
 
 def _fail(message: str) -> None:
     print(f"[react-smoke] ERROR: {message}", file=sys.stderr)
@@ -21,6 +24,10 @@ def _stream_chat(base_url: str, payload: dict) -> bool:
     stream_url = f"{base_url}/api/get_chat_response_stream"
     _info(f"POST {stream_url}")
     final_seen = False
+    text_events = 0
+    tool_start_events = 0
+    usage_data = None
+    final_content = ""
     try:
         with requests.post(stream_url, json=payload, stream=True, timeout=300) as resp:
             if resp.status_code != 200:
@@ -35,11 +42,40 @@ def _stream_chat(base_url: str, payload: dict) -> bool:
                 event_type = event.get("type")
                 if event_type == "error":
                     _fail(f"Stream error: {event}")
+                if event_type == "chunk":
+                    text_events += 1
+                if event_type == "tool_start":
+                    tool_start_events += 1
+                    _info(f"  tool_start: {event.get('tool_name', '?')}")
                 if event_type == "final":
                     final_seen = True
+                    final_content = event.get("response", "")
+                    usage_data = event.get("usage")
                     break
     except Exception as exc:
         _fail(f"Stream request failed: {exc}")
+
+    # Extended validation
+    if text_events == 0:
+        _info("WARNING: No text chunk events before final")
+    else:
+        _info(f"  {text_events} text chunk(s) received")
+
+    if tool_start_events > 0:
+        _info(f"  {tool_start_events} tool call(s) observed")
+
+    if not final_content:
+        _info("WARNING: final event has empty response content")
+
+    if usage_data:
+        pt = usage_data.get("prompt_tokens", 0)
+        ct = usage_data.get("completion_tokens", 0)
+        _info(f"  usage: {pt} prompt + {ct} completion = {pt + ct} total tokens")
+        if pt == 0:
+            _info("WARNING: prompt_tokens is 0 in usage data")
+    else:
+        _info("WARNING: No usage data in final event")
+
     return final_seen
 
 

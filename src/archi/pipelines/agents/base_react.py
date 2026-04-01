@@ -19,7 +19,7 @@ from src.archi.providers import get_model
 from src.archi.providers.base import ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.run_memory import RunMemory
-from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
+from src.archi.utils.async_loop import AsyncLoopThread
 from src.archi.pipelines.agents.tools import initialize_mcp_client
 from src.utils.logging import get_logger
 
@@ -78,6 +78,10 @@ class BaseReActAgent:
     def create_run_memory(self) -> RunMemory:
         """Instantiate a fresh run memory for an agent run."""
         return RunMemory()
+
+    def supports_persisted_session_id(self) -> bool:
+        """Classic ReAct agents are stateless beyond the provided history."""
+        return False
 
     def start_run_memory(self) -> RunMemory:
         """Create and store the active memory for the current run."""
