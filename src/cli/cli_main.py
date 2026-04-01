@@ -477,7 +477,8 @@ def list_deployments():
 @click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
 @click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
 @click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
-@click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
+@click.option('--force', '-f', is_flag=True, help="Delete existing deployment and recreate from scratch")
+@click.option('--reingest', is_flag=True, help="Re-ingest data by restarting all services (keeps volumes)")
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
 @click.option('--langfuse', is_flag=True, hidden=True, help="Deprecated: use --argilla instead")
@@ -487,7 +488,18 @@ def list_deployments():
 @click.option('--questions', '-q', type=str, default=None, help="Path to questions JSON file (overrides queries_path in all configs)")
 @click.option('--resume', is_flag=True, help="Resume an interrupted benchmark run from its checkpoint")
 def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force: bool, verbosity: int, **other_flags):
-    """Run benchmarks against one or more ARCHI configurations."""
+    """Run benchmarks against one or more ARCHI configurations.
+
+    On first run, sets up the full deployment (postgres, data ingestion, benchmark).
+    On subsequent runs, only the benchmark container is rebuilt and restarted by
+    default — use --reingest to re-ingest data, or --force to tear down and recreate.
+    """
+    reingest = other_flags.pop('reingest', False)
+
+    if reingest and force:
+        raise click.ClickException("--reingest and --force are mutually exclusive. "
+                                   "--force already deletes and recreates the deployment.")
+
     if not (bool(config_file) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
     if config_dir: 
@@ -512,13 +524,26 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
 
     try: 
         base_dir = Path(ARCHI_DIR) / f"archi-{name}"
-        handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
 
-        if base_dir.exists():
-            raise click.ClickException(
-                    f"Benchmarking runtime '{name}' already exists at {base_dir}. "
-                    f"Use --force to overwrite or 'archi delete --name {name}' to remove it first."
-                    )
+        # Determine run mode based on existing deployment state + flags
+        if force and base_dir.exists():
+            handle_existing_deployment(base_dir, name, force, False, other_flags.get('podman', False))
+            # After deletion, fall through to fresh setup
+            fresh_setup = True
+        elif base_dir.exists():
+            # Deployment exists — rerun by default, or reingest if requested
+            fresh_setup = False
+            if reingest:
+                click.echo(f"Re-ingesting data for deployment '{name}'...")
+            else:
+                click.echo(f"Rerunning benchmark against existing deployment '{name}'...")
+        else:
+            if reingest:
+                raise click.ClickException(
+                    f"No existing deployment '{name}' found at {base_dir}. "
+                    f"Cannot --reingest without an existing deployment."
+                )
+            fresh_setup = True
 
         config_manager = ConfigurationManager(config_files, env)
         secrets_manager = SecretsManager(env_file, config_manager)
@@ -595,24 +620,25 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
 
         template_manager = TemplateManager(env, verbosity)
         base_dir.mkdir(parents=True, exist_ok=True)
-        
-        secrets_manager.write_secrets_to_files(base_dir, all_secrets)
 
-        # Generate Argilla credentials for managed deployment
-        if other_flags.get('argilla_server'):
-            import secrets as secrets_mod
-            argilla_auth_secret = secrets_mod.token_hex(32)
-            argilla_api_key = secrets_mod.token_hex(16)
-            env_file_path = base_dir / ".env"
-            with open(env_file_path, 'a') as f:
-                f.write(f"ARGILLA_AUTH_SECRET_KEY={argilla_auth_secret}\n")
-                f.write(f"ARGILLA_API_KEY={argilla_api_key}\n")
-                f.write("ARGILLA_API_URL=http://localhost:6900\n")
-            click.echo("Argilla server will be available at http://localhost:6900")
-            click.echo(f"  API key: {argilla_api_key}")
+        if fresh_setup:
+            secrets_manager.write_secrets_to_files(base_dir, all_secrets)
 
-        volume_manager = VolumeManager(compose_config.use_podman)
-        volume_manager.create_required_volumes(compose_config, config_manager.config)
+            # Generate Argilla credentials for managed deployment
+            if other_flags.get('argilla_server'):
+                import secrets as secrets_mod
+                argilla_auth_secret = secrets_mod.token_hex(32)
+                argilla_api_key = secrets_mod.token_hex(16)
+                env_file_path = base_dir / ".env"
+                with open(env_file_path, 'a') as f:
+                    f.write(f"ARGILLA_AUTH_SECRET_KEY={argilla_auth_secret}\n")
+                    f.write(f"ARGILLA_API_KEY={argilla_api_key}\n")
+                    f.write("ARGILLA_API_URL=http://localhost:6900\n")
+                click.echo("Argilla server will be available at http://localhost:6900")
+                click.echo(f"  API key: {argilla_api_key}")
+
+            volume_manager = VolumeManager(compose_config.use_podman)
+            volume_manager.create_required_volumes(compose_config, config_manager.config)
         
         template_manager.prepare_deployment_files(
             compose_config,
@@ -622,7 +648,13 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
         )
 
         deployment_manager = DeploymentManager(compose_config.use_podman)
-        deployment_manager.start_deployment(base_dir)
+        if fresh_setup or reingest:
+            # Full startup: creates/recreates all services (postgres, config-seed, data-manager, benchmark)
+            deployment_manager.start_deployment(base_dir)
+        else:
+            # Rerun: only rebuild and restart the benchmark container
+            deployment_manager.restart_service(base_dir, "benchmark",
+                                               build=True, no_deps=True, force_recreate=True)
 
         click.echo(f"\nBenchmark results will be written to: {out_dir}")
 

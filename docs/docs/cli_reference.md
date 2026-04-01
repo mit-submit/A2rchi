@@ -168,19 +168,29 @@ Launch the benchmarking runtime to evaluate configurations against a set of ques
 archi evaluate --name <name> --env-file <secrets.env> --config <config.yaml> [OPTIONS]
 ```
 
-Supports the same flags as `create` (`--podman`, `--gpu-ids`, `--tag`, `--hostmode`, `--verbosity`, `--force`). Configuration files should define the `services.benchmarking` section.
+On first run, sets up the full deployment (postgres, data ingestion, benchmark). On subsequent runs with the same `--name`, only the benchmark container is rebuilt and restarted — the database and ingested data are reused. Use `--reingest` to re-ingest data, or `--force` to tear down and recreate everything.
 
 | Flag | Description |
 |------|-------------|
+| `--reingest` | Re-ingest data by restarting all services (keeps volumes) |
+| `--force` | Delete the existing deployment entirely and recreate from scratch |
 | `--argilla` | Push benchmark results to an external Argilla instance for team grading |
 | `--argilla-server` | Start a managed Argilla instance alongside the benchmark (implies `--argilla`) |
+| `--resume` | Resume an interrupted benchmark from its checkpoint |
 
-**Example:**
+**Examples:**
 
 ```bash
+# First run: full setup + data ingestion + benchmark
 archi evaluate -n benchmark \
   -c examples/benchmarking/benchmark_configs/example_conf.yaml \
   -e .secrets.env --argilla-server
+
+# Subsequent runs: swap config, reuse existing data
+archi evaluate -n benchmark -c another_config.yaml -e .secrets.env
+
+# Force re-ingestion (e.g. after updating data sources)
+archi evaluate -n benchmark -c config.yaml -e .secrets.env --reingest
 ```
 
 See [Benchmarking](benchmarking.md) for full details on query format and evaluation modes.
