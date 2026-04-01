@@ -1,5 +1,5 @@
 from typing import Iterator
-from scrapy.http import Response
+from scrapy.http import Response, TextResponse
 from src.data_manager.collectors.scrapers.items import WebPageItem
 from src.data_manager.collectors.scrapers.utils import get_content_type
 

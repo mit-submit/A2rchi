@@ -39,11 +39,10 @@ services:
 data_manager:
   embedding_name: HuggingFaceEmbeddings
   sources:
-    links: # workaround for backward compatibility
-        input_lists: []   # empty list to avoid error
     web:
       visible: true
       link:
+        enabled: false
         allow:
           - ".*/blog/.*"
           - ".*quotes.*"
@@ -76,6 +75,7 @@ data_manager:
         max_pages: 500
         delay: 60
     git:
+      enabled: false
       urls:
         - https://github.com/dmwm/CRABServer
         - https://github.com/dmwm/CRABClient
