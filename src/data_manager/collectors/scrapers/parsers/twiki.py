@@ -8,11 +8,12 @@ Selectors are tried in order; first non-empty serialized node wins, then ``body`
 """
 from __future__ import annotations
 
-from typing import Iterator, List
+from typing import Iterator
 
 from scrapy.http import Response, TextResponse
 
 from src.data_manager.collectors.scrapers.items import WebPageItem
+from src.data_manager.collectors.scrapers.parsers.link import _first_outer_html
 from src.data_manager.collectors.scrapers.utils import get_content_type
 from src.utils.logging import get_logger
 from urllib.parse import urlparse
@@ -32,17 +33,6 @@ _TWIKI_DOM_SELECTORS: List[str] = [
     ".patternMain",
     "body",
 ]
-
-
-def _first_outer_html(response: Response, selectors: List[str]) -> str:
-    for selector in selectors:
-        nodes = response.css(selector)
-        if not nodes:
-            continue
-        html = nodes[0].get()
-        if html and html.strip():
-            return html.strip()
-    return ""
 
 
 def _twiki_title(response: TextResponse) -> str:

@@ -4,7 +4,7 @@ from scrapy import Spider
 from scrapy.http import Response, Request
 from scrapy.linkextractors import LinkExtractor
 from scrapy.link import Link
-from src.data_manager.collectors.scrapers.utils import _IMAGE_EXTS
+from src.data_manager.collectors.scrapers.utils import IMAGE_EXTENSIONS, IGNORED_DOCUMENT_EXTENSIONS
 from src.data_manager.collectors.scrapers.items import WebPageItem
 from src.data_manager.collectors.scrapers.parsers.link import parse_link_page
 
@@ -51,7 +51,7 @@ class LinkSpider(Spider):
             allow=allow or [],
             deny=(deny or []) + default_deny, 
             allow_domains=list(self._allowed_domains),
-            deny_extensions=list(_IMAGE_EXTS),
+            deny_extensions=(IMAGE_EXTENSIONS + IGNORED_DOCUMENT_EXTENSIONS),
             canonicalize=canonicalize,
             process_value=process_value or default_process_value,
             unique=True,

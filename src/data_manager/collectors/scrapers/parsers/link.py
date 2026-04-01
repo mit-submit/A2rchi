@@ -1,4 +1,4 @@
-from typing import Iterator
+from typing import Iterator, List
 from scrapy.http import Response, TextResponse
 from src.data_manager.collectors.scrapers.items import WebPageItem
 from src.data_manager.collectors.scrapers.utils import get_content_type
@@ -18,6 +18,17 @@ _CONTENT_SELECTORS = [
     ".entry-content",
     "body",
 ]
+
+def _first_outer_html(response: Response, selectors: List[str]) -> str:
+    for selector in selectors:
+        nodes = response.css(selector)
+        if not nodes:
+            continue
+        html = nodes[0].get()
+        if html and html.strip():
+            return html.strip()
+    return ""
+
 def parse_link_page(response: Response) -> Iterator[WebPageItem]:
     """
     Generic page parser — works for any HTML page with no site-specific selectors.
@@ -37,7 +48,7 @@ def parse_link_page(response: Response) -> Iterator[WebPageItem]:
             content=response.body,
             suffix="pdf",
             source_type="web",
-            title="",
+            title=urlparse(response.url).path.split("/")[-1].replace(".pdf", "").strip(),
             content_type=ct,
         )
         return
@@ -47,7 +58,7 @@ def parse_link_page(response: Response) -> Iterator[WebPageItem]:
         or response.css("title::text").get()
         or ""
     ).strip()
-    body_text = _extract_main_text(response)
+    body_text = _first_outer_html(response, _CONTENT_SELECTORS)
     encoding = response.encoding if isinstance(response, TextResponse) else "utf-8"
     if not body_text:
         return  # empty page — don't yield a blank item
@@ -60,13 +71,3 @@ def parse_link_page(response: Response) -> Iterator[WebPageItem]:
         content_type=ct,
         encoding=encoding,
     )
-def _extract_main_text(response: Response) -> str:
-    """
-    Try content selectors in priority order.
-    Returns the first non-empty joined text, or empty string.
-    """
-    for selector in _CONTENT_SELECTORS:
-        text = " ".join(response.css(f"{selector} *::text").getall()).strip()
-        if text:
-            return text
-    return ""
