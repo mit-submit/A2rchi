@@ -209,7 +209,7 @@ data_manager:
           - {{ u }}
           {%- endfor %}
       twiki:
-        enabled: {{ data_manager.sources.web.twiki.enabled | default(false, true) }}
+        enabled: {{ data_manager.sources.web.twiki.enabled | default(true, true) }}
         auth_provider_name: {{ data_manager.sources.web.twiki.auth_provider_name | default("", true) }}
         schedule: '{{ data_manager.sources.web.twiki.schedule | default("", true) }}'
         max_depth: {{ data_manager.sources.web.twiki.max_depth | default(2, true) }}
