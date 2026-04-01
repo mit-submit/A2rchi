@@ -1,18 +1,18 @@
 """
 ELOG scraper for electronic logbooks (https://elog.sourceforge.net/).
 
-Automatically discovers all entries by following pagination links on the
-index page, then fetches each individual entry as a ScrapedResource.
+Automatically discovers all entries by walking index pages sequentially,
+then fetches each individual entry as a ScrapedResource.
 
 Config (under data_manager.sources.elog):
     url:          Base URL of the logbook, e.g. https://www-enstore.fnal.gov/elog/dCache/
     max_entries:  Optional cap on total entries to fetch (default: unlimited)
-    verify_ssl:   Whether to verify SSL certificates (default: False)
+    verify_ssl:   Whether to verify SSL certificates (default: True)
 """
 
 import re
 import requests
-from typing import Iterator, Optional
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -22,21 +22,20 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-_PAGE_HREF  = re.compile(r"^page\d+$")
 _ENTRY_PATH = re.compile(r"/\d+$")
 
 
 class ElogScraper:
-    """Crawls an ELOG logbook index (with pagination) and yields each entry."""
+    """Crawls an ELOG logbook index (walking pages sequentially) and yields each entry."""
 
     def __init__(self, config: dict) -> None:
         self.base_url   = config.get("url", "").rstrip("/") + "/"
         self.max_entries: Optional[int] = config.get("max_entries")
-        self.verify_ssl = config.get("verify_ssl", False)
+        self.verify_ssl = config.get("verify_ssl", True)
         self._session   = requests.Session()
         if not self.verify_ssl:
             import urllib3
-            urllib3.disable_warnings()
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     # ------------------------------------------------------------------
     # Public API
@@ -60,48 +59,37 @@ class ElogScraper:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _discover_entry_urls(self) -> list[str]:
-        """Return deduplicated entry URLs collected from all index pages."""
-        seen:   set[str]  = set()
-        result: list[str] = []
+    def _discover_entry_urls(self) -> List[str]:
+        """Return entry URLs newest-first by walking index pages sequentially until max_entries is reached."""
+        seen:   Set[str]  = set()
+        result: List[str] = []
+        page = 1
 
-        # Collect all index page URLs first (main page + all paginated pages)
-        index_pages = [self.base_url]
-        index_pages.extend(self._get_pagination_urls(self.base_url))
+        while True:
+            page_url = self.base_url if page == 1 else f"{self.base_url}page{page}"
+            new_urls = [u for u in self._get_entry_urls_from_page(page_url) if u not in seen]
+            if not new_urls:
+                logger.info(f"ElogScraper: no new entries on {page_url}, stopping.")
+                break
+            seen.update(new_urls)
+            result.extend(new_urls)
+            logger.debug(f"ElogScraper: page {page} added {len(new_urls)} entries ({len(result)} total)")
+            if self.max_entries is not None and len(result) >= self.max_entries:
+                break
+            page += 1
 
-        logger.info(f"ElogScraper: found {len(index_pages)} index pages to scan")
-
-        for page_url in index_pages:
-            for entry_url in self._get_entry_urls_from_page(page_url):
-                if entry_url not in seen:
-                    seen.add(entry_url)
-                    result.append(entry_url)
-
-        # Sort descending by numeric entry ID (most recent first)
         result.sort(key=lambda u: int(u.rstrip("/").rsplit("/", 1)[-1]), reverse=True)
         logger.info(f"ElogScraper: discovered {len(result)} unique entries")
         return result
 
-    def _get_pagination_urls(self, index_url: str) -> list[str]:
-        """Return URLs for page2, page3, … found on the main index page."""
-        html = self._fetch_html(index_url)
-        if html is None:
-            return []
-        soup = BeautifulSoup(html, "html.parser")
-        pages = []
-        for a in soup.find_all("a", href=_PAGE_HREF):
-            pages.append(urljoin(index_url, a["href"]))
-        logger.debug(f"ElogScraper: found {len(pages)} pagination links")
-        return pages
-
-    def _get_entry_urls_from_page(self, page_url: str) -> list[str]:
+    def _get_entry_urls_from_page(self, page_url: str) -> List[str]:
         """Return all entry URLs found on a single index/listing page."""
         html = self._fetch_html(page_url)
         if html is None:
             return []
         soup  = BeautifulSoup(html, "html.parser")
         base_host = urlparse(self.base_url).netloc
-        entries: set[str] = set()
+        entries: Set[str] = set()
         for a in soup.find_all("a", href=True):
             full = urljoin(page_url, a["href"])
             parsed = urlparse(full)
@@ -124,7 +112,7 @@ class ElogScraper:
             metadata=metadata,
         )
 
-    def _parse_entry(self, html: str, url: str) -> tuple[str, dict]:
+    def _parse_entry(self, html: str, url: str) -> Tuple[str, Dict]:
         """Parse an ELOG entry page into clean text and structured metadata."""
         soup = BeautifulSoup(html, "html.parser")
         meta: dict = {"url": url, "elog_entry": True}
@@ -141,13 +129,6 @@ class ElogScraper:
                 value = cells[1].get_text(strip=True)
                 if key and value:
                     meta[key.lower().replace(" ", "_")] = value
-
-        # Entry time from attribhead
-        attribhead = soup.find("td", class_="attribhead")
-        if attribhead:
-            text = attribhead.get_text(" ", strip=True)
-            for part in text.split():
-                pass  # entry_time already in meta via hidden inputs if needed
 
         # Main message body
         body = ""

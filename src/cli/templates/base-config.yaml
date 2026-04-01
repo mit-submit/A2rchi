@@ -248,6 +248,13 @@ data_manager:
       visible: {{ data_manager.sources.redmine.visible | default(false, true) }}
       schedule: '{{ data_manager.sources.redmine.schedule | default("", true) }}'
       anonymize_data: {{ data_manager.sources.redmine.anonymize_data | default(true, true) }}
+    elog:
+      enabled: {{ data_manager.sources.elog.enabled | default(false, true) }}
+      visible: {{ data_manager.sources.elog.visible | default(false, true) }}
+      url: '{{ data_manager.sources.elog.url | default('', true) }}'
+      max_entries: {{ data_manager.sources.elog.max_entries | default(null, true) }}
+      verify_ssl: {{ data_manager.sources.elog.verify_ssl | default(false, true) }}
+      schedule: '{{ data_manager.sources.elog.schedule | default("", true) }}'
   utils:
     anonymizer:
         nlp_model: {{ data_manager.utils.anonymizer.nlp_model | default('en_core_web_sm', true) }}

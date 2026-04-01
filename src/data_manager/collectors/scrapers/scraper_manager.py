@@ -157,7 +157,12 @@ class ScraperManager:
         catalog_urls = [m[1].get("url", "") for m in metadata]
         self.collect_sso(persistence, sso_urls=catalog_urls)
 
-    def collect_elog(self, persistence: PersistenceService, extra_urls: List[str] = []) -> int:
+    def schedule_collect_elog(self, persistence: PersistenceService, last_run: Optional[str] = None) -> None:
+        metadata = persistence.catalog.get_metadata_by_filter("source_type", source_type="elog", metadata_keys=["url"])
+        catalog_urls = [m[1].get("url", "") for m in metadata]
+        self.collect_elog(persistence, extra_urls=catalog_urls)
+
+    def collect_elog(self, persistence: PersistenceService, extra_urls: Optional[List[str]] = None) -> int:
         """Collect all entries from configured ELOG logbooks.
 
         Sources:
@@ -168,10 +173,22 @@ class ScraperManager:
         elog_dir = persistence.data_path / "websites"
         elog_dir.mkdir(parents=True, exist_ok=True)
 
-        urls_to_scrape: List[str] = list(extra_urls)
+        urls_to_scrape: List[str] = list(extra_urls) if extra_urls else []
         if self.elog_enabled:
             urls_to_scrape.append(self.elog_config.get("url"))
-
+        
+        # Normalize and deduplicate URLs while preserving order
+        normalized_urls: List[str] = []
+        seen = set()
+        for raw_url in urls_to_scrape:
+            if not raw_url:
+                continue
+            url = raw_url.rstrip("/")
+            if url and url not in seen:
+                seen.add(url)
+                normalized_urls.append(url)
+        urls_to_scrape = normalized_urls
+        
         if not urls_to_scrape:
             return 0
 

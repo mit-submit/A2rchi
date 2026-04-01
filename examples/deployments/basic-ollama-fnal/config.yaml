@@ -1,4 +1,4 @@
-# Basic configuration file for a Archi deployment
+# Basic configuration file for an Archi deployment
 # with a chat app interface and PostgreSQL with pgvector for document storage.
 # The LLM is used through an existing Ollama server.
 #
@@ -17,7 +17,7 @@ services:
       local:
         enabled: true
         base_url: https://ollama.fnal.gov # make sure this matches your ollama server URL!
-        mode: ollama #call to LanChain class ChatOllama, other option is openai_compat which calls ChatOpenAI LanChain class
+        mode: ollama #call to LangChain class ChatOllama, other option is openai_compat which calls ChatOpenAI LangChain class
         default_model: "Qwen3-coder:latest" # local server default model in the dropdown menu in "Model Provider" section of the GUI, make sure this matches a model you have downloaded locally with ollama
         models: #options for the dropdown menu in "Model" section of the GUI if dynamic fetch fails (GET https://ollama.fnal.gov/api/tags)
           - "gpt-oss:120b"
