@@ -316,6 +316,8 @@ class ChatWrapper:
         # track active config/model/pipeline state
         self.default_config_name = self.config.get("name")
         self.current_config_name = None
+        self.current_model_used = None
+        self.current_pipeline_used = None
         self._config_cache = {}
         if self.default_config_name:
             self._config_cache[self.default_config_name] = self.config
@@ -494,6 +496,8 @@ class ChatWrapper:
         model_name = self._extract_model_name(config_payload)
         
         self.current_config_name = target_config_name
+        self.current_pipeline_used = agent_class
+        self.current_model_used = model_name
         self.archi.update(pipeline=agent_class, config_name=target_config_name)
 
     def _extract_model_name(self, config_payload):
