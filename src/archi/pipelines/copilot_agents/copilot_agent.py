@@ -20,6 +20,7 @@ Design decisions implemented here:
 
 from __future__ import annotations
 
+import os
 from typing import (Any, AsyncIterator, Callable, Dict, Iterator, List,
                     Optional, Sequence, Tuple)
 
@@ -97,6 +98,12 @@ def _build_sdk_provider(
     result: Dict[str, Any] = {"type": sdk_type}
 
     base_url = provider_cfg.get("base_url")
+    # For local providers, prefer OLLAMA_HOST env var (set by service_benchmark)
+    # over the config default, since the config may have a stale default port.
+    if provider_name.lower() == "local":
+        ollama_host = os.environ.get("OLLAMA_HOST")
+        if ollama_host:
+            base_url = ollama_host
     if not base_url:
         # Default base URLs for known OpenAI-compatible providers
         _DEFAULT_BASE_URLS = {
