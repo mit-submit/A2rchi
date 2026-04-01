@@ -5,6 +5,9 @@ from src.data_manager.collectors.scrapers.utils import get_content_type
 
 
 def parse_twiki_page(response: Response) -> Iterator[WebPageItem]:
+    if not isinstance(response, TextResponse):
+        logger.debug("Skipping non-text response (no css): %s", response.url)
+        return
     # Twiki-specific selectors
     title = (
         response.css("#topic-title::text").get()
@@ -21,5 +24,7 @@ def parse_twiki_page(response: Response) -> Iterator[WebPageItem]:
         title=title,
         content=body_text,
         suffix="html",
+        source_type="web",
         content_type=get_content_type(response),
+        encoding=response.encoding or "utf-8",
     )

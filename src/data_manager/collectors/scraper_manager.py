@@ -19,6 +19,11 @@ def _make_spider_loader(settings: Settings) -> Callable[[str], type[Spider]]:
     """Bind settings once, return a name → SpiderClass callable."""
     return SpiderLoader.from_settings(settings).load
 
+def _spider_section_enabled(cfg: Dict[str, Any]) -> bool:
+    """Respect web.<spider>.enabled; missing or null → enabled (on)."""
+    v = cfg.get("enabled", True)
+    return bool(v) if v is not None else True
+
 class ScraperManager:
     """
     Coordinates all web crawls as a single CrawlerProcess run.
@@ -40,7 +45,6 @@ class ScraperManager:
 
         sources_config = (dm_config or {}).get("sources", {}) or {}
 
-        logger.info("sources_config: %s", json.dumps(sources_config, indent=2, default=str))
         self.config = sources_config.get("web", {}) if isinstance(sources_config, dict) else {}
         self.enabled = self.config.get("enabled", True)
 
@@ -62,9 +66,10 @@ class ScraperManager:
             logger.error("Unknown spider: %s", spider_key)
             return
         cfg = self.config.get(spider_key, {})   # use config settings if present, else defaults
-        if urls:
+        if urls and _spider_section_enabled(cfg):
             self._add_crawler(process, SpiderClass, urls, cfg)
-            process.start()
+            # Fix Twisted/Scrapy try to installs OS signal handlers (SIGINT / SIGTERM) while the code is running in a worker thread
+            process.start(install_signal_handlers=False) 
 
     def _run(self, url_fn: Callable[[str, Dict], List[str]]) -> None:
         if not self.enabled:
@@ -76,7 +81,6 @@ class ScraperManager:
 
         added = False
         for spider_key, cfg in self.config.items():
-            logger.info("spider_key: %s, cfg: %s", spider_key, json.dumps(cfg, indent=2, default=str))
             if not isinstance(cfg, dict):
                 continue
             try:
@@ -84,13 +88,11 @@ class ScraperManager:
             except KeyError:
                 continue
             urls = url_fn(spider_key, cfg)
-            logger.info("urls: %s", urls)
-            if urls:
+            if urls and _spider_section_enabled(cfg):
                 self._add_crawler(process, SpiderClass, urls, cfg)
                 added = True
-        logger.info("added: %s", added)
         if added:
-            process.start()
+            process.start(install_signal_handlers=False) 
 
     # ── CrawlerProcess wiring ─────────────────────────────────────────────────
 
@@ -116,7 +118,6 @@ class ScraperManager:
 
     def _config_urls(self, spider_key: str, cfg: Dict) -> List[str]:
         urls = list(cfg.get("urls") or [])
-        logger.info("cfg_urls: urls: %s", urls)
         for list_path in cfg.get("input_lists") or []:
             path = Path(list_path)
             if not path.exists():
@@ -129,7 +130,6 @@ class ScraperManager:
         if not self.persistence:
             return []
 
-        logger.info("catalog_urls: spider_key: %s, cfg: %s", spider_key, json.dumps(cfg, indent=2, default=str))
         metadata = self.persistence.catalog.get_metadata_by_filter(
             "source_type", source_type="web", metadata_keys=["url", "spider_name"]
         )

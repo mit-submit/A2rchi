@@ -56,7 +56,6 @@ data_manager:
         input_lists:
           - examples/deployments/basic-scraping/miscellanea.list
       twiki:
-        enabled: true
         auth_provider_name: cern_sso   # remove if crawling public pages only
         urls:
           - https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide
@@ -76,7 +75,6 @@ data_manager:
         max_pages: 500
         delay: 60
     git:
-      enabled: true
       urls:
         - https://github.com/dmwm/CRABServer
         - https://github.com/dmwm/CRABClient
