@@ -104,4 +104,6 @@ class LinkSpider(Spider):
         yield from parse_link_page(response)
 
     def parse_follow_links(self, response: Response) -> Iterator[Link]:
-        yield from self._le.extract_links(response)
+        links = self._le.extract_links(response)
+        self.logger.info("Extracted %d links from %s", len(links), response.url)
+        yield from links
