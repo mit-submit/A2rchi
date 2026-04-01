@@ -23,11 +23,9 @@ class SourceRegistry:
     def _register_defaults(self) -> None:
         self.register(
             SourceDefinition(
-                name="links",
-                description="Basic HTTP/HTTPS link scraping from input lists",
-                required_config_fields=[
-                    "data_manager.sources.links.input_lists",
-                ],
+                name="web",
+                description="Basic HTTP/HTTPS, Scrapy web sources, seeds from urls and/or input_list",
+                required_config_fields=[],
             )
         )
         self.register(
