@@ -124,6 +124,10 @@ class ScraperManager:
                 logger.warning("Input list not found: %s", path)
                 continue
             urls.extend(self._extract_urls_from_file(path))
+        # Discourse (and similar API/Iterative spiders) don't use start_urls;
+        # category_paths or base_url signals the spider is configured.
+        if not urls and (cfg.get("category_paths") or cfg.get("base_url")):
+            urls = ["__api_spider__"]
         return urls
 
     def _catalog_urls(self, spider_key: str, cfg: Dict) -> List[str]:

@@ -38,6 +38,7 @@ class DiscourseSpider(Spider):
         "COOKIES_ENABLED": True,
         "CLOSESPIDER_PAGECOUNT": 500,    # safety cap on total responses
         "CLOSESPIDER_ITEMCOUNT": 0,      # 0 = no item-count limit
+        "DEPTH_LIMIT": 0,                # 0 = no limit; pagination is not link depth tracking
     }
 
     @classmethod
