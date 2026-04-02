@@ -159,7 +159,7 @@ class DiscourseSpider(Spider):
         tags = response.meta.get("tags", [])
 
         yield DiscourseTopicPageItem(
-            url=response.url,
+            url=response.url.replace(".rss", ""),
             content=response.text,
             suffix="html",     # Workaround: vectorstore manager was not supporting RSS feed yet.
             source_type="web",
