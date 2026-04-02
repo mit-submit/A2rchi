@@ -161,7 +161,7 @@ class DiscourseSpider(Spider):
         yield DiscourseTopicPageItem(
             url=response.url,
             content=response.text,
-            suffix="rss",
+            suffix="html",     # Workaround: vectorstore manager was not supporting RSS feed yet.
             source_type="web",
             title=title,
             content_type=response.headers.get("Content-Type", b"").decode(
