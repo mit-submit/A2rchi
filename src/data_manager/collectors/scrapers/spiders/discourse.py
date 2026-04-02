@@ -3,7 +3,7 @@ Discourse spider — recursive JSON pagination, no link following.
 
 Seed:   GET /c/{path}.json              → first page of each category
 Recur:  GET more_topics_url (from JSON) → next page (until exhausted)
-Fan-out: each topic → GET /t/{slug}/{id}.rss → yield WebPageItem
+Fan-out: each topic → GET /t/{slug}/{id}.rss → yield DiscourseTopicPageItem
 """
 from __future__ import annotations
 
@@ -33,23 +33,39 @@ class DiscourseSpider(Spider):
 
     custom_settings = {
         "ROBOTSTXT_OBEY": False,
-        "DOWNLOAD_DELAY": 60,
+        "DOWNLOAD_DELAY": 10,            # default polite delay (seconds)
         "RETRY_TIMES": 2,
         "COOKIES_ENABLED": True,
+        "CLOSESPIDER_PAGECOUNT": 500,    # safety cap on total responses
+        "CLOSESPIDER_ITEMCOUNT": 0,      # 0 = no item-count limit
     }
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        delay = kwargs.get("delay")
+        max_pages = kwargs.get("max_pages")
+        if delay:
+            crawler.settings.set("DOWNLOAD_DELAY", delay, priority="spider")
+        if max_pages:
+            crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_pages, priority="spider")
+        return super().from_crawler(crawler, *args, **kwargs)
 
     def __init__(
         self,
         base_url: Optional[str] = None,
         category_paths: Optional[List[str]] = None,
-        keywords: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        delay: Optional[int] = None,
+        max_pages: Optional[int] = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.base_url = (base_url or self._DEFAULT_BASE_URL).rstrip("/")
         self.category_paths = category_paths or self._DEFAULT_CATEGORY_PATHS
-        self.keywords_re = re.compile(keywords) if keywords else None
+        self.keywords_re: List[re.Pattern] = [
+            re.compile(kw, re.IGNORECASE) for kw in (keywords or [])
+        ]
 
     # ── Seeds: one request per category (page 0) ────────────────────────
     async def start(self):
@@ -122,9 +138,9 @@ class DiscourseSpider(Spider):
 
     def _content_matches_keywords(self, text: str) -> bool:
         """No keywords pattern means accept everything."""
-        if self.keywords_re is None:
+        if not self.keywords_re:
             return True
-        return bool(self.keywords_re.search(text))
+        return any(pattern.search(text) for pattern in self.keywords_re)
 
     # ── Topic RSS → DiscourseTopicPageItem ───────────────────────────────
     def parse_topic(self, response: Response) -> Iterator[DiscourseTopicPageItem]:

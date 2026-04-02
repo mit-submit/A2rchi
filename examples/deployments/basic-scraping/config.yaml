@@ -71,6 +71,20 @@ data_manager:
         max_depth: 2
         max_pages: 500
         delay: 60
+      discourse:
+        auth_provider_name: cern_sso
+        base_url: https://cms-talk.web.cern.ch
+        delay: 10
+        max_pages: 1000
+        category_paths:
+          - /c/offcomp/comptools/87
+        keywords:
+          - "Stefano Belforte"
+          - "Katy Ellis"
+          - "Krittin Phornsiricharoenphant"
+          - "Vijay Chakravarty"
+          - "Dario Mapelli"
+          - "Thanayut Seethongchuen"
     git:
       urls:
         - https://github.com/dmwm/CRABServer

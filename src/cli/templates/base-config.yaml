@@ -218,12 +218,27 @@ data_manager:
         allow: {{ data_manager.sources.web.twiki.allow | default([], true) | tojson }}
         deny: {{ data_manager.sources.web.twiki.deny | default([], true) | tojson }}
         input_lists:
-          {%- for l in data_manager.sources.web.twiki.input_lists | default([], true) %}
-          - {{ l }}
+          {%- for list in data_manager.sources.web.twiki.input_lists | default([], true) %}
+          - {{ list }}
           {%- endfor %}
         urls:
-          {%- for u in data_manager.sources.web.twiki.urls | default([], true) %}
-          - {{ u }}
+          {%- for url in data_manager.sources.web.twiki.urls | default([], true) %}
+          - {{ url }}
+          {%- endfor %}
+      discourse:
+        enabled: {{ data_manager.sources.web.discourse.enabled | default(true, true) }}
+        auth_provider_name: {{ data_manager.sources.web.discourse.auth_provider_name | default("cern_sso", true) }}
+        schedule: '{{ data_manager.sources.web.discourse.schedule | default("", true) }}'
+        max_pages: {{ data_manager.sources.web.discourse.max_pages | default(500, true) }}
+        delay: {{ data_manager.sources.web.discourse.delay | default(10, true) }}
+        base_url: {{ data_manager.sources.web.discourse.base_url | default("https://cms-talk.web.cern.ch", true) }}
+        keywords:
+          {%- for keyword in data_manager.sources.web.discourse.keywords | default([], true) %}
+          - {{ keyword }}
+          {%- endfor %}
+        category_paths:
+          {%- for category_path in data_manager.sources.web.discourse.category_paths | default([], true) %}
+          - {{ category_path }}
           {%- endfor %}
     git:
       enabled: {{ data_manager.sources.git.enabled | default(true, true) }}
