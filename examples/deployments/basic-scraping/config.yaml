@@ -40,22 +40,19 @@ data_manager:
   embedding_name: HuggingFaceEmbeddings
   sources:
     web:
-      visible: true
       link:
-        enabled: false
         allow:
           - ".*/blog/.*"
           - ".*quotes.*"
           - ".*/(page|author)/.*"
         urls: # Meant for Demo scraping
-        - https://quotes.toscrape.com/  # typically easy on robots.txt and rate limits
+        - https://ppc.mit.edu/news/
         max_depth: 2
-        max_pages: 200
-        delay: 2
+        max_pages: 100
+        delay: 10
         input_lists:
           - examples/deployments/basic-scraping/miscellanea.list
       twiki:
-        enabled: true
         auth_provider_name: cern_sso   # remove if crawling public pages only
         urls:
           - https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide
@@ -75,7 +72,6 @@ data_manager:
         max_pages: 500
         delay: 60
     git:
-      enabled: false
       urls:
         - https://github.com/dmwm/CRABServer
         - https://github.com/dmwm/CRABClient
