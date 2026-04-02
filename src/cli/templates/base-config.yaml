@@ -200,6 +200,7 @@ data_manager:
         delay: {{ data_manager.sources.web.link.delay | default(1, true) }}
         allow: {{ data_manager.sources.web.link.allow | default([], true) | tojson }}
         deny: {{ data_manager.sources.web.link.deny | default([], true) | tojson }}
+        anonymize_data: {{ data_manager.sources.web.link.anonymize_data | default(false, true) }}
         input_lists:
           {%- for l in data_manager.sources.web.link.input_lists | default([], true) %}
           - {{ l }}
@@ -217,6 +218,7 @@ data_manager:
         delay: {{ data_manager.sources.web.twiki.delay | default(60, true) }}
         allow: {{ data_manager.sources.web.twiki.allow | default([], true) | tojson }}
         deny: {{ data_manager.sources.web.twiki.deny | default([], true) | tojson }}
+        anonymize_data: {{ data_manager.sources.web.discourse.anonymize_data | default(false, true) }}
         input_lists:
           {%- for list in data_manager.sources.web.twiki.input_lists | default([], true) %}
           - {{ list }}
@@ -231,6 +233,7 @@ data_manager:
         schedule: '{{ data_manager.sources.web.discourse.schedule | default("", true) }}'
         max_pages: {{ data_manager.sources.web.discourse.max_pages | default(500, true) }}
         delay: {{ data_manager.sources.web.discourse.delay | default(10, true) }}
+        anonymize_data: {{ data_manager.sources.web.discourse.anonymize_data | default(false, true) }}
         base_url: {{ data_manager.sources.web.discourse.base_url | default("https://cms-talk.web.cern.ch", true) }}
         keywords:
           {%- for keyword in data_manager.sources.web.discourse.keywords | default([], true) %}

@@ -50,6 +50,7 @@ data_manager:
           - examples/deployments/basic-scraping/miscellanea.list
       twiki:
         auth_provider_name: cern_sso   # remove if crawling public pages only
+        anonymize_data: true
         urls:
           - https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide
           - https://twiki.cern.ch/twiki/bin/view/CMS/HeavyIons
@@ -66,12 +67,14 @@ data_manager:
           - ".*WorkBook.*"
         max_depth: 2
         max_pages: 500
+        anonymize_data: true
         delay: 60
       discourse:
         auth_provider_name: cern_sso
         base_url: https://cms-talk.web.cern.ch
         delay: 10
         max_pages: 1000
+        anonymize_data: true
         category_paths:
           - /c/offcomp/comptools/87
         keywords:
@@ -85,3 +88,13 @@ data_manager:
       urls:
         - https://github.com/dmwm/CRABServer
         - https://github.com/dmwm/CRABClient
+  utils:
+    anonymizer:
+      nlp_model: en_core_web_sm
+      excluded_words:
+        - Krittin
+        - Vijay
+        - Dario
+        - Thanayut
+        - Stefano
+        - Katy

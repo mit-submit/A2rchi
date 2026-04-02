@@ -45,10 +45,13 @@ class DiscourseSpider(Spider):
     def from_crawler(cls, crawler, *args, **kwargs):
         delay = kwargs.get("delay")
         max_pages = kwargs.get("max_pages")
+        anonymize_data = kwargs.get("anonymize_data")
         if delay:
             crawler.settings.set("DOWNLOAD_DELAY", delay, priority="spider")
         if max_pages:
             crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_pages, priority="spider")
+        if anonymize_data:
+            crawler.settings.set("ANONYMIZE_DATA", anonymize_data, priority="spider")
         return super().from_crawler(crawler, *args, **kwargs)
 
     def __init__(
@@ -159,9 +162,9 @@ class DiscourseSpider(Spider):
         tags = response.meta.get("tags", [])
 
         yield DiscourseTopicPageItem(
-            url=response.url.replace(".rss", ""),
+            url=response.url.replace(".rss", ""), # This will redirect to normal browser view of the topic.
             content=response.text,
-            suffix="html",     # Workaround: vectorstore manager was not supporting RSS feed yet.
+            suffix="rss",
             source_type="web",
             title=title,
             content_type=response.headers.get("Content-Type", b"").decode(
