@@ -40,11 +40,38 @@ data_manager:
   embedding_name: HuggingFaceEmbeddings
   sources:
     web:
+      link:
+        urls:
+          - https://ppc.mit.edu/news/
+        max_depth: 2
+        max_pages: 100
+        delay: 10
+        input_lists:
+          - examples/deployments/basic-scraping/miscellanea.list
+      twiki:
+        auth_provider_name: cern_sso   # remove if crawling public pages only
+        urls:
+          - https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide
+          - https://twiki.cern.ch/twiki/bin/view/CMS/HeavyIons
+        allow:
+          - ".*CRAB3.*"
+          - ".*SWGuide.*"
+          - ".*WorkBook.*"
+          - ".*Crab.*"
+          - ".*Crab3.*"
+          - ".*HeavyIons.*"
+          - ".*HICollisions.*"
+          - ".*HIRel.*"
+        deny:
+          - ".*WorkBook.*"
+        max_depth: 2
+        max_pages: 500
+        delay: 60
       discourse:
         auth_provider_name: cern_sso
         base_url: https://cms-talk.web.cern.ch
         delay: 10
-        max_pages: 200
+        max_pages: 1000
         category_paths:
           - /c/offcomp/comptools/87
         keywords:
@@ -54,3 +81,7 @@ data_manager:
           - "Vijay Chakravarty"
           - "Dario Mapelli"
           - "Thanayut Seethongchuen"
+    git:
+      urls:
+        - https://github.com/dmwm/CRABServer
+        - https://github.com/dmwm/CRABClient
