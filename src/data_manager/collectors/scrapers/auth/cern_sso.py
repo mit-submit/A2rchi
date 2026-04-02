@@ -41,6 +41,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional
 
+from urllib.parse import urlparse
 from playwright.sync_api import (
     Browser,
     BrowserContext,
@@ -215,9 +216,14 @@ class CERNSSOProvider(AuthProvider):
             # Public page: loaded directly without SSO redirect — return whatever
             # cookies the browser has (may be empty, that's fine for public pages).
             if not looks_like_login_page(page.url):
-                raw_cookies = self._context.cookies()
-                logger.info("CERNSSOProvider: no SSO redirect for %s, returning browser cookies", url)
-                return Credentials(cookies=raw_cookies)
+                # Try the site root — some sites like Discourse only redirect on the homepage
+                origin = f"{urlparse(url).scheme}://{urlparse(url).netloc}/"
+                page.goto(origin, wait_until="networkidle", timeout=30_000)
+                if not looks_like_login_page(page.url):
+                    # Still no SSO redirect — return whatever cookies we have
+                    raw_cookies = self._context.cookies()
+                    logger.info("CERNSSOProvider: no SSO redirect for %s, returning browser cookies", url)
+                    return Credentials(cookies=raw_cookies)
 
             if not self._fill_login_form(page):
                 return None

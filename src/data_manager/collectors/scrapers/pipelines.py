@@ -113,7 +113,6 @@ class PersistencePipeline:
         """
         try:
             resource = to_scraped_resource(item)
-            resource.source_type = "web"
             resource.metadata["spider_name"] = spider.name
         except Exception as exc:
             self._error_count += 1

@@ -28,7 +28,7 @@ from __future__ import annotations
 from functools import singledispatch
  
 from src.data_manager.collectors.scrapers.scraped_resource import ScrapedResource
-from src.data_manager.collectors.scrapers.items import WebPageItem, IndicoPageItem
+from src.data_manager.collectors.scrapers.items import WebPageItem, IndicoPageItem, DiscourseTopicPageItem
  
  
 @singledispatch
@@ -78,5 +78,25 @@ def _indico(item) -> ScrapedResource:
             "title": item.get("title"),
             "event_id": item.get("event_id"),
             "category": item.get("category"),
+        },
+    )
+
+@to_scraped_resource.register(DiscourseTopicPageItem)
+def _discourse(item) -> ScrapedResource:
+    """
+    Discourse items carry topic-level metadata from the category JSON listing.
+    """
+    return ScrapedResource(
+        url=item["url"],
+        content=item["content"],
+        suffix=item.get("suffix", "rss"),
+        source_type=item["source_type"],
+        metadata={
+            "content_type": item.get("content_type"),
+            "encoding": item.get("encoding"),
+            "title": item.get("title"),
+            "tags": item.get("tags"),
+            "has_accepted_answer": item.get("has_accepted_answer"),
+            "created_at": item.get("created_at"),
         },
     )
