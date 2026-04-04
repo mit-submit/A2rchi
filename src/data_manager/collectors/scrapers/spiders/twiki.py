@@ -13,9 +13,11 @@ class TwikiSpider(LinkSpider):
     """
 
     name = "twiki"
+
+    auth_provider_name = "cern_sso"
     
     _DEFAULT_START_URLS = [
-        "https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide",  # public page
+        "https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideCrab",  # public page
     ]
 
     _DEFAULT_DENY = [
@@ -51,7 +53,7 @@ class TwikiSpider(LinkSpider):
         "RETRY_TIMES": 0, # Very Safe no retries
         "DEPTH_LIMIT": 1, # Default max depth
         "DOWNLOAD_DELAY": 60, # Default (download) delay
-        "CLOSESPIDER_PAGECOUNT": 1, # Very Safe Default max pages
+        "CLOSESPIDER_PAGECOUNT": 2, # Very Safe Default max pages
         "COOKIES_ENABLED": False,      # disable CookiesMiddleware jar
     }
 
@@ -65,10 +67,10 @@ class TwikiSpider(LinkSpider):
     def parse(self, response: Response) -> Iterator[WebPageItem | Request]:
         """
         Twiki pages render their main content inside #patternMain or .twikiMain.
-        @url https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide
+        @url https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideCrab
         @returns items 1 1
         @scrapes url title
-        @returns requests 1 100
+        @returns requests 1 105
         """
         yield from super().parse(response)
 

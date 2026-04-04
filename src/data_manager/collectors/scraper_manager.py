@@ -9,6 +9,7 @@ from scrapy.utils.project import get_project_settings
 from scrapy.spiderloader import SpiderLoader
 from scrapy.settings import Settings
 from scrapy import Spider
+from src.data_manager.collectors.utils.anonymizer import Anonymizer
 from src.data_manager.collectors.persistence import PersistenceService
 from src.utils.config_access import get_global_config
 from src.utils.logging import get_logger
@@ -33,10 +34,11 @@ class ScraperManager:
     SSO authentication is handled by AuthDownloaderMiddleware + CERNSSOProvider.
     """
 
-    def __init__(self, dm_config: Optional[Dict[str, Any]] = None, persistence: PersistenceService = None) -> None:
+    def __init__(self, dm_config: Optional[Dict[str, Any]] = None, persistence: PersistenceService = None, anonymizer: Anonymizer = None) -> None:
         global_config = get_global_config()
         self.data_path = Path(global_config["DATA_PATH"])
         self.persistence = persistence
+        self.anonymizer = anonymizer
         self.settings = Settings()
         self.settings.setmodule(
             "src.data_manager.collectors.scrapers.settings",
@@ -112,6 +114,7 @@ class ScraperManager:
         # Inject persistence objects — live Python instances, must be priority="spider"
         crawler.settings.set("PERSISTENCE_SERVICE", self.persistence, priority="spider")
         crawler.settings.set("PERSISTENCE_OUTPUT_DIR", self.data_path / "websites", priority="spider")
+        crawler.settings.set("ANONYMIZER_SERVICE", self.anonymizer, priority="spider")
         process.crawl(crawler, start_urls=urls, **cfg)
 
     # ── URL sources & list parsing ──────────────────────────────────────────────────────

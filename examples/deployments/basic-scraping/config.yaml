@@ -77,6 +77,7 @@ data_manager:
         anonymize_data: true
         category_paths:
           - /c/offcomp/comptools/87
+          - /c/offcomp/ais/150
         keywords:
           - "Stefano Belforte"
           - "Katy Ellis"
@@ -91,10 +92,3 @@ data_manager:
   utils:
     anonymizer:
       nlp_model: en_core_web_sm
-      excluded_words:
-        - Krittin
-        - Vijay
-        - Dario
-        - Thanayut
-        - Stefano
-        - Katy

@@ -2,6 +2,7 @@ import os
 from typing import Callable, Optional
 
 from src.data_manager.collectors.persistence import PersistenceService
+from src.data_manager.collectors.utils.anonymizer import Anonymizer
 from src.data_manager.collectors.scraper_manager import ScraperManager
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.collectors.localfile_manager import LocalFileManager
@@ -36,9 +37,10 @@ class DataManager():
             raise RuntimeError("Static config missing sources_config; run deployment initialization first.")
         self.config["data_manager"]["sources"] = static_config.sources_config
 
+        self.anonymizer = Anonymizer()
         self.localfile_manager = LocalFileManager(dm_config=self.config["data_manager"])
         self.git_manager = GitManager(dm_config=self.config["data_manager"])
-        self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"], persistence=self.persistence)
+        self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"], persistence=self.persistence, anonymizer=self.anonymizer)
         self.ticket_manager = TicketManager(dm_config=self.config["data_manager"])
 
         self.vector_manager = VectorStoreManager(

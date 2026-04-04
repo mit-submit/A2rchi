@@ -26,7 +26,7 @@ class DiscourseSpider(Spider):
 
     _DEFAULT_BASE_URL = "https://cms-talk.web.cern.ch"
     _DEFAULT_CATEGORY_PATHS: List[str] = [
-        "/c/offcomp/comptools/87",
+        "/c/offcomp/ais/150",
     ]
 
     auth_provider_name = "cern_sso"
@@ -85,6 +85,11 @@ class DiscourseSpider(Spider):
 
     # ── Category JSON → topic RSS requests + next page ──────────────────
     def parse_category(self, response: Response) -> Iterator[Request]:
+        """
+        @url https://cms-talk.web.cern.ch/tags/c/offcomp/ais/150.json
+        @returns requests 100
+        @scrapes url title content
+        """
         try:
             data = json.loads(response.text)
         except (json.JSONDecodeError, AttributeError) as exc:
