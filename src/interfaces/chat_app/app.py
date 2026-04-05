@@ -48,6 +48,7 @@ from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config, get_dynamic_config
 from src.utils.config_service import ConfigService
+from src.utils.internal_auth import build_data_manager_auth_headers, resolve_data_manager_service_token
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
@@ -2178,9 +2179,13 @@ class FlaskAppWrapper(object):
         dm_host = dm_config.get("hostname") or dm_config.get("host", "localhost")
         dm_port = dm_config.get("port", 5001)
         self.data_manager_url = f"http://{dm_host}:{dm_port}"
-        # API token for service-to-service auth with data-manager
-        dm_token = read_secret("DM_API_TOKEN") or None
-        self._dm_headers = {"Authorization": f"Bearer {dm_token}"} if dm_token else {}
+        # Internal auth for service-to-service calls into data-manager
+        self._dm_headers = build_data_manager_auth_headers()
+        _, dm_auth_source = resolve_data_manager_service_token()
+        if self._dm_headers:
+            logger.info("Data manager proxy auth initialized via %s", dm_auth_source)
+        else:
+            logger.warning("Data manager proxy auth unavailable; uploads may fail if data-manager auth is enabled")
         logger.info(f"Data manager service URL: {self.data_manager_url}")
 
         # Initialize authentication methods

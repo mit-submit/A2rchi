@@ -20,6 +20,7 @@ from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.vectorstore.loader_utils import load_text_from_path
 from src.interfaces.chat_app.document_utils import check_credentials
 from src.utils.env import read_secret
+from src.utils.internal_auth import resolve_data_manager_service_token
 from src.utils.logging import get_logger
 from src.data_manager.collectors.utils.catalog_postgres import _METADATA_COLUMN_MAP
 from src.utils.config_access import get_full_config
@@ -58,7 +59,8 @@ class FlaskAppWrapper:
 
         self.auth_config = (self.services_config or {}).get("data_manager", {}).get("auth", {}) or {}
         self.auth_enabled = bool(self.auth_config.get("enabled", False))
-        self.api_token = read_secret("DM_API_TOKEN") or None
+        self.api_token, self.api_token_source = resolve_data_manager_service_token()
+        self.api_token = self.api_token or None
         self.admin_users = {
             user.strip().lower()
             for user in (self.auth_config.get("admins") or [])
@@ -69,6 +71,10 @@ class FlaskAppWrapper:
         self.salt = read_secret("UPLOADER_SALT")
         self.accounts_path = self.global_config.get("ACCOUNTS_PATH")
         if self.auth_enabled:
+            if self.api_token:
+                logger.info("Data-manager API auth initialized via %s", self.api_token_source)
+            else:
+                logger.warning("Data-manager auth is enabled but no internal API token could be resolved")
             if not self.accounts_path:
                 logger.warning("ACCOUNTS_PATH not configured; only default auth account avilable. Set is as DM_ADMIN_PASSWD in your secrets file.")
                 self.auth_enabled = True
