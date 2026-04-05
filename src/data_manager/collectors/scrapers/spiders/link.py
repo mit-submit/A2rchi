@@ -29,6 +29,7 @@ class LinkSpider(Spider):
         max_depth = kwargs.get("max_depth")
         max_pages = kwargs.get("max_pages")
         delay = kwargs.get("delay")
+        markitdown_enabled = kwargs.get("markitdown")
         anonymize_data = kwargs.get("anonymize_data")
         if max_depth:
             crawler.settings.set("DEPTH_LIMIT", max_depth, priority="spider")
@@ -36,8 +37,10 @@ class LinkSpider(Spider):
             crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_pages, priority="spider")
         if delay:
             crawler.settings.set("DOWNLOAD_DELAY", delay, priority="spider")
+        if markitdown_enabled:
+            crawler.settings.set("MARKITDOWN_ENABLED", markitdown_enabled, priority="spider")
         if anonymize_data:
-            crawler.settings.set("anonymize_data", anonymize_data, priority="spider")
+            crawler.settings.set("ANONYMIZE_DATA", anonymize_data, priority="spider")
         return super().from_crawler(crawler, *args, **kwargs)
 
     def __init__(self, start_urls: list[str] = None, max_depth: int = None, max_pages: int = None, allow: list[str] = None, deny: list[str] = None, delay: int = None, canonicalize: bool = False, process_value: Callable[[str], str] = None, *args, **kwargs):

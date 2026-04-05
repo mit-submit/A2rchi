@@ -46,6 +46,7 @@ data_manager:
         max_depth: 2
         max_pages: 100
         delay: 10
+        markitdown: true
         input_lists:
           - examples/deployments/basic-scraping/miscellanea.list
       twiki:
@@ -68,6 +69,7 @@ data_manager:
         max_depth: 2
         max_pages: 500
         anonymize_data: true
+        markitdown: true
         delay: 60
       discourse:
         auth_provider_name: cern_sso
@@ -75,6 +77,7 @@ data_manager:
         delay: 10
         max_pages: 1000
         anonymize_data: true
+        markitdown: true
         category_paths:
           - /c/offcomp/comptools/87
           - /c/offcomp/ais/150

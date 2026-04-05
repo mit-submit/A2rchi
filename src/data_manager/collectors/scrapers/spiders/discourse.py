@@ -46,12 +46,15 @@ class DiscourseSpider(Spider):
         delay = kwargs.get("delay")
         max_pages = kwargs.get("max_pages")
         anonymize_data = kwargs.get("anonymize_data")
+        markitdown_enabled = kwargs.get("markitdown")
         if delay:
             crawler.settings.set("DOWNLOAD_DELAY", delay, priority="spider")
         if max_pages:
             crawler.settings.set("CLOSESPIDER_PAGECOUNT", max_pages, priority="spider")
         if anonymize_data:
             crawler.settings.set("ANONYMIZE_DATA", anonymize_data, priority="spider")
+        if markitdown_enabled:
+            crawler.settings.set("MARKITDOWN_ENABLED", markitdown_enabled, priority="spider")
         return super().from_crawler(crawler, *args, **kwargs)
 
     def __init__(
