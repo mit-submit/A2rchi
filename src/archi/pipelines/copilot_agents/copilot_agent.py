@@ -391,15 +391,22 @@ class CopilotAgentPipeline:
         """
         cfg: Dict[str, Any] = {}
 
-        # System message (customize mode — decision CM)
+        # System message — replace identity with our prompt and remove irrelevant
+        # VS-Code/coding sections while keeping tool-related ones.
         if self.agent_prompt:
             cfg["system_message"] = {
                 "mode": "customize",
                 "sections": {
-                    "identity": {
-                        "action": "replace",
-                        "content": self.agent_prompt,
-                    },
+                    "identity": {"action": "replace", "content": self.agent_prompt},
+                    "tone": {"action": "remove"},
+                    "tool_efficiency": {"action": "remove"},
+                    "environment_context": {"action": "remove"},
+                    "code_change_rules": {"action": "remove"},
+                    "safety": {"action": "remove"},
+                    "custom_instructions": {"action": "remove"},
+                    "guidelines": {"action": "remove"},
+                    "tool_instructions": {"action": "remove"},
+                    "last_instructions": {"action": "remove"},
                 },
             }
 
@@ -664,7 +671,9 @@ class CopilotAgentPipeline:
 
                 # Register event handler and send the user's message
                 adapter.attach_to_session(session)
-                await session.send_and_wait(last_msg, timeout=120.0)
+                bench_cfg = self.config.get("services", {}).get("benchmarking", {})
+                copilot_timeout = float(bench_cfg.get("copilot_timeout", 300.0))
+                await session.send_and_wait(last_msg, timeout=copilot_timeout)
             except Exception as exc:
                 logger.error("Copilot session error: %s", exc, exc_info=True)
                 adapter._queue.put(
