@@ -88,6 +88,7 @@ SPIDER_AUTH_PROVIDERS = {
 }
 
 ITEM_PIPELINES = {
+    "src.data_manager.collectors.scrapers.pipelines.anonymization.AnonymizationPipeline": 250,
 }
 
 EXTENSIONS = { 
