@@ -74,14 +74,3 @@ class ScrapedResource(BaseResource):
         if rel_path.is_absolute() or ".." in rel_path.parts:
             return None
         return rel_path
-
-@dataclass
-class BrowserIntermediaryResult:
-    """ 
-    this class is meant to provide a layer of abstraction for browser based scrapers (i.e selenium)
-    it will format everything into a single class so that more complicated scraping results which may hit 
-    multiple tabs or pages at once can be handled in a uniform way by the LinkScraper class. 
-    """
-
-    artifacts: List[Dict] # list of scraper results for each page produced by a seelnium navigation
-    links: List[str] # links reached
