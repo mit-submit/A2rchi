@@ -30,11 +30,12 @@ COPY pyproject.toml pyproject.toml
 COPY git_info.yaml git_info.yaml
 COPY weblists weblists
 
-# run all the pip installs, including for ragas and all of this
-RUN pip install --upgrade pip && pip install .
+# Install base requirements first (same as a2rchi-python-base), then the archi package
+RUN pip install --upgrade pip \
+    && pip install -r src/cli/templates/dockerfiles/base-python-image/requirements.txt \
+    && pip install .
 RUN pip install pandas
 RUN pip install ragas==0.3.5
-RUN pip install langchain-openai==1.0.1
 RUN pip install 'argilla>=2.5,<3'
 RUN pip install 'github-copilot-sdk>=0.2.0'
 
