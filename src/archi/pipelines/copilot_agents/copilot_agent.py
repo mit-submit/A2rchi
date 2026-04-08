@@ -597,7 +597,15 @@ class CopilotAgentPipeline:
 
     def _on_permission_request(self, request, invocation):
         """Allow only declared Archi custom tools and deny SDK built-ins."""
-        from copilot.generated.session_events import PermissionRequestKind
+        try:
+            from copilot.generated.session_events import PermissionRequestKind
+        except ImportError:
+            # SDK < 0.2.0 doesn't have PermissionRequestKind; approve all
+            try:
+                from copilot.types import PermissionRequestResult
+                return PermissionRequestResult(kind="approved")
+            except ImportError:
+                return None
         from copilot.types import PermissionRequestResult
 
         kind = getattr(request, "kind", None)

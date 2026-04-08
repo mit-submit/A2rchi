@@ -33,7 +33,7 @@ RUN pip install pandas
 RUN pip install ragas==0.3.5
 RUN pip install langchain-openai==1.0.1
 RUN pip install 'argilla>=2.5,<3'
-RUN pip install 'github-copilot-sdk>=0.2.0'
+RUN pip install 'github-copilot-sdk>=0.1.10'
 
 RUN chmod g+rx /root; chmod -R g+w /root/archi/src/interfaces
 

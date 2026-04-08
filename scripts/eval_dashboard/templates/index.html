@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHEP Eval Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+      --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+           background: var(--bg); color: var(--text); padding: 20px; }
+    h1 { font-size: 1.5rem; margin-bottom: 4px; }
+    .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .card h2 { font-size: 1rem; color: var(--accent); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .card h2 .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 12px; font-weight: normal; }
+    .wide { grid-column: 1 / -1; }
+
+    /* Status badges */
+    .status { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+    .status-running { background: rgba(88,166,255,0.15); color: var(--accent); }
+    .status-completed { background: rgba(63,185,80,0.15); color: var(--green); }
+    .status-failed { background: rgba(248,81,73,0.15); color: var(--red); }
+    .status-pending { background: rgba(139,148,158,0.15); color: var(--text-dim); }
+
+    /* Config rows */
+    .config-row { display: grid; grid-template-columns: 200px 1fr 100px 120px; gap: 12px; align-items: center;
+                  padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .config-row:last-child { border-bottom: none; }
+    .config-name { font-weight: 600; font-size: 0.9rem; }
+    .config-name .pipeline { color: var(--purple); }
+    .config-name .model { color: var(--text-dim); font-weight: normal; font-size: 0.8rem; }
+    .progress-bar { height: 24px; background: #21262d; border-radius: 6px; overflow: hidden; position: relative; }
+    .progress-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
+    .progress-fill.running { background: linear-gradient(90deg, #1f6feb, #58a6ff); animation: pulse 2s ease-in-out infinite; }
+    .progress-fill.completed { background: var(--green); }
+    .progress-fill.failed { background: var(--red); }
+    .progress-fill.pending { background: var(--border); }
+    .progress-text { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; font-weight: 600; }
+    .elapsed { color: var(--text-dim); font-size: 0.8rem; text-align: right; }
+
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+    /* GPU table */
+    .gpu-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .gpu-card { background: #21262d; border-radius: 6px; padding: 10px; text-align: center; }
+    .gpu-card .label { font-size: 0.7rem; color: var(--text-dim); }
+    .gpu-card .value { font-size: 1.4rem; font-weight: 700; }
+    .gpu-card .bar { height: 4px; background: #30363d; border-radius: 2px; margin-top: 6px; }
+    .gpu-card .bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.5s; }
+
+    /* Log viewer */
+    .log-tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+    .log-tab { padding: 4px 12px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; border: 1px solid var(--border);
+               background: transparent; color: var(--text-dim); }
+    .log-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .log-tab.has-content { color: var(--text); }
+    .log-output { background: #010409; border: 1px solid var(--border); border-radius: 6px; padding: 12px;
+                  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem; line-height: 1.5;
+                  max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: var(--text-dim); }
+
+    /* Overall progress */
+    .overall-bar { height: 32px; background: #21262d; border-radius: 8px; overflow: hidden; position: relative; margin: 12px 0; }
+    .overall-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--accent)); border-radius: 8px; transition: width 0.5s; }
+    .overall-text { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-weight: 700; font-size: 0.9rem; }
+
+    /* Header bar */
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+    .header-right { text-align: right; }
+    .conn-status { font-size: 0.8rem; margin-bottom: 4px; }
+    .conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    .conn-dot.ok { background: var(--green); }
+    .conn-dot.err { background: var(--red); }
+    .btn { padding: 6px 14px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; border: 1px solid var(--border);
+           background: var(--surface); color: var(--text); }
+    .btn:hover { border-color: var(--accent); }
+
+    /* Result files */
+    .file-list { font-size: 0.8rem; }
+    .file-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .file-item:last-child { border-bottom: none; }
+    .file-size { color: var(--text-dim); }
+
+    /* Summary stats */
+    .stats { display: flex; gap: 24px; margin: 12px 0; }
+    .stat { text-align: center; }
+    .stat .n { font-size: 2rem; font-weight: 700; }
+    .stat .label { font-size: 0.75rem; color: var(--text-dim); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>CHEP 2026 Eval Dashboard</h1>
+      <div class="subtitle">A2rchi CMS CompOps — 6 configs × 260 questions on submit75</div>
+    </div>
+    <div class="header-right">
+      <div class="conn-status" id="connStatus">
+        <span class="conn-dot" id="connDot"></span>
+        <span id="connText">Connecting...</span>
+      </div>
+      <div style="font-size:0.75rem; color:var(--text-dim)" id="lastPoll">—</div>
+      <button class="btn" onclick="triggerPoll()" style="margin-top:6px">⟳ Refresh Now</button>
+    </div>
+  </div>
+
+  <!-- Overall progress -->
+  <div class="card wide" style="margin-bottom:16px">
+    <h2>Overall Progress <span class="badge" id="processStatus" style="background:var(--border)">—</span></h2>
+    <div class="stats" id="summaryStats">
+      <div class="stat"><div class="n" id="statCompleted">0</div><div class="label">Completed</div></div>
+      <div class="stat"><div class="n" id="statRunning" style="color:var(--accent)">0</div><div class="label">Running</div></div>
+      <div class="stat"><div class="n" id="statPending">0</div><div class="label">Pending</div></div>
+      <div class="stat"><div class="n" id="statFailed" style="color:var(--red)">0</div><div class="label">Failed</div></div>
+      <div class="stat"><div class="n" id="statQuestions" style="color:var(--yellow)">—</div><div class="label">Questions Done</div></div>
+    </div>
+    <div class="overall-bar">
+      <div class="overall-fill" id="overallFill" style="width:0%"></div>
+      <div class="overall-text" id="overallText">0%</div>
+    </div>
+  </div>
+
+  <!-- Config progress & GPUs -->
+  <div class="grid">
+    <div class="card">
+      <h2>Config Progress</h2>
+      <div id="configList"></div>
+    </div>
+    <div class="card">
+      <h2>GPU Utilization</h2>
+      <div class="gpu-grid" id="gpuGrid"></div>
+      <h2 style="margin-top:16px">Ollama Models Loaded</h2>
+      <div id="ollamaModels" style="font-size:0.85rem; color:var(--text-dim)">—</div>
+    </div>
+  </div>
+
+  <!-- Logs -->
+  <div class="card wide">
+    <h2>Logs</h2>
+    <div class="log-tabs" id="logTabs"></div>
+    <div class="log-output" id="logOutput">Select a config to view logs...</div>
+  </div>
+
+  <!-- Result files -->
+  <div class="card wide">
+    <h2>Output Files</h2>
+    <div class="file-list" id="fileList">—</div>
+  </div>
+
+  <script>
+    let state = {};
+    let activeLogTab = null;
+    const CONFIG_ORDER = [
+      'copilot-gemma4-26b', 'compops-gemma4-26b',
+      'copilot-qwen3-32b', 'compops-qwen3-32b',
+      'copilot-gpt-oss-120b', 'compops-gpt-oss-120b'
+    ];
+
+    function formatDuration(seconds) {
+      if (!seconds) return '—';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function getElapsed(startedAt) {
+      if (!startedAt) return null;
+      const start = new Date(startedAt);
+      return (Date.now() - start.getTime()) / 1000;
+    }
+
+    function renderConfigs() {
+      const configs = state.status?.configs || {};
+      const checkpoints = state.checkpoints || {};
+      const el = document.getElementById('configList');
+      let html = '';
+
+      let totalCompleted = 0, totalRunning = 0, totalPending = 0, totalFailed = 0;
+      let totalQuestionsDone = 0;
+
+      for (const name of CONFIG_ORDER) {
+        const cfg = configs[name] || { status: 'unknown' };
+        const status = cfg.status || 'unknown';
+        const cpKey = `eval-${name}`;
+        const cp = checkpoints[cpKey] || {};
+
+        let questionsDone = 0;
+        let pct = 0;
+
+        if (status === 'completed') {
+          questionsDone = 260;
+          pct = 100;
+          totalCompleted++;
+        } else if (status === 'running') {
+          questionsDone = cp.question_id || 0;
+          pct = Math.round((questionsDone / 260) * 100);
+          totalRunning++;
+        } else if (status === 'failed') {
+          questionsDone = cp.question_id || 0;
+          pct = Math.round((questionsDone / 260) * 100);
+          totalFailed++;
+        } else {
+          totalPending++;
+        }
+
+        totalQuestionsDone += questionsDone;
+
+        const elapsed = cfg.elapsed_seconds || (status === 'running' ? getElapsed(cfg.started_at) : null);
+        const [pipeline, ...modelParts] = name.split('-');
+        const model = modelParts.join('-');
+
+        html += `
+          <div class="config-row">
+            <div class="config-name">
+              <span class="pipeline">${pipeline}</span><br>
+              <span class="model">${model}</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill ${status}" style="width:${pct}%"></div>
+              <div class="progress-text">${questionsDone}/260 (${pct}%)</div>
+            </div>
+            <span class="status status-${status}">${status}</span>
+            <div class="elapsed">${formatDuration(elapsed)}</div>
+          </div>`;
+      }
+
+      el.innerHTML = html;
+
+      // Summary stats
+      document.getElementById('statCompleted').textContent = totalCompleted;
+      document.getElementById('statRunning').textContent = totalRunning;
+      document.getElementById('statPending').textContent = totalPending;
+      document.getElementById('statFailed').textContent = totalFailed;
+      document.getElementById('statQuestions').textContent = `${totalQuestionsDone}/${260 * 6}`;
+
+      // Overall progress bar
+      const overallPct = Math.round((totalQuestionsDone / (260 * 6)) * 100);
+      document.getElementById('overallFill').style.width = `${overallPct}%`;
+      document.getElementById('overallText').textContent = `${overallPct}% — ${totalQuestionsDone} / ${260 * 6} questions`;
+    }
+
+    function renderGPUs() {
+      const gpus = state.gpu || [];
+      const el = document.getElementById('gpuGrid');
+      if (gpus.length === 0) {
+        el.innerHTML = '<div style="color:var(--text-dim);grid-column:1/-1">No GPU data</div>';
+        return;
+      }
+      el.innerHTML = gpus.map(g => {
+        const memPct = Math.round((g.mem_used / g.mem_total) * 100);
+        const color = memPct > 80 ? 'var(--red)' : memPct > 50 ? 'var(--yellow)' : 'var(--green)';
+        return `
+          <div class="gpu-card">
+            <div class="label">GPU ${g.index}</div>
+            <div class="value" style="color:${color}">${memPct}%</div>
+            <div class="label">${g.mem_used}/${g.mem_total} MiB</div>
+            <div class="bar"><div class="bar-fill" style="width:${memPct}%;background:${color}"></div></div>
+            <div class="label" style="margin-top:4px">Util: ${g.gpu_util}%</div>
+          </div>`;
+      }).join('');
+
+      // Ollama models
+      const models = state.ollama_running || [];
+      document.getElementById('ollamaModels').innerHTML = models.length
+        ? models.map(m => `<div>${m.name} — ${Math.round(m.size_vram / 1e9)}GB VRAM</div>`).join('')
+        : '<div>No models loaded</div>';
+    }
+
+    function renderLogTabs() {
+      const logs = state.log_tails || {};
+      const el = document.getElementById('logTabs');
+      const tabs = ['full_run', ...CONFIG_ORDER];
+      el.innerHTML = tabs.map(name => {
+        const hasContent = !!logs[name];
+        const active = activeLogTab === name;
+        return `<button class="log-tab ${active ? 'active' : ''} ${hasContent ? 'has-content' : ''}" 
+                  onclick="selectLog('${name}')">${name}</button>`;
+      }).join('');
+
+      if (activeLogTab && logs[activeLogTab]) {
+        document.getElementById('logOutput').textContent = logs[activeLogTab];
+        // Auto-scroll to bottom
+        const logEl = document.getElementById('logOutput');
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    }
+
+    function selectLog(name) {
+      activeLogTab = name;
+      const logs = state.log_tails || {};
+      if (logs[name]) {
+        document.getElementById('logOutput').textContent = logs[name];
+        const logEl = document.getElementById('logOutput');
+        logEl.scrollTop = logEl.scrollHeight;
+      } else {
+        // Fetch full log via API
+        fetch(`/api/log/${name}`)
+          .then(r => r.json())
+          .then(d => {
+            document.getElementById('logOutput').textContent = d.log || 'No log available';
+            const logEl = document.getElementById('logOutput');
+            logEl.scrollTop = logEl.scrollHeight;
+          });
+      }
+      renderLogTabs();
+    }
+
+    function renderFiles() {
+      const files = state.result_files || {};
+      const el = document.getElementById('fileList');
+      const entries = Object.entries(files);
+      if (entries.length === 0) {
+        el.innerHTML = '<div style="color:var(--text-dim)">No new result files yet</div>';
+        return;
+      }
+      el.innerHTML = entries.map(([name, info]) => {
+        const sizeMB = (info.size / (1024 * 1024)).toFixed(2);
+        return `<div class="file-item"><span>${name}</span><span class="file-size">${sizeMB} MB</span></div>`;
+      }).join('');
+    }
+
+    function renderAll() {
+      // Connection status
+      const dot = document.getElementById('connDot');
+      const text = document.getElementById('connText');
+      if (state.ssh_ok) {
+        dot.className = 'conn-dot ok';
+        text.textContent = 'Connected to submit75';
+      } else {
+        dot.className = 'conn-dot err';
+        text.textContent = state.poll_error || 'Disconnected';
+      }
+
+      // Process status
+      const ps = document.getElementById('processStatus');
+      if (state.process_alive) {
+        ps.textContent = 'RUNNER ACTIVE';
+        ps.style.background = 'rgba(63,185,80,0.2)';
+        ps.style.color = 'var(--green)';
+      } else if (state.status?.completed_at) {
+        ps.textContent = 'ALL DONE';
+        ps.style.background = 'rgba(63,185,80,0.2)';
+        ps.style.color = 'var(--green)';
+      } else {
+        ps.textContent = 'RUNNER STOPPED';
+        ps.style.background = 'rgba(248,81,73,0.2)';
+        ps.style.color = 'var(--red)';
+      }
+
+      // Last poll time
+      if (state.last_poll) {
+        const t = new Date(state.last_poll);
+        document.getElementById('lastPoll').textContent = `Last poll: ${t.toLocaleTimeString()}`;
+      }
+
+      renderConfigs();
+      renderGPUs();
+      renderLogTabs();
+      renderFiles();
+    }
+
+    async function fetchState() {
+      try {
+        const r = await fetch('/api/state');
+        state = await r.json();
+        renderAll();
+      } catch (e) {
+        console.error('Fetch error:', e);
+      }
+    }
+
+    function triggerPoll() {
+      fetch('/api/poll').then(() => {
+        setTimeout(fetchState, 3000); // wait for poll to complete
+      });
+    }
+
+    // Initial fetch + auto-refresh
+    fetchState();
+    setInterval(fetchState, 10000); // refresh UI every 10s
+  </script>
+</body>
+</html>
