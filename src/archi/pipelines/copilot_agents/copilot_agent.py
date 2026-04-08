@@ -242,6 +242,8 @@ class CopilotAgentPipeline:
         self._catalog_client = None
         self._monit_client = None
         self._rucio_events_skill = None
+        self._condor_client = None
+        self._condor_metric_skill = None
         self._init_optional_services()
 
     def _init_optional_services(self) -> None:
@@ -261,7 +263,11 @@ class CopilotAgentPipeline:
 
         monit_token = read_secret("MONIT_GRAFANA_TOKEN")
         chat_cfg = self.config.get("services", {}).get("chat_app", {})
-        monit_url = chat_cfg.get("tools", {}).get("monit", {}).get("url")
+        tools_cfg = chat_cfg.get("tools", {})
+        monit_cfg = tools_cfg.get("monit", {})
+
+        # Rucio source
+        monit_url = monit_cfg.get("rucio", {}).get("url") or monit_cfg.get("url")
         if monit_token and monit_url:
             try:
                 from src.archi.pipelines.agents.tools import \
@@ -277,6 +283,26 @@ class CopilotAgentPipeline:
                 logger.info("MONIT OpenSearch client initialised")
             except Exception:
                 logger.debug("MONIT client init failed", exc_info=True)
+
+        # Condor source
+        condor_url = (
+            tools_cfg.get("condor", {}).get("url")
+            or monit_cfg.get("condor", {}).get("url")
+        )
+        if monit_token and condor_url:
+            try:
+                from src.archi.pipelines.agents.tools import \
+                    MONITOpenSearchClient
+                from src.archi.pipelines.agents.utils.skill_utils import \
+                    load_skill
+
+                self._condor_client = MONITOpenSearchClient(
+                    url=condor_url, token=monit_token
+                )
+                self._condor_metric_skill = load_skill("condor_raw_metric", self.config)
+                logger.info("MONIT Condor client initialised")
+            except Exception:
+                logger.debug("Condor client init failed", exc_info=True)
 
     # ── Tool construction ─────────────────────────────────────────────
 
@@ -294,6 +320,7 @@ class CopilotAgentPipeline:
             build_document_fetch_tool, build_file_search_tool,
             build_metadata_schema_tool, build_metadata_search_tool)
         from src.archi.pipelines.copilot_agents.tools.monit_search import (
+            build_condor_aggregation_tool, build_condor_search_tool,
             build_monit_aggregation_tool, build_monit_search_tool)
 
         store_docs = collector.make_store_docs_callback()
@@ -366,6 +393,26 @@ class CopilotAgentPipeline:
                         self._monit_client,
                         index=monit_index,
                         skill=self._rucio_events_skill,
+                    )
+                )
+
+        # Condor tools
+        if self._condor_client:
+            condor_index = "monit_prod_condor_raw_metric*"
+            if _want("condor_opensearch_search"):
+                tools.append(
+                    build_condor_search_tool(
+                        self._condor_client,
+                        index=condor_index,
+                        skill=self._condor_metric_skill,
+                    )
+                )
+            if _want("condor_opensearch_aggregation"):
+                tools.append(
+                    build_condor_aggregation_tool(
+                        self._condor_client,
+                        index=condor_index,
+                        skill=self._condor_metric_skill,
                     )
                 )
 

@@ -53,6 +53,14 @@ AGGREGATION_TOOL_DESCRIPTION = (
     "Run aggregation queries on MONIT OpenSearch for CMS Rucio events."
 )
 
+CONDOR_SEARCH_TOOL_NAME = "condor_opensearch_search"
+CONDOR_SEARCH_TOOL_DESCRIPTION = "Search MONIT OpenSearch for CMS HTCondor job metrics."
+
+CONDOR_AGGREGATION_TOOL_NAME = "condor_opensearch_aggregation"
+CONDOR_AGGREGATION_TOOL_DESCRIPTION = (
+    "Run aggregation queries on MONIT OpenSearch for CMS HTCondor job metrics."
+)
+
 
 # ── Factory functions ────────────────────────────────────────────────────
 
@@ -174,3 +182,31 @@ def build_monit_aggregation_tool(
             return f"Error running aggregation: {e}"
 
     return _aggregate_opensearch
+
+
+# ── Condor convenience wrappers ──────────────────────────────────────────
+# Reuse the generic factories with condor-specific defaults.
+
+
+def build_condor_search_tool(
+    client: MONITOpenSearchClient,
+    *,
+    tool_name: str = CONDOR_SEARCH_TOOL_NAME,
+    index: str = "monit_prod_condor_raw_metric*",
+    skill: Optional[str] = None,
+):
+    return build_monit_search_tool(
+        client, tool_name=tool_name, index=index, skill=skill
+    )
+
+
+def build_condor_aggregation_tool(
+    client: MONITOpenSearchClient,
+    *,
+    tool_name: str = CONDOR_AGGREGATION_TOOL_NAME,
+    index: str = "monit_prod_condor_raw_metric*",
+    skill: Optional[str] = None,
+):
+    return build_monit_aggregation_tool(
+        client, tool_name=tool_name, index=index, skill=skill
+    )

@@ -14,7 +14,13 @@ from .file_search import (DOCUMENT_FETCH_DESCRIPTION, DOCUMENT_FETCH_NAME,
                           build_metadata_schema_tool,
                           build_metadata_search_tool)
 from .monit_search import (AGGREGATION_TOOL_DESCRIPTION, AGGREGATION_TOOL_NAME,
+                           CONDOR_AGGREGATION_TOOL_DESCRIPTION,
+                           CONDOR_AGGREGATION_TOOL_NAME,
+                           CONDOR_SEARCH_TOOL_DESCRIPTION,
+                           CONDOR_SEARCH_TOOL_NAME,
                            SEARCH_TOOL_DESCRIPTION, SEARCH_TOOL_NAME,
+                           build_condor_aggregation_tool,
+                           build_condor_search_tool,
                            build_monit_aggregation_tool,
                            build_monit_search_tool)
 from .retriever import TOOL_DESCRIPTION as RETRIEVER_DESCRIPTION
@@ -52,6 +58,14 @@ TOOL_REGISTRY = {
         "factory": build_monit_aggregation_tool,
         "description": AGGREGATION_TOOL_DESCRIPTION,
     },
+    CONDOR_SEARCH_TOOL_NAME: {
+        "factory": build_condor_search_tool,
+        "description": CONDOR_SEARCH_TOOL_DESCRIPTION,
+    },
+    CONDOR_AGGREGATION_TOOL_NAME: {
+        "factory": build_condor_aggregation_tool,
+        "description": CONDOR_AGGREGATION_TOOL_DESCRIPTION,
+    },
 }
 
 __all__ = [
@@ -64,4 +78,6 @@ __all__ = [
     "build_document_fetch_tool",
     "build_monit_search_tool",
     "build_monit_aggregation_tool",
+    "build_condor_search_tool",
+    "build_condor_aggregation_tool",
 ]
