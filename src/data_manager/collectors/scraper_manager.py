@@ -13,7 +13,7 @@ from src.data_manager.collectors.utils.anonymizer import Anonymizer
 from src.data_manager.collectors.persistence import PersistenceService
 from src.utils.config_access import get_global_config
 from src.utils.logging import get_logger
-from src.data_manager.collectors.utils.markitdown_manager import MarkitdownManager
+from src.data_manager.collectors.utils.markitdown_convertor import MarkitdownConvertor
 
 logger = get_logger(__name__)
 
@@ -35,7 +35,7 @@ class ScraperManager:
     SSO authentication is handled by AuthDownloaderMiddleware + CERNSSOProvider.
     """
 
-    def __init__(self, dm_config: Optional[Dict[str, Any]] = None, persistence: PersistenceService = None, anonymizer: Anonymizer = None, markitdown_manager: MarkitdownManager = None) -> None:
+    def __init__(self, dm_config: Optional[Dict[str, Any]] = None, persistence: PersistenceService = None, anonymizer: Anonymizer = None, markitdown_manager: MarkitdownConvertor= None) -> None:
         global_config = get_global_config()
         self.data_path = Path(global_config["DATA_PATH"])
         self.persistence = persistence
