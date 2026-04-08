@@ -34,6 +34,8 @@ COPY weblists weblists
 RUN pip install --upgrade pip \
     && pip install -r src/cli/templates/dockerfiles/base-python-image/requirements.txt \
     && pip install .
+# Re-install packages that pip install . may have removed due to resolver conflicts
+RUN pip install langchain-huggingface==1.0.0
 RUN pip install pandas
 RUN pip install ragas==0.3.5
 RUN pip install 'argilla>=2.5,<3'
