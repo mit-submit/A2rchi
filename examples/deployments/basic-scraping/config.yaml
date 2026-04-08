@@ -52,26 +52,27 @@ data_manager:
       twiki:
         auth_provider_name: cern_sso   # remove if crawling public pages only
         anonymize_data: true
-        urls:
-          - https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide
-          - https://twiki.cern.ch/twiki/bin/view/CMS/HeavyIons
+        urls: # as of now, if we have sso-proteccted twiki, please put it first for efficiency and robustness.
+          - https://twiki.cern.ch/twiki/bin/view/CMS/HeavyIons # sso-protected twiki pages.
+          - https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuide # public twiki seed urls.
         allow:
           - ".*CRAB3.*"
           - ".*SWGuide.*"
           - ".*WorkBook.*"
           - ".*Crab.*"
           - ".*Crab3.*"
-          - ".*HeavyIons.*"
-          - ".*HICollisions.*"
-          - ".*HIRel.*"
+          # Crawled all possible HeavyIons + a little bit of CRAB
+          # - ".*HeavyIons.*" 
+          # - ".*HICollisions.*"
+          # - ".*HIRel.*"
         deny:
           - ".*WorkBook.*"
         max_depth: 2
-        max_pages: 500
+        max_pages: 1000
         anonymize_data: true
         markitdown: true
         delay: 60
-      discourse:
+      discourse: # we should get approximately 500/800++ anonymized markdown discussions.
         auth_provider_name: cern_sso
         base_url: https://cms-talk.web.cern.ch
         delay: 10
@@ -80,7 +81,7 @@ data_manager:
         markitdown: true
         category_paths:
           - /c/offcomp/comptools/87
-          - /c/offcomp/ais/150
+          # - /c/offcomp/ais/150
         keywords:
           - "Stefano Belforte"
           - "Katy Ellis"
