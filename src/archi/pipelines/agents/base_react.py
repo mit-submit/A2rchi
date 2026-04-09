@@ -894,6 +894,7 @@ class BaseReActAgent:
                 extra["local_mode"] = cfg.get("mode")
         except Exception:
             pass
+        extra.update(cfg.get("options", {}))
 
         return {
             "base_url": cfg.get("base_url"),
