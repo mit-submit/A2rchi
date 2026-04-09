@@ -2,6 +2,7 @@ import json
 import math
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from itertools import combinations
@@ -10,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib import error as url_error
 from urllib import request as url_request
 
+import openai
 import pandas as pd
 import yaml
 from datasets import Dataset
@@ -36,6 +38,7 @@ OUTPUT_DIR = Path(OUTPUT_PATH)
 
 setup_logging()
 logger = get_logger(__name__)
+print("[BENCH] service_benchmark.py loaded, logging initialized", flush=True)
 
 
 @dataclass
@@ -54,6 +57,9 @@ class ABResult:
     messages_a: List[Dict[str, Any]] = field(default_factory=list)
     messages_b: List[Dict[str, Any]] = field(default_factory=list)
     winner_by_metric: Dict[str, str] = field(default_factory=dict)
+    llm_judge_a: Dict[str, Any] = field(default_factory=dict)
+    llm_judge_b: Dict[str, Any] = field(default_factory=dict)
+    llm_judge_pairwise: Dict[str, Any] = field(default_factory=dict)
 
 for _key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "HUGGING_FACE_HUB_TOKEN"):
     _val = read_secret(_key)
@@ -198,6 +204,8 @@ class ResultHandler:
                 messages_a=qa.get("messages", []),
                 messages_b=qb.get("messages", []),
                 winner_by_metric=winner_by_metric,
+                llm_judge_a={k.replace("llm_judge_", ""): v for k, v in qa.items() if k.startswith("llm_judge_")},
+                llm_judge_b={k.replace("llm_judge_", ""): v for k, v in qb.items() if k.startswith("llm_judge_")},
             ))
 
         return paired
@@ -363,14 +371,24 @@ class Benchmarker:
         with open(CONFIG_PATH, 'w') as f: 
             yaml.dump(config, stream=f)
 
+        # Re-seed config to postgres so get_full_config() returns updated values.
+        # Without this, rerun configs (e.g. switching from CompOps to Copilot)
+        # would get stale providers/services from the initial config-seed.
+        try:
+            from src.cli.tools.config_seed import seed as config_seed
+            cs = factory.config_service
+            config_seed(config, cs)
+            logger.info("Re-seeded config to postgres for %s", config_path)
+        except Exception:
+            logger.warning("Failed to re-seed config to postgres", exc_info=True)
+
         self.config = config 
         self.benchmarking_configs = config['services']['benchmarking']
         modes = self.benchmarking_configs.get('modes') or []
         self.required_fields = ['question']
         if 'SOURCES' in modes:
             self.required_fields.append('sources')
-        if 'RAGAS' in modes:
-            self.required_fields.append('answer')
+        # RAGAS answer_relevancy and faithfulness don't need reference answers
 
         # for now it only uses one pipeline (the first one) but maybe later we make this work for mulitple
         logger.info(f"loaded new configuration: {self.current_config}")
@@ -402,6 +420,15 @@ class Benchmarker:
             agent_spec = load_agent_spec(Path(str(agent_md_file)))
         except AgentSpecError as exc:
             raise ValueError(f"Failed to load benchmark agent spec '{agent_md_file}': {exc}") from exc
+
+        # Store chain creation args for building parallel workers
+        self._chain_kwargs = dict(
+            pipeline=pipeline,
+            agent_spec=agent_spec,
+            default_provider=provider,
+            default_model=model,
+            prompt_overrides={},
+        )
         self.chain = archi(
             pipeline,
             agent_spec=agent_spec,
@@ -409,14 +436,83 @@ class Benchmarker:
             default_model=model,
             prompt_overrides={},
         )
+        print(f"[BENCH] Chain created: pipeline={pipeline} provider={provider} model={model}", flush=True)
+
+    def _create_chain_pool(self, n_workers: int) -> list:
+        """Create a pool of independent chain instances for parallel execution."""
+        chains = [self.chain]
+        kw = self._chain_kwargs
+        for _ in range(n_workers - 1):
+            chains.append(archi(
+                kw["pipeline"],
+                agent_spec=kw["agent_spec"],
+                default_provider=kw["default_provider"],
+                default_model=kw["default_model"],
+                prompt_overrides=kw["prompt_overrides"],
+            ))
+        logger.info("Created pool of %d chain instances for parallel execution.", n_workers)
+        return chains
+
+    def _prefetch_questions_parallel(
+        self, n_workers, config_num, total_configs, total_questions, run_start,
+    ):
+        """Run all questions in parallel using a pool of independent chain instances.
+
+        Returns a dict mapping 1-based question_id to (result, elapsed_seconds).
+        """
+        chains = self._create_chain_pool(n_workers)
+        logger.info("Prefetching %d questions with %d parallel workers...", total_questions, n_workers)
+
+        def _ask(chain, question_id, question_text):
+            formatted = [("User", question_text)]
+            start = time.perf_counter()
+            result = chain(history=formatted)
+            elapsed = time.perf_counter() - start
+            logger.info(
+                "[Config %d/%d] Question %d/%d finished (%.2fs)",
+                config_num, total_configs, question_id, total_questions, elapsed,
+            )
+            return question_id, result, elapsed
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            futures = {}
+            for idx, question_item in enumerate(self.queries_to_answers):
+                if not isinstance(question_item, dict):
+                    continue
+                if not all(f in question_item for f in self.required_fields):
+                    continue
+                qid = idx + 1
+                chain = chains[idx % n_workers]
+                future = executor.submit(_ask, chain, qid, question_item["question"])
+                futures[future] = qid
+
+            for future in as_completed(futures):
+                try:
+                    qid, result, elapsed = future.result()
+                    results[qid] = (result, elapsed)
+                except Exception:
+                    qid = futures[future]
+                    logger.exception("Question %d failed in parallel execution", qid)
+
+        wall_elapsed = time.perf_counter() - run_start
+        mins, secs = divmod(int(wall_elapsed), 60)
+        logger.info(
+            "Parallel prefetch complete: %d/%d questions in %dm%02ds wall time.",
+            len(results), total_questions, mins, secs,
+        )
+        return results
 
 
     def get_ragas_llm_evaluator(self):
-        ragas_configs = self.config['services']['benchmarking']['mode_settings']['ragas_settings']
+        ragas_configs = self.config['services']['benchmarking'].get('mode_settings', {}).get('ragas_settings', {})
         benchmark_cfg = self.config.get("services", {}).get("benchmarking", {})
-        provider = benchmark_cfg.get("provider")
-        model_name = benchmark_cfg.get("model")
-        ollama_url = benchmark_cfg.get("ollama_url")
+
+        # Allow ragas_settings to specify a separate evaluator provider/model,
+        # falling back to the benchmark provider/model if not set.
+        provider = ragas_configs.get("evaluator_provider") or benchmark_cfg.get("provider")
+        model_name = ragas_configs.get("evaluator_model") or benchmark_cfg.get("model")
+        ollama_url = ragas_configs.get("evaluator_ollama_url") or benchmark_cfg.get("ollama_url")
 
         match str(provider).lower():
             case "openai":
@@ -656,9 +752,188 @@ class Benchmarker:
 
         return res
 
+    # ── LLM-as-Judge ──────────────────────────────────────────────────
+
+    _LLM_JUDGE_RUBRICS = {
+        "correctness": (
+            "**Correctness** — Does the answer contain factually accurate information?\n"
+            "- 5: Fully correct, all facts verifiable\n"
+            "- 4: Mostly correct, minor inaccuracies\n"
+            "- 3: Partially correct, some significant errors\n"
+            "- 2: Mostly incorrect\n"
+            "- 1: Completely wrong or fabricated"
+        ),
+        "completeness": (
+            "**Completeness** — Does the answer address all aspects of the question?\n"
+            "- 5: Comprehensive, covers all aspects\n"
+            "- 4: Good coverage, minor omissions\n"
+            "- 3: Addresses main point, missing context\n"
+            "- 2: Superficial or partial\n"
+            "- 1: Does not address the question"
+        ),
+        "relevance": (
+            "**Relevance** — Is the answer focused on what was asked?\n"
+            "- 5: Directly and precisely relevant\n"
+            "- 4: Relevant with minor tangents\n"
+            "- 3: Somewhat relevant, significant tangents\n"
+            "- 2: Mostly off-topic\n"
+            "- 1: Completely irrelevant"
+        ),
+        "helpfulness": (
+            "**Helpfulness** — Would a CMS operator find this answer useful?\n"
+            "- 5: Actionable, provides clear next steps\n"
+            "- 4: Useful, some actionable content\n"
+            "- 3: Somewhat useful but requires follow-up\n"
+            "- 2: Minimally useful\n"
+            '- 1: Not useful (e.g., \"I don\'t know\" or hallucinated)'
+        ),
+    }
+
+    def _get_llm_judge_settings(self) -> Dict[str, Any]:
+        return self.benchmarking_configs.get("mode_settings", {}).get("llm_judge_settings", {})
+
+    def _get_llm_judge_client(self) -> openai.OpenAI:
+        settings = self._get_llm_judge_settings()
+        api_key = settings.get("api_key") or os.environ.get("OPENAI_API_KEY")
+        base_url = settings.get("base_url")
+        kwargs: Dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        return openai.OpenAI(**kwargs)
+
+    def _build_absolute_prompt(self, dimensions: List[str], question: str,
+                               reference_answer: str, generated_answer: str) -> str:
+        rubric_parts = [self._LLM_JUDGE_RUBRICS[d] for d in dimensions if d in self._LLM_JUDGE_RUBRICS]
+        rubric_text = "\n\n".join(rubric_parts)
+        dim_keys = ", ".join(f'\"{d}\"' for d in dimensions)
+        return (
+            "Evaluate the generated answer on the following dimensions using a 1\u20135 scale.\n\n"
+            f"{rubric_text}\n\n"
+            f"Question:\n{question}\n\n"
+            f"Reference Answer:\n{reference_answer}\n\n"
+            f"Generated Answer:\n{generated_answer}\n\n"
+            f"Return ONLY a JSON object with integer keys {dim_keys} and a brief \"reasoning\" string."
+        )
+
+    def _build_pairwise_prompt(self, question: str,
+                               response_first: str, response_second: str) -> str:
+        return (
+            "You are an expert evaluator for a CMS computing operations Q&A system.\n\n"
+            "Given a question and two candidate responses, determine which response "
+            "is better overall for a CMS operator.\n\n"
+            f"Question:\n{question}\n\n"
+            f"Response A:\n{response_first}\n\n"
+            f"Response B:\n{response_second}\n\n"
+            'Return ONLY a JSON object: {"winner": "A" or "B" or "tie", "reasoning": "<brief explanation>"}'
+        )
+
+    def _call_llm_judge(self, client: openai.OpenAI, model: str,
+                        prompt: str, max_tokens: int = 1024) -> Dict[str, Any]:
+        response = client.chat.completions.create(
+            model=model,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are an expert evaluator. Always respond with valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            max_completion_tokens=max_tokens,
+        )
+        return json.loads(response.choices[0].message.content)
+
+    def get_llm_judge_results(self, question_wise_results: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
+        """Run absolute LLM-as-judge scoring on every question for the current config.
+
+        Modifies *question_wise_results* in-place (adds ``llm_judge_<dim>`` and
+        ``llm_judge_reasoning`` keys per question) and returns a DataFrame of
+        scores with one column per dimension.
+        """
+        settings = self._get_llm_judge_settings()
+        model = settings.get("evaluator_model", "gpt-5-2025-08-07")
+        dimensions: List[str] = settings.get(
+            "dimensions", ["correctness", "completeness", "relevance", "helpfulness"]
+        )
+
+        client = self._get_llm_judge_client()
+
+        for q_key, q_data in question_wise_results.items():
+            prompt = self._build_absolute_prompt(
+                dimensions,
+                q_data["question"],
+                q_data.get("reference_answer", "N/A"),
+                q_data["answer"],
+            )
+            try:
+                scores = self._call_llm_judge(client, model, prompt)
+            except Exception:
+                logger.exception("LLM-as-Judge scoring failed for %s, recording NaN", q_key)
+                scores = {}
+
+            for dim in dimensions:
+                raw = scores.get(dim)
+                q_data[f"llm_judge_{dim}"] = int(raw) if raw is not None else float("nan")
+            q_data["llm_judge_reasoning"] = scores.get("reasoning", "")
+
+        # Build a DataFrame for aggregate computation
+        data: Dict[str, List[float]] = {dim: [] for dim in dimensions}
+        for q_data in question_wise_results.values():
+            for dim in dimensions:
+                data[dim].append(q_data.get(f"llm_judge_{dim}", float("nan")))
+        return pd.DataFrame(data)
+
+    def get_llm_judge_pairwise(self, paired: List[ABResult]) -> List[ABResult]:
+        """Run pairwise LLM-as-judge comparison with position swap.
+
+        For each paired question the judge is called twice (A-first then B-first)
+        to control for position bias.  The ``llm_judge_pairwise`` field and
+        ``winner_by_metric["llm_judge"]`` are set on each *ABResult* in-place.
+        """
+        settings = self._get_llm_judge_settings()
+        model = settings.get("evaluator_model", "gpt-5-2025-08-07")
+        client = self._get_llm_judge_client()
+
+        for idx, ab in enumerate(paired):
+            logger.info("LLM-as-Judge pairwise %d/%d: %s", idx + 1, len(paired), ab.question[:80])
+            try:
+                # Pass 1: A-first
+                verdict_ab = self._call_llm_judge(
+                    client, model, self._build_pairwise_prompt(ab.question, ab.answer_a, ab.answer_b), 512
+                )
+                # Pass 2: B-first (position swap)
+                verdict_ba = self._call_llm_judge(
+                    client, model, self._build_pairwise_prompt(ab.question, ab.answer_b, ab.answer_a), 512
+                )
+            except Exception:
+                logger.exception("LLM-as-Judge pairwise failed for question %d", idx)
+                ab.llm_judge_pairwise = {"final_winner": "tie", "error": True}
+                ab.winner_by_metric["llm_judge"] = "tie"
+                continue
+
+            # Map the swapped verdict back to original positions
+            swap_map = {"A": "B", "B": "A", "tie": "tie"}
+            winner_ab = str(verdict_ab.get("winner", "tie")).upper()
+            winner_ba_mapped = swap_map.get(str(verdict_ba.get("winner", "tie")).upper(), "tie")
+
+            # Agree -> use that verdict; disagree -> tie
+            if winner_ab == winner_ba_mapped:
+                final = winner_ab.lower()  # "a", "b", or "tie"
+            else:
+                final = "tie"
+
+            ab.llm_judge_pairwise = {
+                "verdict_ab": winner_ab.lower(),
+                "verdict_ba": winner_ba_mapped.lower(),
+                "final_winner": final,
+                "reasoning_ab": verdict_ab.get("reasoning", ""),
+                "reasoning_ba": verdict_ba.get("reasoning", ""),
+            }
+            ab.winner_by_metric["llm_judge"] = final
+
+        return paired
+
 
     def run(self):
         self.wait_for_ingestion_completion()
+        print("[BENCH] Starting benchmark run", flush=True)
 
         modes_being_run = set(self.benchmarking_configs.get('modes') or [])
 
@@ -677,6 +952,7 @@ class Benchmarker:
         # Checkpoint / resume support
         checkpoint_path = OUTPUT_DIR / f"{self.benchmark_name}.checkpoint.json"
         completed_configs = set()
+        in_progress = None
         if checkpoint_path.exists():
             checkpoint = self._load_checkpoint(checkpoint_path)
             if checkpoint.get("complete"):
@@ -687,12 +963,20 @@ class Benchmarker:
             # Restore prior results
             for prior_result in checkpoint.get("results", []):
                 _result_handler.results.append(prior_result)
+            # Restore in-progress partial results for question-level resume
+            in_progress = checkpoint.get("in_progress")
             logger.info("Resuming from checkpoint: %d/%d configs already complete.",
                         len(completed_configs), total_configs)
+            if in_progress:
+                logger.info("In-progress config '%s' has %d/%d questions done — will resume.",
+                            in_progress["config_path"],
+                            in_progress["question_id"],
+                            total_questions)
 
         # Argilla export setup
         argilla_enabled = os.environ.get("ARGILLA_EXPORT", "").lower() in ("1", "true", "yes")
         argilla_dataset_name = None
+        any_llm_judge = False   # track if any config uses LLM_JUDGE mode
 
         for config_path in configs_to_run:
             config_num += 1
@@ -721,7 +1005,29 @@ class Benchmarker:
             relative_source_accuracy = 0.0 
             source_accuracy = 0.0
 
-            for question_item in self.queries_to_answers:
+            # Restore partial progress if this config was in-progress
+            if in_progress and in_progress.get("config_path") == config_path:
+                question_wise_results = in_progress.get("question_wise_results", {})
+                question_id = in_progress.get("question_id", 0)
+                ragas_input = in_progress.get("ragas_input", [])
+                source_accuracy = in_progress.get("source_accuracy", 0.0)
+                relative_source_accuracy = in_progress.get("relative_source_accuracy", 0.0)
+                logger.info("Restored %d questions from in-progress checkpoint for %s",
+                            question_id, config_path)
+
+            parallel_workers = self.benchmarking_configs.get("parallel_workers", 1)
+            prefetched_results = {}
+
+            if parallel_workers > 1:
+                prefetched_results = self._prefetch_questions_parallel(
+                    parallel_workers, config_num, total_configs, total_questions, run_start,
+                )
+
+            for q_index, question_item in enumerate(self.queries_to_answers):
+
+                # Skip questions already completed (question-level resume)
+                if q_index < question_id:
+                    continue
 
                 logger.info("")
                 logger.info("====================================")
@@ -744,25 +1050,76 @@ class Benchmarker:
 
                 question_id +=1
                 formatted_question = [("User", question)]
-                start = time.perf_counter()
 
-                result = self.chain(history=formatted_question)
+                if question_id in prefetched_results:
+                    result, elapsed = prefetched_results[question_id]
+                else:
+                    question_timeout = int(os.environ.get("BENCH_QUESTION_TIMEOUT", "600"))
+                    start = time.perf_counter()
+                    print(f"[BENCH] Invoking chain for question {question_id}...", flush=True)
+                    future = ThreadPoolExecutor(max_workers=1).submit(self.chain, history=formatted_question)
+                    try:
+                        result = future.result(timeout=question_timeout)
+                    except Exception as timeout_exc:
+                        elapsed = time.perf_counter() - start
+                        logger.error(
+                            "Question %d timed out or failed after %.1fs: %s",
+                            question_id, elapsed, timeout_exc,
+                        )
+                        print(f"[BENCH] Question {question_id} TIMEOUT/FAIL after {elapsed:.1f}s: {timeout_exc}", flush=True)
+                        q_results = {
+                            "time_elapsed": elapsed,
+                            "question": question,
+                            "reference_answer": reference_answer,
+                            "answer": f"[TIMEOUT after {elapsed:.0f}s: {timeout_exc}]",
+                            "messages": [],
+                            "reference_sources_match_fields": [],
+                            "reference_sources_metadata": [],
+                            "sources_metadata": [],
+                            "sources_trunc_content": [],
+                        }
+                        question_wise_results[f"question_{question_id}"] = q_results
+                        self._save_in_progress_checkpoint(
+                            checkpoint_path, config_path, question_wise_results,
+                            question_id, ragas_input, source_accuracy, relative_source_accuracy,
+                        )
+                        continue
+                    elapsed = time.perf_counter() - start
+                    print(f"[BENCH] Question {question_id} completed in {elapsed:.1f}s", flush=True)
 
-                end = time.perf_counter()
-                elapsed = end - start
-                total_elapsed = end - run_start
+                total_elapsed = time.perf_counter() - run_start
                 mins, secs = divmod(int(total_elapsed), 60)
                 logger.info(f"Finished question {question_id}/{total_questions} ({elapsed:.2f}s) — total elapsed {mins}m{secs:02d}s")
                 q_results = {}
 
                 # prepare info to store for this question
-                q_results["time_elapsed"] = end - start
+                q_results["time_elapsed"] = elapsed
                 q_results["question"] = question
                 q_results["reference_answer"] = reference_answer
                 q_results["answer"] = result['answer']
 
                 # format the messages
                 q_results['messages'] = self.prepare_messages(result.get("messages", []))
+
+                # Copilot pipelines store tool calls in metadata["tool_calls"]
+                # instead of LangChain messages — fall back to those.
+                if not q_results['messages']:
+                    meta = result.get("metadata", {}) or {}
+                    meta_tool_calls = meta.get("tool_calls", [])
+                    for tc in meta_tool_calls:
+                        q_results['messages'].append({
+                            'type': 'tool_call',
+                            'tool_name': tc.get('name'),
+                            'tool_args': tc.get('args', {}),
+                            'tool_output': tc.get('result', ''),
+                            'total_duration': None,
+                        })
+                    if q_results['messages']:
+                        q_results['messages'].append({
+                            'type': 'ai_message',
+                            'content': result.get('answer', ''),
+                            'total_duration': None,
+                        })
 
                 # format the reference sources (only when SOURCES mode is active)
                 if "SOURCES" in modes_being_run:
@@ -816,6 +1173,12 @@ class Benchmarker:
 
                 # store the results for this question
                 question_wise_results[f"question_{question_id}"] = q_results
+
+                # Save in-progress checkpoint after each question
+                self._save_in_progress_checkpoint(
+                    checkpoint_path, config_path, question_wise_results,
+                    question_id, ragas_input, source_accuracy, relative_source_accuracy,
+                )
                 
                 logger.info("====================================")
                 logger.info("")
@@ -833,6 +1196,13 @@ class Benchmarker:
                 total_results['relative_source_accuracy'] = relative_source_accuracy / len(self.queries_to_answers)
                 total_results['source_accuracy'] = source_accuracy / len(self.queries_to_answers)
 
+            if "LLM_JUDGE" in modes_being_run:
+                logger.info("Starting LLM-as-Judge absolute scoring")
+                llm_judge_df = self.get_llm_judge_results(question_wise_results)
+                for dim in llm_judge_df.columns:
+                    total_results[f"aggregate_llm_judge_{dim}"] = llm_judge_df[dim].mean()
+                any_llm_judge = True
+
             ResultHandler.handle_results(Path(self.current_config), question_wise_results, total_results)
 
             # Save checkpoint after each config
@@ -846,6 +1216,14 @@ class Benchmarker:
             logger.info("Generating %d pairwise A/B comparisons...", len(pairs))
             for idx_a, idx_b in pairs:
                 paired = ResultHandler.pair_ab_results(idx_a, idx_b)
+
+                # LLM-as-judge pairwise comparison with position swap
+                if any_llm_judge:
+                    llm_judge_settings = self._get_llm_judge_settings()
+                    if llm_judge_settings.get("pairwise", True):
+                        logger.info("Running LLM-as-Judge pairwise comparison for configs %d vs %d", idx_a, idx_b)
+                        self.get_llm_judge_pairwise(paired)
+
                 ResultHandler.dump_ab_comparison(paired, idx_a, idx_b)
                 comp = _result_handler.ab_comparisons[-1]
                 name_a = comp["config_a"].get("name", f"config_{idx_a}")
@@ -949,9 +1327,32 @@ class Benchmarker:
             "complete": len(completed) >= len(all_configs),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        checkpoint.pop("in_progress", None)  # clear partial progress on config completion
         with open(checkpoint_path, "w") as f:
             json.dump(checkpoint, f, indent=2, default=str)
         logger.info("Checkpoint saved: %d/%d configs complete.", len(completed), len(all_configs))
+
+    def _save_in_progress_checkpoint(self, checkpoint_path: Path,
+                                     config_path: str,
+                                     question_wise_results: Dict[str, Any],
+                                     question_id: int,
+                                     ragas_input: list,
+                                     source_accuracy: float,
+                                     relative_source_accuracy: float):
+        """Save per-question checkpoint so we can resume mid-config."""
+        existing = self._load_checkpoint(checkpoint_path) if checkpoint_path.exists() else {}
+        existing["in_progress"] = {
+            "config_path": config_path,
+            "question_wise_results": question_wise_results,
+            "question_id": question_id,
+            "ragas_input": ragas_input,
+            "source_accuracy": source_accuracy,
+            "relative_source_accuracy": relative_source_accuracy,
+        }
+        existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+        os.makedirs(checkpoint_path.parent, exist_ok=True)
+        with open(checkpoint_path, "w") as f:
+            json.dump(existing, f, indent=2, default=str)
 
     def _finalize_checkpoint(self, checkpoint_path: Path, all_configs: List[str]):
         """Mark the checkpoint as fully complete."""
@@ -1000,11 +1401,12 @@ class Benchmarker:
                     )
                     if state == "completed":
                         logger.info("Data-manager ingestion completed; starting benchmark.")
+                        print("[BENCH] Ingestion completed, starting benchmark", flush=True)
                         return
                     if state == "error":
                         raise RuntimeError(f"Data-manager ingestion failed at step '{step}': {err}")
                     break
-                except (url_error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+                except (url_error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
                     last_error = exc
                     continue
 
