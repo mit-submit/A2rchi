@@ -96,6 +96,12 @@
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#post-apiabcreate">POST /api/ab/create</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#get-apiabpool">GET /api/ab/pool</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#post-apiabcompare">POST /api/ab/compare</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#get-apiabmetrics">GET /api/ab/metrics</a>
+    </li>
         </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#authentication">Authentication</a>
@@ -157,6 +163,12 @@
     <li class="toctree-l3"><a class="reference internal" href="#delete-apiagents">DELETE /api/agents</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#post-apiagentsactive">POST /api/agents/active</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#get-apiabagentslist">GET /api/ab/agents/list</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#get-apiabagentstemplate">GET /api/ab/agents/template</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#post-apiabagents">POST /api/ab/agents</a>
     </li>
         </ul>
     </li>
@@ -337,7 +349,49 @@
 <h3 id="get-apitracetrace_id"><code>GET /api/trace/&lt;trace_id&gt;</code></h3>
 <p>Retrieve the full trace of a previous request.</p>
 <h3 id="post-apiabcreate"><code>POST /api/ab/create</code></h3>
-<p>Create an A/B comparison between two model responses.</p>
+<p>Create an A/B comparison between two model responses (legacy manual mode).</p>
+<h3 id="get-apiabpool"><code>GET /api/ab/pool</code></h3>
+<p>Get the server-side A/B testing pool configuration. The response shape depends on RBAC:</p>
+<ul>
+<li><code>ab:view</code> or <code>ab:manage</code>: full read-only experiment configuration</li>
+<li><code>ab:participate</code>: participant-focused payload including the effective per-user sample rate and participant eligibility diagnostics</li>
+<li>otherwise: <code>enabled: false</code></li>
+</ul>
+<p><strong>Response (pool active):</strong></p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;enabled&quot;: true,
+  &quot;can_view&quot;: true,
+  &quot;can_manage&quot;: false,
+  &quot;champion&quot;: &quot;default&quot;,
+  &quot;variants&quot;: [&quot;default&quot;, &quot;creative&quot;, &quot;concise&quot;],
+  &quot;comparison_rate&quot;: 0.25,
+  &quot;default_comparison_rate&quot;: 0.25,
+  &quot;participant_eligible&quot;: true,
+  &quot;participant_reason&quot;: &quot;eligible&quot;
+}
+</code></pre>
+<p>Participant payloads can also report <code>participant_reason: "not_targeted"</code> when the deployment has an active experiment but the current user's roles or permissions are not included in that experiment's target filters.</p>
+<h3 id="post-apiabcompare"><code>POST /api/ab/compare</code></h3>
+<p>Stream a pool-based champion-vs-variant A/B comparison. The server randomly pairs the champion against another variant from the pool and streams interleaved NDJSON events tagged with <code>arm: "a"</code> or <code>arm: "b"</code>. A final <code>ab_meta</code> event carries the <code>comparison_id</code> and variant mapping.</p>
+<p><strong>Request body:</strong> Same as <code>/api/get_chat_response_stream</code>.</p>
+<h3 id="get-apiabmetrics"><code>GET /api/ab/metrics</code></h3>
+<p>Get per-variant aggregate metrics (wins, losses, ties, total comparisons).</p>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;metrics&quot;: [
+    {
+      &quot;variant_name&quot;: &quot;creative&quot;,
+      &quot;wins&quot;: 12,
+      &quot;losses&quot;: 5,
+      &quot;ties&quot;: 3,
+      &quot;total_comparisons&quot;: 20,
+      &quot;last_updated&quot;: &quot;2025-01-15T10:30:00&quot;
+    }
+  ]
+}
+</code></pre>
 <hr />
 <h2 id="authentication">Authentication</h2>
 <p>Authentication routes are served at the application root (not under <code>/api/</code>).</p>
@@ -366,12 +420,13 @@
 }
 </code></pre>
 <h3 id="patch-apiusersmepreferences"><code>PATCH /api/users/me/preferences</code></h3>
-<p>Update user preferences (model, temperature, prompts, theme).</p>
+<p>Update user preferences (model, temperature, prompts, theme, and A/B participation override).</p>
 <p><strong>Request:</strong></p>
 <pre><code class="language-json">{
   &quot;theme&quot;: &quot;light&quot;,
   &quot;preferred_model&quot;: &quot;claude-3-opus&quot;,
-  &quot;preferred_temperature&quot;: 0.5
+  &quot;preferred_temperature&quot;: 0.5,
+  &quot;ab_participation_rate&quot;: 0.75
 }
 </code></pre>
 <h3 id="put-apiusersmeapi-keysprovider"><code>PUT /api/users/me/api-keys/{provider}</code></h3>
@@ -452,6 +507,29 @@
 <p><strong>Request:</strong></p>
 <pre><code class="language-json">{
   &quot;agent_name&quot;: &quot;CMS Comp Ops&quot;
+}
+</code></pre>
+<h3 id="get-apiabagentslist"><code>GET /api/ab/agents/list</code></h3>
+<p>List the Postgres-backed A/B agent catalog for the A/B admin page. Requires A/B page access.</p>
+<h3 id="get-apiabagentstemplate"><code>GET /api/ab/agents/template</code></h3>
+<p>Get the A/B admin template payload with structured tool metadata. Requires <code>ab:manage</code>.</p>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  &quot;name&quot;: &quot;New A/B Agent&quot;,
+  &quot;prompt&quot;: &quot;Write your system prompt here.&quot;,
+  &quot;tools&quot;: [
+    {&quot;name&quot;: &quot;search_vectorstore_hybrid&quot;, &quot;description&quot;: &quot;Search indexed documents.&quot;}
+  ],
+  &quot;scope&quot;: &quot;ab&quot;
+}
+</code></pre>
+<h3 id="post-apiabagents"><code>POST /api/ab/agents</code></h3>
+<p>Create a new Postgres-backed A/B agent spec from structured fields. Requires <code>ab:manage</code>.</p>
+<p><strong>Request:</strong></p>
+<pre><code class="language-json">{
+  &quot;name&quot;: &quot;A/B Candidate&quot;,
+  &quot;tools&quot;: [&quot;search_vectorstore_hybrid&quot;],
+  &quot;prompt&quot;: &quot;You are a helpful A/B experiment agent.&quot;
 }
 </code></pre>
 <hr />
