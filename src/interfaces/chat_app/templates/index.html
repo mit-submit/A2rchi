@@ -186,6 +186,14 @@
               </svg>
               <span>Advanced</span>
             </button> -->
+            <button class="settings-nav-item" data-section="ab-testing" aria-selected="false" id="ab-settings-nav" style="display: none;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 3v18"></path>
+                <path d="M3 12h18"></path>
+                <circle cx="12" cy="12" r="9"></circle>
+              </svg>
+              <span>A/B Testing</span>
+            </button>
             <button class="settings-nav-item" data-section="display" aria-selected="false">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="4"></circle>
@@ -247,68 +255,41 @@
               </div>
             </section> -->
             
-            <!-- Advanced Section -->
-            <!-- <section class="settings-section" id="settings-advanced" aria-labelledby="advanced-heading" hidden>
-              <h4 class="settings-section-title" id="advanced-heading">Advanced Settings</h4> -->
-              
-              <!-- A/B Testing -->
-              <!-- <div class="settings-group">
+            <section class="settings-section" id="settings-ab-testing" aria-labelledby="ab-testing-heading" hidden>
+              <h4 class="settings-section-title" id="ab-testing-heading">A/B Testing</h4>
+              <p class="settings-description">A/B testing occasionally shows two answers for the same prompt so the team can compare them and improve the system.</p>
+
+              <div class="settings-group settings-group-bordered" id="ab-participation-group" style="display: none;">
                 <div class="settings-group-header">
-                  <span class="settings-label" id="ab-testing-label">A/B Testing</span>
-                  <label class="settings-toggle-compact">
-                    <input type="checkbox" class="ab-checkbox" id="ab-checkbox" aria-describedby="ab-testing-label">
-                    <span class="toggle-slider-compact"></span>
-                  </label>
+                  <span class="settings-label" id="ab-participation-label">Participation Rate</span>
+                  <strong class="settings-ab-percent" id="ab-participation-value">100%</strong>
                 </div>
-                <p class="settings-description">Compare responses from two different models side by side.</p>
+                <p class="settings-description" id="ab-participation-description">Move the slider higher to help evaluate more responses, or lower for a more standard single-response flow. If you leave it alone, the deployment default is used.</p>
+                <input
+                  type="range"
+                  id="ab-participation-slider"
+                  class="settings-range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value="100"
+                  aria-describedby="ab-participation-label ab-participation-description ab-participation-default ab-participation-note"
+                />
+                <div class="settings-range-meta">
+                  <span id="ab-participation-default">Default: 100%</span>
+                  <span id="ab-participation-note">Your saved setting applies only to your account.</span>
+                </div>
+                <p class="settings-description" id="ab-participation-inactive" style="display: none;">Experiments are currently inactive. Your preference will be used again if A/B testing is enabled.</p>
               </div>
-              
-              <div class="settings-group ab-model-group" style="display: none;">
-                <label class="settings-label" for="model-select-b">Model B (for comparison)</label>
-                <div class="provider-row">
-                  <label class="settings-field-label" for="provider-select-b">Provider</label>
-                  <select id="provider-select-b" class="model-select provider-select-b">
-                    <option value="">Same as primary</option>
-                  </select>
+
+              <div class="settings-group settings-group-bordered" id="ab-settings-section" style="display: none;">
+                <div class="settings-group-header">
+                  <span class="settings-label" id="ab-testing-admin-label">Experiment Console</span>
                 </div>
-                <div class="provider-row">
-                  <label class="settings-field-label" for="model-select-b">Model</label>
-                  <select id="model-select-b" class="model-select model-select-b"></select>
-                </div>
-              </div> -->
-              
-              <!-- Agent Transparency -->
-              <!-- <div class="settings-group settings-group-bordered">
-                <span class="settings-label" id="transparency-label">Agent Transparency</span>
-                <p class="settings-description">Control how much detail to show about agent tool calls and reasoning.</p>
-                <div class="settings-radio-group trace-verbose-options" role="radiogroup" aria-labelledby="transparency-label">
-                  <label class="settings-radio">
-                    <input type="radio" name="trace-verbose" value="minimal" id="trace-minimal">
-                    <span class="radio-check"></span>
-                    <div class="radio-content">
-                      <span class="radio-label">Minimal</span>
-                      <span class="radio-description">Final answer only</span>
-                    </div>
-                  </label>
-                  <label class="settings-radio">
-                    <input type="radio" name="trace-verbose" value="normal" id="trace-normal" checked>
-                    <span class="radio-check"></span>
-                    <div class="radio-content">
-                      <span class="radio-label">Normal</span>
-                      <span class="radio-description">Show tool calls (collapsed)</span>
-                    </div>
-                  </label>
-                  <label class="settings-radio">
-                    <input type="radio" name="trace-verbose" value="verbose" id="trace-verbose">
-                    <span class="radio-check"></span>
-                    <div class="radio-content">
-                      <span class="radio-label">Verbose</span>
-                      <span class="radio-description">Show everything expanded</span>
-                    </div>
-                  </label>
-                </div>
+                <p class="settings-description">Open the dedicated A/B page to review the current experiment, inspect metrics, and manage variants if your role allows it.</p>
+                <a href="/admin/ab-testing" class="settings-link-btn">Open A/B Testing Admin</a>
               </div>
-            </section> -->
+            </section>
 
             <!-- Display Section -->
             <section class="settings-section" id="settings-display" aria-labelledby="display-heading" hidden>

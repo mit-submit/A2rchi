@@ -1,10 +1,16 @@
-import src.archi.pipelines as archiPipelines 
+from importlib import import_module
+
 from src.utils.config_access import get_full_config
 from src.utils.logging import get_logger
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.utils.vectorstore_connector import VectorstoreConnector
 
 logger = get_logger(__name__)
+
+
+def _get_pipelines_module():
+    """Load pipeline exports only when the runtime needs to resolve a class."""
+    return import_module("src.archi.pipelines")
 
 class archi():
     """
@@ -51,7 +57,7 @@ class archi():
         logger.debug("and kwargs:")
         logger.debug(f"{kwargs}")
         try:
-            cls = getattr(archiPipelines, class_name)
+            cls = getattr(_get_pipelines_module(), class_name)
             return cls(*args, **kwargs)
         except AttributeError:
             raise ValueError(f"Class '{class_name}' not found in module")

@@ -23,6 +23,51 @@ test.describe('Provider & Model Selection', () => {
     expect(optionCount).toBeGreaterThanOrEqual(1);
   });
 
+  test('agent delete confirmation stays open for cancel and confirm', async ({ page }) => {
+    let deleted = false;
+
+    await page.route('**/api/agents/list', async (route) => {
+      const agents = deleted
+        ? [{ name: 'Reviewer Agent', ab_only: false }]
+        : [
+            { name: 'CMS CompOps Agent', ab_only: false },
+            { name: 'Reviewer Agent', ab_only: false },
+          ];
+      await route.fulfill({ status: 200, json: { agents, active_name: agents[0]?.name || null } });
+    });
+
+    await page.route('**/api/agents', async (route) => {
+      if (route.request().method() === 'DELETE') {
+        deleted = true;
+        await route.fulfill({ status: 200, json: { success: true } });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto('/chat');
+
+    const dropdownBtn = page.locator('.agent-dropdown-btn');
+    await dropdownBtn.click();
+    const dropdownMenu = page.locator('.agent-dropdown-menu');
+    await expect(dropdownMenu).toBeVisible();
+
+    await page.locator('.agent-dropdown-delete').first().click();
+    await expect(dropdownMenu).toBeVisible();
+    await expect(page.locator('.agent-dropdown-confirm-yes')).toBeVisible();
+    await expect(page.locator('.agent-dropdown-confirm-no')).toBeVisible();
+
+    await page.locator('.agent-dropdown-confirm-no').click();
+    await expect(dropdownMenu).toBeVisible();
+    await expect(page.locator('.agent-dropdown-item', { hasText: 'CMS CompOps Agent' })).toBeVisible();
+
+    await page.locator('.agent-dropdown-delete').first().click();
+    await page.locator('.agent-dropdown-confirm-yes').click();
+    await expect(dropdownMenu).toBeVisible();
+    await expect(page.locator('.agent-dropdown-item', { hasText: 'CMS CompOps Agent' })).toHaveCount(0);
+    await expect(page.locator('.agent-dropdown-item', { hasText: 'Reviewer Agent' })).toBeVisible();
+  });
+
   test('settings modal opens and shows Models tab', async ({ page }) => {
     await page.goto('/chat');
     

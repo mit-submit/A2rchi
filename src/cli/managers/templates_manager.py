@@ -12,6 +12,7 @@ from jinja2 import Environment
 from src.cli.service_registry import service_registry
 from src.cli.utils.service_builder import DeploymentPlan
 from src.cli.utils.grafana_styling import assign_feedback_palette
+from src.utils.ab_testing import DEFAULT_AB_AGENTS_DIR
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -25,6 +26,7 @@ BASE_GRAFANA_DATASOURCES_TEMPLATE = "grafana/datasources.yaml"
 BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
+DEPLOYMENT_AGENTS_DIR = "/root/archi/agents"
 
 
 def get_git_information() -> Dict[str, str]:
@@ -158,6 +160,7 @@ class TemplateManager:
     def _stage_agents(self, context: TemplateContext) -> None:
         config = context.config_manager.config or {}
         dst_dir = context.base_dir / "data" / "agents"
+        ab_dst_dir = context.base_dir / "data" / "ab_agents"
         services_cfg = config.get("services", {}) or {}
 
         if context.benchmarking:
@@ -184,17 +187,65 @@ class TemplateManager:
             if dst_dir.exists() and any(p.suffix.lower() == ".md" for p in dst_dir.iterdir()):
                 return
             raise ValueError("Missing required services.chat_app.agents_dir in config.")
-        src_dir = Path(agents_dir).expanduser()
-        if not src_dir.exists() or not src_dir.is_dir():
-            raise ValueError(f"Agents directory not found: {src_dir}")
-        dst_dir.mkdir(parents=True, exist_ok=True)
+        src_dir = self._resolve_directory_path(str(agents_dir), config)
+        self._copy_markdown_directory(
+            src_dir,
+            dst_dir,
+            missing_message=f"Agents directory not found: {src_dir}",
+            empty_message=f"No agent markdown files found in {src_dir}",
+            required=True,
+        )
+
+        ab_dst_dir.mkdir(parents=True, exist_ok=True)
+        ab_cfg = ((services_cfg.get("chat_app") or {}).get("ab_testing") or {})
+        ab_agents_dir = ab_cfg.get("ab_agents_dir")
+        if not ab_agents_dir:
+            return
+        ab_src_dir = self._resolve_directory_path(str(ab_agents_dir), config)
+        self._copy_markdown_directory(
+            ab_src_dir,
+            ab_dst_dir,
+            missing_message=f"A/B agents directory not found: {ab_src_dir}",
+            empty_message=f"No A/B agent markdown files found in {ab_src_dir}",
+            required=False,
+        )
+
+    @staticmethod
+    def _resolve_directory_path(raw_path: str, config: Dict[str, Any]) -> Path:
+        source_path = Path(str(raw_path)).expanduser()
+        config_path_raw = config.get("_config_path", "")
+        config_path = Path(str(config_path_raw)).expanduser() if config_path_raw else None
+        if source_path.is_absolute() or not config_path:
+            return source_path
+        candidate = (config_path.parent / source_path).resolve()
+        if candidate.exists():
+            return candidate
+        return source_path
+
+    @staticmethod
+    def _copy_markdown_directory(
+        source_dir: Path,
+        destination_dir: Path,
+        *,
+        missing_message: str,
+        empty_message: str,
+        required: bool,
+    ) -> None:
+        if not source_dir.exists() or not source_dir.is_dir():
+            if required:
+                raise ValueError(missing_message)
+            logger.warning(missing_message)
+            return
+        destination_dir.mkdir(parents=True, exist_ok=True)
         copied = 0
-        for agent_file in sorted(src_dir.iterdir()):
-            if agent_file.is_file() and agent_file.suffix.lower() == ".md":
-                shutil.copyfile(agent_file, dst_dir / agent_file.name)
+        for source_file in sorted(source_dir.iterdir()):
+            if source_file.is_file() and source_file.suffix.lower() == ".md":
+                shutil.copyfile(source_file, destination_dir / source_file.name)
                 copied += 1
         if copied == 0:
-            raise ValueError(f"No agent markdown files found in {src_dir}")
+            if required:
+                raise ValueError(empty_message)
+            logger.warning(empty_message)
 
     def _stage_skills(self, context: TemplateContext) -> None:
         config = context.config_manager.config or {}
@@ -325,7 +376,8 @@ class TemplateManager:
     # config rendering
     def _render_config_files(self, context: TemplateContext) -> None:
         configs_path = context.base_dir / "configs"
-        configs_path.mkdir(exist_ok=True)
+        configs_path.mkdir(parents=True, exist_ok=True)
+        benchmarking_enabled = bool(getattr(context, "benchmarking", False))
 
         archi_configs = context.config_manager.get_configs()
         single_mode = len(archi_configs) == 1
@@ -341,15 +393,19 @@ class TemplateManager:
             for service_name in ("chat_app", "redmine_mailbox", "piazza"):
                 service_cfg = services_cfg.get(service_name)
                 if isinstance(service_cfg, dict):
-                    service_cfg["agents_dir"] = "/root/archi/agents"
+                    service_cfg["agents_dir"] = DEPLOYMENT_AGENTS_DIR
                     if service_cfg.get("skills_dir"):
                         service_cfg["skills_dir"] = "/root/archi/skills"
-            if context.benchmarking:
+                    if service_name == "chat_app":
+                        ab_cfg = service_cfg.get("ab_testing")
+                        if isinstance(ab_cfg, dict) and ab_cfg.get("ab_agents_dir"):
+                            ab_cfg["ab_agents_dir"] = DEFAULT_AB_AGENTS_DIR
+            if benchmarking_enabled:
                 benchmark_cfg = services_cfg.get("benchmarking")
                 if isinstance(benchmark_cfg, dict):
                     agent_md_file = benchmark_cfg.get("agent_md_file")
                     if agent_md_file:
-                        benchmark_cfg["agent_md_file"] = f"/root/archi/agents/{Path(str(agent_md_file)).name}"
+                        benchmark_cfg["agent_md_file"] = f"{DEPLOYMENT_AGENTS_DIR}/{Path(str(agent_md_file)).name}"
 
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)

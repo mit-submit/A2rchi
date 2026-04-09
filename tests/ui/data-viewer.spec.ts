@@ -151,12 +151,10 @@ test.describe('Data Viewer Page', () => {
     
     // Navigation links
     await expect(page.getByRole('link', { name: 'Chat' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Upload Data' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Database Viewer' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Uploader' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Postgres' })).toBeVisible();
     
     // Control buttons
-    await expect(page.getByRole('button', { name: 'Expand All' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Collapse All' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible();
   });
 
@@ -179,7 +177,7 @@ test.describe('Data Viewer Page', () => {
     await page.goto('/data');
     
     // Search input
-    await expect(page.getByPlaceholder('Search documents')).toBeVisible();
+    await expect(page.getByPlaceholder(/Search documents/i)).toBeVisible();
     
     // Filter dropdown
     const filterSelect = page.locator('select').filter({ hasText: /All Types/ });
@@ -222,28 +220,16 @@ test.describe('Data Viewer Page', () => {
     }
   });
 
-  test('expand all button expands all categories', async ({ page }) => {
+  test('category headers toggle sections directly', async ({ page }) => {
     await page.goto('/data');
-    
-    // Click Expand All
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    
-    await page.waitForTimeout(300);
-    
-    // All categories should be expanded
-    // Documents inside should be visible
-  });
 
-  test('collapse all button collapses all categories', async ({ page }) => {
-    await page.goto('/data');
-    
-    // First expand all
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    await page.waitForTimeout(200);
-    
-    // Then collapse all
-    await page.getByRole('button', { name: 'Collapse All' }).click();
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
+
+    const firstHeader = page.locator('.tree-category-header').first();
+    await expect(firstHeader).toBeVisible();
+    await firstHeader.click();
+    await page.waitForTimeout(100);
+    await firstHeader.click();
   });
 
   // ============================================================
@@ -284,7 +270,7 @@ test.describe('Data Viewer Page', () => {
     await page.goto('/data');
     
     // Type in search
-    await page.getByPlaceholder('Search documents').fill('test');
+    await page.getByPlaceholder(/Search documents/i).fill('test');
     
     await page.waitForTimeout(500);
     
@@ -296,7 +282,7 @@ test.describe('Data Viewer Page', () => {
     await page.goto('/data');
     
     // Search with different case
-    await page.getByPlaceholder('Search documents').fill('TEST');
+    await page.getByPlaceholder(/Search documents/i).fill('TEST');
     
     await page.waitForTimeout(500);
     
@@ -307,7 +293,7 @@ test.describe('Data Viewer Page', () => {
     await page.goto('/data');
     
     // Search for something
-    const searchInput = page.getByPlaceholder('Search documents');
+    const searchInput = page.getByPlaceholder(/Search documents/i);
     await searchInput.fill('test');
     await page.waitForTimeout(300);
     
@@ -327,10 +313,6 @@ test.describe('Data Viewer Page', () => {
     // Wait for documents to load
     await page.waitForTimeout(500);
     
-    // Expand a category first
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    await page.waitForTimeout(300);
-    
     // Click on a document file
     const docItem = page.locator('.tree-file').first();
     if (await docItem.isVisible()) {
@@ -347,8 +329,6 @@ test.describe('Data Viewer Page', () => {
     await page.goto('/data');
     
     await page.waitForTimeout(500);
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    await page.waitForTimeout(300);
     
     const docItem = page.locator('.tree-file').first();
     if (await docItem.isVisible()) {
@@ -453,18 +433,28 @@ test.describe('Data Viewer Page', () => {
     await expect(chatLink).toHaveAttribute('href', '/chat');
   });
 
-  test('Upload Data link navigates to upload', async ({ page }) => {
+  test('Uploader link navigates to upload', async ({ page }) => {
     await page.goto('/data');
     
-    const uploadLink = page.getByRole('link', { name: 'Upload Data' });
+    const uploadLink = page.getByRole('link', { name: 'Uploader' });
     await expect(uploadLink).toHaveAttribute('href', '/upload');
   });
 
-  test('Database Viewer link navigates to admin', async ({ page }) => {
+  test('Postgres link navigates to admin', async ({ page }) => {
     await page.goto('/data');
     
-    const dbLink = page.getByRole('link', { name: 'Database Viewer' });
+    const dbLink = page.getByRole('link', { name: 'Postgres' });
     await expect(dbLink).toHaveAttribute('href', '/admin/database');
+  });
+
+  test('header uses labeled actions and hides expand-collapse buttons', async ({ page }) => {
+    await page.goto('/data');
+
+    await expect(page.getByRole('link', { name: 'Uploader' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Postgres' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible();
+    await expect(page.locator('#expand-all-btn')).toHaveCount(0);
+    await expect(page.locator('#collapse-all-btn')).toHaveCount(0);
   });
 
   // ============================================================
@@ -558,7 +548,7 @@ test.describe('Data Viewer Page', () => {
     await page.goto('/data');
     
     // Search for something that doesn't exist
-    await page.getByPlaceholder('Search documents').fill('xyznonexistent123');
+    await page.getByPlaceholder(/Search documents/i).fill('xyznonexistent123');
     
     await page.waitForTimeout(500);
     

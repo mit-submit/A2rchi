@@ -470,6 +470,52 @@ class ConfigService:
         finally:
             self._release_connection(conn)
 
+    @staticmethod
+    def _deep_merge_dict(base: Optional[Dict[str, Any]], patch: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Recursively merge a patch dict into a copy of base."""
+        merged = dict(base or {})
+        for key, value in (patch or {}).items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = ConfigService._deep_merge_dict(merged.get(key), value)
+            else:
+                merged[key] = value
+        return merged
+
+    def update_services_config(self, patch: Dict[str, Any]) -> StaticConfig:
+        """
+        Persist a partial update to static_config.services_config.
+
+        The patch is deep-merged into the current services configuration and the
+        full static config row is then upserted through initialize_static_config.
+        """
+        static = self.get_static_config(force_reload=True)
+        if static is None:
+            raise ValueError("Static config not initialized")
+
+        merged_services = self._deep_merge_dict(static.services_config, patch)
+        updated = self.initialize_static_config(
+            deployment_name=static.deployment_name,
+            config_version=static.config_version,
+            data_path=static.data_path,
+            embedding_model=static.embedding_model,
+            embedding_dimensions=static.embedding_dimensions,
+            chunk_size=static.chunk_size,
+            chunk_overlap=static.chunk_overlap,
+            distance_metric=static.distance_metric,
+            available_pipelines=static.available_pipelines,
+            available_models=static.available_models,
+            available_providers=static.available_providers,
+            auth_enabled=static.auth_enabled,
+            sources_config=static.sources_config,
+            services_config=merged_services,
+            mcp_servers_config=static.mcp_servers_config,
+            data_manager_config=static.data_manager_config,
+            archi_config=static.archi_config,
+            global_config=static.global_config,
+        )
+        self._static_cache = updated
+        return updated
+
     # =========================================================================
     # Embedding helpers
     # =========================================================================

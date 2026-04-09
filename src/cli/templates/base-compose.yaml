@@ -161,6 +161,7 @@ services:
       - ./configs:/root/archi/configs
       - ./data/prompts:/root/archi/data/prompts:ro
       - ./data/agents:/root/archi/agents
+      - ./data/ab_agents:/root/archi/ab_agents
       - ./data/skills:/root/archi/skills:ro
       {% for prompt_file in prompt_files | default([]) -%}
       - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}

@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
     theme VARCHAR(20) NOT NULL DEFAULT 'system',
     preferred_model VARCHAR(200),          -- Override global default
     preferred_temperature NUMERIC(3,2),    -- Override global default
+    ab_participation_rate NUMERIC(3,2),    -- Per-user A/B sampling override
     preferred_max_tokens INTEGER,          -- Override global default
     preferred_num_documents INTEGER,       -- Override retrieval count
     preferred_condense_prompt VARCHAR(100), -- Prompt selection
@@ -503,6 +504,12 @@ CREATE TABLE IF NOT EXISTS ab_comparisons (
     config_a_id INTEGER REFERENCES configs(config_id),
     config_b_id INTEGER REFERENCES configs(config_id),
     
+    -- Pool-based variant info (populated when ab_testing pool is active)
+    variant_a_name VARCHAR(200),
+    variant_b_name VARCHAR(200),
+    variant_a_meta JSONB,
+    variant_b_meta JSONB,
+    
     is_config_a_first BOOLEAN NOT NULL,
     preference VARCHAR(10),
     preference_ts TIMESTAMPTZ,
@@ -513,6 +520,48 @@ CREATE INDEX IF NOT EXISTS idx_ab_comparisons_conversation ON ab_comparisons(con
 CREATE INDEX IF NOT EXISTS idx_ab_comparisons_models ON ab_comparisons(model_a, model_b);
 CREATE INDEX IF NOT EXISTS idx_ab_comparisons_preference ON ab_comparisons(preference) WHERE preference IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ab_comparisons_pending ON ab_comparisons(conversation_id) WHERE preference IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_variant_a ON ab_comparisons(variant_a_name) WHERE variant_a_name IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_variant_b ON ab_comparisons(variant_b_name) WHERE variant_b_name IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ab_agent_specs (
+    spec_id SERIAL PRIMARY KEY,
+    filename VARCHAR(255) NOT NULL UNIQUE,
+    current_name VARCHAR(255) NOT NULL UNIQUE,
+    current_version_id INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_saved_by VARCHAR(200)
+);
+
+CREATE TABLE IF NOT EXISTS ab_agent_spec_versions (
+    version_id SERIAL PRIMARY KEY,
+    spec_id INTEGER NOT NULL REFERENCES ab_agent_specs(spec_id) ON DELETE CASCADE,
+    version_number INTEGER NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    tools TEXT[] NOT NULL DEFAULT '{}',
+    prompt TEXT NOT NULL,
+    content TEXT NOT NULL,
+    ab_only BOOLEAN NOT NULL DEFAULT FALSE,
+    content_hash VARCHAR(64) NOT NULL,
+    prompt_hash VARCHAR(64) NOT NULL,
+    source_type VARCHAR(50) NOT NULL DEFAULT 'ui',
+    source_path TEXT,
+    created_by VARCHAR(200),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (spec_id, version_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ab_agent_spec_versions_spec ON ab_agent_spec_versions(spec_id, version_number DESC);
+
+-- Per-variant aggregate metrics (wins/losses/ties)
+CREATE TABLE IF NOT EXISTS ab_variant_metrics (
+    variant_name VARCHAR(200) PRIMARY KEY,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    ties INTEGER NOT NULL DEFAULT 0,
+    total_comparisons INTEGER NOT NULL DEFAULT 0,
+    last_updated TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
 -- ============================================================================
 -- 9. MIGRATION STATE (for resumable migrations)
@@ -576,6 +625,7 @@ GRANT SELECT ON
     timing,
     agent_tool_calls,
     ab_comparisons,
+    ab_variant_metrics,
     migration_state
 TO grafana;
 {% endif %}

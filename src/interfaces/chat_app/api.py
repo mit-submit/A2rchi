@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from typing import List, Optional
 
-from flask import Blueprint, jsonify, request, g, current_app
+from flask import Blueprint, jsonify, request, g, current_app, session
 
 from src.utils.postgres_service_factory import PostgresServiceFactory
 from src.utils.env import read_secret
@@ -46,10 +46,10 @@ def _get_agent_tool_registry(agent_class_name: Optional[str]) -> List[str]:
         return []
     try:
         from src.archi import pipelines
+        agent_cls = getattr(pipelines, agent_class_name, None)
     except Exception as exc:
-        logger.warning("Failed to import pipelines module: %s", exc)
+        logger.warning("Failed to load pipeline class %s: %s", agent_class_name, exc)
         return []
-    agent_cls = getattr(pipelines, agent_class_name, None)
     if not agent_cls or not hasattr(agent_cls, "get_tool_registry"):
         return []
     try:
@@ -116,8 +116,11 @@ def get_services() -> PostgresServiceFactory:
 
 def get_client_id() -> str:
     """Get client ID from request (session, header, or generate)."""
+    user = session.get('user') or {}
+    if user.get('id'):
+        return user['id']
+
     # Check session first
-    from flask import session
     if 'client_id' in session:
         return session['client_id']
     
@@ -165,9 +168,12 @@ def get_current_user():
     """
     try:
         services = get_services()
+        session_user = session.get('user') or {}
         user = services.user_service.get_or_create_user(
             user_id=g.client_id,
-            auth_provider='anonymous',
+            auth_provider=session_user.get('auth_method', 'anonymous') or 'anonymous',
+            display_name=session_user.get('name'),
+            email=session_user.get('email'),
         )
         
         return jsonify({
@@ -177,11 +183,12 @@ def get_current_user():
             'auth_provider': user.auth_provider,
             'theme': user.theme,
             'preferred_model': user.preferred_model,
-            'preferred_temperature': float(user.preferred_temperature) if user.preferred_temperature else None,
-            'has_openrouter_key': user.api_key_openrouter is not None,
-            'has_openai_key': user.api_key_openai is not None,
-            'has_anthropic_key': user.api_key_anthropic is not None,
-            'created_at': user.created_at.isoformat() if user.created_at else None,
+            'preferred_temperature': float(user.preferred_temperature) if user.preferred_temperature is not None else None,
+            'ab_participation_rate': float(user.ab_participation_rate) if user.ab_participation_rate is not None else None,
+            'has_openrouter_key': bool(user.api_key_openrouter),
+            'has_openai_key': bool(user.api_key_openai),
+            'has_anthropic_key': bool(user.api_key_anthropic),
+            'created_at': user.created_at,
         }), 200
         
     except Exception as e:
@@ -212,6 +219,11 @@ def update_user_preferences():
             temp = data['preferred_temperature']
             if temp is not None and (temp < 0 or temp > 2):
                 return jsonify({'error': 'Temperature must be between 0 and 2'}), 400
+
+        if 'ab_participation_rate' in data:
+            rate = data['ab_participation_rate']
+            if rate is not None and (rate < 0 or rate > 1):
+                return jsonify({'error': 'A/B participation rate must be between 0 and 1'}), 400
         
         services = get_services()
         user = services.user_service.update_preferences(
@@ -220,6 +232,7 @@ def update_user_preferences():
             theme=data.get('theme'),
             preferred_model=data.get('preferred_model'),
             preferred_temperature=data.get('preferred_temperature'),
+            ab_participation_rate=data.get('ab_participation_rate'),
         )
         
         if not user:
@@ -230,8 +243,9 @@ def update_user_preferences():
             'display_name': user.display_name,
             'theme': user.theme,
             'preferred_model': user.preferred_model,
-            'preferred_temperature': float(user.preferred_temperature) if user.preferred_temperature else None,
-            'updated_at': user.updated_at.isoformat() if user.updated_at else None,
+            'preferred_temperature': float(user.preferred_temperature) if user.preferred_temperature is not None else None,
+            'ab_participation_rate': float(user.ab_participation_rate) if user.ab_participation_rate is not None else None,
+            'updated_at': user.updated_at,
         }), 200
         
     except Exception as e:
