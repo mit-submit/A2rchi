@@ -181,7 +181,14 @@ def main() -> None:
     ingestion_thread = threading.Thread(target=run_initial_ingestion_async, name="ingestion-thread", daemon=True)
     ingestion_thread.start()
 
-    uploader = FlaskAppWrapper(app, post_update_hook=trigger_update, status_file=status_file)
+    enable_ui_uploads = data_manager_cfg.get("enable_ui_uploads", True)
+    logger.info(f"Data Manager: enable_ui_uploads = {enable_ui_uploads}")
+    uploader = FlaskAppWrapper(
+        app,
+        post_update_hook=trigger_update,
+        status_file=status_file,
+        enable_ui_uploads=enable_ui_uploads
+    )
     def get_ingestion_status():
         with lock:
             return jsonify(dict(ingestion_status))

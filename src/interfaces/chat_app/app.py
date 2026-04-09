@@ -2429,6 +2429,7 @@ class FlaskAppWrapper(object):
         self.global_config = self.config["global"]
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
+        self.enable_ui_uploads = self.chat_app_config.get('enable_ui_uploads', True)
         self.data_path = self.global_config["DATA_PATH"]
         self.salt = read_secret("UPLOADER_SALT")
         secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
@@ -2584,22 +2585,29 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/data/bulk-disable', 'bulk_disable_documents', self.require_perm(Permission.Documents.SELECT)(self.bulk_disable_documents), methods=["POST"])
         self.add_endpoint('/api/data/stats', 'get_data_stats', self.require_perm(Permission.Documents.VIEW)(self.get_data_stats), methods=["GET"])
 
-        # Data uploader endpoints
+        # Data uploader endpoints - conditionally register
         logger.info("Adding data uploader API endpoints")
-        self.add_endpoint('/upload', 'upload_page', self.require_perm(Permission.Upload.PAGE)(self.upload_page))
-        self.add_endpoint('/api/upload/file', 'upload_file', self.require_perm(Permission.Upload.FILE)(self.upload_file), methods=["POST"])
-        self.add_endpoint('/api/upload/url', 'upload_url', self.require_perm(Permission.Upload.URL)(self.upload_url), methods=["POST"])
-        self.add_endpoint('/api/upload/git', 'upload_git', self.require_perm(Permission.Upload.GIT)(self.upload_git), methods=["POST", "DELETE"])
-        self.add_endpoint('/api/upload/git/refresh', 'refresh_git', self.require_perm(Permission.Upload.GIT)(self.refresh_git), methods=["POST"])
-        self.add_endpoint('/api/upload/jira', 'upload_jira', self.require_perm(Permission.Upload.JIRA)(self.upload_jira), methods=["POST"])
-        self.add_endpoint('/api/upload/embed', 'trigger_embedding', self.require_perm(Permission.Upload.EMBED)(self.trigger_embedding), methods=["POST"])
-        self.add_endpoint('/api/upload/status', 'get_embedding_status', self.require_perm(Permission.Upload.EMBED)(self.get_embedding_status), methods=["GET"])
-        self.add_endpoint('/api/upload/documents', 'list_upload_documents', self.require_perm(Permission.Documents.VIEW)(self.list_upload_documents), methods=["GET"])
-        self.add_endpoint('/api/upload/documents/grouped', 'list_upload_documents_grouped', self.require_perm(Permission.Documents.VIEW)(self.list_upload_documents_grouped), methods=["GET"])
-        self.add_endpoint('/api/upload/documents/<document_hash>/retry', 'retry_document', self.require_perm(Permission.Documents.SELECT)(self.retry_document), methods=["POST"])
-        self.add_endpoint('/api/upload/documents/retry-all-failed', 'retry_all_failed', self.require_perm(Permission.Documents.SELECT)(self.retry_all_failed), methods=["POST"])
-        self.add_endpoint('/api/sources/git', 'list_git_sources', self.require_perm(Permission.Sources.VIEW)(self.list_git_sources), methods=["GET"])
-        self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_perm(Permission.Sources.VIEW)(self.list_jira_sources), methods=["GET", "DELETE"])
+        if self.enable_ui_uploads:
+            logger.info("Adding data uploader API endpoints")
+            self.add_endpoint('/upload', 'upload_page', self.require_perm(Permission.Upload.PAGE)(self.upload_page))
+            self.add_endpoint('/api/upload/file', 'upload_file', self.require_perm(Permission.Upload.FILE)(self.upload_file), methods=["POST"])
+            self.add_endpoint('/api/upload/url', 'upload_url', self.require_perm(Permission.Upload.URL)(self.upload_url), methods=["POST"])
+            self.add_endpoint('/api/upload/git', 'upload_git', self.require_perm(Permission.Upload.GIT)(self.upload_git), methods=["POST", "DELETE"])
+            self.add_endpoint('/api/upload/git/refresh', 'refresh_git', self.require_perm(Permission.Upload.GIT)(self.refresh_git), methods=["POST"])
+            self.add_endpoint('/api/upload/jira', 'upload_jira', self.require_perm(Permission.Upload.JIRA)(self.upload_jira), methods=["POST"])
+            self.add_endpoint('/api/upload/embed', 'trigger_embedding', self.require_perm(Permission.Upload.EMBED)(self.trigger_embedding), methods=["POST"])
+            self.add_endpoint('/api/upload/status', 'get_embedding_status', self.require_perm(Permission.Upload.EMBED)(self.get_embedding_status), methods=["GET"])
+            self.add_endpoint('/api/upload/documents', 'list_upload_documents', self.require_perm(Permission.Documents.VIEW)(self.list_upload_documents), methods=["GET"])
+            self.add_endpoint('/api/upload/documents/grouped', 'list_upload_documents_grouped', self.require_perm(Permission.Documents.VIEW)(self.list_upload_documents_grouped), methods=["GET"])
+            self.add_endpoint('/api/upload/documents/<document_hash>/retry', 'retry_document', self.require_perm(Permission.Documents.SELECT)(self.retry_document), methods=["POST"])
+            self.add_endpoint('/api/upload/documents/retry-all-failed', 'retry_all_failed', self.require_perm(Permission.Documents.SELECT)(self.retry_all_failed), methods=["POST"])
+            self.add_endpoint('/api/sources/git', 'list_git_sources', self.require_perm(Permission.Sources.VIEW)(self.list_git_sources), methods=["GET"])
+            self.add_endpoint('/api/sources/jira', 'list_jira_sources', self.require_perm(Permission.Sources.VIEW)(self.list_jira_sources), methods=["GET", "DELETE"])
+        else:
+            logger.info("UI uploads disabled in chat_app config")
+            # Data uploader endpoints
+
+        # Always keep source schedule endpoints (backend management)
         self.add_endpoint('/api/sources/schedules', 'source_schedules', self.require_perm(Permission.Sources.SELECT)(self.source_schedules_dispatch), methods=["GET", "PUT"])
 
         # Database viewer endpoints (admin only)

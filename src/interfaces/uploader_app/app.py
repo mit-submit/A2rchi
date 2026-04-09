@@ -36,10 +36,13 @@ class FlaskAppWrapper:
         *,
         post_update_hook: Optional[Callable[[], None]] = None,
         status_file: Optional[Path] = None,
+        enable_ui_uploads: bool = True,
     ) -> None:
         self.app = app
         self.config = get_full_config()
         self.global_config = self.config["global"]
+        self.enable_ui_uploads = enable_ui_uploads
+        logger.info(f"UI uploads setting: {self.enable_ui_uploads}")
         self.services_config = self.config["services"]
 
         self.data_path = self.global_config["DATA_PATH"]
@@ -86,17 +89,25 @@ class FlaskAppWrapper:
 
         protected = self.require_admin
         self.add_endpoint("/api/health", "health", self.health, methods=["GET"])
-        self.add_endpoint("/document_index/upload", "upload", protected(self.upload), methods=["POST"])
+
+        # CONDITIONAL: Only register UI upload endpoints if enabled
+        if self.enable_ui_uploads:
+            logger.info("UI uploads enabled")
+            self.add_endpoint("/document_index/upload", "upload", protected(self.upload), methods=["POST"])
+            self.add_endpoint("/document_index/upload_url", "upload_url", protected(self.upload_url), methods=["POST"])
+            self.add_endpoint("/document_index/add_git_repo", "add_git_repo", protected(self.add_git_repo), methods=["POST"])
+            self.add_endpoint("/document_index/add_jira_project", "add_jira_project", protected(self.add_jira_project), methods=["POST"])
+        else:
+            logger.info("UI uploads disabled - only backend ingestion available")
+
+        # ALWAYS register these endpoints
         self.add_endpoint("/document_index/delete/<file_hash>", "delete", protected(self.delete))
         self.add_endpoint(
             "/document_index/delete_source/<source_type>",
             "delete_source",
             protected(self.delete_source),
         )
-        self.add_endpoint("/document_index/upload_url", "upload_url", protected(self.upload_url), methods=["POST"])
-        self.add_endpoint("/document_index/add_git_repo", "add_git_repo", protected(self.add_git_repo), methods=["POST"])
         self.add_endpoint("/document_index/remove_git_repo", "remove_git_repo", protected(self.remove_git_repo), methods=["POST"])
-        self.add_endpoint("/document_index/add_jira_project", "add_jira_project", protected(self.add_jira_project), methods=["POST"])
         self.add_endpoint("/document_index/update_schedule", "update_schedule", protected(self.update_schedule), methods=["POST"])
         self.add_endpoint("/document_index/load_document/<path:file_hash>", "load_document", protected(self.load_document))
         # API endpoints for remote catalog access
@@ -169,6 +180,10 @@ class FlaskAppWrapper:
         return jsonify({"status": "OK"}), 200
 
     def add_git_repo(self):
+        if not self.enable_ui_uploads:
+            logger.error("Git repo add attempted but UI uploads are disabled")
+            return jsonify({"error": "uploads_disabled", "message": "Git uploads are disabled"}), 403
+
         repo_url = request.form.get("repo_url") or ""
         if not repo_url.strip():
             return jsonify({"error": "missing_repo_url"}), 400
@@ -212,6 +227,10 @@ class FlaskAppWrapper:
             return jsonify({"error": "delete_failed", "detail": str(exc)}), 500
 
     def add_jira_project(self):
+        if not self.enable_ui_uploads:
+            logger.error("Jira project add attempted but UI uploads are disabled")
+            return jsonify({"error": "uploads_disabled", "message": "Jira uploads are disabled"}), 403
+
         project_key = request.form.get("project_key") or ""
         if not project_key.strip():
             return jsonify({"error": "missing_project_key"}), 400
@@ -231,6 +250,10 @@ class FlaskAppWrapper:
 
     def upload(self):
         """Handle file uploads from the UI and persist them via the local files manager."""
+        if not self.enable_ui_uploads:
+            logger.error("Upload attempted but UI uploads are disabled")
+            return jsonify({"error": "uploads_disabled", "message": "File uploads are disabled"}), 403
+
         upload = request.files.get("file")
         if not upload:
             return jsonify({"error": "missing_file"}), 400
@@ -268,6 +291,10 @@ class FlaskAppWrapper:
         """
         Use the ScraperManager to collect and persist a single URL provided via form data.
         """
+        if not self.enable_ui_uploads:
+            logger.error("URL upload attempted but UI uploads are disabled")
+            return jsonify({"error": "uploads_disabled", "message": "URL uploads are disabled"}), 403
+
         url = request.form.get("url")
         depth_raw = request.form.get("depth")
         depth: Optional[int] = None
