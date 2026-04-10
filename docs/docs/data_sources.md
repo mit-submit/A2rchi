@@ -113,6 +113,40 @@ Once enabled in config, deploy normally with `archi create --config <config.yaml
 
 ---
 
+## Indico
+
+Ingest events, contributions (talks) and slide materials from an [Indico](https://getindico.io/) instance. Slides in PDF/PPTX/PPT/ODP format are converted to Markdown via [MarkItDown](https://github.com/microsoft/markitdown).
+
+### Configuration
+
+```yaml
+data_manager:
+  sources:
+    indico:
+      enabled: true
+      base_url: https://indico.cern.ch
+      use_sso: false       # set true for SSO-protected events
+      slide_conversion:
+        enabled: true
+        formats: [pdf, pptx, ppt, odp]
+```
+
+Add event URLs to your link lists. URLs with `indico` in the hostname and `/event/` in the path are auto-detected. For Indico instances without `indico` in the hostname, use the explicit `indico-` prefix:
+
+```
+https://indico.cern.ch/event/1408515/
+https://indico.stfc.ac.uk/event/1825/
+indico-https://events.example.org/event/42/
+```
+
+For each event the scraper produces Markdown resources for the event metadata, each contribution (talk), and each slide deck. Multi-day events can be restricted with day-filtering options (`max_days`, `only_first_day`, `days`, `date_range`) — see `src/cli/templates/base-config.yaml` for the full set.
+
+For SSO-protected events, set `use_sso: true` and configure the Selenium-based collector as for [SSO-Protected Links](#sso-protected-links). The same `SSO_USERNAME` / `SSO_PASSWORD` secrets are used.
+
+Once enabled in config, deploy normally with `archi create --config <config.yaml> --services <...>`.
+
+---
+
 ## JIRA
 
 Fetch issues and comments from specified JIRA projects using the `JiraClient` class.
