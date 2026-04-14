@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from git import Repo
 
 from src.data_manager.collectors.git_resource import GitResource
+from src.data_manager.collectors.utils import extract_urls_from_file
 from src.data_manager.collectors.persistence import PersistenceService
 from src.utils.config_access import get_global_config
 from src.utils.env import read_secret
@@ -73,7 +74,13 @@ class GitManager:
     def collect_all_from_config(self, persistence: PersistenceService) -> None:
         if not self.enabled:
             return
-        urls: List[str] = self.config.get("urls", [])
+        urls: List[str] = list(self.config.get("urls") or [])
+        for list_path in self.config.get("input_lists") or []:
+            path = Path("weblists") / Path(list_path).name
+            if path.exists():
+                urls.extend(extract_urls_from_file(path))
+            else:
+                logger.warning("Git input list not found: %s", path)
         if not urls:
             logger.info("No git URLs configured; skipping")
             return

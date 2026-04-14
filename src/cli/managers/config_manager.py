@@ -264,24 +264,20 @@ class ConfigurationManager:
         self.embedding_models_used = ' '.join([model for model in embedding_models_used if model])
 
     def _collect_input_lists(self) -> None:
-        collected: List[str] = []
+        web_collected: List[str] = []
+        git_collected: List[str] = []
         for conf in self.configs:
-            data_manager = conf.get('data_manager', {})
-            sources_section = data_manager.get('sources', {}) or {}
-            if not isinstance(sources_section, dict):
-                continue
-            web = sources_section.get("web", {}) or {}
-            if not isinstance(web, dict):
-                continue
-            for spider_key, sub in web.items():
-                if spider_key in _WEB_TOP_LEVEL_STATIC_KEYS:
-                    continue
-                if not isinstance(sub, dict):
-                    continue
-                wlists = sub.get("input_lists") or []
-                if isinstance(wlists, list):
-                    collected.extend(wlists)
-        self.input_list = sorted(set(collected)) if collected else []
+            sources = conf.get('data_manager', {}).get('sources', {}) or {}
+            # web top-level
+            web = sources.get("web", {}) or {}
+            if isinstance(web, dict):
+                web_collected.extend(web.get("input_lists") or [])
+            # git
+            git = sources.get("git", {}) or {}
+            if isinstance(git, dict):
+                git_collected.extend(git.get("input_lists") or [])
+        self.web_input_list = sorted(set(web_collected)) if web_collected else []
+        self.git_input_list = sorted(set(git_collected)) if git_collected else []
 
     def get_enabled_sources(self) -> List[str]:
         """Return sources marked as enabled across all configs."""
@@ -362,8 +358,14 @@ class ConfigurationManager:
     def get_embedding_name(self):
         return self.embedding_models_used
     
-    def get_input_lists(self):
-        return self.input_list
+    def get_web_input_lists(self):
+        return self.web_input_list
+
+    def get_git_input_lists(self):
+        return self.git_input_list
+    
+    def get_all_input_lists(self):
+        return sorted(set(self.web_input_list + self.git_input_list))
     
     def _get_all_models(self, config): 
         return set()
