@@ -11,6 +11,7 @@ from scrapy.utils.project import get_project_settings
 from scrapy.spiderloader import SpiderLoader
 from scrapy.settings import Settings
 from scrapy import Spider
+from src.data_manager.collectors.utils import extract_urls_from_file
 from src.data_manager.collectors.utils.anonymizer import Anonymizer
 from src.data_manager.collectors.persistence import PersistenceService
 from src.utils.config_access import get_global_config

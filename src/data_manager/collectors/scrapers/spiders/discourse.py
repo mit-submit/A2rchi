@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import json
 from typing import Any, Iterator, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from scrapy import Spider
 from scrapy.http import Request, Response, TextResponse
@@ -24,9 +24,9 @@ logger = get_logger(__name__)
 class DiscourseSpider(Spider):
     name = "discourse"
 
-    _DEFAULT_BASE_URL = "https://cms-talk.web.cern.ch"
-    _DEFAULT_CATEGORY_PATHS: List[str] = [
-        "/c/offcomp/ais/150",
+    _DEFAULT_DOMAIN = "cms-talk.web.cern.ch"
+    _DEFAULT_START_URLS: List[str] = [
+        "https://cms-talk.web.cern.ch/c/offcomp/ais/150",
     ]
 
     auth_provider_name = "cern_sso"
@@ -47,6 +47,7 @@ class DiscourseSpider(Spider):
         max_pages = kwargs.get("max_pages")
         anonymize_data = kwargs.get("anonymize_data")
         markitdown_enabled = kwargs.get("markitdown")
+        domain = kwargs.get("domain")
         if delay:
             crawler.settings.set("DOWNLOAD_DELAY", delay, priority="spider")
         if max_pages:
@@ -59,8 +60,8 @@ class DiscourseSpider(Spider):
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        category_paths: Optional[List[str]] = None,
+        start_urls: Optional[List[str]] = None,
+        domain: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         delay: Optional[int] = None,
         max_pages: Optional[int] = None,
@@ -68,22 +69,24 @@ class DiscourseSpider(Spider):
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.base_url = (base_url or self._DEFAULT_BASE_URL).rstrip("/")
-        self.category_paths = category_paths or self._DEFAULT_CATEGORY_PATHS
+        self._start_urls = start_urls or getattr(self, "_DEFAULT_START_URLS", [])
+        self.base_url = f"https://{domain or self._DEFAULT_DOMAIN}".rstrip("/")
         self.keywords_re: List[re.Pattern] = [
             re.compile(kw, re.IGNORECASE) for kw in (keywords or [])
         ]
 
     # ── Seeds: one request per category (page 0) ────────────────────────
     async def start(self):
-        for path in self.category_paths:
-            path = path.strip("/")
-            url = f"{self.base_url}/{path}.json"
+        for url in self._start_urls:
+            url = url.rstrip("/")
+            if not url.endswith(".json"):
+                url = url + ".json"
+            logger.info("Starting with category URL: %s", url)
             yield Request(
                 url=url,
                 callback=self.parse_category,
                 errback=self.errback,
-                meta={"category_path": path},
+                meta={"category_url": url},
             )
 
     # ── Category JSON → topic RSS requests + next page ──────────────────
@@ -101,10 +104,10 @@ class DiscourseSpider(Spider):
 
         topic_list = data.get("topic_list", {})
         topics = topic_list.get("topics", []) or []
-        category_path = response.meta.get("category_path", "?")
+        category_url = response.meta.get("category_url", "?")
         logger.info(
             "Category %s returned %d topics (%s)",
-            category_path, len(topics), response.url,
+            category_url, len(topics), response.url,
         )
 
         for topic in topics:
@@ -143,10 +146,10 @@ class DiscourseSpider(Spider):
                 url=next_url,
                 callback=self.parse_category,
                 errback=self.errback,
-                meta={"category_path": category_path},
+                meta={"category_url": category_url},
             )
         else:
-            logger.info("Category %s exhausted (no more_topics_url)", category_path)
+            logger.info("Category %s exhausted (no more_topics_url)", category_url)
 
     def _content_matches_keywords(self, text: str) -> bool:
         """No keywords pattern means accept everything."""
