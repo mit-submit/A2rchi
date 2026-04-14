@@ -2,6 +2,7 @@ from typing import Iterator, List
 from scrapy.http import Response, TextResponse
 from src.data_manager.collectors.scrapers.items import WebPageItem
 from src.data_manager.collectors.scrapers.utils import get_content_type
+from urllib.parse import urlparse
 # Tried in order — first non-empty match wins.
 # Covers: HTML5 semantic, ARIA landmark, common CMS patterns, final fallback.
 _CONTENT_SELECTORS = [
