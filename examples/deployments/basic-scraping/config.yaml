@@ -56,14 +56,14 @@ data_manager:
         twiki:
           domain: twiki.cern.ch
           auth_provider_name: cern_sso   # remove if crawling public pages only
-          allow:
-            - ".*CRAB3.*"
-            - ".*SWGuide.*"
-            - ".*WorkBook.*"
-            - ".*Crab.*"
-            - ".*Crab3.*"
-          deny:
-            - ".*WorkBook.*"
+          # allow:
+          #   - ".*CRAB3.*"
+          #   - ".*SWGuide.*"
+          #   - ".*WorkBook.*"
+          #   - ".*Crab.*"
+          #   - ".*Crab3.*"
+          # deny:
+          #   - ".*WorkBook.*"
           max_depth: 2
           max_pages: 1000
           anonymize_data: true
