@@ -286,7 +286,7 @@ class FlaskAppWrapper:
         if url:
             logger.info("Uploading the following URL: %s", url)
             try:
-                scraped_count = self.scraper_manager.collect("link", [url])
+                scraped_count = self.scraper_manager.collect(self.scraper_manager.fallback_spider, [url])
                 self.persistence.flush_index()
                 self._update_source_status("web", state="idle", last_run=self._now_iso())
                 added_to_urls = True

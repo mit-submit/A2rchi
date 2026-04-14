@@ -191,68 +191,61 @@ data_manager:
     web:
       enabled: {{ data_manager.sources.web.enabled | default(true, true) }}
       visible: {{ data_manager.sources.web.visible | default(true, true) }}
-      link:
-        enabled: {{ data_manager.sources.web.link.enabled | default(true, true) }}
-        auth_provider_name: {{ data_manager.sources.web.link.auth_provider_name | default("", true) }}
-        schedule: '{{ data_manager.sources.web.link.schedule | default("", true) }}'
-        max_depth: {{ data_manager.sources.web.link.max_depth | default(3, true) }}
-        max_pages: {{ data_manager.sources.web.link.max_pages | default(null, true) }}
-        delay: {{ data_manager.sources.web.link.delay | default(1, true) }}
-        allow: {{ data_manager.sources.web.link.allow | default([], true) | tojson }}
-        deny: {{ data_manager.sources.web.link.deny | default([], true) | tojson }}
-        anonymize_data: {{ data_manager.sources.web.link.anonymize_data | default(false, true) }}
-        markitdown: {{ data_manager.sources.web.link.markitdown | default(false, true) }}
-        input_lists:
-          {%- for l in data_manager.sources.web.link.input_lists | default([], true) %}
-          - {{ l }}
-          {%- endfor %}
-        urls:
-          {%- for u in data_manager.sources.web.link.urls | default([], true) %}
-          - {{ u }}
-          {%- endfor %}
-      twiki:
-        enabled: {{ data_manager.sources.web.twiki.enabled | default(true, true) }}
-        auth_provider_name: {{ data_manager.sources.web.twiki.auth_provider_name | default("", true) }}
-        schedule: '{{ data_manager.sources.web.twiki.schedule | default("", true) }}'
-        max_depth: {{ data_manager.sources.web.twiki.max_depth | default(2, true) }}
-        max_pages: {{ data_manager.sources.web.twiki.max_pages | default(100, true) }}
-        delay: {{ data_manager.sources.web.twiki.delay | default(60, true) }}
-        allow: {{ data_manager.sources.web.twiki.allow | default([], true) | tojson }}
-        deny: {{ data_manager.sources.web.twiki.deny | default([], true) | tojson }}
-        anonymize_data: {{ data_manager.sources.web.discourse.anonymize_data | default(false, true) }}
-        markitdown: {{ data_manager.sources.web.twiki.markitdown | default(false, true) }}
-        input_lists:
-          {%- for list in data_manager.sources.web.twiki.input_lists | default([], true) %}
-          - {{ list }}
-          {%- endfor %}
-        urls:
-          {%- for url in data_manager.sources.web.twiki.urls | default([], true) %}
-          - {{ url }}
-          {%- endfor %}
-      discourse:
-        enabled: {{ data_manager.sources.web.discourse.enabled | default(true, true) }}
-        auth_provider_name: {{ data_manager.sources.web.discourse.auth_provider_name | default("cern_sso", true) }}
-        schedule: '{{ data_manager.sources.web.discourse.schedule | default("", true) }}'
-        max_pages: {{ data_manager.sources.web.discourse.max_pages | default(500, true) }}
-        delay: {{ data_manager.sources.web.discourse.delay | default(10, true) }}
-        anonymize_data: {{ data_manager.sources.web.discourse.anonymize_data | default(false, true) }}
-        markitdown: {{ data_manager.sources.web.discourse.markitdown | default(false, true) }}
-        base_url: {{ data_manager.sources.web.discourse.base_url | default("https://cms-talk.web.cern.ch", true) }}
-        keywords:
-          {%- for keyword in data_manager.sources.web.discourse.keywords | default([], true) %}
-          - {{ keyword }}
-          {%- endfor %}
-        category_paths:
-          {%- for category_path in data_manager.sources.web.discourse.category_paths | default([], true) %}
-          - {{ category_path }}
-          {%- endfor %}
+      fallback_spider: {{ data_manager.sources.web.fallback_spider | default("link", true) }}
+      auth_provider_name: {{ data_manager.sources.web.auth_provider_name | default("", true) }}
+      schedule: '{{ data_manager.sources.web.schedule | default("", true) }}'
+      max_depth: {{ data_manager.sources.web.max_depth | default(3, true) }}
+      max_pages: {{ data_manager.sources.web.max_pages | default(null, true) }}
+      delay: {{ data_manager.sources.web.delay | default(1, true) }}
+      allow: {{ data_manager.sources.web.allow | default([], true) | tojson }}
+      deny: {{ data_manager.sources.web.deny | default([], true) | tojson }}
+      anonymize_data: {{ data_manager.sources.web.anonymize_data | default(false, true) }}
+      markitdown: {{ data_manager.sources.web.markitdown | default(false, true) }}
+      input_lists:
+        {%- for link in data_manager.sources.web.input_lists | default([], true) %}
+        - {{ link }}
+        {%- endfor %}
+      sites:
+        twiki:
+          enabled: {{ data_manager.sources.web.sites.twiki.enabled | default(true, true) }}
+          domain: {{ data_manager.sources.web.sites.twiki.domain | default("twiki.cern.ch", true) }}
+          domains:
+            {%- for domain in data_manager.sources.web.sites.twiki.domains | default([], true) %}
+            - {{ domain }}
+            {%- endfor %}
+          auth_provider_name: {{ data_manager.sources.web.sites.twiki.auth_provider_name | default("", true) }}
+          schedule: '{{ data_manager.sources.web.sites.twiki.schedule | default("", true) }}'
+          max_depth: {{ data_manager.sources.web.sites.twiki.max_depth | default(2, true) }}
+          max_pages: {{ data_manager.sources.web.sites.twiki.max_pages | default(100, true) }}
+          delay: {{ data_manager.sources.web.sites.twiki.delay | default(60, true) }}
+          allow: {{ data_manager.sources.web.sites.twiki.allow | default([], true) | tojson }}
+          deny: {{ data_manager.sources.web.sites.twiki.deny | default([], true) | tojson }}
+          anonymize_data: {{ data_manager.sources.web.sites.twiki.anonymize_data | default(false, true) }}
+          markitdown: {{ data_manager.sources.web.sites.twiki.markitdown | default(false, true) }}
+        discourse:
+          enabled: {{ data_manager.sources.web.sites.discourse.enabled | default(true, true) }}
+          domain: {{ data_manager.sources.web.sites.discourse.domain | default("cms-talk.web.cern.ch", true) }}
+          domains:
+            {%- for domain in data_manager.sources.web.sites.discourse.domains | default([], true) %}
+            - {{ domain }}
+            {%- endfor %}
+          auth_provider_name: {{ data_manager.sources.web.sites.discourse.auth_provider_name | default("cern_sso", true) }}
+          schedule: '{{ data_manager.sources.web.sites.discourse.schedule | default("", true) }}'
+          max_pages: {{ data_manager.sources.web.sites.discourse.max_pages | default(500, true) }}
+          delay: {{ data_manager.sources.web.sites.discourse.delay | default(10, true) }}
+          anonymize_data: {{ data_manager.sources.web.sites.discourse.anonymize_data | default(false, true) }}
+          markitdown: {{ data_manager.sources.web.sites.discourse.markitdown | default(false, true) }}
+          keywords:
+            {%- for keyword in data_manager.sources.web.sites.discourse.keywords | default([], true) %}
+            - {{ keyword }}
+            {%- endfor %}
     git:
       enabled: {{ data_manager.sources.git.enabled | default(true, true) }}
       visible: {{ data_manager.sources.git.visible | default(true, true) }}
       schedule: '{{ data_manager.sources.git.schedule | default("", true) }}'
-      urls:
-        {%- for u in data_manager.sources.git.urls | default([], true) %}
-        - {{ u }}
+      input_lists:
+        {%- for link in data_manager.sources.git.input_lists | default([], true) %}
+        - {{ link }}
         {%- endfor %}
     jira:
       enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}

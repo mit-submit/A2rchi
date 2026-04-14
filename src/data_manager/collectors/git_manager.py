@@ -74,9 +74,9 @@ class GitManager:
     def collect_all_from_config(self, persistence: PersistenceService) -> None:
         if not self.enabled:
             return
-        urls: List[str] = list(self.config.get("urls") or [])
+        urls: List[str] = []
         for list_path in self.config.get("input_lists") or []:
-            path = Path("weblists") / Path(list_path).name
+            path = Path("weblists") / Path(list_path)
             if path.exists():
                 urls.extend(extract_urls_from_file(path))
             else:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional, Callable
+from collections import defaultdict
 
 from scrapy.crawler import CrawlerProcess, Crawler
 from scrapy.utils.project import get_project_settings
@@ -73,7 +75,7 @@ class ScraperManager:
         except KeyError:
             logger.error("Unknown spider: %s", spider_key)
             return
-        cfg = self.config.get(spider_key, {})   # use config settings if present, else defaults
+        cfg = self._effective_cfg(spider_key)
         if urls and _spider_section_enabled(cfg):
             self._add_crawler(process, SpiderClass, urls, cfg)
             # Fix Twisted/Scrapy try to installs OS signal handlers (SIGINT / SIGTERM) while the code is running in a worker thread
@@ -138,11 +140,11 @@ class ScraperManager:
         metadata = self.persistence.catalog.get_metadata_by_filter(
             "source_type", source_type="web", metadata_keys=["url", "spider_name"]
         )
-        return [m[1].get("url", "").strip() for m in metadata if m[1].get("url") and m[1].get("source_type") == "web"]
+        return [ m[1].get("url", "").strip() for m in metadata if m[1].get("url")]
     
     def _collect_global_urls(self) -> List[str]:
-        urls = list(self.sites_config.get("urls") or [])
-        for list_path in self.sites_config.get("input_lists") or []:
+        urls = list(self.config.get("urls") or [])
+        for list_path in self.config.get("input_lists") or []:
             path = Path("weblists") / Path(list_path).name
             urls.extend(extract_urls_from_file(path))
         return urls
