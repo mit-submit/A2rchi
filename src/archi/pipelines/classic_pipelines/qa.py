@@ -35,7 +35,7 @@ class QAPipeline(BasePipeline):
             llm=self.llms['condense_model'],
             prompt=self.prompts['condense_prompt'],
             required_input_variables=['history'],
-            max_tokens=self.pipeline_config['max_tokens'],
+            max_tokens=self.pipeline_config.get('max_tokens', 7000),
         )
         self.chat_chain = ChainWrapper(
             chain=create_stuff_documents_chain(
@@ -47,7 +47,7 @@ class QAPipeline(BasePipeline):
             prompt=self.prompts['chat_prompt'],
             required_input_variables=['question'],
             unprunable_input_variables=['question'],
-            max_tokens=self.pipeline_config['max_tokens'],
+            max_tokens=self.pipeline_config.get('max_tokens', 7000),
         )
 
     def _prepare_inputs(self, history: Any, **kwargs) -> Dict[str, Any]:
@@ -104,6 +104,22 @@ class QAPipeline(BasePipeline):
         chat_model = self.llms.get('chat_model')
         model_used = getattr(chat_model, 'model_name', None) or getattr(chat_model, 'model', 'unknown')
 
+        # Aggregate token usage from both chain calls
+        condense_usage = condense_output.get("usage") or {}
+        answer_usage = answer_output.get("usage") or {}
+        usage = {
+            "prompt_tokens": condense_usage.get("prompt_tokens", 0) + answer_usage.get("prompt_tokens", 0),
+            "completion_tokens": condense_usage.get("completion_tokens", 0) + answer_usage.get("completion_tokens", 0),
+            "total_tokens": condense_usage.get("total_tokens", 0) + answer_usage.get("total_tokens", 0),
+        }
+
+        # Aggregate thinking content from both chain calls (condense + answer).
+        thinking_parts: List[str] = []
+        for chunk in (condense_output.get("thinking_content") or "", answer_output.get("thinking_content") or ""):
+            if chunk:
+                thinking_parts.append(chunk)
+        thinking_content = "\n\n".join(thinking_parts)
+
         return PipelineOutput(
             answer=answer_output['answer'],
             source_documents=documents,
@@ -114,5 +130,7 @@ class QAPipeline(BasePipeline):
                 "question": inputs.get("question", ""),
                 "model_used": model_used,
                 "pipeline_used": self.__class__.__name__,
+                "usage": usage,
+                "thinking_content": thinking_content,
             },
         )

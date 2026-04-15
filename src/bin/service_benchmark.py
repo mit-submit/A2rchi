@@ -466,13 +466,13 @@ class Benchmarker:
         def _ask(chain, question_id, question_text):
             formatted = [("User", question_text)]
             start = time.perf_counter()
-            result = chain(history=formatted)
+            result, trace_events = self._invoke_with_trace(chain, formatted)
             elapsed = time.perf_counter() - start
             logger.info(
                 "[Config %d/%d] Question %d/%d finished (%.2fs)",
                 config_num, total_configs, question_id, total_questions, elapsed,
             )
-            return question_id, result, elapsed
+            return question_id, result, elapsed, trace_events
 
         results = {}
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
@@ -489,11 +489,19 @@ class Benchmarker:
 
             for future in as_completed(futures):
                 try:
-                    qid, result, elapsed = future.result()
-                    results[qid] = (result, elapsed)
-                except Exception:
+                    qid, result, elapsed, trace_events = future.result()
+                    results[qid] = (result, elapsed, trace_events)
+                except Exception as exc:
                     qid = futures[future]
                     logger.exception("Question %d failed in parallel execution", qid)
+                    # Record a sentinel error result so the question is not silently dropped
+                    error_result = {
+                        "answer": f"[PARALLEL_ERROR: {exc}]",
+                        "messages": [],
+                        "source_documents": [],
+                        "metadata": {"usage": None, "error": str(exc)},
+                    }
+                    results[qid] = (error_result, 0.0, [])
 
         wall_elapsed = time.perf_counter() - run_start
         mins, secs = divmod(int(wall_elapsed), 60)
@@ -502,6 +510,159 @@ class Benchmarker:
             len(results), total_questions, mins, secs,
         )
         return results
+
+    def _invoke_with_trace(self, chain, history):
+        """Invoke a chain, using stream() when available to capture the full event trace.
+
+        Captures every event the pipeline emits:
+        - tool_start / tool_output / tool_end  (tool lifecycle + timing)
+        - thinking_start / thinking_end         (reasoning chain + duration)
+        - text                                  (accumulated answer chunks)
+        - error                                 (context overflow, SDK errors)
+        - final                                 (terminal output)
+
+        For BaseReActAgent streams, tool data lives in the yielded messages.
+        For CopilotAgent streams, tool data lives directly in metadata.
+        Both are normalised into the same trace_events schema.
+
+        Returns:
+            (result, trace_events)  where result is a PipelineOutput/dict and
+            trace_events is a list of structured trace event dicts (empty for
+            classic pipelines that don't support streaming).
+        """
+        if not chain.supports_stream():
+            # Classic pipeline (QAPipeline, BareLLMPipeline) — no trace events
+            result = chain(history=history)
+            return result, []
+
+        # Agent pipeline — stream to capture tool timing, thinking, timestamps
+        trace_events = []
+        final_result = None
+        emitted_tool_starts = set()
+        text_chunk_count = 0
+
+        for output in chain.stream(history=history):
+            metadata = output.metadata or {}
+            event_type = metadata.get("event_type", "")
+            timestamp = time.time()
+
+            if event_type == "tool_start":
+                # BaseReActAgent: tool calls live inside AIMessage.tool_calls
+                for msg in (output.messages or []):
+                    for tc in (getattr(msg, "tool_calls", None) or []):
+                        tc_id = tc.get("id", "")
+                        if tc_id and tc_id not in emitted_tool_starts:
+                            emitted_tool_starts.add(tc_id)
+                            trace_events.append({
+                                "type": "tool_start",
+                                "tool_call_id": tc_id,
+                                "tool_name": tc.get("name"),
+                                "tool_args": tc.get("args", {}),
+                                "timestamp": timestamp,
+                            })
+                # CopilotAgent: tool data lives directly in metadata
+                if not output.messages and metadata.get("tool_call_id"):
+                    tc_id = metadata["tool_call_id"]
+                    if tc_id not in emitted_tool_starts:
+                        emitted_tool_starts.add(tc_id)
+                        trace_events.append({
+                            "type": "tool_start",
+                            "tool_call_id": tc_id,
+                            "tool_name": metadata.get("tool_name"),
+                            "tool_args": metadata.get("tool_args", {}),
+                            "timestamp": timestamp,
+                        })
+
+            elif event_type == "tool_output":
+                # BaseReActAgent: output in ToolMessage
+                tool_call_id = metadata.get("tool_call_id", "")
+                tool_output_text = metadata.get("output", "")
+                if not tool_call_id:
+                    for msg in (output.messages or []):
+                        if hasattr(msg, "tool_call_id"):
+                            tool_call_id = getattr(msg, "tool_call_id", "")
+                            tool_output_text = getattr(msg, "content", "")
+                            break
+                trace_events.append({
+                    "type": "tool_output",
+                    "tool_call_id": tool_call_id,
+                    "output": tool_output_text,
+                    "output_length": len(tool_output_text),
+                    "timestamp": timestamp,
+                })
+
+            elif event_type == "tool_end":
+                # CopilotAgent emits tool_end with precomputed duration_ms
+                trace_events.append({
+                    "type": "tool_end",
+                    "tool_call_id": metadata.get("tool_call_id", ""),
+                    "status": metadata.get("status", ""),
+                    "duration_ms": metadata.get("duration_ms"),
+                    "timestamp": timestamp,
+                })
+
+            elif event_type == "thinking_start":
+                trace_events.append({
+                    "type": "thinking_start",
+                    "step_id": metadata.get("step_id", ""),
+                    "timestamp": timestamp,
+                })
+
+            elif event_type == "thinking_end":
+                trace_events.append({
+                    "type": "thinking_end",
+                    "step_id": metadata.get("step_id", ""),
+                    "duration_ms": metadata.get("duration_ms"),
+                    "thinking_content": metadata.get("thinking_content", ""),
+                    "timestamp": timestamp,
+                })
+
+            elif event_type == "text":
+                # Accumulated answer text — record count + final snapshot
+                text_chunk_count += 1
+
+            elif event_type == "error":
+                trace_events.append({
+                    "type": "error",
+                    "error_type": metadata.get("error_type", ""),
+                    "error": metadata.get("error", ""),
+                    "timestamp": timestamp,
+                })
+                # Error with final=True acts as the terminal output
+                if getattr(output, "final", False):
+                    final_result = output
+
+            elif event_type == "final":
+                final_result = output
+
+        if final_result is None:
+            # Shouldn't happen, but fall back to invoke()
+            logger.warning("stream() produced no final event, falling back to invoke()")
+            result = chain(history=history)
+            return result, trace_events
+
+        # Compute per-tool-call duration from trace timestamps for agents
+        # that don't emit explicit tool_end events (BaseReActAgent).
+        # CopilotAgent already emits tool_end with duration_ms.
+        has_tool_end = any(e["type"] == "tool_end" for e in trace_events)
+        if not has_tool_end:
+            tool_start_times = {}
+            for evt in trace_events:
+                if evt["type"] == "tool_start":
+                    tool_start_times[evt.get("tool_call_id")] = evt["timestamp"]
+                elif evt["type"] == "tool_output":
+                    tc_id = evt.get("tool_call_id")
+                    if tc_id and tc_id in tool_start_times:
+                        evt["duration_ms"] = int((evt["timestamp"] - tool_start_times[tc_id]) * 1000)
+
+        # Record text streaming stats
+        if text_chunk_count > 0:
+            trace_events.append({
+                "type": "text_streaming_summary",
+                "chunk_count": text_chunk_count,
+            })
+
+        return final_result, trace_events
 
 
     def get_ragas_llm_evaluator(self):
@@ -606,7 +767,10 @@ class Benchmarker:
 
 
     def prepare_messages(self, raw_messages):
-        """Format the langchain Messages into something we can store and view later."""
+        """Format the langchain Messages into something we can store and view later.
+        
+        Extracts per-step token usage, model info, and timing from response_metadata.
+        """
         import re
 
         # First pass: index ToolMessage results by tool_call_id
@@ -619,6 +783,38 @@ class Benchmarker:
 
         formatted_messages = []
         for msg in raw_messages:
+            resp_meta = getattr(msg, 'response_metadata', {}) or {}
+
+            # Extract per-step usage from response_metadata
+            step_usage = None
+            for usage_key in ("usage_metadata", "usage", "token_usage"):
+                u = resp_meta.get(usage_key)
+                if u and isinstance(u, dict):
+                    step_usage = {
+                        "prompt_tokens": u.get("prompt_tokens") or u.get("input_tokens", 0),
+                        "completion_tokens": u.get("completion_tokens") or u.get("output_tokens", 0),
+                        "total_tokens": u.get("total_tokens", 0),
+                    }
+                    break
+            # Ollama format
+            if step_usage is None and ("prompt_eval_count" in resp_meta or "eval_count" in resp_meta):
+                step_usage = {
+                    "prompt_tokens": resp_meta.get("prompt_eval_count", 0),
+                    "completion_tokens": resp_meta.get("eval_count", 0),
+                    "total_tokens": resp_meta.get("prompt_eval_count", 0) + resp_meta.get("eval_count", 0),
+                }
+            # Also check usage_metadata directly on the message object (LangChain >=0.2)
+            if step_usage is None:
+                um = getattr(msg, 'usage_metadata', None)
+                if um and isinstance(um, dict):
+                    step_usage = {
+                        "prompt_tokens": um.get("input_tokens", 0),
+                        "completion_tokens": um.get("output_tokens", 0),
+                        "total_tokens": um.get("total_tokens", 0),
+                    }
+
+            step_model = resp_meta.get("model") or resp_meta.get("model_name")
+
             if type(msg) is AIMessage:
                 if hasattr(msg, 'tool_calls') and msg.tool_calls:
                     for tool_call in msg.tool_calls:
@@ -626,9 +822,15 @@ class Benchmarker:
                             'type': 'tool_call',
                             'tool_name': tool_call.get('name'),
                             'tool_args': tool_call.get('args', {}),
-                            'total_duration': getattr(msg, 'response_metadata', {}).get('total_duration', None),
+                            'total_duration': resp_meta.get('total_duration', None),
                         }
+                        if step_usage:
+                            entry['step_usage'] = step_usage
+                        if step_model:
+                            entry['step_model'] = step_model
                         tcid = tool_call.get('id')
+                        if tcid:
+                            entry['tool_call_id'] = tcid
                         if tcid and tcid in tool_results:
                             entry['tool_output'] = tool_results[tcid]
                         formatted_messages.append(entry)
@@ -649,10 +851,14 @@ class Benchmarker:
                     entry = {
                         'type': 'ai_message',
                         'content': content,
-                        'total_duration': getattr(msg, 'response_metadata', {}).get('total_duration', None),
+                        'total_duration': resp_meta.get('total_duration', None),
                     }
                     if thinking:
                         entry['thinking'] = thinking
+                    if step_usage:
+                        entry['step_usage'] = step_usage
+                    if step_model:
+                        entry['step_model'] = step_model
                     formatted_messages.append(entry)
             elif type(msg) is HumanMessage:
                 pass
@@ -752,42 +958,71 @@ class Benchmarker:
 
         return res
 
-    # ── LLM-as-Judge ──────────────────────────────────────────────────
+    # ── LLM-as-Judge (v4 rubric — reference-free, anti-length-bias) ──
 
     _LLM_JUDGE_RUBRICS = {
-        "correctness": (
-            "**Correctness** — Does the answer contain factually accurate information?\n"
-            "- 5: Fully correct, all facts verifiable\n"
-            "- 4: Mostly correct, minor inaccuracies\n"
-            "- 3: Partially correct, some significant errors\n"
-            "- 2: Mostly incorrect\n"
-            "- 1: Completely wrong or fabricated"
+        "relevance": (
+            "**Relevance** — Does the answer address the specific question that was asked?\n"
+            "- 5: Directly and precisely addresses the question — every part of the response is on-topic\n"
+            "- 4: Addresses the question with minor tangential content\n"
+            "- 3: Partially addresses the question but includes significant off-topic material, "
+            "or only addresses part of a multi-part question\n"
+            "- 2: Mostly off-topic — touches on the general subject area but does not answer what was asked\n"
+            "- 1: Completely irrelevant, or a non-response (\"I'm ready to help!\", empty, greeting-only)"
         ),
         "completeness": (
-            "**Completeness** — Does the answer address all aspects of the question?\n"
-            "- 5: Comprehensive, covers all aspects\n"
-            "- 4: Good coverage, minor omissions\n"
-            "- 3: Addresses main point, missing context\n"
-            "- 2: Superficial or partial\n"
-            "- 1: Does not address the question"
+            "**Completeness** — How many aspects of the question does the answer address?\n"
+            "Assess scope by inferring what a full answer would need to cover from the question itself. "
+            "For multi-part questions, a complete answer addresses all parts.\n"
+            "- 5: Addresses all aspects of the question — no significant gaps\n"
+            "- 4: Addresses most aspects, one minor gap\n"
+            "- 3: Addresses the core question but misses important context or sub-questions\n"
+            "- 2: Only partially addresses the question — significant gaps\n"
+            "- 1: Does not meaningfully address the question, or is a non-response"
         ),
-        "relevance": (
-            "**Relevance** — Is the answer focused on what was asked?\n"
-            "- 5: Directly and precisely relevant\n"
-            "- 4: Relevant with minor tangents\n"
-            "- 3: Somewhat relevant, significant tangents\n"
-            "- 2: Mostly off-topic\n"
-            "- 1: Completely irrelevant"
+        "specificity": (
+            "**Specificity** — Does the answer provide concrete, actionable details — or only vague generalities?\n"
+            "Concrete details include: specific commands, configuration values, ticket numbers, data values, "
+            "step-by-step procedures, tool names with usage instructions, dates, error codes with explanations.\n\n"
+            "CRITICAL GUARDRAIL — unsupported specifics vs. honest vagueness:\n"
+            "An answer that provides specific details *grounded in cited sources or tool output* should score high. "
+            "An answer that provides specific details *without any supporting evidence* (no citations, no tool output, "
+            "no documentation references) should score LOWER than an answer that is honestly vague — because "
+            "unsupported specifics may be fabricated and would mislead an operator.\n\n"
+            "- 5: Rich in concrete, well-supported details — commands, data, ticket references, "
+            "step-by-step procedures grounded in sources or tool output\n"
+            "- 4: Provides useful specific details, mostly supported; minor unsupported claims\n"
+            "- 3: Mix of specific and vague — some actionable content but also generic advice "
+            "(\"check the logs\", \"contact the team\")\n"
+            "- 2: Mostly vague or generic advice with little actionable content, OR provides unsupported "
+            "specifics without any citations/evidence\n"
+            "- 1: Entirely vague (\"look into it\"), a refusal with no guidance, or a non-response"
         ),
         "helpfulness": (
-            "**Helpfulness** — Would a CMS operator find this answer useful?\n"
-            "- 5: Actionable, provides clear next steps\n"
-            "- 4: Useful, some actionable content\n"
-            "- 3: Somewhat useful but requires follow-up\n"
-            "- 2: Minimally useful\n"
-            '- 1: Not useful (e.g., \"I don\'t know\" or hallucinated)'
+            "**Helpfulness** — Would a CMS computing operator be able to make progress on their task using this answer?\n"
+            "This is the bottom-line pragmatic dimension. An answer can be relevant, complete, and specific "
+            "but still unhelpful if it points in the wrong direction.\n"
+            "- 5: An operator could act on this answer immediately — clear, correct next steps with enough detail to execute\n"
+            "- 4: Useful — provides a path forward, may require minor follow-up to fully act on\n"
+            "- 3: Somewhat useful — gives the operator a starting point but requires significant additional investigation\n"
+            "- 2: Minimally useful — vague pointers or a refusal with no alternative guidance\n"
+            "- 1: Not useful or actively harmful — would send the operator in the wrong direction, or is a non-response"
+        ),
+        "source_faithfulness": (
+            "**Source Faithfulness** — Does the answer accurately reflect what its own retrieved sources "
+            "and tool output say?\n"
+            "This evaluates internal consistency between the answer and the sources it was given — "
+            "NOT whether the sources themselves are correct.\n"
+            "- 5: All key claims in the answer are directly supported by the provided sources; no misrepresentation\n"
+            "- 4: Most claims are supported by sources; minor extrapolations that are reasonable\n"
+            "- 3: Mix of supported and unsupported claims — some content goes beyond what sources say\n"
+            "- 2: Significant misrepresentation of sources, or answer largely ignores source content\n"
+            "- 1: Answer contradicts its own sources, or makes extensive claims with no source support "
+            "despite sources being available"
         ),
     }
+
+    _BASE_DIMENSIONS = ["relevance", "completeness", "specificity", "helpfulness"]
 
     def _get_llm_judge_settings(self) -> Dict[str, Any]:
         return self.benchmarking_configs.get("mode_settings", {}).get("llm_judge_settings", {})
@@ -801,18 +1036,38 @@ class Benchmarker:
             kwargs["base_url"] = base_url
         return openai.OpenAI(**kwargs)
 
+    def _get_dimensions(self, has_sources: bool = False) -> List[str]:
+        """Return judge dimensions; adds source_faithfulness when sources are present."""
+        dims = list(self._BASE_DIMENSIONS)
+        if has_sources:
+            dims.append("source_faithfulness")
+        return dims
+
     def _build_absolute_prompt(self, dimensions: List[str], question: str,
-                               reference_answer: str, generated_answer: str) -> str:
+                               generated_answer: str, **_kwargs) -> str:
         rubric_parts = [self._LLM_JUDGE_RUBRICS[d] for d in dimensions if d in self._LLM_JUDGE_RUBRICS]
         rubric_text = "\n\n".join(rubric_parts)
         dim_keys = ", ".join(f'\"{d}\"' for d in dimensions)
         return (
+            "You are an expert evaluator for a CMS Computing Operations AI assistant. "
             "Evaluate the generated answer on the following dimensions using a 1\u20135 scale.\n\n"
+            "IMPORTANT PRINCIPLES:\n"
+            "- This is a REFERENCE-FREE evaluation. Score based on the answer's own quality alone.\n"
+            "- Unsupported specific claims (invented ticket numbers, dates, data values with no "
+            "cited source) are WORSE than honest vagueness.\n"
+            "- Non-responses (\"I'm ready to help!\", empty answers, greetings) score 1 on all dimensions.\n"
+            "- ANTI-LENGTH BIAS: Do NOT reward longer answers for being longer. A concise, accurate "
+            "answer should score as high or higher than a verbose answer that pads with generic advice. "
+            "Score based on information quality, not quantity.\n\n"
             f"{rubric_text}\n\n"
             f"Question:\n{question}\n\n"
-            f"Reference Answer:\n{reference_answer}\n\n"
             f"Generated Answer:\n{generated_answer}\n\n"
-            f"Return ONLY a JSON object with integer keys {dim_keys} and a brief \"reasoning\" string."
+            "Evaluate each dimension individually BEFORE assigning any scores. "
+            "Think step-by-step about what the question asks, what the answer provides, "
+            "and how well the answer serves an operator.\n\n"
+            f'Return a JSON object with:\n'
+            f'  - "reasoning": your step-by-step analysis (2-4 sentences)\n'
+            f'  - integer scores (1-5) for each of: {dim_keys}'
         )
 
     def _build_pairwise_prompt(self, question: str,
@@ -828,57 +1083,133 @@ class Benchmarker:
         )
 
     def _call_llm_judge(self, client: openai.OpenAI, model: str,
-                        prompt: str, max_tokens: int = 1024) -> Dict[str, Any]:
-        response = client.chat.completions.create(
-            model=model,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are an expert evaluator. Always respond with valid JSON."},
-                {"role": "user", "content": prompt},
-            ],
-            max_completion_tokens=max_tokens,
-        )
-        return json.loads(response.choices[0].message.content)
+                        prompt: str, max_tokens: int = 1024,
+                        max_retries: int = 3) -> Dict[str, Any]:
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": "You are an expert evaluator. Always respond with valid JSON."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_completion_tokens=max_tokens,
+                )
+                content = response.choices[0].message.content
+                if not content:
+                    raise ValueError(f"Empty response (finish_reason={response.choices[0].finish_reason})")
+                result = json.loads(content)
+                usage = getattr(response, 'usage', None)
+                if usage:
+                    result["_usage"] = {
+                        "prompt_tokens": usage.prompt_tokens,
+                        "completion_tokens": usage.completion_tokens,
+                        "total_tokens": usage.total_tokens,
+                    }
+                return result
+            except (json.JSONDecodeError, openai.APIStatusError) as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    if isinstance(e, openai.APIStatusError) and e.status_code == 429:
+                        wait = min(2 ** (attempt + 2), 30)
+                    logger.warning("LLM judge retry %d/%d (wait %ds): %s", attempt + 1, max_retries, wait, e)
+                    time.sleep(wait)
+            except Exception as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    logger.warning("LLM judge retry %d/%d: %s", attempt + 1, max_retries, e)
+                    time.sleep(2 ** attempt)
+        raise last_err
 
-    def get_llm_judge_results(self, question_wise_results: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
+    def get_llm_judge_results(self, question_wise_results: Dict[str, Dict[str, Any]]) -> Tuple[pd.DataFrame, Dict[str, int]]:
         """Run absolute LLM-as-judge scoring on every question for the current config.
 
         Modifies *question_wise_results* in-place (adds ``llm_judge_<dim>`` and
-        ``llm_judge_reasoning`` keys per question) and returns a DataFrame of
-        scores with one column per dimension.
+        ``llm_judge_reasoning`` keys per question) and returns a tuple of
+        (DataFrame of scores, token usage dict).
         """
         settings = self._get_llm_judge_settings()
         model = settings.get("evaluator_model", "gpt-5-2025-08-07")
-        dimensions: List[str] = settings.get(
-            "dimensions", ["correctness", "completeness", "relevance", "helpfulness"]
-        )
+        parallel_workers = int(settings.get("parallel_workers", 8))
+
+        # Detect if this config has retrieval/tools (for source_faithfulness)
+        config_has_sources = any(v.get("sources_trunc_content") for v in question_wise_results.values())
+
+        # Use v4 dimensions (reference-free)
+        dimensions = self._get_dimensions(config_has_sources)
 
         client = self._get_llm_judge_client()
 
-        for q_key, q_data in question_wise_results.items():
-            prompt = self._build_absolute_prompt(
-                dimensions,
-                q_data["question"],
-                q_data.get("reference_answer", "N/A"),
-                q_data["answer"],
-            )
+        # Filter to questions that need judging
+        to_judge = {k: v for k, v in question_wise_results.items()
+                    if f"llm_judge_{dimensions[0]}" not in v and v.get("answer")}
+
+        if not to_judge:
+            logger.info("All questions already have judge scores, skipping.")
+            return pd.DataFrame(), {"prompt_tokens": 0, "completion_tokens": 0}
+
+        total = len(to_judge)
+        logger.info("LLM-as-Judge: scoring %d questions with %d workers, model=%s, dims=%s",
+                     total, parallel_workers, model, dimensions)
+
+        def _judge_one(q_key: str, q_data: Dict) -> Tuple[str, Optional[Dict], Optional[str], List[str]]:
+            has_sources = bool(q_data.get("sources_trunc_content")) if config_has_sources else False
+            dims = self._get_dimensions(has_sources)
+            prompt = self._build_absolute_prompt(dims, q_data["question"], q_data["answer"])
             try:
                 scores = self._call_llm_judge(client, model, prompt)
-            except Exception:
-                logger.exception("LLM-as-Judge scoring failed for %s, recording NaN", q_key)
-                scores = {}
+                return q_key, scores, None, dims
+            except Exception as e:
+                return q_key, None, f"{type(e).__name__}: {str(e)[:200]}", dims
 
-            for dim in dimensions:
-                raw = scores.get(dim)
-                q_data[f"llm_judge_{dim}"] = int(raw) if raw is not None else float("nan")
-            q_data["llm_judge_reasoning"] = scores.get("reasoning", "")
+        completed = 0
+        failed = 0
+        all_usages = []
+
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            futures = {executor.submit(_judge_one, k, v): k for k, v in to_judge.items()}
+
+            for future in as_completed(futures):
+                q_key, scores, error, dims = future.result()
+                if error:
+                    failed += 1
+                    for dim in dims:
+                        question_wise_results[q_key][f"llm_judge_{dim}"] = float("nan")
+                    question_wise_results[q_key]["llm_judge_reasoning"] = f"ERROR: {error}"
+                    if failed <= 3:
+                        logger.warning("LLM-as-Judge ERROR on %s: %s", q_key, error)
+                else:
+                    usage = scores.pop("_usage", None)
+                    if usage:
+                        all_usages.append(usage)
+                    for dim in dims:
+                        raw = scores.get(dim)
+                        question_wise_results[q_key][f"llm_judge_{dim}"] = int(raw) if raw is not None else float("nan")
+                    question_wise_results[q_key]["llm_judge_reasoning"] = scores.get("reasoning", "")
+
+                completed += 1
+                if completed % 10 == 0 or completed == total:
+                    logger.info("LLM-as-Judge: %d/%d done (%d failed)", completed, total, failed)
+
+        # Accumulate tokens from futures (thread-safe — post-completion)
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        for u in all_usages:
+            total_usage["prompt_tokens"] += u.get("prompt_tokens", 0)
+            total_usage["completion_tokens"] += u.get("completion_tokens", 0)
+
+        total_tokens = total_usage["prompt_tokens"] + total_usage["completion_tokens"]
+        logger.info("LLM-as-Judge token usage: %d prompt + %d completion = %d total",
+                     total_usage["prompt_tokens"], total_usage["completion_tokens"], total_tokens)
 
         # Build a DataFrame for aggregate computation
         data: Dict[str, List[float]] = {dim: [] for dim in dimensions}
         for q_data in question_wise_results.values():
             for dim in dimensions:
                 data[dim].append(q_data.get(f"llm_judge_{dim}", float("nan")))
-        return pd.DataFrame(data)
+        return pd.DataFrame(data), total_usage
 
     def get_llm_judge_pairwise(self, paired: List[ABResult]) -> List[ABResult]:
         """Run pairwise LLM-as-judge comparison with position swap.
@@ -1052,14 +1383,16 @@ class Benchmarker:
                 formatted_question = [("User", question)]
 
                 if question_id in prefetched_results:
-                    result, elapsed = prefetched_results[question_id]
+                    result, elapsed, trace_events = prefetched_results[question_id]
                 else:
                     question_timeout = int(os.environ.get("BENCH_QUESTION_TIMEOUT", "600"))
                     start = time.perf_counter()
                     print(f"[BENCH] Invoking chain for question {question_id}...", flush=True)
-                    future = ThreadPoolExecutor(max_workers=1).submit(self.chain, history=formatted_question)
+                    future = ThreadPoolExecutor(max_workers=1).submit(
+                        self._invoke_with_trace, self.chain, formatted_question,
+                    )
                     try:
-                        result = future.result(timeout=question_timeout)
+                        result, trace_events = future.result(timeout=question_timeout)
                     except Exception as timeout_exc:
                         elapsed = time.perf_counter() - start
                         logger.error(
@@ -1073,10 +1406,15 @@ class Benchmarker:
                             "reference_answer": reference_answer,
                             "answer": f"[TIMEOUT after {elapsed:.0f}s: {timeout_exc}]",
                             "messages": [],
+                            "token_usage": None,
+                            "trace_events": [],
+                            "model_used": None,
+                            "pipeline_used": None,
+                            "thinking_content": "",
                             "reference_sources_match_fields": [],
                             "reference_sources_metadata": [],
                             "sources_metadata": [],
-                            "sources_trunc_content": [],
+                            "sources_content": [],
                         }
                         question_wise_results[f"question_{question_id}"] = q_results
                         self._save_in_progress_checkpoint(
@@ -1098,7 +1436,63 @@ class Benchmarker:
                 q_results["reference_answer"] = reference_answer
                 q_results["answer"] = result['answer']
 
-                # format the messages
+                # capture token usage — always present for schema consistency
+                result_meta = result.get("metadata", {}) or {}
+                q_results["token_usage"] = result_meta.get("usage") or None
+
+                # model and pipeline identification
+                q_results["model_used"] = (
+                    result_meta.get("model_used")
+                    or result_meta.get("model")
+                    or None
+                )
+                q_results["pipeline_used"] = result_meta.get("pipeline_used") or None
+
+                # RAG-specific: retriever scores and condensed question
+                q_results["retriever_scores"] = result_meta.get("retriever_scores") or []
+                q_results["condensed_question"] = result_meta.get("condensed_output") or None
+
+                # Agent-specific: structured tool inputs map
+                q_results["tool_inputs_by_id"] = result_meta.get("tool_inputs_by_id") or {}
+
+                # Full event trace (tool timing, thinking, timestamps) from stream()
+                q_results["trace_events"] = trace_events
+
+                # Trace summary stats
+                if trace_events:
+                    tool_count = sum(1 for e in trace_events if e.get("type") == "tool_start")
+                    # Collect tool durations from tool_output (BaseReActAgent) or tool_end (CopilotAgent)
+                    tool_durations = [e.get("duration_ms") for e in trace_events
+                                      if e.get("type") in ("tool_output", "tool_end")
+                                      and e.get("duration_ms") is not None]
+                    thinking_durations = [e.get("duration_ms") for e in trace_events
+                                          if e.get("type") == "thinking_end" and e.get("duration_ms") is not None]
+                    thinking_contents = [e.get("thinking_content", "") for e in trace_events
+                                         if e.get("type") == "thinking_end" and e.get("thinking_content")]
+                    errors = [e for e in trace_events if e.get("type") == "error"]
+                    q_results["trace_summary"] = {
+                        "total_tool_calls": tool_count,
+                        "tool_durations_ms": tool_durations,
+                        "total_tool_time_ms": sum(tool_durations) if tool_durations else 0,
+                        "thinking_durations_ms": thinking_durations,
+                        "total_thinking_time_ms": sum(thinking_durations) if thinking_durations else 0,
+                        "thinking_content": thinking_contents,
+                        "errors": errors,
+                    }
+                else:
+                    q_results["trace_summary"] = None
+
+                # Unified thinking_content field — aggregates from agent stream events and
+                # classic pipeline metadata so all pipelines surface it the same way.
+                pipeline_thinking = result_meta.get("thinking_content") or ""
+                trace_thinking_chunks = [
+                    e.get("thinking_content", "") for e in (trace_events or [])
+                    if e.get("type") == "thinking_end" and e.get("thinking_content")
+                ]
+                trace_thinking = "\n\n".join(trace_thinking_chunks)
+                q_results["thinking_content"] = pipeline_thinking or trace_thinking or ""
+
+                # format the messages (with per-step usage + model)
                 q_results['messages'] = self.prepare_messages(result.get("messages", []))
 
                 # Copilot pipelines store tool calls in metadata["tool_calls"]
@@ -1160,15 +1554,17 @@ class Benchmarker:
                     logger.info(f"Current relative accuracy: {relative_source_accuracy / question_id if question_id > 0 else 0.0}")
                     logger.info(f"Current strict accuracy: {source_accuracy / question_id if question_id > 0 else 0.0}")
 
-                # store the sources metadata and truncated content
+                # store the full source documents — metadata and complete content
                 sources_metadata: List[Dict[str, Any]] = []
-                sources_trunc_content: List[str] = []
+                sources_content: List[str] = []
                 for document in result.get('source_documents', []):
                     metadata = getattr(document, 'metadata', {}) or {}
                     sources_metadata.append(metadata)
-                    sources_trunc_content.append(getattr(document, 'page_content', '')[:300])  # first 300 chars
+                    sources_content.append(getattr(document, 'page_content', ''))
                 q_results['sources_metadata'] = sources_metadata
-                q_results['sources_trunc_content'] = sources_trunc_content
+                q_results['sources_content'] = sources_content
+                # backward compat alias used by run_evaluation.py, prepare_judge_batches.py, etc.
+                q_results['sources_trunc_content'] = [s[:300] for s in sources_content]
                 logger.debug("Sources returned: %s", sources_metadata)
 
                 # store the results for this question
@@ -1198,10 +1594,46 @@ class Benchmarker:
 
             if "LLM_JUDGE" in modes_being_run:
                 logger.info("Starting LLM-as-Judge absolute scoring")
-                llm_judge_df = self.get_llm_judge_results(question_wise_results)
+                llm_judge_df, llm_judge_usage = self.get_llm_judge_results(question_wise_results)
                 for dim in llm_judge_df.columns:
                     total_results[f"aggregate_llm_judge_{dim}"] = llm_judge_df[dim].mean()
+                total_results["llm_judge_tokens"] = llm_judge_usage
                 any_llm_judge = True
+
+            # Aggregate inference token usage across all questions
+            inference_prompt = 0
+            inference_completion = 0
+            inference_counted = 0
+            total_tool_calls = 0
+            total_tool_time_ms = 0
+            total_thinking_time_ms = 0
+            questions_with_trace = 0
+            for qr in question_wise_results.values():
+                tu = qr.get("token_usage")
+                if tu:
+                    inference_prompt += tu.get("prompt_tokens", 0)
+                    inference_completion += tu.get("completion_tokens", 0)
+                    inference_counted += 1
+                ts = qr.get("trace_summary")
+                if ts:
+                    total_tool_calls += ts.get("total_tool_calls", 0)
+                    total_tool_time_ms += ts.get("total_tool_time_ms", 0)
+                    total_thinking_time_ms += ts.get("total_thinking_time_ms", 0)
+                    questions_with_trace += 1
+            if inference_counted > 0:
+                total_results["inference_token_usage"] = {
+                    "prompt_tokens": inference_prompt,
+                    "completion_tokens": inference_completion,
+                    "total_tokens": inference_prompt + inference_completion,
+                    "questions_with_usage": inference_counted,
+                }
+            if questions_with_trace > 0:
+                total_results["aggregate_trace"] = {
+                    "total_tool_calls": total_tool_calls,
+                    "total_tool_time_ms": total_tool_time_ms,
+                    "total_thinking_time_ms": total_thinking_time_ms,
+                    "questions_with_trace": questions_with_trace,
+                }
 
             ResultHandler.handle_results(Path(self.current_config), question_wise_results, total_results)
 
