@@ -29,10 +29,8 @@ RUN GECKO_VERSION="v0.36.0" && \
     && chmod +x /usr/local/bin/geckodriver \
     && rm "geckodriver-${GECKO_VERSION}-${GECKO_ARCH}.tar.gz"
 
-COPY archi_code src
-COPY configs configs
+COPY src src
 COPY pyproject.toml pyproject.toml
-COPY weblists weblists
 RUN pip install --upgrade pip && pip install .
 
 RUN chmod g+rx /root; chmod -R g+w /root/archi/src/interfaces

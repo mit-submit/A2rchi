@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  {{ include "archi.fullname" . }}-postgres
+  labels:
+    app: {{ include "archi.fullname" . }}-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "archi.fullname" . }}-postgres
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ include "archi.fullname" . }}-postgres
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - args:
+            - postgres
+            - -p
+            - "{{ .Values.postgres.port }}"
+          env:
+            - name: PGPORT
+              value: "{{ .Values.postgres.port }}"
+            - name: POSTGRES_DB
+              value: archi-db
+            - name: POSTGRES_USER
+              value: archi
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "archi.fullname" . }}-secrets
+                  key: PG_PASSWORD
+            - name: VERBOSITY
+              value: "{{ .Values.verbosity }}"
+          image: {{ .Values.postgres.image }}
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.postgres.port }}               # simple TCP connect test
+            initialDelaySeconds: 30   # give the DB a bit of time to start
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3       # after 3 consecutive failures → restart
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.postgres.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          name: postgres-{{ include "archi.fullname" . }}
+          volumeMounts:
+            - mountPath: /var/lib/postgresql
+              subPath: data
+              name: {{ include "archi.fullname" . }}-postgres-pvc
+            - mountPath: /docker-entrypoint-initdb.d/init.sql
+              name: {{ include "archi.fullname" . }}-postgres-init
+              subPath: init.sql
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+      restartPolicy: Always
+      volumes:
+        - name: postgres-run
+          emptyDir: {}
+        - name: {{ include "archi.fullname" . }}-postgres-pvc
+          persistentVolumeClaim:
+            claimName: {{ include "archi.fullname" . }}-postgres-pvc
+        - configMap:
+            items:
+              - key: init.sql
+                path: init.sql
+            name: {{ include "archi.fullname" . }}-postgres-init
+          name: {{ include "archi.fullname" . }}-postgres-init

@@ -576,6 +576,44 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
         else: 
             raise click.ClickException(f"Failed due to the following exception: {e}")
 
+@click.command()
+@click.option('--name', '-n', type=str, required=True, help="Name of the archi deployment")
+@click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml archi configuration")
+@click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
+@click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with secrets")
+@click.option('--services', '-s', callback=parse_services_option, 
+              help="Comma-separated list of services")
+@click.option('--podman', '-p', is_flag=True, help="Use Podman instead of Docker")
+@click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
+@click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
+@click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
+@click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
+@click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
+@click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
+def generate(name: str, config_files: list, config_dir: str, env_file: str, services: list,
+           force: bool, dry: bool, verbosity: int, **other_flags):
+    
+    """Create an ARCHI deployment with selected services and data sources."""
+
+    if not (bool(config_files) ^ bool(config_dir)): 
+        raise click.ClickException(f"Must specify only one of config files or config dir")
+    if config_dir: 
+        config_path = Path(config_dir)
+        config_files = [item for item in config_path.iterdir() if item.is_file()]
+    if len(config_files) != 1:
+        raise click.ClickException("Exactly one config file is supported; please provide a single -c file.")
+
+    click.echo("Starting ARCHI deployment process...")
+    setup_cli_logging(verbosity=verbosity)
+    logger = get_logger(__name__)
+
+    warn_if_template_mismatch()
+
+    # Validate inputs
+    validate_services_selection(services)
+    
+    # Combine services and data sources for processing
+    enabled_services = services.copy()
 
 def main():
     """
