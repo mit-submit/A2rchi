@@ -14,7 +14,18 @@ mcp_servers:
   {%- for server_name, server_config in (mcp_servers | default({}, true)).items() %}
   {{ server_name }}:
     transport: {{ server_config.transport | default('streamable_http', true) }}
-    url: {{ server_config.url | default('', true) }}
+    {%- if server_config.url is defined %}
+    url: {{ server_config.url }}
+    {%- endif %}
+    {%- if server_config.command is defined %}
+    command: {{ server_config.command }}
+    {%- endif %}
+    {%- if server_config.args is defined %}
+    args: {{ server_config.args | tojson }}
+    {%- endif %}
+    {%- if server_config.env is defined %}
+    env: {{ server_config.env | tojson }}
+    {%- endif %}
   {%- endfor %}
 
 services:

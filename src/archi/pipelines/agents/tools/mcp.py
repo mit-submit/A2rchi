@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import List, Any, Tuple, Optional
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -19,6 +20,15 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
     """
 
     mcp_servers = get_mcp_servers_config()
+
+    # For stdio transport servers, inject the current process environment so that
+    # MCP subprocesses inherit env vars (e.g. RUCIO_HOST, X509_USER_PROXY).
+    # Without this, mcp.client.stdio uses get_default_environment() which only
+    # provides HOME and PATH.
+    for name, server_cfg in mcp_servers.items():
+        if server_cfg.get("transport") == "stdio":
+            server_cfg["env"] = {**os.environ, **(server_cfg.get("env") or {})}
+
     logger.info(f"Configuring MCP client with servers: {list(mcp_servers.keys())}")
     client = MultiServerMCPClient(mcp_servers)
 
@@ -29,6 +39,8 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
         try:
             tools = await client.get_tools(server_name=name)
             for tool in tools:
+                # Return error messages to the LLM instead of crashing the agent chain.
+                tool.handle_tool_error = True
                 logger.info(f"Loaded tool from MCP server '{name}': {tool.name} - {tool.description}")
             all_tools.extend(tools)
         except Exception as e:

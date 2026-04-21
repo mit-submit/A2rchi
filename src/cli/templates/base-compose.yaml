@@ -168,6 +168,33 @@ services:
       {% if gpu_ids -%}
       - archi-models:/root/models/
       {%- endif %}
+      {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}
+      {%- if srv_cfg.transport == 'stdio' and srv_cfg.path is defined %}
+      - {{ srv_cfg.path }}:/root/mcp-packages/{{ srv_name }}:ro
+      {%- endif %}
+      {%- endfor %}
+      {%- for host_path in (host_file_mounts | default([])) %}
+      - {{ host_path }}:{{ host_path }}:ro
+      {%- endfor %}
+    {#- Build the MCP auto-install command for stdio packages with a path #}
+    {%- set mcp_installs = [] %}
+    {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}
+    {%- if srv_cfg.transport == 'stdio' and srv_cfg.path is defined %}
+    {%- set _ = mcp_installs.append(srv_name) %}
+    {%- endif %}
+    {%- endfor %}
+    {%- if mcp_installs %}
+    command:
+      - bash
+      - -lc
+      - >-
+        {%- for srv_name in mcp_installs %}
+        cp -r "/root/mcp-packages/{{ srv_name }}" "/tmp/mcp-build-{{ srv_name }}" &&
+        python -m pip install "/tmp/mcp-build-{{ srv_name }}" &&
+        rm -rf "/tmp/mcp-build-{{ srv_name }}";
+        {%- endfor %}
+        exec python -u src/bin/service_chat.py
+    {%- endif %}
     logging:
       options:
         max-size: 10m
