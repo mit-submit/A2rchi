@@ -26,6 +26,18 @@ mcp_servers:
     {%- if server_config.env is defined %}
     env: {{ server_config.env | tojson }}
     {%- endif %}
+    {%- if server_config.env_from_secrets is defined %}
+    env_from_secrets: {{ server_config.env_from_secrets | tojson }}
+    {%- endif %}
+    {%- if server_config.host_file_mounts is defined %}
+    host_file_mounts: {{ server_config.host_file_mounts | tojson }}
+    {%- endif %}
+    {%- if server_config.build_context is defined %}
+    build_context: {{ server_config.build_context }}
+    {%- endif %}
+    {%- if server_config.image is defined %}
+    image: {{ server_config.image }}
+    {%- endif %}
   {%- endfor %}
 
 services:

@@ -482,19 +482,9 @@ class TemplateManager:
             template_vars["rubrics"] = self._get_grader_rubrics(context.config_manager)
 
         # Pass MCP server configs so compose can volume-mount stdio packages
+        # and emit sidecar services for servers with build_context/image.
         mcp_servers = context.config_manager.config.get("mcp_servers", {}) or {}
         template_vars["mcp_servers"] = mcp_servers
-
-        # Mount host files (e.g. CA certs, X509 proxy) into the container
-        host_file_mounts = []
-        for env_key in ["RUCIO_CA_CERT", "X509_USER_PROXY"]:
-            try:
-                path = context.secrets_manager.get_secret(env_key)
-                if path and os.path.isfile(path):
-                    host_file_mounts.append(path)
-            except (KeyError, Exception):
-                pass
-        template_vars["host_file_mounts"] = host_file_mounts
 
         compose_template = self.env.get_template(BASE_COMPOSE_TEMPLATE)
         compose_rendered = compose_template.render(**template_vars)

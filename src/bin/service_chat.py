@@ -20,51 +20,6 @@ def main():
     os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
     os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
 
-    # Resolve Rucio values from *_FILE secrets so MCP child processes inherit concrete env vars.
-    for key in [
-        "RUCIO_HOST",
-        "RUCIO_AUTH_HOST",
-        "RUCIO_ACCOUNT",
-        "RUCIO_AUTH_TYPE",
-        "RUCIO_TIMEOUT",
-        "RUCIO_VO",
-        "RUCIO_CA_CERT",
-        "RUCIO_CLIENT_CERT",
-        "RUCIO_CLIENT_KEY",
-        "RUCIO_CLIENT_PROXY",
-        "X509_USER_PROXY",
-        "RUCIO_CREDS_JSON",
-    ]:
-        value = read_secret(key)
-        if value:
-            os.environ[key] = value
-
-    # X509 proxy vars need special handling: the rucio client expects a *file path*
-    # pointing to PEM content, not the PEM text itself.
-    # The secret file may contain either:
-    #   a) A path string (e.g. /tmp/x509up_u1000) — use that path directly
-    #   b) Actual PEM content — use the secret file path itself
-    for key in ["RUCIO_CLIENT_PROXY", "X509_USER_PROXY"]:
-        value = os.environ.get(key, "")
-        if value and os.path.isfile(value):
-            # Already set to a valid file path (e.g. from read_secret or env)
-            continue
-        file_env = f"{key}_FILE"
-        secret_path = os.getenv(file_env)
-        if secret_path and os.path.isfile(secret_path) and os.path.getsize(secret_path) > 0:
-            content = open(secret_path).read().strip()
-            if os.path.isfile(content):
-                # Secret contains a path to the actual proxy file
-                os.environ[key] = content
-            else:
-                # Secret contains PEM content directly; point rucio at the secret file
-                os.environ[key] = secret_path
-
-    # Generate a minimal rucio.cfg so the Rucio client library doesn't raise
-    # ConfigNotFound.  All actual connection params are passed programmatically by
-    # rucio-mcp, but the library unconditionally requires a config file to exist.
-    _generate_rucio_cfg()
-
     # Set up shared Postgres services (expects config already in DB)
     factory = PostgresServiceFactory.from_env(password_override=read_secret("PG_PASSWORD"))
     PostgresServiceFactory.set_instance(factory)
@@ -82,34 +37,6 @@ def main():
         static_folder=chat_config["static_folder"],
     ))
     app.run(debug=True, use_reloader=False, port=chat_config["port"], host=chat_config["host"])
-
-
-def _generate_rucio_cfg():
-    """Write a minimal rucio.cfg from env vars so the Rucio client library can load."""
-    rucio_host = os.environ.get("RUCIO_HOST", "")
-    if not rucio_host:
-        return  # Rucio not configured; skip
-
-    import configparser
-    cfg = configparser.ConfigParser()
-    cfg["client"] = {
-        "rucio_host": rucio_host,
-        "auth_host": os.environ.get("RUCIO_AUTH_HOST", ""),
-        "account": os.environ.get("RUCIO_ACCOUNT", ""),
-        "auth_type": os.environ.get("RUCIO_AUTH_TYPE", "x509_proxy"),
-    }
-    ca_cert = os.environ.get("RUCIO_CA_CERT", "")
-    if ca_cert:
-        cfg["client"]["ca_cert"] = ca_cert
-    proxy = os.environ.get("X509_USER_PROXY", "") or os.environ.get("RUCIO_CLIENT_PROXY", "")
-    if proxy:
-        cfg["client"]["client_x509_proxy"] = proxy
-
-    cfg_path = "/tmp/rucio.cfg"
-    with open(cfg_path, "w") as f:
-        cfg.write(f)
-    os.environ["RUCIO_CONFIG"] = cfg_path
-    print(f"Generated Rucio config at {cfg_path}")
 
 
 def generate_script(chat_config):

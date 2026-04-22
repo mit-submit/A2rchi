@@ -675,6 +675,51 @@ services:
     {%- endif %}
   {%- endif %}
 
+  {#- MCP sidecar services: any mcp_server with build_context or image becomes its own container #}
+  {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}
+  {%- if srv_cfg.build_context is defined or srv_cfg.image is defined %}
+  {{ srv_name }}-mcp:
+    container_name: {{ srv_name }}-mcp-{{ name }}
+    {%- if srv_cfg.build_context is defined %}
+    build: {{ srv_cfg.build_context }}
+    {%- else %}
+    image: {{ srv_cfg.image }}
+    {%- endif %}
+    {%- if srv_cfg.env or srv_cfg.env_from_secrets %}
+    environment:
+      {%- for k, v in (srv_cfg.env | default({})).items() %}
+      {{ k }}: "{{ v }}"
+      {%- endfor %}
+      {%- for k in srv_cfg.env_from_secrets | default([]) %}
+      {{ k }}_FILE: /run/secrets/{{ k | lower }}
+      {%- endfor %}
+    {%- endif %}
+    {%- if srv_cfg.env_from_secrets %}
+    secrets:
+      {%- for k in srv_cfg.env_from_secrets %}
+      - {{ k | lower }}
+      {%- endfor %}
+    {%- endif %}
+    {%- if srv_cfg.host_file_mounts %}
+    volumes:
+      {%- for m in srv_cfg.host_file_mounts %}
+      {%- if m is string %}
+      - {{ m }}:{{ m }}:ro
+      {%- else %}
+      - {{ m.src }}:{{ m.dest }}:ro
+      {%- endif %}
+      {%- endfor %}
+    {%- endif %}
+    logging:
+      options:
+        max-size: 10m
+    restart: on-failure
+    {%- if host_mode %}
+    network_mode: host
+    {%- endif %}
+  {%- endif %}
+  {%- endfor %}
+
 
 volumes:
   {% for volume in required_volumes -%}

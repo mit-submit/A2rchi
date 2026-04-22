@@ -21,21 +21,32 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
 
     mcp_servers = get_mcp_servers_config()
 
-    # For stdio transport servers, inject the current process environment so that
-    # MCP subprocesses inherit env vars (e.g. RUCIO_HOST, X509_USER_PROXY).
-    # Without this, mcp.client.stdio uses get_default_environment() which only
-    # provides HOME and PATH.
+    # Strip archi-only fields that langchain-mcp-adapters doesn't understand.
+    # These are consumed by the compose template (sidecars) or the legacy stdio
+    # install path; the MCP client itself only knows about transport-specific fields.
+    _archi_only_fields = {"env_from_secrets", "host_file_mounts", "build_context", "image", "path"}
+    client_configs: dict[str, dict] = {}
     for name, server_cfg in mcp_servers.items():
-        if server_cfg.get("transport") == "stdio":
-            server_cfg["env"] = {**os.environ, **(server_cfg.get("env") or {})}
+        cfg = {k: v for k, v in server_cfg.items() if k not in _archi_only_fields}
+        transport = cfg.get("transport")
+        if transport == "stdio":
+            # stdio subprocesses inherit nothing by default (mcp.client.stdio uses
+            # an empty env). Forward the parent process env so stdio MCP servers see
+            # what they need.
+            cfg["env"] = {**os.environ, **(cfg.get("env") or {})}
+        else:
+            # For HTTP-based transports, `env` is for the sidecar container (compose),
+            # not the MCP client connection — drop it here.
+            cfg.pop("env", None)
+        client_configs[name] = cfg
 
-    logger.info(f"Configuring MCP client with servers: {list(mcp_servers.keys())}")
-    client = MultiServerMCPClient(mcp_servers)
+    logger.info(f"Configuring MCP client with servers: {list(client_configs.keys())}")
+    client = MultiServerMCPClient(client_configs)
 
     all_tools: List[BaseTool] = []
     failed_servers: dict[str, str] = {}
 
-    for name in mcp_servers.keys():
+    for name in client_configs.keys():
         try:
             tools = await client.get_tools(server_name=name)
             for tool in tools:
@@ -47,7 +58,7 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
             logger.error(f"Failed to fetch tools from MCP server '{name}': {e}")
             failed_servers[name] = str(e)
 
-    logger.info(f"Active MCP servers: {[n for n in mcp_servers if n not in failed_servers]}")
+    logger.info(f"Active MCP servers: {[n for n in client_configs if n not in failed_servers]}")
     logger.warning(f"Failed MCP servers: {list(failed_servers.keys())}")
 
     return client, all_tools
