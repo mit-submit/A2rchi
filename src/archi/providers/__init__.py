@@ -233,7 +233,7 @@ def list_all_models() -> Dict[str, List[ModelInfo]]:
     return result
 
 
-def get_model(provider_type: str | ProviderType, model_name: str, provider_config: Optional[dict] = None, **kwargs):
+def get_model(provider_type: str | ProviderType, model_name: str, provider_config: dict, **kwargs):
     """
     Convenience function to get a chat model directly.
     

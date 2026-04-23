@@ -4,7 +4,6 @@ PostgreSQL-backed CatalogService.
 Replaces SQLite-based catalog with PostgreSQL 'documents' table.
 Provides the same interface as the original CatalogService.
 """
-
 from __future__ import annotations
 
 import json
@@ -17,43 +16,20 @@ from typing import Any, Dict, Generator, Iterable, List, Optional, Sequence, Set
 
 import psycopg2
 import psycopg2.extras
-from langchain_core.documents import Document
 from psycopg2.extras import RealDictCursor
+from langchain_core.documents import Document
 
 from src.data_manager.vectorstore.loader_utils import load_doc_from_path
 from src.utils.logging import get_logger
-
 logger = get_logger(__name__)
 
 DEFAULT_TEXT_EXTENSIONS = {
-    ".txt",
-    ".md",
-    ".rst",
-    ".pdf",
-    ".json",
-    ".yaml",
-    ".yml",
-    ".csv",
-    ".tsv",
-    ".html",
-    ".htm",
-    ".log",
-    ".py",
-    ".c",
-    ".cpp",
-    ".C",
-    ".h",
+    ".txt", ".md", ".rst", ".pdf", ".json", ".yaml", ".yml",
+    ".csv", ".tsv", ".html", ".htm", ".log", ".py", ".c", ".cpp", ".C", ".h",
 }
 
 DEFAULT_IMAGE_EXTENSIONS = {
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".bmp",
-    ".tiff",
-    ".tif",
-    ".webp",
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp",
 }
 
 DEFAULT_INGESTABLE_EXTENSIONS = DEFAULT_TEXT_EXTENSIONS | DEFAULT_IMAGE_EXTENSIONS
@@ -82,28 +58,22 @@ _METADATA_COLUMN_MAP = {
 class PostgresCatalogService:
     """
     PostgreSQL-backed document catalog service.
-
+    
     Stores document metadata in the PostgreSQL 'documents' table,
     replacing the legacy SQLite catalog.
     """
 
     data_path: Path | str
     pg_config: Dict[str, Any]
-    include_extensions: Sequence[str] = field(
-        default_factory=lambda: sorted(DEFAULT_INGESTABLE_EXTENSIONS)
-    )
+    include_extensions: Sequence[str] = field(default_factory=lambda: sorted(DEFAULT_INGESTABLE_EXTENSIONS))
     _file_index: Dict[str, str] = field(init=False, default_factory=dict)
     _metadata_index: Dict[str, str] = field(init=False, default_factory=dict)
-    _id_cache: Dict[str, int] = field(
-        init=False, default_factory=dict
-    )  # resource_hash -> document id
+    _id_cache: Dict[str, int] = field(init=False, default_factory=dict)  # resource_hash -> document id
 
     def __post_init__(self) -> None:
         self.data_path = Path(self.data_path)
         if self.include_extensions:
-            self.include_extensions = tuple(
-                ext.lower() for ext in self.include_extensions
-            )
+            self.include_extensions = tuple(ext.lower() for ext in self.include_extensions)
         self.refresh()
 
     def _connect_with_retry(self) -> psycopg2.extensions.connection:
@@ -118,9 +88,7 @@ class PostgresCatalogService:
                     wait = attempt * 2  # 2s, 4s
                     logger.warning(
                         "Postgres connection attempt %d/3 failed (%s); retrying in %ds",
-                        attempt,
-                        exc,
-                        wait,
+                        attempt, exc, wait,
                     )
                     time.sleep(wait)
         raise last_exc  # type: ignore[misc]
@@ -140,7 +108,7 @@ class PostgresCatalogService:
         self._file_index = {}
         self._metadata_index = {}
         self._id_cache = {}
-
+        
         with self._connect() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("""
@@ -149,7 +117,7 @@ class PostgresCatalogService:
                     WHERE NOT is_deleted
                 """)
                 rows = cur.fetchall()
-
+        
         for row in rows:
             resource_hash = row["resource_hash"]
             stored_path = row["file_path"]
@@ -169,12 +137,12 @@ class PostgresCatalogService:
         """Get the PostgreSQL document ID for a resource hash."""
         if resource_hash in self._id_cache:
             return self._id_cache[resource_hash]
-
+        
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id FROM documents WHERE resource_hash = %s AND NOT is_deleted",
-                    (resource_hash,),
+                    (resource_hash,)
                 )
                 row = cur.fetchone()
                 if row:
@@ -190,7 +158,7 @@ class PostgresCatalogService:
     ) -> int:
         """
         Insert or update a resource in the documents table.
-
+        
         Returns:
             The document ID (for linking to document_chunks)
         """
@@ -207,8 +175,7 @@ class PostgresCatalogService:
 
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     INSERT INTO documents (
                         resource_hash,
                         file_path,
@@ -246,58 +213,48 @@ class PostgresCatalogService:
                         is_deleted = FALSE,
                         deleted_at = NULL
                     RETURNING id
-                """,
-                    (
-                        resource_hash,
-                        path,
-                        display_name,
-                        source_type,
-                        payload.get("url"),
-                        payload.get("ticket_id"),
-                        payload.get("suffix"),
-                        _coerce_int(payload.get("size_bytes")),
-                        payload.get("original_path"),
-                        payload.get("base_path"),
-                        payload.get("relative_path"),
-                        _parse_timestamp(
-                            payload.get("modified_at")
-                            or payload.get("file_modified_at")
-                        ),
-                        _parse_timestamp(payload.get("ingested_at")),
-                        extra_json,
-                        extra_text,
-                    ),
-                )
+                """, (
+                    resource_hash,
+                    path,
+                    display_name,
+                    source_type,
+                    payload.get("url"),
+                    payload.get("ticket_id"),
+                    payload.get("suffix"),
+                    _coerce_int(payload.get("size_bytes")),
+                    payload.get("original_path"),
+                    payload.get("base_path"),
+                    payload.get("relative_path"),
+                    _parse_timestamp(payload.get("modified_at") or payload.get("file_modified_at")),
+                    _parse_timestamp(payload.get("ingested_at")),
+                    extra_json,
+                    extra_text,
+                ))
                 document_id = cur.fetchone()[0]
             conn.commit()
 
         self._file_index[resource_hash] = path
         self._metadata_index[resource_hash] = path
         self._id_cache[resource_hash] = document_id
-
+        
         return document_id
 
     def delete_resource(self, resource_hash: str) -> None:
         """Soft-delete a resource."""
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     UPDATE documents 
                     SET is_deleted = TRUE, deleted_at = NOW()
                     WHERE resource_hash = %s
-                """,
-                    (resource_hash,),
-                )
+                """, (resource_hash,))
             conn.commit()
-
+        
         self._file_index.pop(resource_hash, None)
         self._metadata_index.pop(resource_hash, None)
         self._id_cache.pop(resource_hash, None)
 
-    def get_resource_hashes_by_metadata_filter(
-        self, metadata_field: str, value: str
-    ) -> List[str]:
+    def get_resource_hashes_by_metadata_filter(self, metadata_field: str, value: str) -> List[str]:
         """Return resource hashes matching the metadata filter."""
         matches = self.get_metadata_by_filter(metadata_field, value=value)
         return [resource_hash for resource_hash, _ in matches]
@@ -314,7 +271,7 @@ class PostgresCatalogService:
             value = kwargs[metadata_field]
 
         column = _METADATA_COLUMN_MAP.get(metadata_field)
-
+        
         with self._connect() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 if column:
@@ -324,20 +281,17 @@ class PostgresCatalogService:
                             WHERE NOT is_deleted AND {column} IS NOT NULL AND {column} != ''
                         """)
                     else:
-                        cur.execute(
-                            f"""
+                        cur.execute(f"""
                             SELECT * FROM documents 
                             WHERE NOT is_deleted AND {column} = %s
-                        """,
-                            (str(value),),
-                        )
+                        """, (str(value),))
                 else:
                     cur.execute("SELECT * FROM documents WHERE NOT is_deleted")
                 rows = cur.fetchall()
 
         matches: List[Tuple[str, Dict[str, Any]]] = []
         expected = str(value) if value is not None else None
-
+        
         for row in rows:
             metadata = self._row_to_metadata(row)
             if metadata_field not in metadata:
@@ -347,7 +301,7 @@ class PostgresCatalogService:
             if metadata_keys:
                 metadata = {k: metadata[k] for k in metadata_keys if k in metadata}
             matches.append((row["resource_hash"], metadata))
-
+        
         return matches
 
     def search_metadata(
@@ -410,13 +364,11 @@ class PostgresCatalogService:
         results: List[Dict[str, Any]] = []
         for row in rows:
             path = self._resolve_path(row["file_path"])
-            results.append(
-                {
-                    "hash": row["resource_hash"],
-                    "path": path,
-                    "metadata": self._row_to_metadata(row),
-                }
-            )
+            results.append({
+                "hash": row["resource_hash"],
+                "path": path,
+                "metadata": self._row_to_metadata(row),
+            })
         return results
 
     def iter_files(self) -> Iterable[Tuple[str, Path]]:
@@ -424,14 +376,9 @@ class PostgresCatalogService:
         for resource_hash, stored_path in self._file_index.items():
             path = self._resolve_path(stored_path)
             if not path.exists():
-                logger.debug(
-                    "File for resource hash %s not found; skipping.", resource_hash
-                )
+                logger.debug("File for resource hash %s not found; skipping.", resource_hash)
                 continue
-            if (
-                self.include_extensions
-                and path.suffix.lower() not in self.include_extensions
-            ):
+            if self.include_extensions and path.suffix.lower() not in self.include_extensions:
                 logger.debug("File %s has excluded extension; skipping.", path)
                 continue
             yield resource_hash, path
@@ -442,10 +389,10 @@ class PostgresCatalogService:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     "SELECT * FROM documents WHERE resource_hash = %s AND NOT is_deleted",
-                    (hash,),
+                    (hash,)
                 )
                 row = cur.fetchone()
-
+        
         if not row:
             return None
         return self._row_to_metadata(row)
@@ -470,15 +417,13 @@ class PostgresCatalogService:
                     cur.execute(
                         f"SELECT DISTINCT {field} FROM documents WHERE NOT is_deleted AND {field} IS NOT NULL"
                     )
-                    vals = [
-                        row[0] for row in cur.fetchall() if row and row[0] is not None
-                    ]
+                    vals = [row[0] for row in cur.fetchall() if row and row[0] is not None]
                     result[field] = vals
         return result
 
     def get_filepath_for_hash(self, hash: str) -> Optional[Path]:
         """Get the file path for a resource hash.
-
+        
         First checks the in-memory cache, then falls back to database query
         to handle documents added after service startup.
         """
@@ -489,7 +434,7 @@ class PostgresCatalogService:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT file_path FROM documents WHERE resource_hash = %s AND NOT is_deleted",
-                        (hash,),
+                        (hash,)
                     )
                     row = cur.fetchone()
             if row:
@@ -520,57 +465,44 @@ class PostgresCatalogService:
         """Check if a document is enabled for a conversation."""
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT enabled FROM conversation_doc_overrides 
                     WHERE conversation_id = %s AND document_hash = %s
-                """,
-                    (int(conversation_id), document_hash),
-                )
+                """, (int(conversation_id), document_hash))
                 row = cur.fetchone()
-
+        
         if row is None:
             return True  # Default: enabled
         return bool(row[0])
 
-    def set_document_enabled(
-        self, conversation_id: str, document_hash: str, enabled: bool
-    ) -> None:
+    def set_document_enabled(self, conversation_id: str, document_hash: str, enabled: bool) -> None:
         """Set whether a document is enabled for a conversation."""
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     INSERT INTO conversation_doc_overrides (conversation_id, document_hash, enabled)
                     VALUES (%s, %s, %s)
                     ON CONFLICT (conversation_id, document_hash) DO UPDATE SET
                         enabled = EXCLUDED.enabled,
                         updated_at = NOW()
-                """,
-                    (int(conversation_id), document_hash, enabled),
-                )
+                """, (int(conversation_id), document_hash, enabled))
             conn.commit()
 
-    def bulk_set_enabled(
-        self, conversation_id: str, document_hashes: Sequence[str], enabled: bool
-    ) -> int:
+    def bulk_set_enabled(self, conversation_id: str, document_hashes: Sequence[str], enabled: bool) -> int:
         """Set enabled state for multiple documents."""
         if not document_hashes:
             return 0
-
+        
         with self._connect() as conn:
             with conn.cursor() as cur:
                 for doc_hash in document_hashes:
-                    cur.execute(
-                        """
+                    cur.execute("""
                         INSERT INTO conversation_doc_overrides (conversation_id, document_hash, enabled)
                         VALUES (%s, %s, %s)
                         ON CONFLICT (conversation_id, document_hash) DO UPDATE SET
                             enabled = EXCLUDED.enabled,
                             updated_at = NOW()
-                    """,
-                        (int(conversation_id), doc_hash, enabled),
-                    )
+                    """, (int(conversation_id), doc_hash, enabled))
             conn.commit()
         return len(document_hashes)
 
@@ -578,13 +510,10 @@ class PostgresCatalogService:
         """Get document hashes disabled for a conversation."""
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT document_hash FROM conversation_doc_overrides 
                     WHERE conversation_id = %s AND NOT enabled
-                """,
-                    (int(conversation_id),),
-                )
+                """, (int(conversation_id),))
                 rows = cur.fetchall()
         return {row[0] for row in rows}
 
@@ -592,13 +521,10 @@ class PostgresCatalogService:
         """Get document hashes explicitly enabled for a conversation."""
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT document_hash FROM conversation_doc_overrides 
                     WHERE conversation_id = %s AND enabled
-                """,
-                    (int(conversation_id),),
-                )
+                """, (int(conversation_id),))
                 rows = cur.fetchall()
         return {row[0] for row in rows}
 
@@ -606,13 +532,10 @@ class PostgresCatalogService:
         """Get selection state for all explicitly set documents."""
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT document_hash, enabled FROM conversation_doc_overrides 
                     WHERE conversation_id = %s
-                """,
-                    (int(conversation_id),),
-                )
+                """, (int(conversation_id),))
                 rows = cur.fetchall()
         return {row[0]: bool(row[1]) for row in rows}
 
@@ -628,7 +551,7 @@ class PostgresCatalogService:
                 row = cur.fetchone()
                 total_documents = row["count"]
                 total_size_bytes = row["total_size"]
-
+                
                 # Total chunks
                 cur.execute("""
                     SELECT COUNT(*) as count 
@@ -665,35 +588,23 @@ class PostgresCatalogService:
                     GROUP BY source_type
                 """)
                 type_rows = cur.fetchall()
-                by_source_type = {
-                    r["source_type"]: {"total": r["count"], "enabled": r["count"]}
-                    for r in type_rows
-                }
+                by_source_type = {r["source_type"]: {"total": r["count"], "enabled": r["count"]} for r in type_rows}
 
                 # Last sync
-                cur.execute(
-                    "SELECT MAX(ingested_at) as last_sync FROM documents WHERE NOT is_deleted"
-                )
+                cur.execute("SELECT MAX(ingested_at) as last_sync FROM documents WHERE NOT is_deleted")
                 last_row = cur.fetchone()
-                last_sync = (
-                    last_row["last_sync"].isoformat()
-                    if last_row and last_row["last_sync"]
-                    else None
-                )
+                last_sync = last_row["last_sync"].isoformat() if last_row and last_row["last_sync"] else None
 
                 # Disabled count for conversation
                 disabled_count = 0
                 if conversation_id:
-                    cur.execute(
-                        """
+                    cur.execute("""
                         SELECT d.source_type, COUNT(*) as count
                         FROM conversation_doc_overrides o
                         JOIN documents d ON o.document_hash = d.resource_hash
                         WHERE o.conversation_id = %s AND NOT o.enabled AND NOT d.is_deleted
                         GROUP BY d.source_type
-                    """,
-                        (int(conversation_id),),
-                    )
+                    """, (int(conversation_id),))
                     for dr in cur.fetchall():
                         disabled_count += dr["count"]
                         if dr["source_type"] in by_source_type:
@@ -707,10 +618,7 @@ class PostgresCatalogService:
             "total_size_bytes": total_size_bytes,
             "by_source_type": by_source_type,
             "status_counts": status_counts,
-            "ingestion_in_progress": (
-                status_counts["pending"] + status_counts["embedding"]
-            )
-            > 0,
+            "ingestion_in_progress": (status_counts["pending"] + status_counts["embedding"]) > 0,
             "last_sync": last_sync,
         }
 
@@ -787,32 +695,20 @@ class PostgresCatalogService:
 
         documents = []
         for row in rows:
-            documents.append(
-                {
-                    "hash": row["resource_hash"],
-                    "display_name": row["display_name"],
-                    "source_type": row["source_type"],
-                    "url": row["url"],
-                    "size_bytes": row["size_bytes"],
-                    "suffix": row["suffix"],
-                    "ingested_at": (
-                        row["ingested_at"].isoformat() if row["ingested_at"] else None
-                    ),
-                    "indexed_at": (
-                        row.get("indexed_at").isoformat()
-                        if row.get("indexed_at")
-                        else None
-                    ),
-                    "created_at": (
-                        row.get("created_at").isoformat()
-                        if row.get("created_at")
-                        else None
-                    ),
-                    "ingestion_status": row.get("ingestion_status", "pending"),
-                    "ingestion_error": row.get("ingestion_error"),
-                    "enabled": bool(row.get("enabled", True)),
-                }
-            )
+            documents.append({
+                "hash": row["resource_hash"],
+                "display_name": row["display_name"],
+                "source_type": row["source_type"],
+                "url": row["url"],
+                "size_bytes": row["size_bytes"],
+                "suffix": row["suffix"],
+                "ingested_at": row["ingested_at"].isoformat() if row["ingested_at"] else None,
+                "indexed_at": row.get("indexed_at").isoformat() if row.get("indexed_at") else None,
+                "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
+                "ingestion_status": row.get("ingestion_status", "pending"),
+                "ingestion_error": row.get("ingestion_error"),
+                "enabled": bool(row.get("enabled", True)),
+            })
 
         effective_limit = total if limit is None else limit
         has_more = False if limit is None else (offset + len(documents) < total)
@@ -836,7 +732,7 @@ class PostgresCatalogService:
     ) -> None:
         """
         Update the ingestion status of a document.
-
+        
         Args:
             resource_hash: The document's resource_hash
             status: One of 'pending', 'embedding', 'embedded', 'failed'
@@ -870,10 +766,10 @@ class PostgresCatalogService:
     def reset_failed_document(self, resource_hash: str) -> bool:
         """
         Reset a failed document back to 'pending' for retry.
-
+        
         Args:
             resource_hash: The document's resource_hash
-
+            
         Returns:
             True if a document was reset, False if not found or not in 'failed' state
         """
@@ -892,15 +788,17 @@ class PostgresCatalogService:
     def reset_all_failed_documents(self) -> int:
         """
         Reset all failed documents back to 'pending' for retry.
-
+        
         Returns:
             Number of documents reset
         """
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("""UPDATE documents 
+                cur.execute(
+                    """UPDATE documents 
                        SET ingestion_status = 'pending', ingestion_error = NULL
-                       WHERE NOT is_deleted AND ingestion_status = 'failed'""")
+                       WHERE NOT is_deleted AND ingestion_status = 'failed'"""
+                )
                 count = cur.rowcount
             conn.commit()
         return count
@@ -912,28 +810,29 @@ class PostgresCatalogService:
     ) -> Dict[str, Any]:
         """
         List documents grouped by source origin for the unified status section.
-
+        
         Args:
             show_all: If False (default), only return groups with actionable (non-embedded) docs.
                       If True, return all groups.
             expand: Source group name to include full document list for.
-
+            
         Returns:
             Dict with groups list and aggregate status counts
         """
         with self._connect() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 # Get aggregate status counts
-                cur.execute("""SELECT ingestion_status, COUNT(*) as count 
+                cur.execute(
+                    """SELECT ingestion_status, COUNT(*) as count 
                        FROM documents WHERE NOT is_deleted
-                       GROUP BY ingestion_status""")
-                status_counts = {
-                    row["ingestion_status"]: row["count"] for row in cur.fetchall()
-                }
+                       GROUP BY ingestion_status"""
+                )
+                status_counts = {row["ingestion_status"]: row["count"] for row in cur.fetchall()}
 
                 # Get groups with counts per status
                 # Group by: domain for web, repo URL for git, 'Local files' for local_files, source_type otherwise
-                cur.execute("""SELECT 
+                cur.execute(
+                    """SELECT 
                          CASE 
                            WHEN source_type = 'web' AND url IS NOT NULL THEN
                              regexp_replace(url, '^(https?://[^/]+).*', '\\1')
@@ -947,7 +846,8 @@ class PostgresCatalogService:
                          COUNT(*) as count
                        FROM documents WHERE NOT is_deleted
                        GROUP BY source_name, ingestion_status
-                       ORDER BY source_name""")
+                       ORDER BY source_name"""
+                )
                 group_rows = cur.fetchall()
 
                 # Build group structures
@@ -970,9 +870,7 @@ class PostgresCatalogService:
                 # Filter to only actionable groups (with pending or failed) unless show_all
                 groups = []
                 for g in groups_map.values():
-                    g["has_actionable"] = (
-                        g["pending"] + g["embedding"] + g["failed"]
-                    ) > 0
+                    g["has_actionable"] = (g["pending"] + g["embedding"] + g["failed"]) > 0
                     if show_all or g["has_actionable"]:
                         groups.append(g)
 
@@ -984,9 +882,7 @@ class PostgresCatalogService:
                     for g in groups:
                         if g["source_name"] == expand:
                             # Build WHERE for this source group
-                            source_where, source_params = self._source_group_where(
-                                expand
-                            )
+                            source_where, source_params = self._source_group_where(expand)
                             # Only show actionable (non-embedded) docs in group expand
                             # Users can use "Show all documents" for full flat list
                             cur.execute(
@@ -1005,9 +901,7 @@ class PostgresCatalogService:
                                     LIMIT 100""",
                                 source_params,
                             )
-                            g["documents"] = [
-                                self._row_to_doc(r) for r in cur.fetchall()
-                            ]
+                            g["documents"] = [self._row_to_doc(r) for r in cur.fetchall()]
                             break
 
         return {
@@ -1048,9 +942,7 @@ class PostgresCatalogService:
             "size_bytes": row["size_bytes"],
             "ingestion_status": row["ingestion_status"],
             "ingestion_error": row["ingestion_error"],
-            "ingested_at": (
-                row["ingested_at"].isoformat() if row["ingested_at"] else None
-            ),
+            "ingested_at": row["ingested_at"].isoformat() if row["ingested_at"] else None,
             "indexed_at": row["indexed_at"].isoformat() if row["indexed_at"] else None,
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         }
@@ -1065,14 +957,14 @@ class PostgresCatalogService:
     ) -> Dict[str, Any]:
         """
         List documents with ingestion status info for the upload page.
-
+        
         Args:
             status_filter: Filter by ingestion status ('pending', 'embedding', 'embedded', 'failed', or None for all)
             source_type: Filter by source type
             search: Search query for display_name
             limit: Maximum number of results
             offset: Pagination offset
-
+            
         Returns:
             Dict with documents list, total count, and status counts
         """
@@ -1097,9 +989,7 @@ class PostgresCatalogService:
         with self._connect() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 # Get total matching
-                cur.execute(
-                    f"SELECT COUNT(*) as count FROM documents WHERE {where_sql}", params
-                )
+                cur.execute(f"SELECT COUNT(*) as count FROM documents WHERE {where_sql}", params)
                 total = cur.fetchone()["count"]
 
                 # Get status counts (always unfiltered by status)
@@ -1111,16 +1001,14 @@ class PostgresCatalogService:
                 if search:
                     status_where.append("display_name ILIKE %s")
                     status_params.append(f"%{search}%")
-
+                
                 cur.execute(
                     f"""SELECT ingestion_status, COUNT(*) as count 
                         FROM documents WHERE {" AND ".join(status_where)}
                         GROUP BY ingestion_status""",
                     status_params,
                 )
-                status_counts = {
-                    row["ingestion_status"]: row["count"] for row in cur.fetchall()
-                }
+                status_counts = {row["ingestion_status"]: row["count"] for row in cur.fetchall()}
 
                 # Get paginated results
                 cur.execute(
@@ -1135,26 +1023,18 @@ class PostgresCatalogService:
 
         documents = []
         for row in rows:
-            documents.append(
-                {
-                    "hash": row["resource_hash"],
-                    "display_name": row["display_name"],
-                    "source_type": row["source_type"],
-                    "suffix": row["suffix"],
-                    "size_bytes": row["size_bytes"],
-                    "ingestion_status": row["ingestion_status"],
-                    "ingestion_error": row["ingestion_error"],
-                    "ingested_at": (
-                        row["ingested_at"].isoformat() if row["ingested_at"] else None
-                    ),
-                    "indexed_at": (
-                        row["indexed_at"].isoformat() if row["indexed_at"] else None
-                    ),
-                    "created_at": (
-                        row["created_at"].isoformat() if row["created_at"] else None
-                    ),
-                }
-            )
+            documents.append({
+                "hash": row["resource_hash"],
+                "display_name": row["display_name"],
+                "source_type": row["source_type"],
+                "suffix": row["suffix"],
+                "size_bytes": row["size_bytes"],
+                "ingestion_status": row["ingestion_status"],
+                "ingestion_error": row["ingestion_error"],
+                "ingested_at": row["ingested_at"].isoformat() if row["ingested_at"] else None,
+                "indexed_at": row["indexed_at"].isoformat() if row["indexed_at"] else None,
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            })
 
         return {
             "documents": documents,
@@ -1172,45 +1052,37 @@ class PostgresCatalogService:
     def get_document_chunks(self, document_hash: str) -> List[Dict[str, Any]]:
         """
         Get all chunks for a document with their boundaries.
-
+        
         Args:
             document_hash: The document's resource_hash
-
+            
         Returns:
             List of chunk dicts with chunk_index, chunk_text, start_char, end_char
         """
         with self._connect() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT dc.chunk_index, dc.chunk_text, dc.start_char, dc.end_char
                     FROM document_chunks dc
                     JOIN documents d ON dc.document_id = d.id
                     WHERE d.resource_hash = %s AND NOT d.is_deleted
                     ORDER BY dc.chunk_index
-                """,
-                    (document_hash,),
-                )
+                """, (document_hash,))
                 rows = cur.fetchall()
-
+        
         chunks = []
         for row in rows:
-            chunks.append(
-                {
-                    "index": row["chunk_index"],
-                    "text": row["chunk_text"],
-                    "start_char": row["start_char"],
-                    "end_char": row["end_char"],
-                }
-            )
-
+            chunks.append({
+                "index": row["chunk_index"],
+                "text": row["chunk_text"],
+                "start_char": row["start_char"],
+                "end_char": row["end_char"],
+            })
+        
         return chunks
-
-    def get_document_content(
-        self, document_hash: str, max_size: int = 100000
-    ) -> Optional[Dict[str, Any]]:
+    def get_document_content(self, document_hash: str, max_size: int = 100000) -> Optional[Dict[str, Any]]:
         """Get document content for preview.
-
+        
         Falls back to chunk-based or metadata-based preview when the
         original file is not available on disk (e.g. pending documents).
         """
@@ -1225,15 +1097,9 @@ class PostgresCatalogService:
         if path:
             suffix = metadata.get("suffix", path.suffix).lower()
             content_type_map = {
-                ".md": "text/markdown",
-                ".txt": "text/plain",
-                ".py": "text/x-python",
-                ".js": "text/javascript",
-                ".html": "text/html",
-                ".json": "application/json",
-                ".yaml": "text/yaml",
-                ".yml": "text/yaml",
-                ".csv": "text/csv",
+                ".md": "text/markdown", ".txt": "text/plain", ".py": "text/x-python",
+                ".js": "text/javascript", ".html": "text/html", ".json": "application/json",
+                ".yaml": "text/yaml", ".yml": "text/yaml", ".csv": "text/csv",
             }
             content_type = content_type_map.get(suffix, "text/plain")
 
@@ -1286,12 +1152,7 @@ class PostgresCatalogService:
         lines.append(f"**Source:** {source_type}")
         lines.append(f"**Status:** {status}")
         if status == "pending":
-            lines.extend(
-                [
-                    "",
-                    "_Content will be available after documents are processed (embedded)._",
-                ]
-            )
+            lines.extend(["", "_Content will be available after documents are processed (embedded)._"])
         elif status == "failed":
             error = metadata.get("ingestion_error", "Unknown error")
             lines.extend(["", f"**Error:** {error}"])
@@ -1321,11 +1182,7 @@ class PostgresCatalogService:
         extra_json = row.get("extra_json")
         if extra_json:
             try:
-                extra = (
-                    json.loads(extra_json)
-                    if isinstance(extra_json, str)
-                    else extra_json
-                )
+                extra = json.loads(extra_json) if isinstance(extra_json, str) else extra_json
                 if isinstance(extra, dict):
                     for key, value in extra.items():
                         if value is not None:
@@ -1335,24 +1192,11 @@ class PostgresCatalogService:
 
         # Map standard columns
         column_to_key = {v: k for k, v in _METADATA_COLUMN_MAP.items()}
-        for col in [
-            "display_name",
-            "source_type",
-            "url",
-            "ticket_id",
-            "suffix",
-            "size_bytes",
-            "original_path",
-            "base_path",
-            "relative_path",
-            "file_path",
-            "file_modified_at",
-            "ingested_at",
-            "ingestion_status",
-            "ingestion_error",
-            "resource_hash",
-            "git_repo",
-        ]:
+        for col in ["display_name", "source_type", "url", "ticket_id", "suffix", 
+                    "size_bytes", "original_path", "base_path", "relative_path",
+                    "file_path", "file_modified_at", "ingested_at",
+                    "ingestion_status", "ingestion_error", "resource_hash",
+                    "git_repo"]:
             value = row.get(col)
             if value is None:
                 continue
@@ -1362,8 +1206,8 @@ class PostgresCatalogService:
                 key = "path"
             elif key == "file_modified_at":
                 key = "modified_at"
-
-            if hasattr(value, "isoformat"):
+            
+            if hasattr(value, 'isoformat'):
                 metadata[key] = value.isoformat()
             else:
                 metadata[key] = str(value)
@@ -1378,16 +1222,16 @@ class PostgresCatalogService:
     ) -> Dict[str, str]:
         """
         Convenience helper that returns the resource index mapping with absolute paths.
-
+        
         Args:
             data_path: Base data path for resolving relative paths
             pg_config: PostgreSQL connection configuration
-
+            
         Returns:
             Dict mapping resource_hash to absolute file path
         """
         base_path = Path(data_path)
-
+        
         conn = psycopg2.connect(**pg_config)
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -1428,7 +1272,7 @@ def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
         # Handle ISO format with or without timezone
         if isinstance(value, datetime):
             return value
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
     except (ValueError, AttributeError):
         return None
 
