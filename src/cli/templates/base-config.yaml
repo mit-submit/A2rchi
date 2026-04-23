@@ -38,6 +38,9 @@ mcp_servers:
     {%- if server_config.image is defined %}
     image: {{ server_config.image }}
     {%- endif %}
+    {%- if server_config.skill is defined %}
+    skill: {{ server_config.skill }}
+    {%- endif %}
   {%- endfor %}
 
 services:
