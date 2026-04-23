@@ -4,7 +4,7 @@ global:
   DATA_PATH: "{{ global.DATA_PATH | default('/root/data/', true) }}"
   ACCOUNTS_PATH: "{{ global.ACCOUNTS_PATH | default('/root/.accounts/', true) }}"
   ACCEPTED_FILES:
-    {%- for file_type in global.ACCEPTED_FILES | default(['.pdf', '.md', '.txt', '.docx', '.html', '.htm', '.json', '.yaml', '.yml', '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.sh']) %}
+    {%- for file_type in global.ACCEPTED_FILES | default(['.pdf', '.md', '.txt', '.docx', '.html', '.htm', '.json', '.yaml', '.yml', '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.sh', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp']) %}
     - "{{ file_type }}"
     {%- endfor %}
   LOGGING:
@@ -214,6 +214,13 @@ data_manager:
   stemming:
     enabled: {{ data_manager.stemming.enabled | default(false, true) }}
   distance_metric: {{ data_manager.distance_metric | default('cosine', true) }}
+  captioning:
+    enabled: {{ data_manager.captioning.enabled | default(false, true) }}
+    provider: {{ data_manager.captioning.provider | default('', true) }}
+    model: {{ data_manager.captioning.model | default('', true) }}
+    caption_mode: {{ data_manager.captioning.caption_mode | default('gated', true) }}
+    min_text_chars: {{ data_manager.captioning.min_text_chars | default(200, true) }}
+    dpi: {{ data_manager.captioning.dpi | default(150, true) }}
   retrievers:
     semantic_retriever:
       num_documents_to_retrieve: {{ data_manager.retrievers.semantic_retriever.num_documents_to_retrieve | default(5, true) }}

@@ -143,21 +143,66 @@ class LocalProvider(BaseProvider):
             return self.config.models
         return []
     
+    # Known vision-capable model families that can't be detected from names alone.
+    # Names containing "vision", "vl", or any of these substrings are treated as vision-capable.
+    _VISION_NAME_HINTS = frozenset({
+        "llava", "bakllava", "moondream", "gemma3", "gemma4",
+        "minicpm-v", "qwen2-vl", "internvl", "phi3.5-vision",
+    })
+
+    @staticmethod
+    def _ollama_base(url: str) -> str:
+        """Return the Ollama native API root, stripping any trailing /v1 path."""
+        stripped = url.rstrip("/")
+        if stripped.endswith("/v1"):
+            stripped = stripped[:-3]
+        return stripped
+
+    def _ollama_supports_vision(self, ollama_base: str, model_name: str) -> bool:
+        """Return True if the Ollama model advertises vision capability via /api/show."""
+        import json
+        import urllib.request
+
+        lower = model_name.lower()
+        if "vision" in lower or "vl" in lower or any(h in lower for h in self._VISION_NAME_HINTS):
+            return True
+
+        try:
+            payload = json.dumps({"name": model_name}).encode()
+            req = urllib.request.Request(
+                f"{ollama_base}/api/show",
+                data=payload,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode())
+                    return "vision" in data.get("capabilities", [])
+        except Exception:
+            pass
+        return False
+
     def _fetch_ollama_models(self) -> List[ModelInfo]:
         """
         Fetch installed models from Ollama API and convert to ModelInfo objects.
-        
+
+        Strips any /v1 suffix from the configured base_url before constructing
+        Ollama native API paths (/api/tags, /api/show), since some deployments
+        set base_url to the OpenAI-compat endpoint which includes /v1.
+
         Returns empty list if fetch fails.
         """
         import json
         import urllib.request
         import urllib.error
-        
+
         try:
-            base_url = self.config.base_url or self.DEFAULT_OLLAMA_BASE_URL
-            logger.debug(f"[LocalProvider] Fetching Ollama models from {base_url}")
-            url = f"{base_url}/api/tags"
-            
+            raw_url = self.config.base_url or self.DEFAULT_OLLAMA_BASE_URL
+            ollama_base = self._ollama_base(raw_url)
+            logger.debug(f"[LocalProvider] Fetching Ollama models from {ollama_base}")
+            url = f"{ollama_base}/api/tags"
+
             req = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(req, timeout=10) as response:
                 if response.status == 200:
@@ -165,25 +210,22 @@ class LocalProvider(BaseProvider):
                     models = []
                     for model_data in data.get("models", []):
                         name = model_data.get("name", "")
-                        # Extract parameter size if available
                         details = model_data.get("details", {})
                         param_size = details.get("parameter_size", "")
                         family = details.get("family", "")
-                        
-                        # Create a user-friendly display name
+
                         display_name = name
                         if param_size:
                             display_name = f"{name} ({param_size})"
-                        
-                        # Infer capabilities from model family
+
                         supports_tools = family.lower() in ["qwen2", "llama", "mistral"]
-                        supports_vision = "vision" in name.lower() or "vl" in name.lower()
-                        
+                        supports_vision = self._ollama_supports_vision(ollama_base, name)
+
                         models.append(ModelInfo(
                             id=name,
                             name=name,
                             display_name=display_name,
-                            context_window=32768,  # Default, actual varies by model
+                            context_window=32768,
                             supports_tools=supports_tools,
                             supports_streaming=True,
                             supports_vision=supports_vision,
@@ -196,7 +238,7 @@ class LocalProvider(BaseProvider):
                     return models
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
             logger.warning(f"[LocalProvider] Failed to fetch Ollama models from {self.config.base_url}: {e}")
-        
+
         return []
     
     def validate_connection(self) -> bool:
@@ -211,8 +253,8 @@ class LocalProvider(BaseProvider):
         
         try:
             if self.local_mode == "ollama":
-                base_url = self.config.base_url or self.DEFAULT_OLLAMA_BASE_URL
-                url = f"{base_url}/api/tags"
+                raw_url = self.config.base_url or self.DEFAULT_OLLAMA_BASE_URL
+                url = f"{self._ollama_base(raw_url)}/api/tags"
             else:
                 base_url = self.config.base_url or self.DEFAULT_OPENAI_COMPAT_BASE_URL
                 url = f"{base_url}/models"

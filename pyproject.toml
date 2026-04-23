@@ -26,7 +26,9 @@ dependencies = [
     "pandas==2.3.2",
     "isort==6.0.1",
     "pre-commit>=4",
-    "psycopg2-binary==2.9.10"
+    "psycopg2-binary==2.9.10",
+    "PyMuPDF>=1.24.0",
+    "Pillow>=10.0.0",
 ]
 
 [project.scripts]

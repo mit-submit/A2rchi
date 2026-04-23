@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
-
 INDEXED_METADATA_KEYS: Tuple[str, ...] = (
     "file_name",
     "source_type",
@@ -17,6 +16,7 @@ INDEXED_METADATA_KEYS: Tuple[str, ...] = (
     "created_at",
     "modified_at",
     "ingested_at",
+    "chunk_source",
 )
 
 

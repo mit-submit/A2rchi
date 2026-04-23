@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from langchain_core.documents import Document
-from langchain_community.document_loaders import (
-    BSHTMLLoader,
-    PyPDFLoader,
-    PythonLoader,
-)
+from langchain_community.document_loaders import BSHTMLLoader, PyPDFLoader, PythonLoader
 from langchain_community.document_loaders.text import TextLoader
+from langchain_core.documents import Document
+
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
+
+
+def is_image_file(file_path: str | Path) -> bool:
+    """Return True if the file has a supported image extension."""
+    return Path(file_path).suffix.lower() in IMAGE_EXTENSIONS
 
 
 def select_loader(file_path: str | Path):
@@ -24,7 +28,22 @@ def select_loader(file_path: str | Path):
     path = Path(file_path)
     _, file_extension = path.suffix, path.suffix
     file_extension = file_extension.lower()
-    if file_extension in {".txt", ".c", ".C", ".sh", ".h", ".php", ".yaml", ".yml", ".json", ".csv", ".tsv", ".log", ".rst", ".md"}:
+    if file_extension in {
+        ".txt",
+        ".c",
+        ".C",
+        ".sh",
+        ".h",
+        ".php",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".csv",
+        ".tsv",
+        ".log",
+        ".rst",
+        ".md",
+    }:
         return TextLoader(str(path))
     if file_extension == ".py":
         return PythonLoader(str(path))
@@ -52,6 +71,7 @@ def load_doc_from_path(file_path: str | Path) -> Optional[Document]:
         logger.warning("Failed to load document from %s: %s", file_path, exc)
         return None
 
+
 def load_text_from_path(file_path: str | Path) -> Optional[str]:
     """Attempt to extract text from a file using an appropriate loader.
 
@@ -62,7 +82,20 @@ def load_text_from_path(file_path: str | Path) -> Optional[str]:
     path = Path(file_path)
     try:
         # For simple text files prefer direct read for speed and encoding handling
-        if path.suffix.lower() in {".txt", ".md", ".rst", ".log", ".json", ".yaml", ".yml", ".toml", ".csv", ".tsv", ".html", ".htm"}:
+        if path.suffix.lower() in {
+            ".txt",
+            ".md",
+            ".rst",
+            ".log",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".csv",
+            ".tsv",
+            ".html",
+            ".htm",
+        }:
             return path.read_text(encoding="utf-8", errors="ignore")
 
         loader = select_loader(path)
