@@ -1,11 +1,4 @@
-# Submit76 deployment config
-# Deploy with:
-#   ./configs/submit76/deploy-submit76.sh --live
-#
-# Target: mohoney@submit76.mit.edu
-# Ollama must be running on submit76 at localhost:7870 with gpt-oss:120b pulled.
-
-name: my_archi
+name: archi-vision
 
 services:
   chat_app:
