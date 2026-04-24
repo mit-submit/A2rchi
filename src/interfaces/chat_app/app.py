@@ -48,6 +48,7 @@ from src.data_manager.vectorstore.manager import VectorStoreManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config, get_dynamic_config
+from src.utils.file_acceptance import get_effective_accepted_files
 from src.utils.config_service import ConfigService, StaticConfig
 from src.utils.sql import (
     SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
@@ -5790,7 +5791,17 @@ class FlaskAppWrapper(object):
 
     def upload_page(self):
         """Render the data upload page."""
-        return render_template('upload.html')
+        accepted_files = get_effective_accepted_files(self.config)
+        accepted_files_csv = ",".join(accepted_files)
+        accepted_files_hint = ", ".join(ext.lstrip(".").upper() for ext in accepted_files[:10])
+        if len(accepted_files) > 10:
+            accepted_files_hint = f"{accepted_files_hint}, ..."
+        return render_template(
+            "upload.html",
+            accepted_files=accepted_files,
+            accepted_files_csv=accepted_files_csv,
+            accepted_files_hint=accepted_files_hint,
+        )
 
     def upload_file(self):
         """

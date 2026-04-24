@@ -130,7 +130,7 @@
       <div class="upload-panels">
         <!-- Files Panel -->
         <div class="upload-panel active" id="panel-files">
-          <form action="/api/upload/file" class="dropzone" id="file-dropzone" style="cursor: pointer;">
+          <form action="/api/upload/file" class="dropzone" id="file-dropzone" style="cursor: pointer;" data-accepted-files="{{ accepted_files_csv }}">
             <div class="dz-message" style="pointer-events: none;">
               <div class="dropzone-icon">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -140,7 +140,7 @@
                 </svg>
               </div>
               <div class="dropzone-text">Drop files here or click to browse</div>
-              <div class="dropzone-hint">PDF, MD, TXT, DOCX, HTML, JSON, YAML, PY, JS, TS • Max 50 MB</div>
+              <div class="dropzone-hint">{{ accepted_files_hint }} • Max 50 MB</div>
             </div>
           </form>
 

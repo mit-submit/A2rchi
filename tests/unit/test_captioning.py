@@ -28,6 +28,7 @@ from src.data_manager.vectorstore.loader_utils import (
 from src.data_manager.vectorstore.loader_utils import (
     is_image_file,
 )
+from src.utils.file_acceptance import get_effective_accepted_files
 
 # ---------------------------------------------------------------------------
 # image_loader tests
@@ -218,6 +219,72 @@ class TestVectorStoreManagerCaptioningConfig:
         assert rendered["data_manager"]["captioning"]["dpi"] == 288
         assert "pdf" not in rendered["data_manager"]["captioning"]
         assert "image" not in rendered["data_manager"]["captioning"]
+
+
+class TestEffectiveAcceptedFiles:
+    def test_captioning_adds_image_extensions_when_accept_list_missing(self):
+        accepted = get_effective_accepted_files(
+            {
+                "global": {},
+                "data_manager": {"captioning": {"enabled": True}},
+            }
+        )
+
+        assert accepted[:2] == [".pdf", ".md"]
+        for ext in IMAGE_EXTENSIONS:
+            assert ext in accepted
+
+    def test_captioning_disabled_uses_non_image_default_accept_list(self):
+        accepted = get_effective_accepted_files(
+            {
+                "global": {},
+                "data_manager": {"captioning": {"enabled": False}},
+            }
+        )
+
+        assert accepted == [
+            ".pdf",
+            ".md",
+            ".txt",
+            ".docx",
+            ".html",
+            ".htm",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".go",
+            ".rs",
+            ".c",
+            ".cpp",
+            ".h",
+            ".sh",
+        ]
+
+    def test_explicit_accept_list_trumps_captioning(self):
+        accepted = get_effective_accepted_files(
+            {
+                "global": {"ACCEPTED_FILES": [".pdf", ".md"]},
+                "data_manager": {"captioning": {"enabled": True}},
+            }
+        )
+
+        assert accepted == [".pdf", ".md"]
+
+    def test_explicit_empty_accept_list_is_preserved(self):
+        accepted = get_effective_accepted_files(
+            {
+                "global": {"ACCEPTED_FILES": []},
+                "data_manager": {"captioning": {"enabled": True}},
+            }
+        )
+
+        assert accepted == []
 
 
 # ---------------------------------------------------------------------------

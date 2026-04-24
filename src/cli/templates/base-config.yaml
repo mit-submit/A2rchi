@@ -4,7 +4,7 @@ global:
   DATA_PATH: "{{ global.DATA_PATH | default('/root/data/', true) }}"
   ACCOUNTS_PATH: "{{ global.ACCOUNTS_PATH | default('/root/.accounts/', true) }}"
   ACCEPTED_FILES:
-    {%- for file_type in global.ACCEPTED_FILES | default(['.pdf', '.md', '.txt', '.docx', '.html', '.htm', '.json', '.yaml', '.yml', '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.sh', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp']) %}
+    {%- for file_type in global.ACCEPTED_FILES | default(['.pdf', '.md', '.txt', '.docx', '.html', '.htm', '.json', '.yaml', '.yml', '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.sh']) %}
     - "{{ file_type }}"
     {%- endfor %}
   LOGGING:

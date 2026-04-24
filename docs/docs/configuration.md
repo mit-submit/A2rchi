@@ -32,9 +32,9 @@ Global settings shared across all services.
 | `LOGGING.input_output_filename` | string | `chain_input_output.log` | Pipeline I/O log filename |
 | `verbosity` | int | `3` | Default logging level for services (0-4) |
 
-Default accepted files: `.pdf`, `.md`, `.txt`, `.docx`, `.html`, `.htm`, `.json`, `.yaml`, `.yml`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.java`, `.go`, `.rs`, `.c`, `.cpp`, `.h`, `.sh`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`, `.tif`, `.webp`
+Default accepted files: `.pdf`, `.md`, `.txt`, `.docx`, `.html`, `.htm`, `.json`, `.yaml`, `.yml`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.java`, `.go`, `.rs`, `.c`, `.cpp`, `.h`, `.sh`
 
-> Image file types (`.png`, `.jpg`, etc.) are accepted by default. When `captioning.enabled` is `true`, uploaded images are captioned by a VLM and embedded as text chunks. When captioning is disabled, image files are accepted but produce no chunks.
+> If `global.ACCEPTED_FILES` is omitted, Archi uses the default list above. When `captioning.enabled` is `true`, Archi automatically extends that default with standalone image file types like `.png`, `.jpg`, and `.webp`. If you explicitly set `global.ACCEPTED_FILES`, that list is used as-is and captioning does not override it.
 
 ---
 

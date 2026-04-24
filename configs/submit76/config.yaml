@@ -60,3 +60,10 @@ data_manager:
       projects:
         - emails-to-ticket
   embedding_name: HuggingFaceEmbeddings
+  captioning:
+    enabled: true
+    provider: local
+    model: gemma4:latest
+    caption_mode: gated
+    min_text_chars: 200
+    dpi: 150
