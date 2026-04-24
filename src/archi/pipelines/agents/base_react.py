@@ -1108,6 +1108,8 @@ class BaseReActAgent:
             self._mcp_skills_text = skills_text or ""
 
             # Create synchronous wrappers that use the SAME loop
+            store_tool_input = self._store_tool_input
+
             def make_synchronous(async_tool):
                 """
                 Wrap an async tool for synchronous execution.
@@ -1119,10 +1121,24 @@ class BaseReActAgent:
                 """
                 # Capture the runner in closure
                 runner = self._async_runner
+                tool_name = async_tool.name
 
                 def sync_wrapper(*args, **kwargs):
                     if runner.in_loop_thread():
                         raise RuntimeError("sync_wrapper called from MCP loop thread; would deadlock")
+                    # Streamed tool_call chunks arrive without args; record here so the UI can resolve them by tool_call_id.
+                    try:
+                        recorded = {
+                            k: v
+                            for k, v in kwargs.items()
+                            if k not in {"config", "run_manager", "callbacks"}
+                        }
+                        if recorded:
+                            store_tool_input(tool_name, recorded)
+                    except Exception as exc:
+                        logger.debug(
+                            "Failed to record MCP tool input for %s: %s", tool_name, exc
+                        )
                     # Run on the background loop - NOT a new loop!
                     return runner.run(async_tool.coroutine(*args, **kwargs))
 
