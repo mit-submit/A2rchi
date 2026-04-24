@@ -12,12 +12,17 @@ from src.archi.pipelines.agents.utils.skill_utils import load_skill
 
 logger = get_logger(__name__)
 
-async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[BaseTool]]:
+async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[BaseTool], str]:
     """
     Initializes the MCP client and fetches tool definitions.
     Returns:
         client: The active client instance (must be kept alive by the caller).
         tools: The list of LangChain-compatible tools.
+        skills_text: Concatenated skill content from all MCP servers that declare
+            a `skill`. Empty string if no server has a skill. The caller is
+            responsible for appending this to the agent's system prompt — we inject
+            here only once per agent rather than into each tool description, so
+            the content doesn't multiply by tool count.
     """
 
     mcp_servers = get_mcp_servers_config()
@@ -62,14 +67,9 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
     for name in client_configs.keys():
         try:
             tools = await client.get_tools(server_name=name)
-            skill_content = server_skills.get(name)
             for tool in tools:
                 # Return error messages to the LLM instead of crashing the agent chain.
                 tool.handle_tool_error = True
-                if skill_content:
-                    tool.description = (
-                        (tool.description or "") + f"\n--- Domain Knowledge ---\n{skill_content}"
-                    )
                 logger.info(f"Loaded tool from MCP server '{name}': {tool.name} - {tool.description}")
             all_tools.extend(tools)
         except Exception as e:
@@ -79,4 +79,14 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
     logger.info(f"Active MCP servers: {[n for n in client_configs if n not in failed_servers]}")
     logger.warning(f"Failed MCP servers: {list(failed_servers.keys())}")
 
-    return client, all_tools
+    # Build a single combined skills block keyed by server name — this is appended
+    # to the agent's system prompt once, rather than duplicated across every tool.
+    skills_parts: List[str] = []
+    for name, skill_content in server_skills.items():
+        if name not in failed_servers:
+            skills_parts.append(
+                f"\n--- {name} MCP Server Domain Knowledge ---\n{skill_content}"
+            )
+    skills_text = "".join(skills_parts)
+
+    return client, all_tools, skills_text
