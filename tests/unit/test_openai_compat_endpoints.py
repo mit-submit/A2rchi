@@ -308,11 +308,10 @@ class TestAuthMiddleware:
 
         assert resp.status_code == 401
 
-    def test_admin_user_gets_admin_role(self, app_with_auth):
-        """Admin user (is_admin=True) gets admin role via /v1."""
+    def test_valid_token_allows_access(self, app_with_auth):
+        """A valid bearer token is sufficient to access /v1."""
         app, chat_wrapper, user_service = app_with_auth
-        admin_user = FakeUser(id="admin-user", is_admin=True)
-        user_service.get_user_by_api_token.side_effect = lambda t, **kw: admin_user if t == "archi_test123" else None
+        user_service.get_user_by_api_token.side_effect = lambda t, **kw: FakeUser(id="token-user") if t == "archi_test123" else None
         chat_wrapper.stream.return_value = iter([
             {"type": "chunk", "content": "ok"},
             {"type": "final", "response": "ok",
@@ -328,16 +327,11 @@ class TestAuthMiddleware:
 
         assert resp.status_code == 200
 
-    def test_non_admin_user_gets_default_role(self, app_with_auth):
-        """Non-admin user gets default role via /v1."""
-        app, chat_wrapper, user_service = app_with_auth
+    def test_non_admin_user_token_is_allowed(self, app_with_auth):
+        """Non-admin users can use /v1 when they present a valid token."""
+        app, _, user_service = app_with_auth
         regular_user = FakeUser(id="regular-user", is_admin=False)
         user_service.get_user_by_api_token.side_effect = lambda t, **kw: regular_user if t == "archi_test123" else None
-        chat_wrapper.stream.return_value = iter([
-            {"type": "chunk", "content": "ok"},
-            {"type": "final", "response": "ok",
-             "source_documents": [], "retriever_scores": []},
-        ])
 
         client = app.test_client()
         resp = client.post("/v1/chat/completions",

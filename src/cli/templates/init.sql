@@ -58,12 +58,8 @@ CREATE TABLE IF NOT EXISTS users (
     -- Keys stored as: pgp_sym_encrypt(key, encryption_key)
     -- Encryption key comes from BYOK_ENCRYPTION_KEY env var
     api_key_openrouter BYTEA,      -- Encrypted
-    api_key_openai BYTEA,          -- Encrypted  
+    api_key_openai BYTEA,          -- Encrypted
     api_key_anthropic BYTEA,       -- Encrypted
-
-    -- API token for /v1 OpenAI-compatible endpoint (SHA-256 hash)
-    api_token_hash VARCHAR(64),
-    api_token_created_at TIMESTAMPTZ,
 
     -- Session tracking
     last_login_at TIMESTAMPTZ,
@@ -76,7 +72,23 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_auth_provider ON users(auth_provider);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id) WHERE github_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_users_api_token ON users(api_token_hash) WHERE api_token_hash IS NOT NULL;
+
+-- Admin-minted API tokens for the /v1 OpenAI-compatible endpoint.
+-- Each token is owned by an admin user; callers inherit the owner's admin role.
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(200) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(128) NOT NULL,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,           -- NULL = never expires; set at creation from ttl_days
+    UNIQUE (user_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_tokens_hash_active ON api_tokens(token_hash) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
 
 -- ============================================================================
 -- 1.1 SESSIONS

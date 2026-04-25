@@ -453,61 +453,201 @@ class UserService:
                 return cursor.rowcount > 0
         finally:
             self._release_connection(conn)
-    
-    def generate_api_token(self, user_id: str) -> str:
-        """
-        Generate an API token for /v1 endpoint access.
 
-        Creates an `archi_<hex>` token, stores its SHA-256 hash in the database,
-        and returns the plaintext token once. The plaintext is never stored.
+    # ----- Multi-token API (admin-minted, named) -----
+
+    def create_api_token(
+        self,
+        user_id: str,
+        name: str,
+        *,
+        ttl_days: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a named API token for /v1 endpoint access.
+
+        Inserts an `archi_<hex>` token into api_tokens and returns the
+        plaintext once. The plaintext is never stored (only its SHA-256 hash).
 
         Args:
-            user_id: The user's unique identifier
+            user_id: Owner of the token (must exist in users).
+            name: Token label, unique per user.
+            ttl_days: Days until the token expires. None (or <=0) means
+                never expires. The expiry is stored per-token in
+                api_tokens.expires_at.
 
         Returns:
-            The plaintext API token (shown once to the user)
+            {"id": <uuid>, "token": <plaintext>, "name": <name>,
+             "expires_at": <iso str or None>}
 
         Raises:
-            ValueError: If user not found
+            ValueError: If user not found, name is empty, or name already in use
+                for this user (revoked tokens don't count — pick a new name).
         """
+        if not name or not name.strip():
+            raise ValueError("Token name must be non-empty")
+        name = name.strip()
+
         token = f"archi_{secrets.token_hex(16)}"
         token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+        expires_at = None
+        if ttl_days is not None and ttl_days > 0:
+            expires_at = datetime.now(timezone.utc) + timedelta(days=int(ttl_days))
 
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE users
-                    SET api_token_hash = %s, api_token_created_at = NOW(), updated_at = NOW()
-                    WHERE id = %s
-                    """,
-                    (token_hash, user_id)
-                )
-                conn.commit()
-
-                if cursor.rowcount == 0:
+                cursor.execute("SELECT 1 FROM users WHERE id = %s", (user_id,))
+                if cursor.fetchone() is None:
                     raise ValueError(f"User not found: {user_id}")
 
-                logger.info(f"Generated API token for user: {user_id}")
-                return token
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO api_tokens (user_id, name, token_hash, expires_at)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id, expires_at
+                        """,
+                        (user_id, name, token_hash, expires_at),
+                    )
+                    row = cursor.fetchone()
+                    token_id = str(row[0])
+                    expires_iso = row[1].isoformat() if row[1] else None
+                    conn.commit()
+                except psycopg2.errors.UniqueViolation:
+                    conn.rollback()
+                    raise ValueError(
+                        f"Token name '{name}' already in use for user {user_id}"
+                    )
+
+                logger.info(
+                    "Created API token %s for user %s (name=%s, expires_at=%s)",
+                    token_id, user_id, name, expires_iso,
+                )
+                log_authentication_event(user_id, "api_token_create", success=True, method="bearer_token")
+                return {
+                    "id": token_id,
+                    "token": token,
+                    "name": name,
+                    "expires_at": expires_iso,
+                }
+        finally:
+            self._release_connection(conn)
+
+    def list_api_tokens(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List API tokens. Never returns plaintext or hashes.
+
+        Args:
+            user_id: If provided, only tokens for this user. Otherwise all tokens
+                (admin-only caller is responsible for permission gating).
+
+        Returns:
+            List of {id, user_id, user_email, name, created_at, last_used_at,
+            revoked_at, expires_at}.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                if user_id is None:
+                    cursor.execute(
+                        """
+                        SELECT t.id, t.user_id, u.email AS user_email, t.name,
+                               t.created_at, t.last_used_at, t.revoked_at, t.expires_at
+                        FROM api_tokens t
+                        JOIN users u ON u.id = t.user_id
+                        ORDER BY t.created_at DESC
+                        """
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT t.id, t.user_id, u.email AS user_email, t.name,
+                               t.created_at, t.last_used_at, t.revoked_at, t.expires_at
+                        FROM api_tokens t
+                        JOIN users u ON u.id = t.user_id
+                        WHERE t.user_id = %s
+                        ORDER BY t.created_at DESC
+                        """,
+                        (user_id,),
+                    )
+                return [
+                    {
+                        "id": str(row["id"]),
+                        "user_id": row["user_id"],
+                        "user_email": row["user_email"],
+                        "name": row["name"],
+                        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                        "last_used_at": row["last_used_at"].isoformat() if row["last_used_at"] else None,
+                        "revoked_at": row["revoked_at"].isoformat() if row["revoked_at"] else None,
+                        "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
+                    }
+                    for row in cursor.fetchall()
+                ]
+        finally:
+            self._release_connection(conn)
+
+    def revoke_api_token_by_id(self, token_id: str, *, user_id: Optional[str] = None) -> bool:
+        """
+        Soft-revoke a specific token by id.
+
+        Args:
+            token_id: UUID of the token to revoke.
+            user_id: If provided, also require the token belong to this user
+                (prevents cross-user revocation by guessing IDs).
+
+        Returns:
+            True if a token was revoked, False otherwise.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                if user_id is None:
+                    cursor.execute(
+                        """
+                        UPDATE api_tokens
+                        SET revoked_at = NOW()
+                        WHERE id = %s AND revoked_at IS NULL
+                        RETURNING user_id
+                        """,
+                        (token_id,),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE api_tokens
+                        SET revoked_at = NOW()
+                        WHERE id = %s AND user_id = %s AND revoked_at IS NULL
+                        RETURNING user_id
+                        """,
+                        (token_id, user_id),
+                    )
+                row = cursor.fetchone()
+                conn.commit()
+                if row is None:
+                    return False
+                log_authentication_event(row[0], "api_token_revoke", success=True, method="bearer_token")
+                return True
         finally:
             self._release_connection(conn)
 
     def get_user_by_api_token(self, token: str, *, token_ttl_days: Optional[int] = None) -> Optional[User]:
         """
-        Look up a user by their API token.
+        Look up a user by their API token via the api_tokens table.
 
-        Hashes the provided token and queries by hash for O(1) lookup
-        without exposing tokens if the database is compromised.
+        Hashes the provided token and joins on token_hash for O(1) lookup.
+        Updates last_used_at on successful match. Revoked tokens never match.
 
         Args:
-            token: The plaintext API token
-            token_ttl_days: If provided, reject tokens older than this many days.
-                When None, skip expiry check (backward compat).
+            token: The plaintext API token.
+            token_ttl_days: Fallback global TTL applied only to tokens with no
+                per-token expires_at (legacy rows). When None, skip the
+                fallback check. Tokens with expires_at set are governed
+                entirely by that column.
 
         Returns:
-            User object if token is valid and not expired, None otherwise
+            User object if token is valid/active/unexpired, None otherwise.
         """
         token_hash = hashlib.sha256(token.encode()).hexdigest()
 
@@ -516,28 +656,44 @@ class UserService:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT id, display_name, email, auth_provider, is_admin,
-                           theme, preferred_model, preferred_temperature,
-                           api_token_created_at, created_at, updated_at
-                    FROM users
-                    WHERE api_token_hash = %s
+                    SELECT u.id, u.display_name, u.email, u.auth_provider, u.is_admin,
+                           u.theme, u.preferred_model, u.preferred_temperature,
+                           u.created_at, u.updated_at,
+                           t.id AS token_id, t.created_at AS token_created_at,
+                           t.expires_at
+                    FROM api_tokens t
+                    JOIN users u ON u.id = t.user_id
+                    WHERE t.token_hash = %s AND t.revoked_at IS NULL
                     """,
-                    (token_hash,)
+                    (token_hash,),
                 )
                 row = cursor.fetchone()
 
                 if row is None:
                     return None
 
-                # Check token expiry when TTL is configured
-                if token_ttl_days is not None and row["api_token_created_at"] is not None:
-                    age = datetime.now(timezone.utc) - row["api_token_created_at"]
+                now = datetime.now(timezone.utc)
+                if row["expires_at"] is not None:
+                    if now > row["expires_at"]:
+                        logger.warning(
+                            "Expired API token for user %s (expired_at: %s)",
+                            row["id"], row["expires_at"],
+                        )
+                        return None
+                elif token_ttl_days is not None and row["token_created_at"] is not None:
+                    age = now - row["token_created_at"]
                     if age > timedelta(days=token_ttl_days):
                         logger.warning(
-                            "Expired API token for user %s (age: %s, ttl: %d days)",
+                            "Expired API token for user %s (age: %s, fallback ttl: %d days)",
                             row["id"], age, token_ttl_days,
                         )
                         return None
+
+                cursor.execute(
+                    "UPDATE api_tokens SET last_used_at = NOW() WHERE id = %s",
+                    (row["token_id"],),
+                )
+                conn.commit()
 
                 return User(
                     id=row["id"],
@@ -551,58 +707,6 @@ class UserService:
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                     updated_at=str(row["updated_at"]) if row["updated_at"] else None,
                 )
-        finally:
-            self._release_connection(conn)
-
-    def has_api_token(self, user_id: str) -> bool:
-        """
-        Check whether a user has an API token.
-
-        Args:
-            user_id: The user's unique identifier
-
-        Returns:
-            True if the user has an API token, False otherwise
-        """
-        conn = self._get_connection()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT api_token_hash IS NOT NULL FROM users WHERE id = %s",
-                    (user_id,)
-                )
-                row = cursor.fetchone()
-                return bool(row and row[0])
-        finally:
-            self._release_connection(conn)
-
-    def revoke_api_token(self, user_id: str) -> bool:
-        """
-        Revoke a user's API token.
-
-        Args:
-            user_id: The user's unique identifier
-
-        Returns:
-            True if a token was revoked, False if user had no token or not found
-        """
-        conn = self._get_connection()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE users
-                    SET api_token_hash = NULL, api_token_created_at = NULL, updated_at = NOW()
-                    WHERE id = %s AND api_token_hash IS NOT NULL
-                    """,
-                    (user_id,)
-                )
-                conn.commit()
-
-                revoked = cursor.rowcount > 0
-                if revoked:
-                    log_authentication_event(user_id, "api_token_revoke", success=True, method="bearer_token")
-                return revoked
         finally:
             self._release_connection(conn)
 

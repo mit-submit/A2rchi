@@ -2306,6 +2306,13 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/admin/database/tables', 'list_database_tables', self.require_perm(Permission.Admin.DATABASE)(self.list_database_tables), methods=["GET"])
         self.add_endpoint('/api/admin/database/query', 'run_database_query', self.require_perm(Permission.Admin.DATABASE)(self.run_database_query), methods=["POST"])
 
+        # Admin API token management (for /v1 OpenAI-compatible bearer tokens)
+        logger.info("Adding admin API token endpoints")
+        self.add_endpoint('/admin/api-tokens', 'api_tokens_page', self.require_perm(Permission.Admin.API_TOKENS)(self.api_tokens_page))
+        self.add_endpoint('/api/admin/api-tokens', 'list_admin_api_tokens', self.require_perm(Permission.Admin.API_TOKENS)(self.list_admin_api_tokens), methods=["GET"])
+        self.add_endpoint('/api/admin/api-tokens', 'create_admin_api_token', self.require_perm(Permission.Admin.API_TOKENS)(self.create_admin_api_token), methods=["POST"])
+        self.add_endpoint('/api/admin/api-tokens/<token_id>', 'revoke_admin_api_token', self.require_perm(Permission.Admin.API_TOKENS)(self.revoke_admin_api_token), methods=["DELETE"])
+
         # Service status board endpoints (registered via Blueprint)
         logger.info("Adding service status board endpoints")
         register_service_alerts(
@@ -5554,6 +5561,88 @@ class FlaskAppWrapper(object):
                 cursor.close()
             if conn:
                 conn.close()
+
+    # =========================================================================
+    # Admin API Token Management (/v1 bearer tokens)
+    # =========================================================================
+
+    def api_tokens_page(self):
+        """Render the admin API token management page."""
+        return render_template('api_tokens.html')
+
+    def list_admin_api_tokens(self):
+        """List all API tokens (admin view). Never returns plaintext or hashes."""
+        try:
+            user_service = UserService(pg_config=self.pg_config)
+            tokens = user_service.list_api_tokens()
+            return jsonify({"tokens": tokens}), 200
+        except Exception as e:
+            logger.error(f"Error listing admin API tokens: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    def create_admin_api_token(self):
+        """
+        Mint a new API token. Owner is the logged-in admin; body supplies a
+        name and optional ttl_days.
+
+        POST body (JSON): {"name": "openwebui", "ttl_days": 90}
+          - ttl_days: integer days until the token expires. Omitted, null,
+            0, or negative means the token never expires.
+        Returns: {"id": "...", "name": "...", "token": "archi_...",
+                  "expires_at": "<iso>" or null} — plaintext shown once.
+        """
+        try:
+            data = request.get_json(silent=True) or {}
+            name = (data.get("name") or "").strip()
+            if not name:
+                return jsonify({"error": "missing_name", "message": "Token name is required"}), 400
+
+            ttl_days: Optional[int] = None
+            if "ttl_days" in data and data["ttl_days"] is not None:
+                try:
+                    ttl_days = int(data["ttl_days"])
+                except (TypeError, ValueError):
+                    return jsonify({
+                        "error": "invalid_ttl_days",
+                        "message": "ttl_days must be an integer (or null for never)",
+                    }), 400
+                if ttl_days <= 0:
+                    ttl_days = None
+
+            session_user = session.get("user") or {}
+            owner_id = session_user.get("id") or session_user.get("email")
+            if not owner_id:
+                return jsonify({"error": "no_session_user"}), 401
+
+            user_service = UserService(pg_config=self.pg_config)
+            user_service.get_or_create_user(
+                owner_id,
+                auth_provider=session_user.get("auth_provider", "sso"),
+                email=session_user.get("email"),
+                display_name=session_user.get("display_name") or session_user.get("name"),
+            )
+
+            try:
+                result = user_service.create_api_token(owner_id, name, ttl_days=ttl_days)
+            except ValueError as ve:
+                return jsonify({"error": "invalid_request", "message": str(ve)}), 400
+
+            return jsonify(result), 201
+        except Exception as e:
+            logger.error(f"Error creating admin API token: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    def revoke_admin_api_token(self, token_id: str):
+        """Soft-revoke an API token by id."""
+        try:
+            user_service = UserService(pg_config=self.pg_config)
+            revoked = user_service.revoke_api_token_by_id(token_id)
+            if not revoked:
+                return jsonify({"error": "not_found"}), 404
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            logger.error(f"Error revoking admin API token {token_id}: {e}")
+            return jsonify({"error": str(e)}), 500
 
     def is_authenticated(self):
         """

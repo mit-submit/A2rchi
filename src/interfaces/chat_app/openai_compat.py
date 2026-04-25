@@ -21,7 +21,7 @@ from flask import Blueprint, Response, jsonify, request, g
 from src.archi.utils.citation_formatter import format_citations
 from src.utils.logging import get_logger
 from src.utils.rbac import Permission, has_permission, get_registry
-from src.utils.rbac.audit import log_authentication_event, log_role_assignment, log_permission_check
+from src.utils.rbac.audit import log_authentication_event, log_permission_check
 
 logger = get_logger(__name__)
 
@@ -108,17 +108,6 @@ def require_bearer_auth(f):
 
         user_id = getattr(user, 'email', None) or getattr(user, 'id', 'unknown')
         log_authentication_event(user_id, "token_auth", success=True, method="bearer")
-
-        registry = get_registry()
-        roles = ["admin"] if getattr(user, "is_admin", False) else [registry.default_role]
-        is_default = not getattr(user, "is_admin", False)
-        log_role_assignment(user_id, roles, source="token_auth", is_default=is_default)
-
-        endpoint = request.endpoint or '/v1'
-        granted = has_permission(Permission.Chat.QUERY, roles)
-        log_permission_check(user_id, str(Permission.Chat.QUERY), granted=granted, endpoint=endpoint, roles=roles)
-        if not granted:
-            return _openai_error("Permission denied", status=403)
 
         g.v1_user = user
         return f(*args, **kwargs)
@@ -450,4 +439,3 @@ def _get_or_create_conversation(external_chat_id, user_id, client_id):
     except Exception as exc:
         logger.error(f"Failed to get/create conversation for {external_chat_id}: {exc}")
         return None
-

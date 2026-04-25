@@ -63,3 +63,4 @@ class Permission:
         SYSTEM = "admin:system"
         USERS = "admin:users"
         DATABASE = "database:admin"
+        API_TOKENS = "admin:api-tokens"
