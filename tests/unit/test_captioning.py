@@ -266,6 +266,83 @@ class TestEffectiveAcceptedFiles:
             ".sh",
         ]
 
+    def test_explicit_default_accept_list_trumps_captioning(self):
+        accepted = get_effective_accepted_files(
+            {
+                "global": {
+                    "ACCEPTED_FILES": [
+                        ".pdf",
+                        ".md",
+                        ".txt",
+                        ".docx",
+                        ".html",
+                        ".htm",
+                        ".json",
+                        ".yaml",
+                        ".yml",
+                        ".py",
+                        ".js",
+                        ".ts",
+                        ".jsx",
+                        ".tsx",
+                        ".java",
+                        ".go",
+                        ".rs",
+                        ".c",
+                        ".cpp",
+                        ".h",
+                        ".sh",
+                    ]
+                },
+                "data_manager": {"captioning": {"enabled": True}},
+            }
+        )
+
+        for ext in IMAGE_EXTENSIONS:
+            assert ext not in accepted
+
+    def test_rendered_default_accept_list_includes_images_when_captioning_enabled(self):
+        rendered = _render_config_for_compare(
+            {
+                "name": "captioning-test",
+                "data_manager": {"captioning": {"enabled": True}},
+            },
+            host_mode=False,
+            verbosity=0,
+            env=TestVectorStoreManagerCaptioningConfig._build_template_env(),
+        )
+
+        for ext in IMAGE_EXTENSIONS:
+            assert ext in rendered["global"]["ACCEPTED_FILES"]
+
+    def test_rendered_default_accept_list_excludes_images_when_captioning_disabled(self):
+        rendered = _render_config_for_compare(
+            {
+                "name": "captioning-test",
+                "data_manager": {"captioning": {"enabled": False}},
+            },
+            host_mode=False,
+            verbosity=0,
+            env=TestVectorStoreManagerCaptioningConfig._build_template_env(),
+        )
+
+        for ext in IMAGE_EXTENSIONS:
+            assert ext not in rendered["global"]["ACCEPTED_FILES"]
+
+    def test_rendered_explicit_empty_accept_list_is_preserved(self):
+        rendered = _render_config_for_compare(
+            {
+                "name": "captioning-test",
+                "global": {"ACCEPTED_FILES": []},
+                "data_manager": {"captioning": {"enabled": True}},
+            },
+            host_mode=False,
+            verbosity=0,
+            env=TestVectorStoreManagerCaptioningConfig._build_template_env(),
+        )
+
+        assert rendered["global"]["ACCEPTED_FILES"] == []
+
     def test_explicit_accept_list_trumps_captioning(self):
         accepted = get_effective_accepted_files(
             {
