@@ -9,10 +9,12 @@ Registered conditionally via services.chat_app.openai_compat.enabled config.
 """
 
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timezone
 from functools import wraps
+from types import SimpleNamespace
 from typing import Any
 
 import psycopg2
@@ -25,32 +27,36 @@ from src.utils.rbac.audit import log_authentication_event, log_permission_check
 
 logger = get_logger(__name__)
 
+# Strip <think>...</think> blocks from assistant messages echoed back by
+# Open WebUI on subsequent turns — otherwise Archi's model sees its own
+# previous tool dumps as conversation context.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
 openai_compat = Blueprint("openai_compat", __name__, url_prefix="/v1")
 
 # Module-level references, set during registration
 _chat_wrapper: Any = None
-_user_service: Any = None
 _auth_enabled: bool = False
-_token_ttl_days: int = 90
 _boot_timestamp = int(time.time())
 
+# Open WebUI runs in host netns on the same machine as Archi; the host
+# firewall already drops everything except loopback. /v1 trusts the
+# X-OpenWebUI-User-* headers when the call comes from these addresses.
+_LOOPBACK_ADDRS = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})
 
-def register_openai_compat(app, chat_wrapper, *, user_service=None, auth_enabled=False, token_ttl_days: int = 90):
+
+def register_openai_compat(app, chat_wrapper, *, auth_enabled=False):
     """
     Register the OpenAI-compatible blueprint with a Flask app.
 
     Args:
         app: The Flask application
         chat_wrapper: The ChatWrapper instance for pipeline access
-        user_service: UserService instance for token auth
         auth_enabled: Whether authentication is enabled
-        token_ttl_days: Number of days before API tokens expire (default 90)
     """
-    global _chat_wrapper, _user_service, _auth_enabled, _token_ttl_days
+    global _chat_wrapper, _auth_enabled
     _chat_wrapper = chat_wrapper
-    _user_service = user_service
     _auth_enabled = auth_enabled
-    _token_ttl_days = token_ttl_days
     app.register_blueprint(openai_compat)
     logger.info("Registered OpenAI-compatible API blueprint at /v1")
 
@@ -64,52 +70,63 @@ def _openai_error(message, error_type="invalid_request_error", status=400):
     return jsonify({"error": {"message": message, "type": error_type}}), status
 
 
-def require_bearer_auth(f):
-    """Decorator for /v1 routes that enforces bearer token auth when enabled."""
+def require_owui_auth(f):
+    """Decorator for /v1 routes.
+
+    Trusts the X-OpenWebUI-User-* headers when the request comes from
+    loopback. The OWUI role header ("admin"/"user"/"pending") is mapped
+    onto Archi RBAC roles: admin → archi-admins, anything else → the
+    registry's default role.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         if not _auth_enabled:
             return f(*args, **kwargs)
 
-        # Try to extract bearer token
-        auth_header = request.headers.get("Authorization", "")
-        token = None
-        if auth_header.startswith("Bearer "):
-            token = auth_header[len("Bearer "):] or None
+        registry = get_registry()
+        peer = request.remote_addr or ""
+        email = (request.headers.get("X-OpenWebUI-User-Email") or "").strip()
+        endpoint = request.endpoint or "/v1"
 
-        if not token:
-            # No valid token — check if anonymous access is allowed
-            registry = get_registry()
+        if peer not in _LOOPBACK_ADDRS:
+            log_authentication_event(
+                "unknown", "owui_header_auth", success=False,
+                method="owui_headers", details=f"non-loopback peer {peer!r}"
+            )
+            return _openai_error("Authentication required", status=401)
+
+        if not email:
             if registry.allow_anonymous:
-                log_authentication_event("anonymous", "api_anonymous_access", success=True, method="anonymous")
-                g.v1_user = None
                 roles = [registry.default_role]
-                endpoint = request.endpoint or '/v1'
                 granted = has_permission(Permission.Chat.QUERY, roles)
+                log_authentication_event("anonymous", "api_anonymous_access", success=True, method="anonymous")
                 log_permission_check("anonymous", str(Permission.Chat.QUERY), granted=granted, endpoint=endpoint, roles=roles)
                 if not granted:
                     return _openai_error("Permission denied", status=403)
+                g.v1_user = None
                 g.v1_roles = roles
                 return f(*args, **kwargs)
-            else:
-                log_authentication_event("unknown", "api_token_auth", success=False, method="bearer_token", details="No token provided")
-                return _openai_error("Authentication required", status=401)
+            log_authentication_event(
+                "unknown", "owui_header_auth", success=False,
+                method="owui_headers", details="missing X-OpenWebUI-User-Email"
+            )
+            return _openai_error("Authentication required", status=401)
 
-        # Token was provided — validate it
-        if _user_service is None:
-            logger.error("UserService not available for /v1 auth")
-            log_authentication_event("unknown", "token_auth", success=False, method="bearer", details="UserService unavailable")
-            return _openai_error("Authentication service unavailable", "server_error", 500)
+        owui_role = (request.headers.get("X-OpenWebUI-User-Role") or "").lower().strip()
+        if owui_role == "admin":
+            roles = ["archi-admins"]
+        else:
+            roles = [registry.default_role]
 
-        user = _user_service.get_user_by_api_token(token, token_ttl_days=_token_ttl_days)
-        if user is None:
-            log_authentication_event("unknown", "token_auth", success=False, method="bearer", details="Invalid or expired token")
-            return _openai_error("Invalid or expired token", status=401)
+        granted = has_permission(Permission.Chat.QUERY, roles)
+        log_permission_check(email, str(Permission.Chat.QUERY), granted=granted, endpoint=endpoint, roles=roles)
+        if not granted:
+            log_authentication_event(email, "owui_header_auth", success=False, method="owui_headers", details="permission denied")
+            return _openai_error("Permission denied", status=403)
 
-        user_id = getattr(user, 'email', None) or getattr(user, 'id', 'unknown')
-        log_authentication_event(user_id, "token_auth", success=True, method="bearer")
-
-        g.v1_user = user
+        log_authentication_event(email, "owui_header_auth", success=True, method="owui_headers")
+        g.v1_user = SimpleNamespace(id=email, email=email)
+        g.v1_roles = roles
         return f(*args, **kwargs)
 
     return decorated
@@ -120,7 +137,7 @@ def require_bearer_auth(f):
 # ---------------------------------------------------------------------------
 
 @openai_compat.route("/models", methods=["GET"])
-@require_bearer_auth
+@require_owui_auth
 def list_models():
     """Return available archi configs as OpenAI model objects."""
     from src.utils.config_access import get_full_config
@@ -145,7 +162,7 @@ def list_models():
 # ---------------------------------------------------------------------------
 
 @openai_compat.route("/chat/completions", methods=["POST"])
-@require_bearer_auth
+@require_owui_auth
 def chat_completions():
     """Handle OpenAI-compatible chat completion requests."""
     data = request.get_json(silent=True)
@@ -201,7 +218,7 @@ def chat_completions():
         "client_timeout": 600.0,
         "config_name": model,
         "include_agent_steps": True,
-        "include_tool_steps": False,
+        "include_tool_steps": True,
         "user_id": user_id,
         "external_history": history,
     }
@@ -241,19 +258,59 @@ def _streaming_response(request_id, model, stream_kwargs):
         accumulated = [""]
         source_documents = []
         source_scores = []
+        # Open WebUI renders <think>...</think> as a collapsible "Thought"
+        # block. We open it on the first tool/thinking event and close it
+        # before the actual answer text starts streaming.
+        trace = {"opened": False, "closed": False}
+
+        def open_trace():
+            if not trace["opened"]:
+                trace["opened"] = True
+                return _sse_chunk(request_id, model, content="<think>\n")
+            return None
+
+        def close_trace():
+            if trace["opened"] and not trace["closed"]:
+                trace["closed"] = True
+                return _sse_chunk(request_id, model, content="\n</think>\n\n")
+            return None
 
         try:
             for event in _chat_wrapper.stream(**stream_kwargs):
                 event_type = event.get("type", "")
 
-                if event_type == "chunk":
+                if event_type in ("tool_start", "thinking_start"):
+                    opener = open_trace()
+                    if opener:
+                        yield opener
+                    if event_type == "tool_start":
+                        name = event.get("tool_name", "unknown")
+                        yield _sse_chunk(request_id, model, content=f"\n- **{name}**")
+
+                elif event_type == "tool_end":
+                    duration = event.get("duration_ms")
+                    if duration is not None:
+                        yield _sse_chunk(request_id, model, content=f" ({duration} ms)")
+
+                elif event_type == "thinking_end":
+                    text = (event.get("thinking_content") or "")[:200]
+                    if text:
+                        yield _sse_chunk(request_id, model, content=f"\n  _{text}_")
+
+                elif event_type == "chunk":
                     content = event.get("content", "")
                     if content:
+                        closer = close_trace()
+                        if closer:
+                            yield closer
                         delta, accumulated[0] = _extract_delta(content, accumulated[0])
                         if delta:
                             yield _sse_chunk(request_id, model, content=delta)
 
                 elif event_type == "final":
+                    closer = close_trace()
+                    if closer:
+                        yield closer
                     docs = event.get("source_documents", [])
                     scores_list = event.get("retriever_scores", [])
                     if docs:
@@ -271,6 +328,9 @@ def _streaming_response(request_id, model, stream_kwargs):
                     return
 
                 elif event_type == "error":
+                    closer = close_trace()
+                    if closer:
+                        yield closer
                     error_msg = event.get("message", "Unknown error")
                     yield _sse_chunk(request_id, model, content=f"\n\n[Error: {error_msg}]")
                     yield _sse_chunk(request_id, model, finish_reason="stop")
@@ -279,11 +339,17 @@ def _streaming_response(request_id, model, stream_kwargs):
                     return
 
             # No final event received — close the stream
+            closer = close_trace()
+            if closer:
+                yield closer
             yield _sse_chunk(request_id, model, finish_reason="stop")
             yield "data: [DONE]\n\n"
 
         except Exception as exc:
             logger.error(f"/v1 streaming error: {exc}", exc_info=True)
+            closer = close_trace()
+            if closer:
+                yield closer
             yield _sse_chunk(request_id, model, content="\n\n[Error: server error; see chat logs for message]")
             yield _sse_chunk(request_id, model, finish_reason="stop")
             yield "data: [DONE]\n\n"
@@ -307,12 +373,26 @@ def _non_streaming_response(request_id, model, stream_kwargs):
     final_content = ""
     source_documents = []
     source_scores = []
+    trace_lines: list[str] = []
 
     try:
         for event in _chat_wrapper.stream(**stream_kwargs):
             event_type = event.get("type", "")
 
-            if event_type == "final":
+            if event_type == "tool_start":
+                trace_lines.append(f"\n- **{event.get('tool_name', 'unknown')}**")
+
+            elif event_type == "tool_end":
+                duration = event.get("duration_ms")
+                if duration is not None and trace_lines:
+                    trace_lines[-1] += f" ({duration} ms)"
+
+            elif event_type == "thinking_end":
+                text = (event.get("thinking_content") or "")[:200]
+                if text:
+                    trace_lines.append(f"\n  _{text}_")
+
+            elif event_type == "final":
                 # The final event's response is a plain string from
                 # ChatWrapper._finalize_result — use it directly.
                 response = event.get("response")
@@ -335,6 +415,9 @@ def _non_streaming_response(request_id, model, stream_kwargs):
     citation_text = format_citations(source_documents, source_scores)
     if citation_text:
         final_content += citation_text
+
+    if trace_lines:
+        final_content = "<think>\n" + "".join(trace_lines) + "\n</think>\n\n" + final_content
 
     return jsonify({
         "id": request_id,
@@ -401,6 +484,7 @@ def _messages_to_history(messages):
         if role == "system":
             continue
         elif role == "assistant":
+            content = _THINK_BLOCK_RE.sub("", content)
             history.append(("archi", content))
         else:
             history.append(("user", content))
