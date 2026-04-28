@@ -10,6 +10,7 @@ from src.data_manager.vectorstore.retrievers import HybridRetriever
 from src.archi.pipelines.agents.tools import (
     create_document_fetch_tool,
     create_file_search_tool,
+    create_ingest_url_tool,
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
@@ -169,6 +170,18 @@ class CMSCompOpsAgent(BaseReActAgent):
                 "builder": self._build_mcp_tools,
                 "description": "Access tools served via configured MCP servers.",
             },
+            "ingest_url": {
+                "builder": self._build_ingest_url_tool,
+                "description": (
+                    "Ingest a URL into the knowledge base so it becomes searchable.\n"
+                    "Use after surfacing a URL from another tool (e.g. INDICO_get_files) "
+                    "when the user wants the page contents available to "
+                    "search_vectorstore_hybrid afterwards.\n"
+                    "Indico event URLs auto-route through the Indico scraper "
+                    "(API + slide-to-markdown); other URLs use the generic link scraper.\n"
+                    "Input: url (string). Optional: depth (int)."
+                ),
+            },
         }
 
         # Keep this safe for lightweight introspection paths that call
@@ -227,6 +240,22 @@ class CMSCompOpsAgent(BaseReActAgent):
             self.catalog_service,
             description=description,
             store_tool_input=getattr(self, "_store_tool_input", None),
+        )
+
+    def _build_ingest_url_tool(self) -> Callable:
+        description = self._tool_definitions()["ingest_url"]["description"]
+        # Mirrors how chat_app derives the data-manager base URL: prefer 'hostname'
+        # (compose service DNS) and fall back to 'host' for local dev.
+        dm_cfg = self.config.get("services", {}).get("data_manager", {}) or {}
+        dm_host = dm_cfg.get("hostname") or dm_cfg.get("host") or "localhost"
+        dm_port = dm_cfg.get("port", 5001)
+        data_manager_url = f"http://{dm_host}:{dm_port}"
+        dm_token = read_secret("DM_API_TOKEN") or None
+        headers = {"Authorization": f"Bearer {dm_token}"} if dm_token else None
+        return create_ingest_url_tool(
+            data_manager_url,
+            headers=headers,
+            description=description,
         )
 
     def _build_vector_tool_placeholder(self) -> List[Callable]:

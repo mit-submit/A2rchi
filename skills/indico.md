@@ -15,9 +15,23 @@ events, contributions, categories, or attached materials.
   starting from `"0"` (root) — don't guess IDs.
 - **Talks/contributions inside an event**: `INDICO_get_event_contributions`. Set
   `include_subcontributions: true` for sessions broken into sub-talks.
-- **Materials/slides attached to an event**: `INDICO_get_files`. Defaults to listing only;
-  pass `download_files: true` only when the user explicitly asks for the files.
+- **Materials/slides attached to an event**: `INDICO_get_files` with `download_files: false`
+  to list URLs and metadata. **Do not** pass `download_files: true` — those files land
+  inside the MCP sidecar where archi can't read them.
 - **Who am I / what perms do I have**: `INDICO_get_user_info`.
+
+## Making slides searchable: pair with `ingest_url`
+
+When the user wants the *contents* of an event (slide text, agenda body) — not just
+metadata — chain `INDICO_get_files` with `ingest_url`:
+
+1. `INDICO_get_files(event_id, download_files=false)` — confirm the event exists, get
+   the canonical event URL.
+2. `ingest_url(<event_url>)` — data-manager auto-routes Indico URLs through
+   `IndicoScraper`, which pulls slides via the API, converts them to markdown, and
+   indexes them in the vectorstore.
+3. After `ingest_url` returns its resource count, answer the question with
+   `search_vectorstore_hybrid`.
 
 ## Indico URL shape
 
