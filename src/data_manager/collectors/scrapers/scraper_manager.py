@@ -149,17 +149,18 @@ class ScraperManager:
         self,
         persistence: PersistenceService,
         indico_urls: Optional[List[str]] = None,
-    ) -> None:
-        """Collect Indico events and materials."""
+    ) -> int:
+        """Collect Indico events and materials. Returns count of resources scraped."""
         if not self.indico_enabled:
             logger.info("Indico disabled, skipping Indico scraping")
-            return
+            return 0
         if not indico_urls:
-            return
+            return 0
         indico_dir = persistence.data_path / "indico"
         if not os.path.exists(indico_dir):
             os.makedirs(indico_dir, exist_ok=True)
-        self._collect_indico_resources(indico_urls, persistence, indico_dir)
+        resources = self._collect_indico_resources(indico_urls, persistence, indico_dir)
+        return len(resources or [])
 
     def collect_sso(
         self,
