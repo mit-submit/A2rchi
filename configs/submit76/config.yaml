@@ -15,38 +15,18 @@ services:
         models:
           - "gpt-oss:120b"
           - "qwen3:32b"
-    port: 7865
-    external_port: 7865
-    ab_testing:
-      enabled: true
-      pool:
-        champion: default
-        variants:
-          - name: default
-            provider: local
-            model: "qwen3:32b"
-          - name: gpt-oss-120b
-            provider: local
-            model: "gpt-oss:120b"
+    port: 7867
+    external_port: 7867
   postgres:
     port: 5435
   data_manager:
     port: 7878
     external_port: 7878
     auth:
-      enabled: true
+      enabled: false
 
 data_manager:
   sources:
-    jira:
-      enabled: true
-      max_tickets: 10
-      url: https://its.cern.ch/jira/
-      projects:
-        - "CMSPROD"
-    links:
-      input_lists:
-        - /home/submit/pmlugato/random_configs/lists/sso_git.list
     redmine:
       url: https://cleo.mit.edu
       project: emails-to-ticket
