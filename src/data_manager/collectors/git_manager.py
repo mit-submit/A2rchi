@@ -161,6 +161,7 @@ class GitManager:
                 branch=repo_info.get("branch", ""),
                 ref=ref,
                 title=md_path.stem.replace("_", " ").replace("-", " ").title(),
+                url=url,
             )
 
     def _harvest_code(self, repo_info: Dict[str, Any]) -> Iterator[GitResource]:
@@ -198,6 +199,8 @@ class GitManager:
             if not text.strip():
                 continue
 
+            blob_url = self._build_blob_url(base_url, ref, rel)
+
             yield GitResource(
                 repo_url=repo_url,
                 file_path=str(Path(repo_name) / rel),
@@ -206,6 +209,7 @@ class GitManager:
                 branch=repo_info.get("branch", ""),
                 ref=ref,
                 title=None,
+                url=blob_url,
             )
 
     # ── Repository preparation ────────────────────────────────────────────────

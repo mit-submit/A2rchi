@@ -20,6 +20,7 @@ class GitResource(BaseResource):
     branch: str = ""
     ref: str = ""           # commit SHA or tag; used in blob URLs
     title: Optional[str] = None
+    url: str = ""
 
     def get_hash(self) -> str:
         """
@@ -51,6 +52,8 @@ class GitResource(BaseResource):
             "suffix": Path(self.file_path).suffix.lstrip(".") or "",
             "display_name": self.file_path,
         }
+        if self.url:
+            extra["url"] = self.url
         if self.branch:
             extra["branch"] = self.branch
         if self.ref:
