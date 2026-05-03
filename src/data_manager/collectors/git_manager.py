@@ -76,7 +76,7 @@ class GitManager:
             return
         urls: List[str] = []
         for list_path in self.config.get("input_lists") or []:
-            path = Path("weblists") / Path(list_path)
+            path = Path("weblists") / Path(list_path).name
             if path.exists():
                 urls.extend(extract_urls_from_file(path))
             else:
