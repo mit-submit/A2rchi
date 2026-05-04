@@ -86,6 +86,6 @@ aiohttp==3.9.5
 nltk==3.9.1
 sentence-transformers==5.1.2
 rank_bm25==0.2.2
-markitdown[pdf,pptx]>=0.1.0
+markitdown[pdf,pptx]==0.1.5
 Scrapy==2.14.2
 playwright==1.58.0
