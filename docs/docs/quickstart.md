@@ -86,7 +86,7 @@ services:
 
 data_manager:
   sources:
-    links:
+    web:
       visible: true          # include scraped pages in the chat citations
       input_lists:
         - examples/deployments/basic-gpu/miscellanea.list

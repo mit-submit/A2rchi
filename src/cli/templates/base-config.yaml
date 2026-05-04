@@ -188,74 +188,99 @@ data_manager:
         {%- for path in paths %}
         - {{ path }}
         {%- endfor %}
-    links:
-      base_source_depth: {{ data_manager.sources.links.base_source_depth | default(1, true) }}
-      max_pages: {{ data_manager.sources.links.max_pages | default(null, true) }}
-      enabled: {{ data_manager.sources.links.enabled | default(true, true) }}
-      visible: {{ data_manager.sources.links.visible | default(true, true) }}
-      schedule: '{{ data_manager.sources.links.schedule | default("", true) }}'
+    web:
+      enabled: {{ data_manager.sources.web.enabled | default(true, true) }}
+      visible: {{ data_manager.sources.web.visible | default(true, true) }}
+      fallback_spider: {{ data_manager.sources.web.fallback_spider | default("link", true) }}
+      auth_provider_name: {{ data_manager.sources.web.auth_provider_name | default("", true) }}
+      schedule: '{{ data_manager.sources.web.schedule | default("", true) }}'
+      max_depth: {{ data_manager.sources.web.max_depth | default(3, true) }}
+      max_pages: {{ data_manager.sources.web.max_pages | default(null, true) }}
+      delay: {{ data_manager.sources.web.delay | default(1, true) }}
+      allow: {{ data_manager.sources.web.allow | default([], true) | tojson }}
+      deny: {{ data_manager.sources.web.deny | default([], true) | tojson }}
+      anonymize_data: {{ data_manager.sources.web.anonymize_data | default(false, true) }}
+      markitdown: {{ data_manager.sources.web.markitdown | default(false, true) }}
       input_lists:
-        {%- set link_lists = data_manager.sources.links.input_lists | default([], true) %}
-        {%- for input_list in link_lists %}
-        - {{ input_list }}
+        {%- for link in data_manager.sources.web.input_lists | default([], true) %}
+        - {{ link }}
         {%- endfor %}
-      html_scraper:
-        reset_data: {{ data_manager.sources.links.html_scraper.reset_data | default(true, true) }}
-        verify_urls: {{ data_manager.sources.links.html_scraper.verify_urls | default(false, true) }}
-        enable_warnings: {{ data_manager.sources.links.html_scraper.enable_warnings | default(false, true) }}
-      selenium_scraper:
-        enabled: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.enabled | default(false, True) }}
-        visible: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.visible | default(false, true) }}
-        use_for_scraping: {{ data_manager.sources.links.selenium_scraper.use_for_scraping | default(false, true) }}
-        selenium_class: {{  data_manager.sources.links.selenium_scraper.selenium_class | default('CERNSSOScraper', true)  }}
-        selenium_url: {{  data_manager.sources.links.selenium_scraper.selenium_url | default('null', true)  }}
-        selenium_class_map:
-          CERNSSOScraper:
-            class: {{ data_manager.sources.links.selenium_scraper.selenium_class_map.CERNSSOScraper.class | default('CERNSSOScraper', true) }}
-            kwargs:
-              headless:  {{ data_manager.sources.links.selenium_scraper.selenium_class_map.CERNSSOScraper.kwargs.headless | default(true, true) }}
+      sites:
+        twiki:
+          enabled: {{ data_manager.sources.web.sites.twiki.enabled | default(true, true) }}
+          domain: {{ data_manager.sources.web.sites.twiki.domain | default("twiki.cern.ch", true) }}
+          domains:
+            {%- for domain in data_manager.sources.web.sites.twiki.domains | default([], true) %}
+            - {{ domain }}
+            {%- endfor %}
+          auth_provider_name: {{ data_manager.sources.web.sites.twiki.auth_provider_name | default("", true) }}
+          schedule: '{{ data_manager.sources.web.sites.twiki.schedule | default("", true) }}'
+          max_depth: {{ data_manager.sources.web.sites.twiki.max_depth | default(2, true) }}
+          max_pages: {{ data_manager.sources.web.sites.twiki.max_pages | default(100, true) }}
+          delay: {{ data_manager.sources.web.sites.twiki.delay | default(60, true) }}
+          allow: {{ data_manager.sources.web.sites.twiki.allow | default([], true) | tojson }}
+          deny: {{ data_manager.sources.web.sites.twiki.deny | default([], true) | tojson }}
+          anonymize_data: {{ data_manager.sources.web.sites.twiki.anonymize_data | default(false, true) }}
+          markitdown: {{ data_manager.sources.web.sites.twiki.markitdown | default(false, true) }}
+        discourse:
+          enabled: {{ data_manager.sources.web.sites.discourse.enabled | default(true, true) }}
+          domain: {{ data_manager.sources.web.sites.discourse.domain | default("cms-talk.web.cern.ch", true) }}
+          domains:
+            {%- for domain in data_manager.sources.web.sites.discourse.domains | default([], true) %}
+            - {{ domain }}
+            {%- endfor %}
+          auth_provider_name: {{ data_manager.sources.web.sites.discourse.auth_provider_name | default("cern_sso", true) }}
+          schedule: '{{ data_manager.sources.web.sites.discourse.schedule | default("", true) }}'
+          max_pages: {{ data_manager.sources.web.sites.discourse.max_pages | default(500, true) }}
+          delay: {{ data_manager.sources.web.sites.discourse.delay | default(10, true) }}
+          anonymize_data: {{ data_manager.sources.web.sites.discourse.anonymize_data | default(false, true) }}
+          markitdown: {{ data_manager.sources.web.sites.discourse.markitdown | default(false, true) }}
+          keywords:
+            {%- for keyword in data_manager.sources.web.sites.discourse.keywords | default([], true) %}
+            - {{ keyword }}
+            {%- endfor %}
+        indico:
+          enabled: {{ data_manager.sources.indico.enabled | default(false, true) }}
+          visible: {{ data_manager.sources.indico.visible | default(true, true) }}
+          schedule: '{{ data_manager.sources.indico.schedule | default("", true) }}'
+          base_url: {{ data_manager.sources.indico.base_url | default('https://indico.cern.ch', true) }}
+          use_sso: {{ data_manager.sources.indico.use_sso | default(true) }}
+          # Day filtering (all optional - if none set, scrapes all days)
+          {%- if data_manager.sources.indico.max_days is defined %}
+          max_days: {{ data_manager.sources.indico.max_days }}
+          {%- endif %}
+          {%- if data_manager.sources.indico.only_first_day is defined %}
+          only_first_day: {{ data_manager.sources.indico.only_first_day }}
+          {%- endif %}
+          {%- if data_manager.sources.indico.days is defined %}
+          days: {{ data_manager.sources.indico.days | tojson }}
+          {%- endif %}
+          {%- if data_manager.sources.indico.date_range is defined %}
+          date_range: {{ data_manager.sources.indico.date_range | tojson }}
+          {%- endif %}
+          sso_kwargs:
+            headless: {{ data_manager.sources.indico.sso_kwargs.headless | default(true, true) }}
+            site_type: {{ data_manager.sources.indico.sso_kwargs.site_type | default('generic', true) }}
+          slide_conversion:
+            enabled: {{ data_manager.sources.indico.slide_conversion.enabled | default(true) }}
+            store_originals: {{ data_manager.sources.indico.slide_conversion.store_originals | default(false, true) }}
+            formats:
+              {%- set indico_formats = data_manager.sources.indico.slide_conversion.formats | default(['pdf', 'pptx', 'ppt', 'odp'], true) %}
+              {%- for format in indico_formats %}
+              - {{ format }}
+              {%- endfor %}
+            llm_enabled: {{ data_manager.sources.indico.slide_conversion.llm_enabled | default(false, true) }}
+            llm_model: {{ data_manager.sources.indico.slide_conversion.llm_model | default('', true) }}
+          plot_extraction:
+            enabled: {{ data_manager.sources.indico.plot_extraction.enabled | default(false, true) }}
     git:
       enabled: {{ data_manager.sources.git.enabled | default(true, true) }}
       visible: {{ data_manager.sources.git.visible | default(true, true) }}
       schedule: '{{ data_manager.sources.git.schedule | default("", true) }}'
-    sso:
-      enabled: {{ data_manager.sources.sso.enabled | default(true, true) }}
-      visible: {{ data_manager.sources.sso.visible | default(true, true) }}
-      schedule: '{{ data_manager.sources.sso.schedule | default("", true) }}'
-    indico:
-      enabled: {{ data_manager.sources.indico.enabled | default(false, true) }}
-      visible: {{ data_manager.sources.indico.visible | default(true, true) }}
-      schedule: '{{ data_manager.sources.indico.schedule | default("", true) }}'
-      base_url: {{ data_manager.sources.indico.base_url | default('https://indico.cern.ch', true) }}
-      use_sso: {{ data_manager.sources.indico.use_sso | default(true) }}
-      # Day filtering (all optional - if none set, scrapes all days)
-      {%- if data_manager.sources.indico.max_days is defined %}
-      max_days: {{ data_manager.sources.indico.max_days }}
-      {%- endif %}
-      {%- if data_manager.sources.indico.only_first_day is defined %}
-      only_first_day: {{ data_manager.sources.indico.only_first_day }}
-      {%- endif %}
-      {%- if data_manager.sources.indico.days is defined %}
-      days: {{ data_manager.sources.indico.days | tojson }}
-      {%- endif %}
-      {%- if data_manager.sources.indico.date_range is defined %}
-      date_range: {{ data_manager.sources.indico.date_range | tojson }}
-      {%- endif %}
-      sso_kwargs:
-        headless: {{ data_manager.sources.indico.sso_kwargs.headless | default(true, true) }}
-        site_type: {{ data_manager.sources.indico.sso_kwargs.site_type | default('generic', true) }}
-      slide_conversion:
-        enabled: {{ data_manager.sources.indico.slide_conversion.enabled | default(true) }}
-        store_originals: {{ data_manager.sources.indico.slide_conversion.store_originals | default(false, true) }}
-        formats:
-          {%- set indico_formats = data_manager.sources.indico.slide_conversion.formats | default(['pdf', 'pptx', 'ppt', 'odp'], true) %}
-          {%- for format in indico_formats %}
-          - {{ format }}
-          {%- endfor %}
-        llm_enabled: {{ data_manager.sources.indico.slide_conversion.llm_enabled | default(false, true) }}
-        llm_model: {{ data_manager.sources.indico.slide_conversion.llm_model | default('', true) }}
-      plot_extraction:
-        enabled: {{ data_manager.sources.indico.plot_extraction.enabled | default(false, true) }}
+      input_lists:
+        {%- for link in data_manager.sources.git.input_lists | default([], true) %}
+        - {{ link }}
+        {%- endfor %}
     jira:
       enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}
       url: {{ data_manager.sources.jira.url | default('', true) }}

@@ -28,7 +28,7 @@ def select_loader(file_path: str | Path):
         return TextLoader(str(path))
     if file_extension == ".py":
         return PythonLoader(str(path))
-    if file_extension in {".html", ".htm"}:
+    if file_extension in {".html", ".htm", ".rss", ".xml"}:
         return BSHTMLLoader(str(path), bs_kwargs={"features": "html.parser"})
     if file_extension == ".pdf":
         return PyPDFLoader(str(path))

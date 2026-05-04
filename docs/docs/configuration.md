@@ -318,7 +318,7 @@ services:
 
 data_manager:
   sources:
-    links:
+    web:
       input_lists:
         - examples/deployments/basic-gpu/miscellanea.list
       scraper:

@@ -649,8 +649,9 @@ class TemplateManager:
         weblists_path.mkdir(exist_ok=True)
         logger.debug(f"Created weblists directory at {weblists_path}")
         
-        input_lists = context.config_manager.get_input_lists()
+        input_lists = context.config_manager.get_all_input_lists()
         if not input_lists:
+            logger.warning("No input lists configured; skipping")
             return
 
         for input_list in input_lists:

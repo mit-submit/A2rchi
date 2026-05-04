@@ -74,9 +74,8 @@ def main() -> None:
 
     schedule_map: Dict[str, Callable[[Optional[str]], None]] = {
         "local_files": lambda last_run=None: data_manager.localfile_manager.schedule_collect_local_files(data_manager.persistence, last_run=last_run),
-        "links": lambda last_run=None: data_manager.scraper_manager.schedule_collect_links(data_manager.persistence, last_run=last_run),
-        "git": lambda last_run=None: data_manager.scraper_manager.schedule_collect_git(data_manager.persistence, last_run=last_run),
-        "sso": lambda last_run=None: data_manager.scraper_manager.schedule_collect_sso(data_manager.persistence, last_run=last_run),
+        "web": lambda last_run=None: data_manager.scraper_manager.schedule_collect(last_run=last_run),
+        "git": lambda last_run=None: data_manager.git_manager.schedule_collect_git(data_manager.persistence, last_run=last_run),
         "jira": lambda last_run=None: data_manager.ticket_manager.schedule_collect_jira(data_manager.persistence, last_run=last_run),
         "redmine": lambda last_run=None: data_manager.ticket_manager.schedule_collect_redmine(data_manager.persistence, last_run=last_run),
     }

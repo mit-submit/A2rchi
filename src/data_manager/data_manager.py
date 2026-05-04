@@ -2,9 +2,11 @@ import os
 from typing import Callable, Optional
 
 from src.data_manager.collectors.persistence import PersistenceService
-from src.data_manager.collectors.scrapers.scraper_manager import ScraperManager
+from src.data_manager.collectors.utils.anonymizer import Anonymizer
+from src.data_manager.collectors.scraper_manager import ScraperManager
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.collectors.localfile_manager import LocalFileManager
+from src.data_manager.collectors.git_manager import GitManager
 from src.data_manager.vectorstore.manager import VectorStoreManager
 from src.utils.config_access import get_full_config
 from src.utils.config_service import ConfigService
@@ -35,8 +37,10 @@ class DataManager():
             raise RuntimeError("Static config missing sources_config; run deployment initialization first.")
         self.config["data_manager"]["sources"] = static_config.sources_config
 
+        self.anonymizer = Anonymizer()
         self.localfile_manager = LocalFileManager(dm_config=self.config["data_manager"])
-        self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"])
+        self.git_manager = GitManager(dm_config=self.config["data_manager"])
+        self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"], persistence=self.persistence, anonymizer=self.anonymizer)
         self.ticket_manager = TicketManager(dm_config=self.config["data_manager"])
 
         self.vector_manager = VectorStoreManager(
@@ -61,7 +65,8 @@ class DataManager():
         """Execute initial ingestion and vectorstore update."""
         source_aggregation = [
             ("Copying configured local files", lambda: self.localfile_manager.collect_all_from_config(self.persistence)),
-            ("Scraping documents onto filesystem", lambda: self.scraper_manager.collect_all_from_config(self.persistence)),
+            ("Collecting git repos", lambda: self.git_manager.collect_all_from_config(self.persistence)),
+            ("Scraping web sources onto filesystem", lambda: self.scraper_manager.collect_all_from_config()),
             ("Fetching ticket data onto filesystem", lambda: self.ticket_manager.collect_all_from_config(self.persistence)),
         ]
 

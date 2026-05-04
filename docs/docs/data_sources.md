@@ -17,7 +17,7 @@ Define which link lists to ingest in your configuration file:
 ```yaml
 data_manager:
   sources:
-    links:
+    web:
       input_lists:
         - miscellanea.list
         - additional_urls.list
