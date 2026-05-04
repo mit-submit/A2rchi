@@ -14,7 +14,33 @@ mcp_servers:
   {%- for server_name, server_config in (mcp_servers | default({}, true)).items() %}
   {{ server_name }}:
     transport: {{ server_config.transport | default('streamable_http', true) }}
-    url: {{ server_config.url | default('', true) }}
+    {%- if server_config.url is defined %}
+    url: {{ server_config.url }}
+    {%- endif %}
+    {%- if server_config.command is defined %}
+    command: {{ server_config.command }}
+    {%- endif %}
+    {%- if server_config.args is defined %}
+    args: {{ server_config.args | tojson }}
+    {%- endif %}
+    {%- if server_config.env is defined %}
+    env: {{ server_config.env | tojson }}
+    {%- endif %}
+    {%- if server_config.env_from_secrets is defined %}
+    env_from_secrets: {{ server_config.env_from_secrets | tojson }}
+    {%- endif %}
+    {%- if server_config.host_file_mounts is defined %}
+    host_file_mounts: {{ server_config.host_file_mounts | tojson }}
+    {%- endif %}
+    {%- if server_config.build_context is defined %}
+    build_context: {{ server_config.build_context }}
+    {%- endif %}
+    {%- if server_config.image is defined %}
+    image: {{ server_config.image }}
+    {%- endif %}
+    {%- if server_config.skill is defined %}
+    skill: {{ server_config.skill }}
+    {%- endif %}
   {%- endfor %}
 
 services:

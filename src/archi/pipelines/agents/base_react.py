@@ -55,6 +55,7 @@ class BaseReActAgent:
         self._active_memory: Optional[RunMemory] = None
         self._static_tools: Optional[List[Callable]] = None
         self._mcp_tools: Optional[List[Callable]] = None
+        self._mcp_skills_text: str = ""
         self._active_tools: List[Callable] = []
         self._static_middleware: Optional[List[Callable]] = None
         self._active_middleware: List[Callable] = []
@@ -134,10 +135,14 @@ class BaseReActAgent:
         # Different providers use different keys
         usage = response_metadata.get("usage") or response_metadata.get("token_usage")
         if usage:
+            # OpenAI nests cache info under prompt_tokens_details.cached_tokens.
+            details = usage.get("prompt_tokens_details") or {}
+            cached_tokens = details.get("cached_tokens", 0) if isinstance(details, dict) else 0
             return {
                 "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens", 0),
                 "completion_tokens": usage.get("completion_tokens") or usage.get("output_tokens", 0),
                 "total_tokens": usage.get("total_tokens", 0),
+                "cached_tokens": int(cached_tokens or 0),
             }
         # Ollama format
         if "prompt_eval_count" in response_metadata or "eval_count" in response_metadata:
@@ -147,6 +152,7 @@ class BaseReActAgent:
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": prompt_tokens + completion_tokens,
+                "cached_tokens": 0,
             }
         return None
 
@@ -179,7 +185,7 @@ class BaseReActAgent:
     def _extract_usage_from_messages(self, messages: List[BaseMessage]) -> Optional[Dict[str, int]]:
         """
         Sum token usage across ALL AI messages in the turn.
-        
+
         In a multi-step agent loop, the LLM is called multiple times
         (thinking, tool decisions, final answer). Each call reports its
         own prompt_tokens and completion_tokens. We sum them to show
@@ -187,8 +193,9 @@ class BaseReActAgent:
         """
         total_prompt = 0
         total_completion = 0
+        total_cached = 0
         found_any = False
-        
+
         for msg in messages:
             msg_type = str(getattr(msg, "type", "")).lower()
             if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
@@ -197,15 +204,17 @@ class BaseReActAgent:
             if usage:
                 total_prompt += usage.get("prompt_tokens", 0)
                 total_completion += usage.get("completion_tokens", 0)
+                total_cached += usage.get("cached_tokens", 0)
                 found_any = True
-        
+
         if not found_any:
             return None
-        
+
         return {
             "prompt_tokens": total_prompt,
             "completion_tokens": total_completion,
             "total_tokens": total_prompt + total_completion,
+            "cached_tokens": total_cached,
         }
 
     def _extract_usage_from_message(self, message: BaseMessage) -> Optional[Dict[str, int]]:
@@ -215,11 +224,18 @@ class BaseReActAgent:
             prompt_tokens = usage_metadata.get("input_tokens", 0)
             completion_tokens = usage_metadata.get("output_tokens", 0)
             total_tokens = usage_metadata.get("total_tokens", prompt_tokens + completion_tokens)
+            # LangChain standardizes cache hit info under input_token_details.cache_read.
+            # OpenAI maps prompt_tokens_details.cached_tokens → cache_read here.
+            input_details = usage_metadata.get("input_token_details") or {}
+            cached_tokens = (
+                input_details.get("cache_read", 0) if isinstance(input_details, dict) else 0
+            )
             if prompt_tokens or completion_tokens or total_tokens:
                 return {
                     "prompt_tokens": int(prompt_tokens or 0),
                     "completion_tokens": int(completion_tokens or 0),
                     "total_tokens": int(total_tokens or 0),
+                    "cached_tokens": int(cached_tokens or 0),
                 }
 
         response_metadata = getattr(message, "response_metadata", None)
@@ -561,12 +577,21 @@ class BaseReActAgent:
             usage = self._extract_usage_from_metadata(last_response_metadata)
         if model is None:
             model = self._extract_model_from_metadata(last_response_metadata)
+        if usage:
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            cached = usage.get("cached_tokens", 0)
+            hit = (cached / pt * 100.0) if pt else 0.0
+            logger.info(
+                "Usage: prompt=%d (cached=%d, %.1f%% hit) completion=%d total=%d",
+                pt, cached, hit, ct, usage.get("total_tokens", pt + ct),
+            )
         final_metadata = {
             "event_type": "final",
             "usage": usage,
             "model": model,
         }
-        
+
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
@@ -849,12 +874,21 @@ class BaseReActAgent:
             usage = self._extract_usage_from_metadata(last_response_metadata)
         if model is None:
             model = self._extract_model_from_metadata(last_response_metadata)
+        if usage:
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            cached = usage.get("cached_tokens", 0)
+            hit = (cached / pt * 100.0) if pt else 0.0
+            logger.info(
+                "Usage: prompt=%d (cached=%d, %.1f%% hit) completion=%d total=%d",
+                pt, cached, hit, ct, usage.get("total_tokens", pt + ct),
+            )
         final_metadata = {
             "event_type": "final",
             "usage": usage,
             "model": model,
         }
-        
+
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
@@ -1069,14 +1103,16 @@ class BaseReActAgent:
 
     def _build_system_prompt(self) -> str:
         """
-        Build the full system prompt, appending role context if enabled.
-        
+        Build the full system prompt, appending role context and MCP server skills.
+
         Role context is appended when SSO auth with auth_roles is configured
-        and pass_descriptions_to_agent is set to true.
+        and pass_descriptions_to_agent is set to true. MCP server skills are
+        appended once here rather than per-tool so long skills don't multiply
+        by the number of tools in the catalog.
         """
         base_prompt = self.agent_prompt or ""
         role_context = get_role_context()
-        return base_prompt + role_context
+        return base_prompt + role_context + (self._mcp_skills_text or "")
 
     def _create_agent(self, tools: Sequence[Callable], middleware: Sequence[Callable]) -> CompiledStateGraph:
         """Create the LangGraph agent with the specified LLM, tools, and system prompt."""
@@ -1104,13 +1140,16 @@ class BaseReActAgent:
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools = self._async_runner.run(initialize_mcp_client())
+            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client())
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None
             self.mcp_client = client
+            self._mcp_skills_text = skills_text or ""
 
             # Create synchronous wrappers that use the SAME loop
+            store_tool_input = self._store_tool_input
+
             def make_synchronous(async_tool):
                 """
                 Wrap an async tool for synchronous execution.
@@ -1122,10 +1161,24 @@ class BaseReActAgent:
                 """
                 # Capture the runner in closure
                 runner = self._async_runner
+                tool_name = async_tool.name
 
                 def sync_wrapper(*args, **kwargs):
                     if runner.in_loop_thread():
                         raise RuntimeError("sync_wrapper called from MCP loop thread; would deadlock")
+                    # Streamed tool_call chunks arrive without args; record here so the UI can resolve them by tool_call_id.
+                    try:
+                        recorded = {
+                            k: v
+                            for k, v in kwargs.items()
+                            if k not in {"config", "run_manager", "callbacks"}
+                        }
+                        if recorded:
+                            store_tool_input(tool_name, recorded)
+                    except Exception as exc:
+                        logger.debug(
+                            "Failed to record MCP tool input for %s: %s", tool_name, exc
+                        )
                     # Run on the background loop - NOT a new loop!
                     return runner.run(async_tool.coroutine(*args, **kwargs))
 

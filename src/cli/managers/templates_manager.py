@@ -537,6 +537,11 @@ class TemplateManager:
         if context.plan.get_service("grader").enabled:
             template_vars["rubrics"] = self._get_grader_rubrics(context.config_manager)
 
+        # Pass MCP server configs so compose can volume-mount stdio packages
+        # and emit sidecar services for servers with build_context/image.
+        mcp_servers = context.config_manager.config.get("mcp_servers", {}) or {}
+        template_vars["mcp_servers"] = mcp_servers
+
         compose_template = self.env.get_template(BASE_COMPOSE_TEMPLATE)
         compose_rendered = compose_template.render(**template_vars)
 

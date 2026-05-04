@@ -169,6 +169,33 @@ services:
       {% if gpu_ids -%}
       - archi-models:/root/models/
       {%- endif %}
+      {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}
+      {%- if srv_cfg.transport == 'stdio' and srv_cfg.path is defined %}
+      - {{ srv_cfg.path }}:/root/mcp-packages/{{ srv_name }}:ro
+      {%- endif %}
+      {%- endfor %}
+      {%- for host_path in (host_file_mounts | default([])) %}
+      - {{ host_path }}:{{ host_path }}:ro
+      {%- endfor %}
+    {#- Build the MCP auto-install command for stdio packages with a path #}
+    {%- set mcp_installs = [] %}
+    {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}
+    {%- if srv_cfg.transport == 'stdio' and srv_cfg.path is defined %}
+    {%- set _ = mcp_installs.append(srv_name) %}
+    {%- endif %}
+    {%- endfor %}
+    {%- if mcp_installs %}
+    command:
+      - bash
+      - -lc
+      - >-
+        {%- for srv_name in mcp_installs %}
+        cp -r "/root/mcp-packages/{{ srv_name }}" "/tmp/mcp-build-{{ srv_name }}" &&
+        python -m pip install "/tmp/mcp-build-{{ srv_name }}" &&
+        rm -rf "/tmp/mcp-build-{{ srv_name }}";
+        {%- endfor %}
+        exec python -u src/bin/service_chat.py
+    {%- endif %}
     logging:
       options:
         max-size: 10m
@@ -648,6 +675,51 @@ services:
     {%- endif %}
     {%- endif %}
   {%- endif %}
+
+  {#- MCP sidecar services: any mcp_server with build_context or image becomes its own container #}
+  {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}
+  {%- if srv_cfg.build_context is defined or srv_cfg.image is defined %}
+  {{ srv_name }}-mcp:
+    container_name: {{ srv_name }}-mcp-{{ name }}
+    {%- if srv_cfg.build_context is defined %}
+    build: {{ srv_cfg.build_context }}
+    {%- else %}
+    image: {{ srv_cfg.image }}
+    {%- endif %}
+    {%- if srv_cfg.env or srv_cfg.env_from_secrets %}
+    environment:
+      {%- for k, v in (srv_cfg.env | default({})).items() %}
+      {{ k }}: "{{ v }}"
+      {%- endfor %}
+      {%- for k in srv_cfg.env_from_secrets | default([]) %}
+      {{ k }}_FILE: /run/secrets/{{ k | lower }}
+      {%- endfor %}
+    {%- endif %}
+    {%- if srv_cfg.env_from_secrets %}
+    secrets:
+      {%- for k in srv_cfg.env_from_secrets %}
+      - {{ k | lower }}
+      {%- endfor %}
+    {%- endif %}
+    {%- if srv_cfg.host_file_mounts %}
+    volumes:
+      {%- for m in srv_cfg.host_file_mounts %}
+      {%- if m is string %}
+      - {{ m }}:{{ m }}:ro
+      {%- else %}
+      - {{ m.src }}:{{ m.dest }}:ro
+      {%- endif %}
+      {%- endfor %}
+    {%- endif %}
+    logging:
+      options:
+        max-size: 10m
+    restart: on-failure
+    {%- if host_mode %}
+    network_mode: host
+    {%- endif %}
+  {%- endif %}
+  {%- endfor %}
 
 
 volumes:
