@@ -7,6 +7,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from langchain_core.documents import Document
 
+from src.archi.pipelines.agents.utils.retrieved_evidence import build_retrieved_evidence_payload
+
 
 class RunMemory:
     """Track documents, notes, and tool call inputs produced in one run."""
@@ -183,6 +185,10 @@ class RunMemory:
                 seen.add(key)
                 collected.append(doc)
         return collected
+
+    def retrieved_evidence(self) -> Dict[str, Any]:
+        """Return compact grouped evidence derived from retrieved documents."""
+        return build_retrieved_evidence_payload(self.unique_documents())
 
     def intermediate_steps(self) -> List[str]:
         """Combine stored notes with document-event breadcrumbs."""

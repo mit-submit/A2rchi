@@ -21,7 +21,7 @@ import psycopg2
 import psycopg2.extras
 import yaml
 from authlib.integrations.flask_client import OAuth
-from flask import jsonify, render_template, request, session, flash, redirect, url_for, Response, stream_with_context
+from flask import jsonify, render_template, request, session, flash, redirect, url_for, Response, stream_with_context, send_file
 from flask_cors import CORS
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
@@ -42,6 +42,7 @@ from src.archi.pipelines.agents.agent_spec import (
 )
 from src.archi.providers.base import ModelInfo, ProviderConfig, ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
+from src.archi.pipelines.agents.utils.retrieved_evidence import find_evidence_item
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
 from src.data_manager.vectorstore.manager import VectorStoreManager
@@ -2028,11 +2029,14 @@ class ChatWrapper:
         scores = result.get("metadata", {}).get("retriever_scores", [])
         top_sources = self.get_top_sources(documents, scores)
         
-        output = self.append_source_section(
-            output,
-            top_sources,
-            render_markdown=render_markdown,
-        )
+        evidence = result.get("metadata", {}).get("retrieved_evidence")
+        has_structured_evidence = isinstance(evidence, dict) and bool(evidence.get("items"))
+        if not has_structured_evidence:
+            output = self.append_source_section(
+                output,
+                top_sources,
+                render_markdown=render_markdown,
+            )
 
         timestamps["archi_message_ts"] = datetime.now(timezone.utc)
         context_data = self.prepare_context_for_storage(documents, scores)
@@ -2349,6 +2353,17 @@ class ChatWrapper:
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
 
+            evidence = None
+            if last_output and last_output.metadata:
+                evidence = last_output.metadata.get("retrieved_evidence")
+            if isinstance(evidence, dict) and evidence.get("items"):
+                if not any(event.get("type") == "retrieved_evidence" for event in trace_events):
+                    trace_events.append({
+                        "type": "retrieved_evidence",
+                        "evidence": evidence,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+
             # Update trace with final state
             if trace_id:
                 user_message_id = message_ids[0] if message_ids and len(message_ids) > 1 else None
@@ -2372,6 +2387,7 @@ class ChatWrapper:
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now(timezone.utc).timestamp(),
                 "usage": usage,
+                "evidence": evidence if isinstance(evidence, dict) and evidence.get("items") else None,
                 "model_used": model or context.model_used,
                 "provider_used": provider or context.provider_used,
                 "pipeline_used": context.pipeline_used,
@@ -2551,6 +2567,10 @@ class FlaskAppWrapper(object):
         logger.info("Adding agent trace API endpoints")
         self.add_endpoint('/api/trace/<trace_id>', 'get_trace', self.require_auth(self.get_trace), methods=["GET"])
         self.add_endpoint('/api/trace/message/<int:message_id>', 'get_trace_by_message', self.require_auth(self.get_trace_by_message), methods=["GET"])
+        self.add_endpoint('/api/evidence/trace/<trace_id>', 'get_evidence_by_trace', self.require_auth(self.get_evidence_by_trace), methods=["GET"])
+        self.add_endpoint('/api/evidence/message/<int:message_id>', 'get_evidence_by_message', self.require_auth(self.get_evidence_by_message), methods=["GET"])
+        self.add_endpoint('/api/evidence/<item_id>/preview', 'preview_evidence_item', self.require_auth(self.preview_evidence_item), methods=["GET"])
+        self.add_endpoint('/api/evidence/<item_id>/download', 'download_evidence_source', self.require_auth(self.download_evidence_source), methods=["GET"])
         self.add_endpoint('/api/cancel_stream', 'cancel_stream', self.require_auth(self.cancel_stream), methods=["POST"])
 
         # Provider endpoints
@@ -5496,6 +5516,208 @@ class FlaskAppWrapper(object):
 
         except Exception as e:
             logger.error(f"Error getting trace for message {message_id}: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+
+    def _evidence_from_trace(self, trace: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not trace:
+            return None
+        events = trace.get("events") or []
+        for event in reversed(events):
+            if isinstance(event, dict) and event.get("type") == "retrieved_evidence":
+                evidence = event.get("evidence")
+                if isinstance(evidence, dict):
+                    return evidence
+        return None
+
+    def _authorize_trace_access(self, trace: Dict[str, Any]) -> Optional[tuple]:
+        conversation_id = trace.get("conversation_id")
+        if not conversation_id:
+            return jsonify({'error': 'Trace has no conversation'}), 404
+        client_id = self._get_request_client_id() or session.get('client_id')
+        user_id = session.get('user', {}).get('id') or None
+        if not user_id and not client_id:
+            return jsonify({'error': 'client_id is required'}), 400
+        try:
+            self.chat.query_conversation_history(conversation_id, client_id, user_id)
+        except ConversationAccessError:
+            return jsonify({'error': 'Forbidden'}), 403
+        return None
+
+    def _load_trace_for_evidence_request(self) -> tuple[Optional[Dict[str, Any]], Optional[tuple]]:
+        trace_id = request.args.get("trace_id")
+        message_id = request.args.get("message_id")
+        trace = None
+        if trace_id:
+            trace = self.chat.get_agent_trace(trace_id)
+        elif message_id:
+            try:
+                trace = self.chat.get_trace_by_message(int(message_id))
+            except (TypeError, ValueError):
+                return None, (jsonify({'error': 'message_id must be an integer'}), 400)
+        else:
+            return None, (jsonify({'error': 'trace_id or message_id is required'}), 400)
+        if trace is None:
+            return None, (jsonify({'error': 'Trace not found'}), 404)
+        auth_error = self._authorize_trace_access(trace)
+        if auth_error:
+            return None, auth_error
+        return trace, None
+
+    def _catalog_for_evidence(self):
+        from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
+        return PostgresCatalogService(
+            data_path=self.data_path,
+            pg_config=self.pg_config,
+        )
+
+    def _resolve_evidence_path(self, item: Dict[str, Any]) -> Optional[Path]:
+        source = item.get("source") or {}
+        resource_hash = source.get("resource_hash")
+        if not resource_hash:
+            return None
+        catalog = self._catalog_for_evidence()
+        return catalog.get_filepath_for_hash(resource_hash)
+
+    def _authorize_evidence_document(self, trace: Dict[str, Any], item: Dict[str, Any]) -> Optional[tuple]:
+        source = item.get("source") or {}
+        resource_hash = source.get("resource_hash")
+        conversation_id = trace.get("conversation_id")
+        if not resource_hash or not conversation_id:
+            return None
+        try:
+            catalog = self._catalog_for_evidence()
+            if not catalog.is_document_enabled(str(conversation_id), str(resource_hash)):
+                return jsonify({'error': 'Forbidden'}), 403
+        except Exception as exc:
+            logger.warning("Failed to check evidence document access: %s", exc)
+            return jsonify({'error': 'Unable to verify document access'}), 403
+        return None
+
+    def get_evidence_by_trace(self, trace_id: str):
+        try:
+            trace = self.chat.get_agent_trace(trace_id)
+            if trace is None:
+                return jsonify({'error': 'Trace not found'}), 404
+            auth_error = self._authorize_trace_access(trace)
+            if auth_error:
+                return auth_error
+            evidence = self._evidence_from_trace(trace)
+            return jsonify({'success': True, 'evidence': evidence or {'version': 1, 'groups': [], 'items': []}}), 200
+        except Exception as e:
+            logger.error("Error getting evidence for trace %s: %s", trace_id, e, exc_info=True)
+            return jsonify({'error': str(e)}), 500
+
+    def get_evidence_by_message(self, message_id: int):
+        try:
+            trace = self.chat.get_trace_by_message(message_id)
+            if trace is None:
+                return jsonify({'error': 'Trace not found for message'}), 404
+            auth_error = self._authorize_trace_access(trace)
+            if auth_error:
+                return auth_error
+            evidence = self._evidence_from_trace(trace)
+            return jsonify({'success': True, 'evidence': evidence or {'version': 1, 'groups': [], 'items': []}}), 200
+        except Exception as e:
+            logger.error("Error getting evidence for message %s: %s", message_id, e, exc_info=True)
+            return jsonify({'error': str(e)}), 500
+
+    def preview_evidence_item(self, item_id: str):
+        try:
+            trace, error = self._load_trace_for_evidence_request()
+            if error:
+                return error
+            evidence = self._evidence_from_trace(trace)
+            item = find_evidence_item(evidence or {}, item_id)
+            if not item:
+                return jsonify({'error': 'Evidence item not found'}), 404
+            access_error = self._authorize_evidence_document(trace, item)
+            if access_error:
+                return access_error
+
+            kind = item.get("kind")
+            preview_type = (item.get("preview") or {}).get("type")
+            if preview_type == "text" or kind == "text":
+                return jsonify({
+                    'type': 'text',
+                    'excerpt': item.get('excerpt') or '',
+                    'metadata': item,
+                }), 200
+            if preview_type == "unsupported":
+                return jsonify({
+                    'type': 'preview_unavailable',
+                    'reason': 'Inline preview is not available for this file type.',
+                    'metadata': item,
+                }), 200
+
+            source_path = self._resolve_evidence_path(item)
+            if not source_path or not source_path.exists():
+                return jsonify({
+                    'type': 'preview_unavailable',
+                    'reason': 'The original source file is unavailable.',
+                    'metadata': item,
+                }), 404
+
+            if preview_type == "image":
+                return send_file(source_path)
+
+            if preview_type == "pdf_page":
+                page = item.get("page") or {}
+                page_index = page.get("page_index")
+                if page_index is None:
+                    return jsonify({
+                        'type': 'text',
+                        'excerpt': item.get('excerpt') or '',
+                        'page_unavailable': True,
+                        'metadata': item,
+                    }), 200
+                try:
+                    import fitz
+                except Exception:
+                    return jsonify({
+                        'type': 'preview_unavailable',
+                        'reason': 'PDF rendering is unavailable in this runtime.',
+                        'metadata': item,
+                    }), 503
+                doc = fitz.open(str(source_path))
+                try:
+                    page_obj = doc.load_page(int(page_index))
+                    zoom = min(max(float(request.args.get("zoom", 1.5)), 0.5), 2.0)
+                    pix = page_obj.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+                    return Response(pix.tobytes("png"), mimetype="image/png")
+                finally:
+                    doc.close()
+
+            return jsonify({
+                'type': 'preview_unavailable',
+                'reason': 'Inline preview is not available for this evidence item.',
+                'metadata': item,
+            }), 200
+        except Exception as e:
+            logger.error("Error previewing evidence %s: %s", item_id, e, exc_info=True)
+            return jsonify({'error': str(e)}), 500
+
+    def download_evidence_source(self, item_id: str):
+        try:
+            trace, error = self._load_trace_for_evidence_request()
+            if error:
+                return error
+            item = find_evidence_item(self._evidence_from_trace(trace) or {}, item_id)
+            if not item:
+                return jsonify({'error': 'Evidence item not found'}), 404
+            access_error = self._authorize_evidence_document(trace, item)
+            if access_error:
+                return access_error
+            source_path = self._resolve_evidence_path(item)
+            if not source_path or not source_path.exists():
+                return jsonify({
+                    'type': 'download_unavailable',
+                    'reason': 'The original source file is unavailable.',
+                    'metadata': item,
+                }), 404
+            display_name = (item.get("source") or {}).get("display_name") or source_path.name
+            return send_file(source_path, as_attachment=True, download_name=display_name)
+        except Exception as e:
+            logger.error("Error downloading evidence %s: %s", item_id, e, exc_info=True)
             return jsonify({'error': str(e)}), 500
 
     def cancel_stream(self):

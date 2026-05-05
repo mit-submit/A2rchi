@@ -8,6 +8,7 @@ from langchain_core.retrievers import BaseRetriever
 
 from src.utils.logging import get_logger
 from src.archi.pipelines.agents.tools.base import require_tool_permission
+from src.archi.pipelines.agents.utils.retrieved_evidence import documents_with_scores
 
 logger = get_logger(__name__)
 
@@ -113,7 +114,7 @@ def create_retriever_tool(
         results = retriever.invoke(query)
         docs = _normalize_results(results or [])
         if store_docs:
-            store_docs(f"{name}: {query}", [doc for doc, _ in docs])
+            store_docs(f"{name}: {query}", documents_with_scores(docs))
         return _format_documents_for_llm(docs, max_documents=max_documents, max_chars=max_chars)
 
     return _retriever_tool

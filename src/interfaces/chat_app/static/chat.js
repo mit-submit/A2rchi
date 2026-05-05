@@ -50,6 +50,7 @@ const CONFIG = {
     AGENTS_LIST: '/api/agents/list',
     AGENT_SPEC: '/api/agents/spec',
     AGENT_ACTIVE: '/api/agents/active',
+    EVIDENCE_PREVIEW: '/api/evidence',
     USER_ME: '/api/users/me',
     USER_PREFERENCES: '/api/users/me/preferences',
     LIKE: '/api/like',
@@ -334,6 +335,13 @@ const API = {
     }
 
     yield* this._readNDJSON(response);
+  },
+
+  evidenceUrl(itemId, action, { traceId = null, messageId = null } = {}) {
+    const params = new URLSearchParams({ client_id: this.clientId });
+    if (traceId) params.set('trace_id', traceId);
+    if (messageId) params.set('message_id', messageId);
+    return `${CONFIG.ENDPOINTS.EVIDENCE_PREVIEW}/${encodeURIComponent(itemId)}/${action}?${params.toString()}`;
   },
 
   // A/B Testing API methods
@@ -2109,6 +2117,152 @@ const UI = {
     this.scrollToBottom();
   },
 
+  renderEvidenceSection(messageId, evidence, { traceId = null } = {}) {
+    if (!evidence || !Array.isArray(evidence.groups) || evidence.groups.length === 0) return;
+    const msgEl = this.elements.messagesInner?.querySelector(`[data-id="${messageId}"]`);
+    const contentEl = msgEl?.querySelector('.message-content');
+    if (!contentEl) return;
+    contentEl.querySelector('.retrieved-evidence')?.remove();
+    this.removeLegacyRetrievedDocumentsSection(contentEl);
+
+    const section = document.createElement('details');
+    section.className = 'retrieved-evidence';
+    section.dataset.messageId = String(messageId);
+    if (traceId) section.dataset.traceId = traceId;
+
+    const itemCount = evidence.groups.length;
+    const summary = document.createElement('summary');
+    summary.innerHTML = `<strong>Retrieved documents (${itemCount})</strong>`;
+    section.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'retrieved-evidence-body';
+
+    const list = document.createElement('div');
+    list.className = 'retrieved-evidence-list';
+    for (const group of evidence.groups) {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'evidence-group';
+      const title = document.createElement('div');
+      title.className = 'evidence-group-title';
+      title.textContent = group.display_name || group.resource_hash || 'Source file';
+      groupEl.appendChild(title);
+
+      for (const item of group.items || []) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'evidence-item';
+        row.dataset.itemId = item.id;
+        row.dataset.traceId = traceId || '';
+        row.dataset.messageId = String(messageId);
+        const label = this.formatEvidenceLabel(item);
+        const score = typeof item.score === 'number' ? ` · ${item.score.toFixed(3)}` : '';
+        row.innerHTML = `<span>${Utils.escapeHtml(label)}</span><small>${Utils.escapeHtml(item.kind || 'context')}${score}</small>`;
+        row.addEventListener('click', () => this.loadEvidencePreview(row, item, { traceId, messageId }));
+        groupEl.appendChild(row);
+      }
+      list.appendChild(groupEl);
+    }
+
+    const preview = document.createElement('div');
+    preview.className = 'evidence-preview';
+    preview.innerHTML = '<div class="evidence-preview-empty">Select a retrieved item to preview it.</div>';
+    body.appendChild(list);
+    body.appendChild(preview);
+    section.appendChild(body);
+    contentEl.appendChild(section);
+  },
+
+  formatEvidenceLabel(item) {
+    const page = item.page?.page_number ? `Page ${item.page.page_number}` : null;
+    const chunkIndex = item.retrieved_unit?.chunk_index;
+    if (page) return page;
+    if (chunkIndex != null && Number.isFinite(Number(chunkIndex))) {
+      return `Chunk ${Number(chunkIndex) + 1}`;
+    }
+    if (item.preview?.type === 'text' || item.kind === 'text') {
+      return item.rank ? `Retrieved chunk ${item.rank}` : 'Retrieved chunk';
+    }
+    return item.source?.display_name || 'Retrieved item';
+  },
+
+  removeLegacyRetrievedDocumentsSection(contentEl) {
+    const summaries = contentEl.querySelectorAll('details:not(.retrieved-evidence) > summary');
+    for (const summary of summaries) {
+      const label = summary.textContent || '';
+      if (!/^(Retrieved documents|Show all sources|Sources cited in this answer)\s*\(\d+\)/i.test(label.trim())) {
+        continue;
+      }
+      const details = summary.parentElement;
+      const explanation = details?.previousElementSibling;
+      const divider = explanation?.previousElementSibling;
+      details?.remove();
+      if (explanation?.textContent?.includes('knowledge-base documents retrieved')) {
+        explanation.remove();
+      }
+      if (divider?.tagName === 'HR') {
+        divider.remove();
+      }
+    }
+  },
+
+  async loadEvidencePreview(button, item, { traceId = null, messageId = null } = {}) {
+    const section = button.closest('.retrieved-evidence');
+    const preview = section?.querySelector('.evidence-preview');
+    if (!preview) return;
+    section.querySelectorAll('.evidence-item.active').forEach((el) => el.classList.remove('active'));
+    button.classList.add('active');
+
+    const header = this.renderEvidencePreviewHeader(item, { traceId, messageId });
+    preview.innerHTML = `${header}<div class="evidence-preview-loading">Loading preview...</div>`;
+    const url = API.evidenceUrl(item.id, 'preview', { traceId, messageId });
+    try {
+      const response = await fetch(url);
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.startsWith('image/')) {
+        preview.innerHTML = `${header}<img class="evidence-preview-image" src="${url}" alt="">${this.renderEvidenceExcerpt(item)}`;
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok && !data) throw new Error(`Preview failed (${response.status})`);
+      if (data?.type === 'text' && !this.isVisualEvidenceItem(item)) {
+        preview.innerHTML = `${header}<pre class="evidence-preview-text"></pre>`;
+        preview.querySelector('pre').textContent = data.excerpt || item.excerpt || '';
+      } else {
+        preview.innerHTML = `${header}<div class="evidence-preview-unavailable">${Utils.escapeHtml(data?.reason || 'Preview unavailable')}</div>${this.renderEvidenceExcerpt(item)}`;
+      }
+    } catch (error) {
+      preview.innerHTML = `${header}<div class="evidence-preview-unavailable">${Utils.escapeHtml(error.message || 'Preview unavailable')}</div>`;
+    }
+  },
+
+  renderEvidencePreviewHeader(item, { traceId = null, messageId = null } = {}) {
+    const source = item.source || {};
+    const title = Utils.escapeHtml(source.display_name || 'Retrieved document');
+    const meta = Utils.escapeHtml(this.formatEvidenceLabel(item));
+    const downloadUrl = API.evidenceUrl(item.id, 'download', { traceId, messageId });
+    const sourceUrl = item.actions?.source_url || source.source_url;
+    const sourceLink = sourceUrl ? `<a href="${Utils.escapeAttr(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source</a>` : '';
+    return `
+      <div class="evidence-preview-header">
+        <div><strong>${title}</strong><span>${meta}</span></div>
+        <div class="evidence-preview-actions">
+          <a href="${Utils.escapeAttr(downloadUrl)}">Download</a>
+          ${sourceLink}
+        </div>
+      </div>`;
+  },
+
+  renderEvidenceExcerpt(item) {
+    if (!item.excerpt || this.isVisualEvidenceItem(item)) return '';
+    return `<pre class="evidence-preview-text">${Utils.escapeHtml(item.excerpt)}</pre>`;
+  },
+
+  isVisualEvidenceItem(item) {
+    const previewType = item?.preview?.type;
+    return previewType === 'image' || previewType === 'pdf_page' || item?.kind === 'image';
+  },
+
   showTypingIndicator() {
     const html = `
       <div class="typing-indicator">
@@ -3366,6 +3520,7 @@ const UI = {
     const toolStartEvents = {};
     const thinkingEvents = {};
     let usageData = null;
+    let evidenceData = null;
 
     for (const event of events) {
       if (event.type === 'thinking_start') {
@@ -3385,12 +3540,17 @@ const UI = {
         this.updateHistoricalToolStep(timeline, event, startEvent);
       } else if (event.type === 'usage') {
         usageData = event;
+      } else if (event.type === 'retrieved_evidence') {
+        evidenceData = event.evidence;
       }
     }
 
     // Populate context meter if usage data is available
     if (usageData) {
       this.updateContextMeter(messageId, usageData);
+    }
+    if (evidenceData) {
+      this.renderEvidenceSection(messageId, evidenceData, { traceId: trace.trace_id });
     }
   },
 
@@ -4589,6 +4749,8 @@ const Chat = {
             traceState.events.push(event);
           } else if (event.type === 'thinking_start' || event.type === 'thinking_end') {
             traceState.events.push(event);
+          } else if (event.type === 'retrieved_evidence') {
+            traceState.events.push(event);
           }
           this._renderStreamEvent(targetId, event);
         }
@@ -4819,6 +4981,8 @@ const Chat = {
         } else if (event.type === 'thinking_start' || event.type === 'thinking_end') {
           this.state.activeTrace.events.push(event);
           this._renderStreamEvent(messageId, event);
+        } else if (event.type === 'retrieved_evidence') {
+          this.state.activeTrace.events.push(event);
         } else if (event.type === 'chunk') {
           // Chunks may be accumulated or delta content
           if (event.accumulated) {
@@ -4857,6 +5021,7 @@ const Chat = {
             html: Markdown.render(finalText),
             streaming: false,
           });
+          UI.renderEvidenceSection(messageId, event.evidence, { traceId: event.trace_id || this.state.activeTrace.traceId });
           
           // Update model label from actual model used
           if (event.model_used) {

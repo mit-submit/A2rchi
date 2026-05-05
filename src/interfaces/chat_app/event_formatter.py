@@ -270,6 +270,14 @@ class PipelineEventFormatter:
             evt["full_length"] = full_length
         yield evt
 
+        evidence = meta.get("retrieved_evidence")
+        if isinstance(evidence, dict) and evidence.get("items"):
+            yield {
+                "type": "retrieved_evidence",
+                "tool_call_id": tc_id,
+                "evidence": evidence,
+            }
+
     def _on_tool_end(self, _output: PipelineOutput, meta: dict) -> Iterator[Dict[str, Any]]:
         yield {
             "type": "tool_end",

@@ -30,6 +30,12 @@ The primary user-facing service. Provides a web-based chat application for inter
 - Conversation history
 - [Service Status Board & Alert Banners](#service-status-board--alert-banners)
 
+### Retrieved Context Evidence
+
+Assistant responses can include a collapsed **Retrieved documents** section. When structured evidence is available, this section shows the exact chunks, PDF pages, or standalone images that were retrieved into the model context, grouped by source file. Evidence means "retrieved into context"; it is not the same as an explicit citation that the final answer quoted or relied on every listed item.
+
+Previews are loaded only after a user selects a retrieved item. Supported previews include standalone images, rendered PDF pages when page metadata is available, and escaped text excerpts. Unsupported file types keep their metadata visible and use download or open-source actions instead of rich inline preview. Historical conversations store evidence metadata and excerpts, but visual previews and downloads are generated from the current source files on disk, so they may be unavailable if a file was removed or replaced after the response was generated.
+
 ### Configuration
 
 ```yaml
