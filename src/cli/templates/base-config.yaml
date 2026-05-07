@@ -14,7 +14,33 @@ mcp_servers:
   {%- for server_name, server_config in (mcp_servers | default({}, true)).items() %}
   {{ server_name }}:
     transport: {{ server_config.transport | default('streamable_http', true) }}
-    url: {{ server_config.url | default('', true) }}
+    {%- if server_config.url is defined %}
+    url: {{ server_config.url }}
+    {%- endif %}
+    {%- if server_config.command is defined %}
+    command: {{ server_config.command }}
+    {%- endif %}
+    {%- if server_config.args is defined %}
+    args: {{ server_config.args | tojson }}
+    {%- endif %}
+    {%- if server_config.env is defined %}
+    env: {{ server_config.env | tojson }}
+    {%- endif %}
+    {%- if server_config.env_from_secrets is defined %}
+    env_from_secrets: {{ server_config.env_from_secrets | tojson }}
+    {%- endif %}
+    {%- if server_config.host_file_mounts is defined %}
+    host_file_mounts: {{ server_config.host_file_mounts | tojson }}
+    {%- endif %}
+    {%- if server_config.build_context is defined %}
+    build_context: {{ server_config.build_context }}
+    {%- endif %}
+    {%- if server_config.image is defined %}
+    image: {{ server_config.image }}
+    {%- endif %}
+    {%- if server_config.skill is defined %}
+    skill: {{ server_config.skill }}
+    {%- endif %}
   {%- endfor %}
 
 services:
@@ -60,8 +86,11 @@ services:
     project: {{ services.redmine_mailbox.project | default('', true) }}
     redmine_update_time: {{ services.redmine_mailbox.redmine_update_time | default(10, true) }}
     answer_tag: {{ services.redmine_mailbox.answer_tag | default('-- archi -- Resolving email was sent', true) }}
-    imap4_port: {{ services.redmine_mailbox.imap4_port | default(143, true) }}
+    imap4_port: {{ services.redmine_mailbox.imap4_port | default(993, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
+    default_provider: {{ services.redmine_mailbox.default_provider | default('local', true) }}
+    default_model: {{ services.redmine_mailbox.default_model | default('qwen3:32b', true) }}
+    providers: {{ services.redmine_mailbox.providers | default({"local": {"enabled": true, "base_url": "http://localhost:11434", "mode": "ollama", "default_model": "llama3.2", "models": ["llama3.2"]}}) | tojson }}
   postgres:
     port: {{ services.postgres.port | default(5432, true) }}
     user: {{ services.postgres.user | default('archi', true) }}
@@ -105,7 +134,52 @@ services:
       managers:
         {%- for manager in services.chat_app.alerts.managers | default([], true) %}
         - {{ manager }}
-        {%- endfor %} 
+        {%- endfor %}
+    {%- if services.chat_app.ab_testing is defined and services.chat_app.ab_testing.enabled | default(false) %}
+    ab_testing:
+      enabled: {{ services.chat_app.ab_testing.enabled | default(false, true) }}
+      {%- if services.chat_app.ab_testing.ab_agents_dir is defined %}
+      ab_agents_dir: "{{ services.chat_app.ab_testing.ab_agents_dir }}"
+      {%- endif %}
+      {%- if services.chat_app.ab_testing.force_yaml_override is defined %}
+      force_yaml_override: {{ services.chat_app.ab_testing.force_yaml_override | default(false, true) }}
+      {%- endif %}
+      comparison_rate: {{ services.chat_app.ab_testing.comparison_rate | default(services.chat_app.ab_testing.sample_rate | default(0.0)) }}
+      variant_label_mode: {{ services.chat_app.ab_testing.variant_label_mode | default(services.chat_app.ab_testing.disclosure_mode | default("post_vote_reveal", true), true) }}
+      activity_panel_default_state: {{ services.chat_app.ab_testing.activity_panel_default_state | default(services.chat_app.ab_testing.default_trace_mode | default("hidden", true), true) }}
+      max_pending_comparisons_per_conversation: {{ services.chat_app.ab_testing.max_pending_comparisons_per_conversation | default(services.chat_app.ab_testing.max_pending_per_conversation | default(1, true), true) }}
+      {%- if services.chat_app.ab_testing.eligible_roles is defined or services.chat_app.ab_testing.target_roles is defined %}
+      eligible_roles: {{ services.chat_app.ab_testing.eligible_roles | default(services.chat_app.ab_testing.target_roles, true) | tojson }}
+      {%- endif %}
+      {%- if services.chat_app.ab_testing.eligible_permissions is defined or services.chat_app.ab_testing.target_permissions is defined %}
+      eligible_permissions: {{ services.chat_app.ab_testing.eligible_permissions | default(services.chat_app.ab_testing.target_permissions, true) | tojson }}
+      {%- endif %}
+      {%- if services.chat_app.ab_testing.pool is defined %}
+      pool:
+        {%- if services.chat_app.ab_testing.pool.champion is defined or services.chat_app.ab_testing.pool.control is defined %}
+        champion: {{ services.chat_app.ab_testing.pool.champion | default(services.chat_app.ab_testing.pool.control, true) }}
+        {%- endif %}
+        {%- if services.chat_app.ab_testing.pool.variants is defined %}
+        variants:
+          {%- for v in services.chat_app.ab_testing.pool.variants %}
+          - label: {{ v.label }}
+            agent_spec: "{{ v.agent_spec }}"
+            {%- if v.provider is defined %}
+            provider: {{ v.provider }}
+            {%- endif %}
+            {%- if v.model is defined %}
+            model: "{{ v.model }}"
+            {%- endif %}
+            {%- if v.num_documents_to_retrieve is defined %}
+            num_documents_to_retrieve: {{ v.num_documents_to_retrieve }}
+            {%- endif %}
+            {%- if v.recursion_limit is defined %}
+            recursion_limit: {{ v.recursion_limit }}
+            {%- endif %}
+          {%- endfor %}
+        {%- endif %}
+      {%- endif %}
+    {%- endif %}
   data_manager:
     auth:
       enabled: {{ services.data_manager.auth.enabled | default(false) }}
@@ -204,7 +278,7 @@ data_manager:
         verify_urls: {{ data_manager.sources.links.html_scraper.verify_urls | default(false, true) }}
         enable_warnings: {{ data_manager.sources.links.html_scraper.enable_warnings | default(false, true) }}
       selenium_scraper:
-        enabled: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.enabled | default(false, True) }}
+        enabled: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.enabled | default(false, true) }}
         visible: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.visible | default(false, true) }}
         use_for_scraping: {{ data_manager.sources.links.selenium_scraper.use_for_scraping | default(false, true) }}
         selenium_class: {{  data_manager.sources.links.selenium_scraper.selenium_class | default('CERNSSOScraper', true)  }}

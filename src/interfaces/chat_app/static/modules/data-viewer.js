@@ -76,16 +76,6 @@ class DataViewer {
       refreshBtn.addEventListener('click', () => this.refresh());
     }
     
-    // Expand/collapse all
-    const expandAllBtn = document.getElementById('expand-all-btn');
-    if (expandAllBtn) {
-      expandAllBtn.addEventListener('click', () => this.expandAll());
-    }
-    
-    const collapseAllBtn = document.getElementById('collapse-all-btn');
-    if (collapseAllBtn) {
-      collapseAllBtn.addEventListener('click', () => this.collapseAll());
-    }
   }
 
   /**

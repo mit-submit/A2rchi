@@ -42,6 +42,12 @@ class User:
     theme: str = "system"
     preferred_model: Optional[str] = None
     preferred_temperature: Optional[float] = None
+    ab_participation_rate: Optional[float] = None
+
+    # API key presence flags
+    api_key_openrouter: Optional[bool] = None
+    api_key_openai: Optional[bool] = None
+    api_key_anthropic: Optional[bool] = None
     
     # BYOK API keys (decrypted values, only populated when explicitly requested)
     api_keys: Dict[str, Optional[str]] = field(default_factory=dict)
@@ -83,6 +89,7 @@ class UserService:
         self._pool = connection_pool
         self._pg_config = pg_config
         self._encryption_key = encryption_key or read_secret("BYOK_ENCRYPTION_KEY", default="")
+        self._ensure_schema()
         
         if not self._encryption_key:
             logger.warning(
@@ -92,6 +99,8 @@ class UserService:
     def _get_connection(self) -> psycopg2.extensions.connection:
         """Get a database connection."""
         if self._pool:
+            if hasattr(self._pool, "get_connection_direct"):
+                return self._pool.get_connection_direct()
             return self._pool.get_connection()
         elif self._pg_config:
             return psycopg2.connect(**self._pg_config)
@@ -100,10 +109,46 @@ class UserService:
     
     def _release_connection(self, conn) -> None:
         """Release connection back to pool or close it."""
-        if self._pool:
+        if self._pool and hasattr(self._pool, "release_connection"):
             self._pool.release_connection(conn)
         else:
             conn.close()
+
+    def _ensure_schema(self) -> None:
+        """Create/extend user preference columns required by runtime features."""
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS ab_participation_rate NUMERIC(3,2)
+                    """
+                )
+                conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.debug("Could not ensure users schema extensions: %s", exc)
+        finally:
+            self._release_connection(conn)
+
+    @staticmethod
+    def _row_to_user(row) -> User:
+        return User(
+            id=row["id"],
+            display_name=row["display_name"],
+            email=row["email"],
+            auth_provider=row["auth_provider"],
+            theme=row["theme"],
+            preferred_model=row["preferred_model"],
+            preferred_temperature=float(row["preferred_temperature"]) if row["preferred_temperature"] is not None else None,
+            ab_participation_rate=float(row["ab_participation_rate"]) if row.get("ab_participation_rate") is not None else None,
+            api_key_openrouter=bool(row.get("api_key_openrouter")) if row.get("api_key_openrouter") is not None else False,
+            api_key_openai=bool(row.get("api_key_openai")) if row.get("api_key_openai") is not None else False,
+            api_key_anthropic=bool(row.get("api_key_anthropic")) if row.get("api_key_anthropic") is not None else False,
+            created_at=str(row["created_at"]) if row["created_at"] else None,
+            updated_at=str(row["updated_at"]) if row["updated_at"] else None,
+        )
     
     def get_user(self, user_id: str) -> Optional[User]:
         """
@@ -121,7 +166,10 @@ class UserService:
                 cursor.execute(
                     """
                     SELECT id, display_name, email, auth_provider,
-                           theme, preferred_model, preferred_temperature,
+                           theme, preferred_model, preferred_temperature, ab_participation_rate,
+                           (api_key_openrouter IS NOT NULL) AS api_key_openrouter,
+                           (api_key_openai IS NOT NULL) AS api_key_openai,
+                           (api_key_anthropic IS NOT NULL) AS api_key_anthropic,
                            created_at, updated_at
                     FROM users
                     WHERE id = %s
@@ -132,18 +180,8 @@ class UserService:
                 
                 if row is None:
                     return None
-                
-                return User(
-                    id=row["id"],
-                    display_name=row["display_name"],
-                    email=row["email"],
-                    auth_provider=row["auth_provider"],
-                    theme=row["theme"],
-                    preferred_model=row["preferred_model"],
-                    preferred_temperature=float(row["preferred_temperature"]) if row["preferred_temperature"] else None,
-                    created_at=str(row["created_at"]) if row["created_at"] else None,
-                    updated_at=str(row["updated_at"]) if row["updated_at"] else None,
-                )
+
+                return self._row_to_user(row)
         finally:
             self._release_connection(conn)
     
@@ -196,7 +234,11 @@ class UserService:
                         email = COALESCE(EXCLUDED.email, users.email),
                         updated_at = NOW()
                     RETURNING id, display_name, email, auth_provider, theme,
-                              preferred_model, preferred_temperature, created_at, updated_at
+                              preferred_model, preferred_temperature, ab_participation_rate,
+                              (api_key_openrouter IS NOT NULL) AS api_key_openrouter,
+                              (api_key_openai IS NOT NULL) AS api_key_openai,
+                              (api_key_anthropic IS NOT NULL) AS api_key_anthropic,
+                              created_at, updated_at
                     """,
                     (user_id, display_name, email, auth_provider)
                 )
@@ -205,17 +247,7 @@ class UserService:
                 
                 logger.info(f"Created/updated user: {user_id} (auth={auth_provider})")
                 
-                return User(
-                    id=row["id"],
-                    display_name=row["display_name"],
-                    email=row["email"],
-                    auth_provider=row["auth_provider"],
-                    theme=row["theme"],
-                    preferred_model=row["preferred_model"],
-                    preferred_temperature=float(row["preferred_temperature"]) if row["preferred_temperature"] else None,
-                    created_at=str(row["created_at"]) if row["created_at"] else None,
-                    updated_at=str(row["updated_at"]) if row["updated_at"] else None,
-                )
+                return self._row_to_user(row)
         finally:
             self._release_connection(conn)
     
@@ -223,9 +255,11 @@ class UserService:
         self,
         user_id: str,
         *,
+        display_name: Optional[str] = None,
         theme: Optional[str] = None,
         preferred_model: Optional[str] = None,
         preferred_temperature: Optional[float] = None,
+        ab_participation_rate: Optional[float] = None,
     ) -> User:
         """
         Update user preferences.
@@ -234,9 +268,11 @@ class UserService:
         
         Args:
             user_id: User ID
+            display_name: Optional display name override
             theme: UI theme preference ('system', 'light', 'dark')
             preferred_model: Preferred model identifier
             preferred_temperature: Preferred temperature setting
+            ab_participation_rate: Per-user A/B sampling override in the range 0..1
             
         Returns:
             Updated User object
@@ -246,6 +282,10 @@ class UserService:
         """
         updates = []
         params: List[Any] = []
+
+        if display_name is not None:
+            updates.append("display_name = %s")
+            params.append(display_name)
         
         if theme is not None:
             updates.append("theme = %s")
@@ -258,6 +298,10 @@ class UserService:
         if preferred_temperature is not None:
             updates.append("preferred_temperature = %s")
             params.append(preferred_temperature)
+
+        if ab_participation_rate is not None:
+            updates.append("ab_participation_rate = %s")
+            params.append(ab_participation_rate)
         
         if not updates:
             # No updates, just return current user
@@ -278,7 +322,11 @@ class UserService:
                     SET {', '.join(updates)}
                     WHERE id = %s
                     RETURNING id, display_name, email, auth_provider, theme,
-                              preferred_model, preferred_temperature, created_at, updated_at
+                              preferred_model, preferred_temperature, ab_participation_rate,
+                              (api_key_openrouter IS NOT NULL) AS api_key_openrouter,
+                              (api_key_openai IS NOT NULL) AS api_key_openai,
+                              (api_key_anthropic IS NOT NULL) AS api_key_anthropic,
+                              created_at, updated_at
                     """,
                     params
                 )
@@ -290,17 +338,7 @@ class UserService:
                 
                 logger.debug(f"Updated preferences for user: {user_id}")
                 
-                return User(
-                    id=row["id"],
-                    display_name=row["display_name"],
-                    email=row["email"],
-                    auth_provider=row["auth_provider"],
-                    theme=row["theme"],
-                    preferred_model=row["preferred_model"],
-                    preferred_temperature=float(row["preferred_temperature"]) if row["preferred_temperature"] else None,
-                    created_at=str(row["created_at"]) if row["created_at"] else None,
-                    updated_at=str(row["updated_at"]) if row["updated_at"] else None,
-                )
+                return self._row_to_user(row)
         finally:
             self._release_connection(conn)
     
@@ -483,7 +521,7 @@ class UserService:
                 # Get anonymous user data
                 cursor.execute(
                     """
-                    SELECT theme, preferred_model, preferred_temperature,
+                    SELECT theme, preferred_model, preferred_temperature, ab_participation_rate,
                            api_key_openrouter, api_key_openai, api_key_anthropic
                     FROM users
                     WHERE id = %s AND auth_provider = 'anonymous'
@@ -507,10 +545,10 @@ class UserService:
                     """
                     INSERT INTO users (
                         id, display_name, email, auth_provider,
-                        theme, preferred_model, preferred_temperature,
+                        theme, preferred_model, preferred_temperature, ab_participation_rate,
                         api_key_openrouter, api_key_openai, api_key_anthropic
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         display_name = COALESCE(EXCLUDED.display_name, users.display_name),
                         email = COALESCE(EXCLUDED.email, users.email),
@@ -518,12 +556,17 @@ class UserService:
                         theme = COALESCE(users.theme, EXCLUDED.theme),
                         preferred_model = COALESCE(users.preferred_model, EXCLUDED.preferred_model),
                         preferred_temperature = COALESCE(users.preferred_temperature, EXCLUDED.preferred_temperature),
+                        ab_participation_rate = COALESCE(users.ab_participation_rate, EXCLUDED.ab_participation_rate),
                         api_key_openrouter = COALESCE(users.api_key_openrouter, EXCLUDED.api_key_openrouter),
                         api_key_openai = COALESCE(users.api_key_openai, EXCLUDED.api_key_openai),
                         api_key_anthropic = COALESCE(users.api_key_anthropic, EXCLUDED.api_key_anthropic),
                         updated_at = NOW()
                     RETURNING id, display_name, email, auth_provider, theme,
-                              preferred_model, preferred_temperature, created_at, updated_at
+                              preferred_model, preferred_temperature, ab_participation_rate,
+                              (api_key_openrouter IS NOT NULL) AS api_key_openrouter,
+                              (api_key_openai IS NOT NULL) AS api_key_openai,
+                              (api_key_anthropic IS NOT NULL) AS api_key_anthropic,
+                              created_at, updated_at
                     """,
                     (
                         authenticated_id,
@@ -533,6 +576,7 @@ class UserService:
                         anon_data["theme"],
                         anon_data["preferred_model"],
                         anon_data["preferred_temperature"],
+                        anon_data["ab_participation_rate"],
                         anon_data["api_key_openrouter"],
                         anon_data["api_key_openai"],
                         anon_data["api_key_anthropic"],
@@ -573,17 +617,7 @@ class UserService:
                     f"Linked anonymous user {anonymous_id} to authenticated user {authenticated_id}"
                 )
                 
-                return User(
-                    id=row["id"],
-                    display_name=row["display_name"],
-                    email=row["email"],
-                    auth_provider=row["auth_provider"],
-                    theme=row["theme"],
-                    preferred_model=row["preferred_model"],
-                    preferred_temperature=float(row["preferred_temperature"]) if row["preferred_temperature"] else None,
-                    created_at=str(row["created_at"]) if row["created_at"] else None,
-                    updated_at=str(row["updated_at"]) if row["updated_at"] else None,
-                )
+                return self._row_to_user(row)
         finally:
             self._release_connection(conn)
     
@@ -612,7 +646,10 @@ class UserService:
                     cursor.execute(
                         """
                         SELECT id, display_name, email, auth_provider,
-                               theme, preferred_model, preferred_temperature,
+                               theme, preferred_model, preferred_temperature, ab_participation_rate,
+                               (api_key_openrouter IS NOT NULL) AS api_key_openrouter,
+                               (api_key_openai IS NOT NULL) AS api_key_openai,
+                               (api_key_anthropic IS NOT NULL) AS api_key_anthropic,
                                created_at, updated_at
                         FROM users
                         WHERE auth_provider = %s
@@ -625,7 +662,10 @@ class UserService:
                     cursor.execute(
                         """
                         SELECT id, display_name, email, auth_provider,
-                               theme, preferred_model, preferred_temperature,
+                               theme, preferred_model, preferred_temperature, ab_participation_rate,
+                               (api_key_openrouter IS NOT NULL) AS api_key_openrouter,
+                               (api_key_openai IS NOT NULL) AS api_key_openai,
+                               (api_key_anthropic IS NOT NULL) AS api_key_anthropic,
                                created_at, updated_at
                         FROM users
                         ORDER BY created_at DESC
@@ -636,19 +676,6 @@ class UserService:
                 
                 rows = cursor.fetchall()
                 
-                return [
-                    User(
-                        id=row["id"],
-                        display_name=row["display_name"],
-                        email=row["email"],
-                        auth_provider=row["auth_provider"],
-                        theme=row["theme"],
-                        preferred_model=row["preferred_model"],
-                        preferred_temperature=float(row["preferred_temperature"]) if row["preferred_temperature"] else None,
-                        created_at=str(row["created_at"]) if row["created_at"] else None,
-                        updated_at=str(row["updated_at"]) if row["updated_at"] else None,
-                    )
-                    for row in rows
-                ]
+                return [self._row_to_user(row) for row in rows]
         finally:
             self._release_connection(conn)

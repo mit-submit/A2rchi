@@ -17,9 +17,13 @@ from src.utils.sql import (
     SQL_INSERT_AB_COMPARISON,
     SQL_UPDATE_AB_PREFERENCE,
     SQL_GET_AB_COMPARISON,
-    SQL_GET_PENDING_AB_COMPARISON,
+    SQL_GET_AB_COMPARISON_FOR_UPDATE,
+    SQL_GET_PENDING_AB_COMPARISONS,
+    SQL_COUNT_PENDING_AB_COMPARISONS,
     SQL_DELETE_AB_COMPARISON,
     SQL_GET_AB_COMPARISONS_BY_CONVERSATION,
+    SQL_UPSERT_VARIANT_METRIC,
+    SQL_GET_ALL_VARIANT_METRICS,
 )
 
 
@@ -50,6 +54,10 @@ class ABComparison:
     pipeline_a: str = ""
     model_b: str = ""
     pipeline_b: str = ""
+    variant_a_name: Optional[str] = None
+    variant_b_name: Optional[str] = None
+    variant_a_meta: Optional[str] = None  # JSONB as string
+    variant_b_meta: Optional[str] = None  # JSONB as string
     is_config_a_first: bool = True  # Which response shown first in UI
     preference: Optional[str] = None  # 'a', 'b', 'tie', or None
     preference_ts: Optional[datetime] = None
@@ -93,6 +101,29 @@ class ConversationService:
             self._pool.release_connection(conn)
         else:
             conn.close()
+
+    @staticmethod
+    def _row_to_ab_comparison(row) -> ABComparison:
+        """Convert a database row into an ABComparison."""
+        return ABComparison(
+            comparison_id=row[0],
+            conversation_id=row[1],
+            user_prompt_mid=row[2],
+            response_a_mid=row[3],
+            response_b_mid=row[4],
+            model_a=row[5],
+            pipeline_a=row[6],
+            model_b=row[7],
+            pipeline_b=row[8],
+            variant_a_name=row[9],
+            variant_b_name=row[10],
+            variant_a_meta=row[11],
+            variant_b_meta=row[12],
+            is_config_a_first=row[13],
+            preference=row[14],
+            preference_ts=row[15],
+            created_at=row[16],
+        )
     
     # =========================================================================
     # Message Operations
@@ -267,6 +298,10 @@ class ConversationService:
         model_b: str,
         pipeline_b: str,
         is_config_a_first: bool = True,
+        variant_a_name: Optional[str] = None,
+        variant_b_name: Optional[str] = None,
+        variant_a_meta: Optional[str] = None,
+        variant_b_meta: Optional[str] = None,
     ) -> int:
         """
         Create a new A/B comparison.
@@ -281,6 +316,10 @@ class ConversationService:
             model_b: Model identifier for response B
             pipeline_b: Pipeline identifier for response B
             is_config_a_first: Whether response A shown first
+            variant_a_name: Pool variant name for arm A (optional)
+            variant_b_name: Pool variant name for arm B (optional)
+            variant_a_meta: JSONB string of variant A config snapshot (optional)
+            variant_b_meta: JSONB string of variant B config snapshot (optional)
             
         Returns:
             comparison_id
@@ -299,6 +338,10 @@ class ConversationService:
                         pipeline_a,
                         model_b,
                         pipeline_b,
+                        variant_a_name,
+                        variant_b_name,
+                        variant_a_meta,
+                        variant_b_meta,
                         is_config_a_first,
                     )
                 )
@@ -339,6 +382,80 @@ class ConversationService:
             raise
         finally:
             self._release_connection(conn)
+
+    def submit_ab_preference(
+        self,
+        comparison_id: int,
+        preference: str,
+    ) -> Dict[str, Any]:
+        """
+        Record a comparison preference exactly once and update metrics in the same transaction.
+
+        Returns:
+            Dict with keys:
+            - updated: whether this call changed the stored preference
+            - comparison: ABComparison after processing
+        """
+        if preference not in ('a', 'b', 'tie'):
+            raise ValueError(f"Invalid preference: {preference}")
+
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(SQL_GET_AB_COMPARISON_FOR_UPDATE, (comparison_id,))
+                row = cur.fetchone()
+                if not row:
+                    raise ValueError(f"A/B comparison {comparison_id} not found")
+
+                comparison = ABComparison(
+                    comparison_id=row[0],
+                    conversation_id=row[1],
+                    user_prompt_mid=row[2],
+                    response_a_mid=row[3],
+                    response_b_mid=row[4],
+                    model_a=row[5],
+                    pipeline_a=row[6],
+                    model_b=row[7],
+                    pipeline_b=row[8],
+                    variant_a_name=row[9],
+                    variant_b_name=row[10],
+                    variant_a_meta=row[11],
+                    variant_b_meta=row[12],
+                    is_config_a_first=row[13],
+                    preference=row[14],
+                    preference_ts=row[15],
+                    created_at=row[16],
+                )
+
+                if comparison.preference is not None:
+                    return {"updated": False, "comparison": comparison}
+
+                cur.execute(
+                    SQL_UPDATE_AB_PREFERENCE,
+                    (preference, datetime.now(timezone.utc), comparison_id)
+                )
+
+                if comparison.variant_a_name and comparison.variant_b_name:
+                    if preference == "a":
+                        cur.execute(SQL_UPSERT_VARIANT_METRIC, (comparison.variant_a_name, 1, 0, 0, 1))
+                        cur.execute(SQL_UPSERT_VARIANT_METRIC, (comparison.variant_b_name, 0, 1, 0, 1))
+                    elif preference == "b":
+                        cur.execute(SQL_UPSERT_VARIANT_METRIC, (comparison.variant_a_name, 0, 1, 0, 1))
+                        cur.execute(SQL_UPSERT_VARIANT_METRIC, (comparison.variant_b_name, 1, 0, 0, 1))
+                    else:
+                        cur.execute(SQL_UPSERT_VARIANT_METRIC, (comparison.variant_a_name, 0, 0, 1, 1))
+                        cur.execute(SQL_UPSERT_VARIANT_METRIC, (comparison.variant_b_name, 0, 0, 1, 1))
+
+                conn.commit()
+
+                comparison.preference = preference
+                comparison.preference_ts = datetime.now(timezone.utc)
+                return {"updated": True, "comparison": comparison}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._release_connection(conn)
     
     def get_ab_comparison(self, comparison_id: int) -> Optional[ABComparison]:
         """
@@ -359,21 +476,7 @@ class ConversationService:
                 if not row:
                     return None
                 
-                return ABComparison(
-                    comparison_id=row[0],
-                    conversation_id=row[1],
-                    user_prompt_mid=row[2],
-                    response_a_mid=row[3],
-                    response_b_mid=row[4],
-                    model_a=row[5],
-                    pipeline_a=row[6],
-                    model_b=row[7],
-                    pipeline_b=row[8],
-                    is_config_a_first=row[9],
-                    preference=row[10],
-                    preference_ts=row[11],
-                    created_at=row[12],
-                )
+                return self._row_to_ab_comparison(row)
         finally:
             self._release_connection(conn)
     
@@ -390,30 +493,50 @@ class ConversationService:
         Returns:
             ABComparison or None if no pending comparisons
         """
+        pending = self.get_pending_ab_comparisons(conversation_id)
+        return pending[-1] if pending else None
+
+    def get_pending_ab_comparisons(
+        self,
+        conversation_id: str,
+    ) -> List[ABComparison]:
+        """
+        Get all pending (unvoted) A/B comparisons for a conversation.
+
+        Args:
+            conversation_id: Conversation to check
+
+        Returns:
+            Pending comparisons ordered by creation time ascending
+        """
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(SQL_GET_PENDING_AB_COMPARISON, (conversation_id,))
+                cur.execute(SQL_GET_PENDING_AB_COMPARISONS, (conversation_id,))
+                rows = cur.fetchall()
+                return [self._row_to_ab_comparison(row) for row in rows]
+        finally:
+            self._release_connection(conn)
+
+    def count_pending_ab_comparisons(
+        self,
+        conversation_id: str,
+    ) -> int:
+        """
+        Count unresolved A/B comparisons for a conversation.
+
+        Args:
+            conversation_id: Conversation to check
+
+        Returns:
+            Number of unresolved comparisons
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(SQL_COUNT_PENDING_AB_COMPARISONS, (conversation_id,))
                 row = cur.fetchone()
-                
-                if not row:
-                    return None
-                
-                return ABComparison(
-                    comparison_id=row[0],
-                    conversation_id=row[1],
-                    user_prompt_mid=row[2],
-                    response_a_mid=row[3],
-                    response_b_mid=row[4],
-                    model_a=row[5],
-                    pipeline_a=row[6],
-                    model_b=row[7],
-                    pipeline_b=row[8],
-                    is_config_a_first=row[9],
-                    preference=row[10],
-                    preference_ts=row[11],
-                    created_at=row[12],
-                )
+                return int(row[0]) if row else 0
         finally:
             self._release_connection(conn)
     
@@ -439,24 +562,7 @@ class ConversationService:
                 )
                 rows = cur.fetchall()
                 
-                return [
-                    ABComparison(
-                        comparison_id=row[0],
-                        conversation_id=row[1],
-                        user_prompt_mid=row[2],
-                        response_a_mid=row[3],
-                        response_b_mid=row[4],
-                        model_a=row[5],
-                        pipeline_a=row[6],
-                        model_b=row[7],
-                        pipeline_b=row[8],
-                        is_config_a_first=row[9],
-                        preference=row[10],
-                        preference_ts=row[11],
-                        created_at=row[12],
-                    )
-                    for row in rows
-                ]
+                return [self._row_to_ab_comparison(row) for row in rows]
         finally:
             self._release_connection(conn)
     
@@ -614,6 +720,69 @@ class ConversationService:
                         "pipeline": row[1],
                         "message_count": row[2],
                         "conversation_count": row[3],
+                    }
+                    for row in rows
+                ]
+        finally:
+            self._release_connection(conn)
+
+    # =========================================================================
+    # A/B Variant Metrics
+    # =========================================================================
+
+    def update_variant_metrics_for_preference(
+        self,
+        variant_a_name: str,
+        variant_b_name: str,
+        preference: str,
+    ) -> None:
+        """
+        Atomically update win/loss/tie counts for both variants after a vote.
+
+        Args:
+            variant_a_name: Name of variant in arm A
+            variant_b_name: Name of variant in arm B
+            preference: 'a', 'b', or 'tie'
+        """
+        if not variant_a_name or not variant_b_name:
+            return  # Not a pool-based comparison; skip metrics
+
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                if preference == "a":
+                    # A wins, B loses
+                    cur.execute(SQL_UPSERT_VARIANT_METRIC, (variant_a_name, 1, 0, 0, 1))
+                    cur.execute(SQL_UPSERT_VARIANT_METRIC, (variant_b_name, 0, 1, 0, 1))
+                elif preference == "b":
+                    # B wins, A loses
+                    cur.execute(SQL_UPSERT_VARIANT_METRIC, (variant_a_name, 0, 1, 0, 1))
+                    cur.execute(SQL_UPSERT_VARIANT_METRIC, (variant_b_name, 1, 0, 0, 1))
+                elif preference == "tie":
+                    cur.execute(SQL_UPSERT_VARIANT_METRIC, (variant_a_name, 0, 0, 1, 1))
+                    cur.execute(SQL_UPSERT_VARIANT_METRIC, (variant_b_name, 0, 0, 1, 1))
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._release_connection(conn)
+
+    def get_all_variant_metrics(self) -> List[Dict[str, Any]]:
+        """Return all variant metrics rows."""
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(SQL_GET_ALL_VARIANT_METRICS)
+                rows = cur.fetchall()
+                return [
+                    {
+                        "variant_name": row[0],
+                        "wins": row[1],
+                        "losses": row[2],
+                        "ties": row[3],
+                        "total_comparisons": row[4],
+                        "last_updated": row[5].isoformat() if row[5] else None,
                     }
                     for row in rows
                 ]

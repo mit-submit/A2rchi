@@ -274,6 +274,10 @@ def get_permission_context() -> dict:
             'can_view_config': False,
             'can_modify_config': False,
             'can_view_metrics': False,
+            'can_view_ab_testing': False,
+            'can_manage_ab_testing': False,
+            'can_view_ab_metrics': False,
+            'can_participate_ab_testing': False,
             'is_admin': False,
             'is_expert': False,
             'can_manage_alerts': False,
@@ -281,7 +285,9 @@ def get_permission_context() -> dict:
         }
     
     roles = session.get('roles', [])
-    
+    can_manage_ab_testing = has_permission(Permission.AB.MANAGE, roles)
+    can_view_ab_metrics = has_permission(Permission.AB.METRICS, roles)
+
     return {
         'is_authenticated': True,
         'can_chat': has_permission(Permission.Chat.QUERY, roles),
@@ -292,6 +298,10 @@ def get_permission_context() -> dict:
         'can_view_config': has_permission(Permission.Config.VIEW, roles),
         'can_modify_config': has_permission(Permission.Config.MODIFY, roles),
         'can_view_metrics': has_permission(Permission.Metrics.VIEW, roles),
+        'can_view_ab_testing': can_manage_ab_testing or has_permission(Permission.AB.VIEW, roles),
+        'can_manage_ab_testing': can_manage_ab_testing,
+        'can_view_ab_metrics': can_manage_ab_testing or can_view_ab_metrics,
+        'can_participate_ab_testing': has_permission(Permission.AB.PARTICIPATE, roles),
         'is_admin': is_admin(roles),
         'is_expert': is_expert(roles),
         'can_manage_alerts': has_permission(Permission.Alerts.MANAGE, roles),

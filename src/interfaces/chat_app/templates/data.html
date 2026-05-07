@@ -46,37 +46,38 @@
         <h1>Data Sources</h1>
       </div>
       <div class="header-right">
-        <a href="/upload" class="icon-btn" title="Upload Data">
+        {% if can_view_ab_testing %}
+        <a href="/admin/ab-testing" class="icon-btn header-action-btn ab-admin-nav-btn" title="A/B Testing">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 3v18"></path>
+            <path d="M3 12h18"></path>
+            <circle cx="12" cy="12" r="9"></circle>
+          </svg>
+          <span>A/B Testing</span>
+        </a>
+        {% endif %}
+        <a href="/upload" class="icon-btn header-action-btn" title="Uploader">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="17 8 12 3 7 8"></polyline>
             <line x1="12" y1="3" x2="12" y2="15"></line>
           </svg>
+          <span>Uploader</span>
         </a>
-        <a href="/admin/database" class="icon-btn" title="Database Viewer">
+        <a href="/admin/database" class="icon-btn header-action-btn" title="Postgres">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
             <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
             <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
           </svg>
+          <span>Postgres</span>
         </a>
-        <button class="icon-btn" id="expand-all-btn" title="Expand All">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="7 13 12 18 17 13"></polyline>
-            <polyline points="7 6 12 11 17 6"></polyline>
-          </svg>
-        </button>
-        <button class="icon-btn" id="collapse-all-btn" title="Collapse All">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="17 11 12 6 7 11"></polyline>
-            <polyline points="17 18 12 13 7 18"></polyline>
-          </svg>
-        </button>
-        <button class="icon-btn" id="refresh-btn" title="Refresh">
+        <button class="icon-btn header-action-btn" id="refresh-btn" title="Refresh">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23 4 23 10 17 10"></polyline>
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
           </svg>
+          <span>Refresh</span>
         </button>
       </div>
     </header>

@@ -158,10 +158,6 @@ test.describe('Data Viewer Document Management', () => {
 
     await page.goto('/data');
     await page.waitForTimeout(500);
-    
-    // Expand all
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    await page.waitForTimeout(300);
 
     // Click on a document
     const docItem = page.locator('.tree-file').first();
@@ -184,9 +180,6 @@ test.describe('Data Viewer Document Management', () => {
   test('chunks tab shows document chunks', async ({ page }) => {
     await page.goto('/data');
     await page.waitForTimeout(500);
-    
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    await page.waitForTimeout(300);
 
     const docItem = page.locator('.tree-file').first();
     if (await docItem.isVisible()) {
@@ -213,9 +206,6 @@ test.describe('Data Viewer Document Management', () => {
   test('document preview shows metadata', async ({ page }) => {
     await page.goto('/data');
     await page.waitForTimeout(500);
-    
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    await page.waitForTimeout(300);
 
     const docItem = page.locator('.tree-file').first();
     if (await docItem.isVisible()) {
@@ -232,7 +222,7 @@ test.describe('Data Viewer Document Management', () => {
     await page.waitForTimeout(500);
 
     // Search for "test"
-    await page.getByPlaceholder('Search documents').fill('test');
+    await page.getByPlaceholder(/Search documents/i).fill('test');
     await page.waitForTimeout(500);
 
     // Should show filtered results
@@ -249,7 +239,7 @@ test.describe('Data Viewer Document Management', () => {
     await page.waitForTimeout(300);
 
     // Then search
-    await page.getByPlaceholder('Search documents').fill('README');
+    await page.getByPlaceholder(/Search documents/i).fill('README');
     await page.waitForTimeout(500);
 
     // Should show Git Repos in document list
@@ -260,9 +250,6 @@ test.describe('Data Viewer Document Management', () => {
   test('preview updates when different document selected', async ({ page }) => {
     await page.goto('/data');
     await page.waitForTimeout(500);
-    
-    await page.getByRole('button', { name: 'Expand All' }).click();
-    await page.waitForTimeout(300);
 
     // Verify preview placeholder is shown initially
     await expect(page.getByText('Select a document to preview')).toBeVisible();

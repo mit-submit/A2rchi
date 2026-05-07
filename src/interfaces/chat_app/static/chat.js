@@ -19,8 +19,6 @@ const CONFIG = {
     SELECTED_PROVIDER: 'archi_selected_provider',
     SELECTED_MODEL: 'archi_selected_model',
     SELECTED_MODEL_CUSTOM: 'archi_selected_model_custom',
-    SELECTED_PROVIDER_B: 'archi_selected_provider_b',
-    SELECTED_MODEL_B: 'archi_selected_model_b',
   },
   ENDPOINTS: {
     STREAM: '/api/get_chat_response_stream',
@@ -29,9 +27,14 @@ const CONFIG = {
     LOAD_CONVERSATION: '/api/load_conversation',
     NEW_CONVERSATION: '/api/new_conversation',
     DELETE_CONVERSATION: '/api/delete_conversation',
-    AB_CREATE: '/api/ab/create',
     AB_PREFERENCE: '/api/ab/preference',
     AB_PENDING: '/api/ab/pending',
+    AB_POOL: '/api/ab/pool',
+    AB_DECISION: '/api/ab/decision',
+    AB_POOL_SET: '/api/ab/pool/set',
+    AB_POOL_DISABLE: '/api/ab/pool/disable',
+    AB_COMPARE: '/api/ab/compare',
+    AB_METRICS: '/api/ab/metrics',
     TRACE_GET: '/api/trace',
     CANCEL_STREAM: '/api/cancel_stream',
     PROVIDERS: '/api/providers',
@@ -47,6 +50,8 @@ const CONFIG = {
     AGENTS_LIST: '/api/agents/list',
     AGENT_SPEC: '/api/agents/spec',
     AGENT_ACTIVE: '/api/agents/active',
+    USER_ME: '/api/users/me',
+    USER_PREFERENCES: '/api/users/me/preferences',
     LIKE: '/api/like',
     DISLIKE: '/api/dislike',
     TEXT_FEEDBACK: '/api/text_feedback',
@@ -219,6 +224,47 @@ const API = {
     return data;
   },
 
+  /**
+   * Shared NDJSON reader: reads a fetch Response body and yields parsed JSON objects.
+   * Properly flushes any remaining buffer content after the stream ends.
+   */
+  async *_readNDJSON(response) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            yield JSON.parse(trimmed);
+          } catch (e) {
+            console.warn('Failed to parse NDJSON line:', trimmed);
+          }
+        }
+      }
+      // Flush remaining buffer after stream ends
+      if (buffer.trim()) {
+        try {
+          yield JSON.parse(buffer.trim());
+        } catch (e) {
+          console.warn('Failed to parse final NDJSON line:', buffer.trim());
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  },
+
   async getConfigs() {
     return this.fetchJson(CONFIG.ENDPOINTS.CONFIGS);
   },
@@ -269,10 +315,10 @@ const API = {
         client_sent_msg_ts: Date.now(),
         client_timeout: CONFIG.STREAMING.TIMEOUT,
         client_id: this.clientId,
-        include_agent_steps: true,  // Required for streaming chunks
-        include_tool_steps: true,   // Enable tool step events for trace
-        provider: provider,  // Provider-based model selection
-        model: model,        // Model ID/name for the provider
+        include_agent_steps: true,
+        include_tool_steps: true,
+        provider: provider,
+        model: model,
       }),
       signal: signal,
     });
@@ -287,47 +333,10 @@ const API = {
       throw new Error(text || `Request failed (${response.status})`);
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          
-          try {
-            yield JSON.parse(trimmed);
-          } catch (e) {
-            console.error('Failed to parse stream event:', e);
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* this._readNDJSON(response);
   },
 
   // A/B Testing API methods
-  async createABComparison(data) {
-    return this.fetchJson(CONFIG.ENDPOINTS.AB_CREATE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...data,
-        client_id: this.clientId,
-      }),
-    });
-  },
-
   async submitABPreference(comparisonId, preference) {
     return this.fetchJson(CONFIG.ENDPOINTS.AB_PREFERENCE, {
       method: 'POST',
@@ -343,6 +352,84 @@ const API = {
   async getPendingABComparison(conversationId) {
     const url = `${CONFIG.ENDPOINTS.AB_PENDING}?conversation_id=${conversationId}&client_id=${encodeURIComponent(this.clientId)}`;
     return this.fetchJson(url);
+  },
+
+  // Pool-based A/B testing API methods
+  async getABPool() {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.AB_POOL}?client_id=${encodeURIComponent(this.clientId)}`);
+  },
+
+  async getABDecision(conversationId = null) {
+    const params = new URLSearchParams({ client_id: this.clientId });
+    if (conversationId != null) {
+      params.set('conversation_id', String(conversationId));
+    }
+    return this.fetchJson(`${CONFIG.ENDPOINTS.AB_DECISION}?${params.toString()}`);
+  },
+
+  async getABMetrics() {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.AB_METRICS}?client_id=${encodeURIComponent(this.clientId)}`);
+  },
+
+  async saveABPool(payload) {
+    return this.fetchJson(CONFIG.ENDPOINTS.AB_POOL_SET, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, client_id: this.clientId }),
+    });
+  },
+
+  async disableABPool() {
+    return this.fetchJson(CONFIG.ENDPOINTS.AB_POOL_DISABLE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: this.clientId }),
+    });
+  },
+
+  /**
+   * Stream a pool-based A/B comparison. Returns an async iterator of NDJSON events.
+   * Each event has an 'arm' field ('a' or 'b') plus 'type', 'content', etc.
+   */
+  async *streamABComparison(history, conversationId, configName, signal, provider = null, model = null) {
+    const streamOverride = window.__ARCHI_PLAYWRIGHT__?.ab?.streamOverride;
+    if (typeof streamOverride === 'function') {
+      yield* streamOverride({
+        history,
+        conversationId,
+        configName,
+        signal,
+        provider,
+        model,
+        clientId: this.clientId,
+      });
+      return;
+    }
+
+    const body = {
+      last_message: history.slice(-1),
+      conversation_id: conversationId,
+      config_name: configName || null,
+      client_id: this.clientId,
+      client_sent_msg_ts: Date.now(),
+      client_timeout: CONFIG.STREAMING.TIMEOUT,
+      provider,
+      model,
+    };
+
+    const response = await fetch(CONFIG.ENDPOINTS.AB_COMPARE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`A/B compare failed: ${response.status} ${errText}`);
+    }
+
+    yield* this._readNDJSON(response);
   },
 
   // Provider API methods
@@ -375,6 +462,18 @@ const API = {
   async getAgentSpec(name) {
     const url = `${CONFIG.ENDPOINTS.AGENT_SPEC}?name=${encodeURIComponent(name)}`;
     return this.fetchJson(url);
+  },
+
+  async getCurrentUser() {
+    return this.fetchJson(CONFIG.ENDPOINTS.USER_ME);
+  },
+
+  async updateUserPreferences(payload) {
+    return this.fetchJson(CONFIG.ENDPOINTS.USER_PREFERENCES, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   },
 
   async setActiveAgent(name) {
@@ -586,6 +685,7 @@ window.Markdown = Markdown;
 const UI = {
   elements: {},
   sendBtnDefaultHtml: null,
+  traceTimerIntervals: new Map(),
 
   init() {
     this.elements = {
@@ -600,14 +700,12 @@ const UI = {
       inputField: document.querySelector('.input-field'),
       sendBtn: document.querySelector('.send-btn'),
       modelSelectA: null,
-      modelSelectB: document.querySelector('.model-select-b'),
+
       settingsBtn: document.querySelector('.settings-btn'),
       dataTab: document.getElementById('data-tab'),
       settingsModal: document.querySelector('.settings-modal'),
       settingsBackdrop: document.querySelector('.settings-backdrop'),
       settingsClose: document.querySelector('.settings-close'),
-      abCheckbox: document.querySelector('.ab-checkbox'),
-      abModelGroup: document.querySelector('.ab-model-group'),
       traceVerboseOptions: document.querySelector('.trace-verbose-options'),
       agentDropdown: document.querySelector('.agent-dropdown'),
       agentDropdownBtn: document.querySelector('.agent-dropdown-btn'),
@@ -635,7 +733,7 @@ const UI = {
       // Provider selection elements
       providerSelect: document.getElementById('provider-select'),
       modelSelectPrimary: document.getElementById('model-select-primary'),
-      providerSelectB: document.getElementById('provider-select-b'),
+
       providerStatus: document.getElementById('provider-status'),
       // User profile elements
       userProfileWidget: document.getElementById('user-profile-widget'),
@@ -649,6 +747,15 @@ const UI = {
       customModelRow: document.getElementById('custom-model-row'),
       activeModelLabel: document.getElementById('active-model-label'),
       darkModeToggle: document.getElementById('dark-mode-toggle'),
+      abSettingsNav: document.getElementById('ab-settings-nav'),
+      abSettingsSection: document.getElementById('settings-ab-testing'),
+      abParticipationGroup: document.getElementById('ab-participation-group'),
+      abParticipationSlider: document.getElementById('ab-participation-slider'),
+      abParticipationValue: document.getElementById('ab-participation-value'),
+      abParticipationDefault: document.getElementById('ab-participation-default'),
+      abParticipationNote: document.getElementById('ab-participation-note'),
+      abParticipationInactive: document.getElementById('ab-participation-inactive'),
+      abAdminLinkSection: document.getElementById('ab-settings-section'),
     };
 
     this.sendBtnDefaultHtml = this.elements.sendBtn?.innerHTML || '';
@@ -746,16 +853,23 @@ const UI = {
       const target = e.target;
       const row = target.closest('.agent-dropdown-item');
       if (!row) return;
+      e.preventDefault();
+      e.stopPropagation();
       // Handle inline delete confirmation buttons
       if (target.closest('.agent-dropdown-confirm-yes')) {
         const name = row.dataset.agentName;
-        this.closeAgentDropdown();
         this.doDeleteAgent(name);
         return;
       }
       if (target.closest('.agent-dropdown-confirm-no')) {
         // Cancel: re-render list to remove confirmation state
-        Chat.loadAgents();
+        this.renderAgentsList(Chat.state.allAgents || Chat.state.agents || [], Chat.state.activeAgentName);
+        return;
+      }
+      if (target.closest('.agent-dropdown-clone')) {
+        const name = row.dataset.agentName;
+        this.closeAgentDropdown();
+        this.openAgentSpecEditor({ mode: 'clone', name });
         return;
       }
       if (target.closest('.agent-dropdown-edit')) {
@@ -789,37 +903,58 @@ const UI = {
     // Resize handle for agent spec modal
     this.initAgentSpecResize();
     
-    // A/B toggle in settings
-    this.elements.abCheckbox?.addEventListener('change', (e) => {
-      const isEnabled = e.target.checked;
-      if (isEnabled) {
-        // Show warning modal before enabling
-        const dismissed = sessionStorage.getItem(CONFIG.STORAGE_KEYS.AB_WARNING_DISMISSED);
-        if (!dismissed) {
-          e.target.checked = false; // Reset checkbox
-          this.showABWarningModal(
-            () => {
-              // On confirm
-              e.target.checked = true;
-              if (this.elements.abModelGroup) {
-                this.elements.abModelGroup.style.display = 'block';
-              }
-              sessionStorage.setItem(CONFIG.STORAGE_KEYS.AB_WARNING_DISMISSED, 'true');
-            },
-            () => {
-              // On cancel
-              e.target.checked = false;
-            }
-          );
-          return;
+    // A/B pool editor — save & disable buttons
+    document.getElementById('ab-pool-save')?.addEventListener('click', async () => {
+      const sel = UI._getABPoolSelection();
+      if (!sel || !sel.champion || sel.variants.length < 2) return;
+      const saveBtn = document.getElementById('ab-pool-save');
+      const msgEl = document.getElementById('ab-pool-message');
+      const sampleRate = Number(document.getElementById('ab-sample-rate')?.value || 1);
+      const disclosureMode = document.getElementById('ab-disclosure-mode')?.value || 'post_vote_reveal';
+      const defaultTraceMode = document.getElementById('ab-trace-mode')?.value || 'hidden';
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        const result = await API.saveABPool({
+          champion: sel.champion,
+          variants: sel.variants,
+          comparison_rate: sampleRate,
+          variant_label_mode: disclosureMode,
+          activity_panel_default_state: defaultTraceMode,
+        });
+        if (result?.success) {
+          if (msgEl) { msgEl.textContent = 'Pool saved'; msgEl.className = 'ab-pool-message success'; }
+          Chat.state.abPool = result;
+          // Re-render to reflect saved state
+          UI.updateABPoolUI(result);
+        } else {
+          if (msgEl) { msgEl.textContent = result?.error || 'Save failed'; msgEl.className = 'ab-pool-message error'; }
         }
+      } catch (e) {
+        if (msgEl) { msgEl.textContent = e.message || 'Save failed'; msgEl.className = 'ab-pool-message error'; }
+      } finally {
+        saveBtn.textContent = 'Save Pool';
+        UI._updateABPoolSaveState();
       }
-      if (this.elements.abModelGroup) {
-        this.elements.abModelGroup.style.display = isEnabled ? 'block' : 'none';
-      }
-      // If disabling A/B mode while vote is pending, re-enable input
-      if (!isEnabled && Chat.state.abVotePending) {
-        Chat.cancelPendingABComparison();
+    });
+
+    document.getElementById('ab-pool-disable')?.addEventListener('click', async () => {
+      const disableBtn = document.getElementById('ab-pool-disable');
+      const msgEl = document.getElementById('ab-pool-message');
+      disableBtn.disabled = true;
+      try {
+        const result = await API.disableABPool();
+        if (result?.success) {
+          Chat.state.abPool = null;
+          UI.updateABPoolUI({ enabled: false });
+          if (msgEl) { msgEl.textContent = 'Pool disabled'; msgEl.className = 'ab-pool-message success'; }
+          // If A/B mode was active in chat, deactivate
+          if (Chat.state.abVotePending) Chat.cancelPendingABComparison();
+        }
+      } catch (e) {
+        if (msgEl) { msgEl.textContent = e.message || 'Failed'; msgEl.className = 'ab-pool-message error'; }
+      } finally {
+        disableBtn.disabled = false;
       }
     });
 
@@ -836,6 +971,14 @@ const UI = {
       localStorage.setItem('archi_theme', isDark ? 'dark' : 'light');
     });
 
+    this.elements.abParticipationSlider?.addEventListener('input', (e) => {
+      this.updateABParticipationPreview(Number(e.target.value));
+    });
+
+    this.elements.abParticipationSlider?.addEventListener('change', async (e) => {
+      await Chat.saveABParticipationPreference(Number(e.target.value) / 100);
+    });
+
     // Provider selection
     this.elements.providerSelect?.addEventListener('change', (e) => {
       Chat.handleProviderChange(e.target.value);
@@ -849,25 +992,21 @@ const UI = {
       Chat.handleCustomModelChange(e.target.value);
     });
 
-    this.elements.providerSelectB?.addEventListener('change', (e) => {
-      Chat.handleProviderBChange(e.target.value);
-    });
-    
     // User profile widget interactions
     this.elements.userRolesToggle?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleUserRolesPanel();
     });
-    
+
     this.elements.userProfileWidget?.addEventListener('click', () => {
       this.toggleUserRolesPanel();
     });
-    
+
     this.elements.userLogoutBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       window.location.href = '/logout';
     });
-    
+
     // Close modal on Escape
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.elements.settingsModal?.style.display !== 'none') {
@@ -1159,6 +1298,9 @@ const UI = {
         <div class="agent-dropdown-item${isActive ? ' active' : ''}" data-agent-name="${Utils.escapeHtml(name)}">
           <span class="agent-dropdown-name">${checkmark}${Utils.escapeHtml(name)}</span>
           <div class="agent-dropdown-actions">
+            <button class="agent-dropdown-clone" type="button" title="Create variant">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
             <button class="agent-dropdown-edit" type="button" title="Edit">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
             </button>
@@ -1177,27 +1319,52 @@ const UI = {
     if (!this.elements.agentSpecModal) return;
     this.elements.agentSpecModal.style.display = 'flex';
     this.setAgentSpecStatus('');
-    this.agentSpecMode = mode;
-    this.agentSpecName = name;
+    // Clone mode → load source spec, then switch to create for saving
+    this.agentSpecMode = mode === 'clone' ? 'create' : mode;
+    this.agentSpecName = mode === 'clone' ? null : name;
+    this.agentSpecOriginalName = mode === 'edit' ? name : null;
     // Restore persisted size
     this.restoreAgentSpecSize();
     if (this.elements.agentSpecTitle) {
-      this.elements.agentSpecTitle.textContent = mode === 'edit' ? `Edit ${name || 'Agent'}` : 'New Agent';
+      if (mode === 'clone') {
+        this.elements.agentSpecTitle.textContent = `New Variant of ${name || 'Agent'}`;
+      } else if (mode === 'edit') {
+        this.elements.agentSpecTitle.textContent = `Edit ${name || 'Agent'}`;
+      } else {
+        this.elements.agentSpecTitle.textContent = 'New Agent';
+      }
     }
     // Update reset button label
     if (this.elements.agentSpecReset) {
       this.elements.agentSpecReset.textContent = mode === 'edit' ? 'Revert changes' : 'Reset template';
     }
+    if (this.elements.agentSpecName) {
+      this.elements.agentSpecName.readOnly = mode === 'edit';
+      this.elements.agentSpecName.title = mode === 'edit'
+        ? 'Agent name is fixed while editing. Clone or create a new agent to use a different name.'
+        : '';
+    }
     // Clear validation errors
     this.clearAgentSpecValidation();
-    if (mode === 'edit' && name) {
+    if (mode === 'clone' && name) {
+      // Load tool palette first, then load source spec and modify name
       await this.loadAgentToolPalette();
       await this.loadAgentSpecByName(name);
+      // Append " (variant)" to the name so user can tweak tools & save
+      if (this.elements.agentSpecName) {
+        this.elements.agentSpecName.value = `${name} (variant)`;
+      }
+      this.setAgentSpecStatus('Cloned — adjust tools and name, then save.', 'info');
+      setTimeout(() => this.elements.agentSpecName?.select(), 100);
+    } else if (mode === 'edit' && name) {
+      await this.loadAgentToolPalette();
+      await this.loadAgentSpecByName(name);
+      this.setAgentSpecStatus('Editing updates this agent in place. Clone or create a new agent to use a different name.', 'info');
     } else {
       await this.loadAgentSpecTemplate();
     }
     // Auto-focus name in create mode
-    if (mode === 'create') {
+    if (mode === 'create' && !name) {
       setTimeout(() => this.elements.agentSpecName?.focus(), 100);
     }
   },
@@ -1243,8 +1410,9 @@ const UI = {
   },
 
   /** Serialise structured form fields back to .md format */
-  serialiseAgentSpec(name, tools, prompt) {
+  serialiseAgentSpec(name, tools, prompt, { ab_only = false } = {}) {
     let yaml = `---\nname: ${name}\n`;
+    if (ab_only) yaml += 'ab_only: true\n';
     if (tools.length) {
       yaml += 'tools:\n';
       for (const t of tools) yaml += `  - ${t}\n`;
@@ -1327,9 +1495,9 @@ const UI = {
   resetAgentSpecForm() {
     this.clearAgentSpecValidation();
     this.setAgentSpecStatus('');
-    if (this.agentSpecMode === 'edit' && this.agentSpecName) {
+    if (this.agentSpecMode === 'edit' && this.agentSpecOriginalName) {
       // Revert to saved version
-      this.loadAgentSpecByName(this.agentSpecName);
+      this.loadAgentSpecByName(this.agentSpecOriginalName);
     } else {
       this.loadAgentSpecTemplate();
     }
@@ -1375,6 +1543,11 @@ const UI = {
       hasError = true;
     }
     if (hasError) return;
+    if (this.agentSpecMode === 'edit' && this.agentSpecOriginalName && name !== this.agentSpecOriginalName) {
+      this.elements.agentSpecName?.classList.add('field-error');
+      this.setAgentSpecStatus('Agent name cannot be changed in edit mode. Clone or create a new agent instead.', 'error');
+      return;
+    }
     // Serialise to .md format
     const content = this.serialiseAgentSpec(name, tools, prompt);
     if (this.elements.agentSpecEditor) this.elements.agentSpecEditor.value = content;
@@ -1386,12 +1559,13 @@ const UI = {
       const response = await API.saveAgentSpec({
         content,
         mode: this.agentSpecMode || 'create',
-        existing_name: this.agentSpecName || null,
+        existing_name: this.agentSpecOriginalName || this.agentSpecName || null,
       });
       if (this.agentSpecMode === 'edit') {
-        const savedName = Utils.normalizeAgentName(response?.name || this.agentSpecName || '');
+        const savedName = Utils.normalizeAgentName(response?.name || this.agentSpecOriginalName || this.agentSpecName || '');
         if (savedName) {
           this.agentSpecName = savedName;
+          this.agentSpecOriginalName = savedName;
         }
         if (Utils.normalizeAgentName(Chat.state.activeAgentName) === Utils.normalizeAgentName(savedName)) {
           await Chat.setActiveAgent(savedName);
@@ -1478,7 +1652,51 @@ const UI = {
   },
 
   isABEnabled() {
-    return this.elements.abCheckbox?.checked ?? false;
+    // A/B mode is active when the server reports this user is eligible
+    return Chat.state.abPool?.enabled === true;
+  },
+
+  getABDisclosureMode() {
+    return this.normalizeABDisclosureMode(
+      Chat.state.abPool?.variant_label_mode ?? Chat.state.abPool?.disclosure_mode
+    );
+  },
+
+  getABTraceMode() {
+    return this.normalizeABTraceMode(
+      Chat.state.abPool?.activity_panel_default_state ?? Chat.state.abPool?.default_trace_mode
+    );
+  },
+
+  normalizeABDisclosureMode(mode) {
+    if (mode === 'reveal_after_vote') return 'post_vote_reveal';
+    if (mode === 'show_during_streaming') return 'always_visible';
+    return ['hidden', 'post_vote_reveal', 'always_visible'].includes(mode)
+      ? mode
+      : 'post_vote_reveal';
+  },
+
+  normalizeABTraceMode(mode) {
+    return ['hidden', 'collapsed', 'expanded'].includes(mode)
+      ? mode
+      : 'hidden';
+  },
+
+  isTraceVisibleMode(mode) {
+    return !['minimal', 'hidden'].includes(mode);
+  },
+
+  isTraceCollapsedMode(mode) {
+    return ['normal', 'collapsed'].includes(mode);
+  },
+
+  isTraceExpandedMode(mode) {
+    return ['verbose', 'expanded'].includes(mode);
+  },
+
+  shouldUseABForNextTurn() {
+    if (!this.isABEnabled()) return false;
+    return true;
   },
 
   autoResizeInput() {
@@ -1566,14 +1784,6 @@ const UI = {
       select.value = '';
     }
 
-    // Also populate provider B select for A/B testing
-    const selectB = this.elements.providerSelectB;
-    if (selectB) {
-      selectB.innerHTML = '<option value="">Same as primary</option>' +
-        enabledProviders
-          .map(p => `<option value="${Utils.escapeHtml(p.type)}">${Utils.escapeHtml(p.display_name)}</option>`)
-          .join('');
-    }
   },
 
   renderProviderModels(models, selectedModel = null, providerType = null) {
@@ -1608,29 +1818,7 @@ const UI = {
     }
   },
 
-  renderModelBOptions(models, selectedModel = null, providerType = null) {
-    const select = this.elements.modelSelectB;
-    if (!select) return;
 
-    if (!models || models.length === 0) {
-      select.innerHTML = '<option value="">No models available</option>';
-      return;
-    }
-
-    const options = models
-      .map(m => `<option value="${Utils.escapeHtml(m.id)}">${Utils.escapeHtml(m.display_name || m.name)}</option>`)
-      .join('');
-    const customOption = providerType === 'openrouter'
-      ? '<option value="__custom__">Custom model…</option>'
-      : '';
-    select.innerHTML = options + customOption;
-
-    if (selectedModel === '__custom__' && providerType === 'openrouter') {
-      select.value = '__custom__';
-    } else if (selectedModel && models.some(m => m.id === selectedModel)) {
-      select.value = selectedModel;
-    }
-  },
 
   updateProviderStatus(status, message) {
     const statusEl = this.elements.providerStatus;
@@ -1949,6 +2137,353 @@ const UI = {
   // A/B Testing UI Methods
   // =========================================================================
 
+  setABSectionVisible(visible) {
+    if (this.elements.abAdminLinkSection) {
+      this.elements.abAdminLinkSection.style.display = visible ? '' : 'none';
+    }
+  },
+
+  setABSettingsVisible(visible) {
+    if (this.elements.abSettingsNav) {
+      this.elements.abSettingsNav.style.display = visible ? '' : 'none';
+    }
+    if (this.elements.abSettingsSection && !visible) {
+      this.elements.abSettingsSection.hidden = true;
+      this.elements.abSettingsSection.classList.remove('active');
+    }
+  },
+
+  updateABParticipationPreview(value) {
+    if (this.elements.abParticipationValue) {
+      this.elements.abParticipationValue.textContent = `${Math.round(value)}%`;
+    }
+  },
+
+  updateABSettingsSection() {
+    const abState = Chat.state.abPool || {};
+    const capabilities = Chat.state.abCapabilities || {};
+    const currentUser = Chat.state.currentUser || {};
+    const preferenceSaveState = Chat.state.abPreferenceSaveState || null;
+    const canParticipate = capabilities.canParticipate === true;
+    const canViewAdmin = capabilities.canView === true;
+    const shouldShow = canParticipate || canViewAdmin;
+
+    this.setABSettingsVisible(shouldShow);
+    this.setABSectionVisible(canViewAdmin);
+
+    if (this.elements.abParticipationGroup) {
+      this.elements.abParticipationGroup.style.display = canParticipate ? '' : 'none';
+    }
+    if (!canParticipate) {
+      return;
+    }
+
+    const defaultRate = Number(
+      abState.default_comparison_rate
+      ?? abState.default_sample_rate
+      ?? abState.comparison_rate
+      ?? abState.sample_rate
+      ?? 1
+    );
+    const usingDefault = currentUser.ab_participation_rate == null || Number.isNaN(Number(currentUser.ab_participation_rate));
+    const effectiveRate = usingDefault ? defaultRate : Number(currentUser.ab_participation_rate);
+    const percent = Math.max(0, Math.min(100, Math.round(effectiveRate * 100)));
+
+    if (this.elements.abParticipationSlider) {
+      this.elements.abParticipationSlider.value = String(percent);
+    }
+    this.updateABParticipationPreview(percent);
+
+    if (this.elements.abParticipationDefault) {
+      this.elements.abParticipationDefault.textContent = `Default: ${Math.round(defaultRate * 100)}%`;
+    }
+    if (this.elements.abParticipationNote) {
+      if (preferenceSaveState?.type === 'error') {
+        this.elements.abParticipationNote.textContent = preferenceSaveState.message || 'Your last change was not saved.';
+        this.elements.abParticipationNote.classList.add('settings-inline-error');
+      } else {
+        this.elements.abParticipationNote.textContent = preferenceSaveState?.type === 'success'
+          ? (preferenceSaveState.message || 'Saved for your account.')
+          : (usingDefault
+            ? 'Currently using the deployment default until you choose your own rate.'
+            : 'Your saved setting applies only to your account.');
+        this.elements.abParticipationNote.classList.remove('settings-inline-error');
+      }
+    }
+    if (this.elements.abParticipationInactive) {
+      const reason = String(abState.participant_reason || '');
+      let inactiveMessage = '';
+      if (reason === 'not_targeted') {
+        inactiveMessage = 'The current experiment does not target your role or permissions. Your saved rate will apply automatically if a future experiment includes you.';
+      } else if (reason === 'disabled') {
+        inactiveMessage = 'Experiments are currently inactive. Your preference will be used again if A/B testing is enabled.';
+      }
+      this.elements.abParticipationInactive.textContent = inactiveMessage;
+      this.elements.abParticipationInactive.style.display = inactiveMessage ? '' : 'none';
+    }
+  },
+
+  updateABPoolUI(poolInfo) {
+    // Render pool editor with current agents + pool state
+    const agentList = document.getElementById('ab-pool-agent-list');
+    const statusBadge = document.getElementById('ab-pool-status');
+    const disableBtn = document.getElementById('ab-pool-disable');
+    const sampleRateInput = document.getElementById('ab-sample-rate');
+    const disclosureModeInput = document.getElementById('ab-disclosure-mode');
+    const traceModeInput = document.getElementById('ab-trace-mode');
+    if (!agentList) return;
+
+    // Use allAgents so AB-only variants appear in the pool editor
+    const agents = Chat.state.allAgents || Chat.state.agents || [];
+    const poolEnabled = poolInfo?.enabled === true;
+    const currentChampion = poolInfo?.champion || poolInfo?.control || null;
+    const currentVariants = poolInfo?.variants || [];
+
+    // Update status badge
+    if (statusBadge) {
+      statusBadge.textContent = poolEnabled ? 'Active' : 'Inactive';
+      statusBadge.classList.toggle('active', poolEnabled);
+    }
+
+    // Show/hide disable button
+    if (disableBtn) {
+      disableBtn.style.display = poolEnabled ? '' : 'none';
+    }
+    if (sampleRateInput) {
+      sampleRateInput.value = String(poolInfo?.comparison_rate ?? poolInfo?.sample_rate ?? 1);
+    }
+    if (disclosureModeInput) {
+      disclosureModeInput.value = poolInfo?.variant_label_mode || poolInfo?.disclosure_mode || 'post_vote_reveal';
+    }
+    if (traceModeInput) {
+      traceModeInput.value = poolInfo?.activity_panel_default_state || poolInfo?.default_trace_mode || 'hidden';
+    }
+
+    // Render agent rows
+    agentList.innerHTML = agents.map(agent => {
+      const inPool = currentVariants.includes(agent.name);
+      const isChampion = agent.name === currentChampion;
+      const selectedClass = inPool ? ' selected' : '';
+      const championClass = isChampion ? ' champion' : '';
+      const isABOnly = agent.ab_only === true;
+      return `
+        <label class="ab-pool-agent-row${selectedClass}${championClass}" data-agent="${Utils.escapeHtml(agent.name)}">
+          <span class="ab-pool-agent-check">
+            <input type="checkbox" ${inPool ? 'checked' : ''}>
+          </span>
+          <span class="ab-pool-agent-name">
+            ${Utils.escapeHtml(agent.name)}
+            ${isABOnly ? '<span class="ab-pool-ab-badge">AB</span>' : ''}
+          </span>
+          <span class="ab-pool-agent-actions">
+            <button type="button" class="ab-pool-variant-btn" title="Create variant of this agent">+</button>
+            <button type="button" class="ab-pool-champion-btn${isChampion ? ' is-champion' : ''}" title="Set as champion">
+              ${isChampion ? '★ Champion' : '☆ Champion'}
+            </button>
+          </span>
+        </label>`;
+    }).join('');
+
+    // Wire up events
+    agentList.querySelectorAll('.ab-pool-agent-row').forEach(row => {
+      const agentName = row.dataset.agent;
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      const champBtn = row.querySelector('.ab-pool-champion-btn');
+      const variantBtn = row.querySelector('.ab-pool-variant-btn');
+
+      checkbox.addEventListener('change', () => {
+        row.classList.toggle('selected', checkbox.checked);
+        if (!checkbox.checked && row.classList.contains('champion')) {
+          row.classList.remove('champion');
+          champBtn.classList.remove('is-champion');
+          champBtn.innerHTML = '☆ Champion';
+        }
+        this._updateABPoolSaveState();
+      });
+
+      champBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!checkbox.checked) return;
+        // Clear previous champion
+        agentList.querySelectorAll('.ab-pool-agent-row').forEach(r => {
+          r.classList.remove('champion');
+          const btn = r.querySelector('.ab-pool-champion-btn');
+          btn.classList.remove('is-champion');
+          btn.innerHTML = '☆ Champion';
+        });
+        row.classList.add('champion');
+        champBtn.classList.add('is-champion');
+        champBtn.innerHTML = '★ Champion';
+        this._updateABPoolSaveState();
+      });
+
+      if (variantBtn) {
+        variantBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this._showQuickVariantPanel(agentName);
+        });
+      }
+    });
+
+    this._updateABPoolSaveState();
+  },
+
+  _updateABPoolSaveState() {
+    const agentList = document.getElementById('ab-pool-agent-list');
+    const saveBtn = document.getElementById('ab-pool-save');
+    const msgEl = document.getElementById('ab-pool-message');
+    if (!agentList || !saveBtn) return;
+
+    const selected = agentList.querySelectorAll('.ab-pool-agent-row.selected');
+    const hasChampion = !!agentList.querySelector('.ab-pool-agent-row.champion');
+    const valid = selected.length >= 2 && hasChampion;
+    saveBtn.disabled = !valid;
+
+    if (msgEl) {
+      if (selected.length < 2 && selected.length > 0) {
+        msgEl.textContent = 'Select at least 2 agents';
+        msgEl.className = 'ab-pool-message error';
+      } else if (selected.length >= 2 && !hasChampion) {
+        msgEl.textContent = 'Click "Champion" to designate the baseline variant';
+        msgEl.className = 'ab-pool-message error';
+      } else {
+        msgEl.textContent = '';
+        msgEl.className = 'ab-pool-message';
+      }
+    }
+  },
+
+  _getABPoolSelection() {
+    const agentList = document.getElementById('ab-pool-agent-list');
+    if (!agentList) return null;
+    const variants = [];
+    let champion = null;
+    agentList.querySelectorAll('.ab-pool-agent-row.selected').forEach(row => {
+      const name = row.dataset.agent;
+      variants.push(name);
+      if (row.classList.contains('champion')) champion = name;
+    });
+    return { champion, variants };
+  },
+
+  /**
+   * Show an inline panel to quickly create a variant of an existing agent.
+   * The variant is saved with ab_only: true so it only appears in the pool editor.
+   */
+  async _showQuickVariantPanel(sourceAgentName) {
+    // Remove any existing panel
+    document.querySelector('.ab-quick-variant-panel')?.remove();
+
+    // Fetch source agent spec and tool palette in parallel
+    let sourceSpec = null;
+    let availableTools = [];
+    try {
+      const [specResp, templateResp] = await Promise.all([
+        API.getAgentSpec(sourceAgentName),
+        API.getAgentTemplate(),
+      ]);
+      sourceSpec = UI.parseAgentSpec(specResp?.content || '');
+      availableTools = (templateResp?.tools || []).map(t => typeof t === 'string' ? t : t.name);
+    } catch (e) {
+      console.error('Failed to load source agent for variant:', e);
+      return;
+    }
+
+    const sourceTools = sourceSpec?.tools || [];
+
+    // Build panel HTML
+    const panel = document.createElement('div');
+    panel.className = 'ab-quick-variant-panel';
+    panel.innerHTML = `
+      <div class="ab-qv-header">
+        <strong>New variant of "${Utils.escapeHtml(sourceAgentName)}"</strong>
+        <button class="ab-qv-close" title="Cancel">&times;</button>
+      </div>
+      <label class="ab-qv-label">Variant name</label>
+      <input class="ab-qv-name" type="text" value="${Utils.escapeHtml(sourceAgentName)}-v2" spellcheck="false">
+      <label class="ab-qv-label">Tools</label>
+      <div class="ab-qv-tools">
+        ${availableTools.map(t => `
+          <label class="ab-qv-tool">
+            <input type="checkbox" value="${Utils.escapeHtml(t)}" ${sourceTools.includes(t) ? 'checked' : ''}>
+            ${Utils.escapeHtml(t)}
+          </label>
+        `).join('')}
+      </div>
+      <div class="ab-qv-footer">
+        <span class="ab-qv-msg"></span>
+        <button class="ab-qv-save">Create Variant</button>
+      </div>
+    `;
+
+    // Insert panel after the agent list
+    const agentList = document.getElementById('ab-pool-agent-list');
+    agentList?.parentElement?.insertBefore(panel, agentList.nextSibling);
+
+    // References
+    const nameInput = panel.querySelector('.ab-qv-name');
+    const saveBtn = panel.querySelector('.ab-qv-save');
+    const closeBtn = panel.querySelector('.ab-qv-close');
+    const msgEl = panel.querySelector('.ab-qv-msg');
+
+    closeBtn.addEventListener('click', () => panel.remove());
+
+    nameInput.addEventListener('input', () => {
+      if (msgEl) { msgEl.textContent = ''; msgEl.className = 'ab-qv-msg'; }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      const variantName = (nameInput.value || '').trim();
+      if (!variantName) {
+        if (msgEl) { msgEl.textContent = 'Name is required'; msgEl.className = 'ab-qv-msg error'; }
+        nameInput.focus();
+        return;
+      }
+
+      // Client-side duplicate check
+      const existingNames = (Chat.state.allAgents || []).map(a => a.name);
+      if (existingNames.includes(variantName)) {
+        if (msgEl) { msgEl.textContent = '"' + variantName + '" already exists \u2014 choose a different name'; msgEl.className = 'ab-qv-msg error'; }
+        nameInput.focus();
+        nameInput.select();
+        return;
+      }
+
+      const selectedTools = [...panel.querySelectorAll('.ab-qv-tools input:checked')].map(cb => cb.value);
+      const specContent = UI.serialiseAgentSpec(variantName, selectedTools, sourceSpec?.prompt || '', { ab_only: true });
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving\u2026';
+      if (msgEl) { msgEl.textContent = ''; msgEl.className = 'ab-qv-msg'; }
+
+      try {
+        const result = await API.saveAgentSpec({ content: specContent, mode: 'create' });
+        if (result?.success) {
+          if (msgEl) { msgEl.textContent = 'Created!'; msgEl.className = 'ab-qv-msg success'; }
+          // Refresh agent lists + re-render pool editor
+          await Chat.loadAgents();
+          UI.updateABPoolUI(Chat.state.abPool || {});
+          // Panel replaced by re-render; remove just in case
+          setTimeout(() => panel.remove(), 600);
+        } else {
+          if (msgEl) { msgEl.textContent = result?.error || 'Save failed'; msgEl.className = 'ab-qv-msg error'; }
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Create Variant';
+        }
+      } catch (e) {
+        if (msgEl) { msgEl.textContent = e.message || 'Save failed'; msgEl.className = 'ab-qv-msg error'; }
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Create Variant';
+      }
+    });
+
+    // Focus the name input
+    nameInput.focus();
+    nameInput.select();
+  },
+
   showABWarningModal(onConfirm, onCancel) {
     // Prevent duplicate modals
     if (document.getElementById('ab-warning-modal')) {
@@ -1970,7 +2505,7 @@ const UI = {
             <p>This will compare two AI responses for each message.</p>
             <ul>
               <li><strong>2× API usage</strong> - Each message generates two responses</li>
-              <li><strong>Voting required</strong> - You must choose the better response before continuing</li>
+              <li><strong>Voting required</strong> - Once the pending comparison limit is reached, you must resolve one before continuing</li>
               <li>You can disable A/B mode at any time to skip voting</li>
             </ul>
           </div>
@@ -2023,50 +2558,197 @@ const UI = {
     }, duration);
   },
 
-  addABComparisonContainer(msgIdA, msgIdB) {
+  getTraceModeForMessage(messageId) {
+    const container = document.querySelector(`.trace-container[data-message-id="${messageId}"]`);
+    return container?.dataset.traceMode || Chat.state.traceVerboseMode || 'normal';
+  },
+
+  getTraceIconSvg() {
+    return `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>`;
+  },
+
+  getTraceLabelText(toolCount = 0) {
+    return toolCount > 0
+      ? `Agent Activity (${toolCount} tool${toolCount === 1 ? '' : 's'})`
+      : 'Agent Activity';
+  },
+
+  bindTraceToggleHandlers(root = document) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('[data-trace-toggle]').forEach(el => {
+      if (!el._traceToggleBound) {
+        el._traceToggleBound = true;
+        el.addEventListener('click', () => UI.toggleTraceExpanded(el.dataset.traceToggle));
+      }
+    });
+  },
+
+  addABComparisonContainer(msgIdA, msgIdB, options = {}) {
     // Remove empty state if present
     const empty = this.elements.messagesInner?.querySelector('.messages-empty');
     if (empty) empty.remove();
 
-    const showTrace = Chat.state.traceVerboseMode !== 'minimal';
-    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`;
+    const traceMode = this.normalizeABTraceMode(options.traceMode || this.getABTraceMode());
+    const showTrace = this.isTraceVisibleMode(traceMode);
+    const traceIconSvg = this.getTraceIconSvg();
+    const traceCollapsed = this.isTraceCollapsedMode(traceMode);
     const traceHtml = (id) => showTrace ? `
-          <div class="trace-container ab-trace-container" data-message-id="${id}">
-            <div class="trace-header" onclick="UI.toggleTraceExpanded('${id}')">
+          <div class="trace-container ab-trace-container${traceCollapsed ? ' collapsed' : ''}" data-message-id="${id}" data-trace-mode="${traceMode}">
+            <div class="trace-header">
               ${traceIconSvg}
-              <span class="trace-label">Agent Activity</span>
-              <span class="toggle-icon">▼</span>
+              <span class="trace-label">${this.getTraceLabelText()}</span>
+              <span class="trace-timer" data-start="${Date.now()}">0.0s</span>
+              <button class="trace-toggle" data-trace-toggle="${id}" aria-label="Toggle agent activity details" title="Toggle agent activity">
+                <span class="toggle-icon" aria-hidden="true">${traceCollapsed ? '&#9654;' : '&#9660;'}</span>
+              </button>
             </div>
-            <div class="trace-content"></div>
+            <div class="trace-content">
+              <div class="step-timeline"></div>
+            </div>
           </div>` : '';
 
+    // Use normal message structure for each arm — looks like two regular chat messages side by side
+    const armHtml = (id, label) => `
+        <div class="message assistant ab-arm" data-id="${id}">
+          <div class="message-inner">
+            <div class="message-header">
+              <div class="message-avatar"><img class="assistant-logo" src="/static/images/archi-logo.png" alt="archi logo"></div>
+              <div class="ab-arm-header-copy">
+                <div class="ab-arm-title-row">
+                  <span class="message-sender">archi</span>
+                  <span class="message-label ab-arm-label">${label}</span>
+                </div>
+                <span class="ab-arm-variant-name" data-arm-id="${id}"></span>
+              </div>
+            </div>
+            ${traceHtml(id)}
+            <div class="message-content"></div>
+            <div class="message-meta" style="display: none;"></div>
+            <div class="message-actions">
+              <button class="feedback-btn feedback-like" onclick="UI.handleFeedback(this, 'like')" aria-label="Helpful" title="Helpful">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+              </button>
+              <button class="feedback-btn feedback-dislike" onclick="UI.handleFeedback(this, 'dislike')" aria-label="Not helpful" title="Not helpful">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path></svg>
+              </button>
+              <button class="feedback-btn feedback-comment" onclick="UI.handleFeedback(this, 'comment')" aria-label="Add comment" title="Add comment">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              </button>
+            </div>
+          </div>
+        </div>`;
+
+    const comparisonKey = Utils.escapeAttr(options.comparisonKey || `${msgIdA}-${msgIdB}`);
     const html = `
-      <div class="ab-comparison" id="ab-comparison-active">
-        <div class="ab-response ab-response-a" data-id="${msgIdA}">
-          <div class="ab-response-header">
-            <span class="ab-response-label">Model A</span>
-          </div>
-          ${traceHtml(msgIdA)}
-          <div class="ab-response-content message-content"></div>
-        </div>
-        <div class="ab-response ab-response-b" data-id="${msgIdB}">
-          <div class="ab-response-header">
-            <span class="ab-response-label">Model B</span>
-          </div>
-          ${traceHtml(msgIdB)}
-          <div class="ab-response-content message-content"></div>
-        </div>
+      <div class="ab-comparison" data-comparison-key="${comparisonKey}">
+        ${armHtml(msgIdA, 'Response A')}
+        ${armHtml(msgIdB, 'Response B')}
       </div>`;
 
     this.elements.messagesInner?.insertAdjacentHTML('beforeend', html);
+    // Bind trace toggle handlers (replacing inline onclick for CSP compliance)
+    this.bindTraceToggleHandlers(this.elements.messagesInner || document);
+    // Start timers for both A/B arms
+    if (showTrace) {
+      this.startTraceTimer(msgIdA);
+      this.startTraceTimer(msgIdB);
+    }
     this.scrollToBottom();
   },
 
+  findABComparisonElement(comparisonState = null) {
+    if (!comparisonState) return null;
+
+    const comparisonId = comparisonState.comparisonId;
+    if (comparisonId != null) {
+      const byId = document.querySelector(`.ab-comparison[data-comparison-id="${comparisonId}"]`);
+      if (byId) return byId;
+    }
+
+    const armIds = [
+      comparisonState.responseAUiId,
+      comparisonState.responseBUiId,
+      comparisonState.responseAId,
+      comparisonState.responseBId,
+    ].filter(Boolean);
+
+    for (const armId of armIds) {
+      const arm = document.querySelector(`.ab-arm[data-id="${armId}"], .ab-response[data-id="${armId}"]`);
+      if (arm) {
+        const container = arm.closest('.ab-comparison');
+        if (container) return container;
+      }
+    }
+    return null;
+  },
+
+  setABComparisonId(comparisonState = null) {
+    const comparison = this.findABComparisonElement(comparisonState);
+    if (!comparison || !comparisonState?.comparisonId) return;
+    comparison.dataset.comparisonId = String(comparisonState.comparisonId);
+  },
+
+  updateABVariantLabel(armId, variantName) {
+    const labelEl = document.querySelector(`.ab-arm-variant-name[data-arm-id="${armId}"]`);
+    if (labelEl) {
+      labelEl.textContent = variantName || '';
+    }
+  },
+
+  updateABArmMeta(armId, metaText, visible = true) {
+    const container = document.querySelector(`.ab-arm[data-id="${armId}"], .ab-response[data-id="${armId}"]`);
+    const metaEl = container?.querySelector('.message-meta');
+    if (!metaEl) return;
+    metaEl.textContent = metaText || '';
+    metaEl.style.display = visible && metaText ? '' : 'none';
+  },
+
+  updateABArmPresentation(
+    armId,
+    { variantName = '', modelUsed = '' } = {},
+    { disclosureMode = 'post_vote_reveal', reveal = false } = {},
+  ) {
+    const normalizedDisclosureMode = this.normalizeABDisclosureMode(disclosureMode);
+    const showVariant = normalizedDisclosureMode === 'always_visible'
+      || (normalizedDisclosureMode === 'post_vote_reveal' && reveal);
+    this.updateABVariantLabel(armId, showVariant ? variantName : '');
+    this.updateABArmMeta(armId, modelUsed, showVariant && !!modelUsed);
+  },
+
+  rekeyABArm(oldId, newId) {
+    if (!oldId || !newId || String(oldId) === String(newId)) return;
+
+    const arm = document.querySelector(`.ab-arm[data-id="${oldId}"], .ab-response[data-id="${oldId}"]`);
+    if (arm) {
+      arm.dataset.id = String(newId);
+    }
+
+    const variantLabel = document.querySelector(`.ab-arm-variant-name[data-arm-id="${oldId}"]`);
+    if (variantLabel) {
+      variantLabel.dataset.armId = String(newId);
+    }
+
+    const traceContainer = document.querySelector(`.trace-container[data-message-id="${oldId}"]`);
+    if (traceContainer) {
+      traceContainer.dataset.messageId = String(newId);
+      const toggle = traceContainer.querySelector('[data-trace-toggle]');
+      if (toggle) {
+        toggle.dataset.traceToggle = String(newId);
+      }
+    }
+
+    const activeInterval = this.traceTimerIntervals.get(String(oldId));
+    if (activeInterval != null) {
+      this.traceTimerIntervals.set(String(newId), activeInterval);
+      this.traceTimerIntervals.delete(String(oldId));
+    }
+  },
+
   updateABResponse(responseId, html, streaming = false) {
-    const container = document.querySelector(`.ab-response[data-id="${responseId}"]`);
+    const container = document.querySelector(`.ab-arm[data-id="${responseId}"], .ab-response[data-id="${responseId}"]`);
     if (!container) return;
 
-    const contentEl = container.querySelector('.ab-response-content');
+    const contentEl = container.querySelector('.message-content');
     if (contentEl) {
       contentEl.innerHTML = html;
       if (streaming) {
@@ -2076,21 +2758,27 @@ const UI = {
     this.scrollToBottom();
   },
 
-  showABVoteButtons(comparisonId) {
-    const comparison = document.getElementById('ab-comparison-active');
+  showABVoteButtons(comparisonState) {
+    const comparison = this.findABComparisonElement(comparisonState);
     if (!comparison) return;
 
+    this.hideABVoteButtons();
+
     const voteHtml = `
-      <div class="ab-vote-container" data-comparison-id="${comparisonId}">
-        <div class="ab-vote-prompt">Which response was better?</div>
+      <div class="ab-vote-container" data-comparison-id="${comparisonState.comparisonId}">
+        <div class="ab-vote-prompt">Which response do you prefer?</div>
         <div class="ab-vote-buttons">
           <button class="ab-vote-btn ab-vote-btn-a" data-vote="a">
-            <span class="ab-vote-icon">👍</span>
-            <span>Model A</span>
+            <span class="ab-vote-icon">👈</span>
+            <span>Response A</span>
+          </button>
+          <button class="ab-vote-btn ab-vote-btn-tie" data-vote="tie">
+            <span class="ab-vote-icon">🤝</span>
+            <span>Tie</span>
           </button>
           <button class="ab-vote-btn ab-vote-btn-b" data-vote="b">
-            <span class="ab-vote-icon">👍</span>
-            <span>Model B</span>
+            <span class="ab-vote-icon">👉</span>
+            <span>Response B</span>
           </button>
         </div>
       </div>`;
@@ -2098,7 +2786,7 @@ const UI = {
     comparison.insertAdjacentHTML('afterend', voteHtml);
 
     // Bind vote button events
-    document.querySelectorAll('.ab-vote-btn').forEach((btn) => {
+    comparison.nextElementSibling?.querySelectorAll('.ab-vote-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const vote = btn.dataset.vote;
         Chat.submitABPreference(vote);
@@ -2112,54 +2800,75 @@ const UI = {
     document.querySelector('.ab-vote-container')?.remove();
   },
 
-  markABWinner(preference) {
-    const comparison = document.getElementById('ab-comparison-active');
-    if (!comparison) return;
+  stopTraceTimersInElement(container) {
+    if (!container) return;
+    container.querySelectorAll('.trace-container[data-message-id]').forEach((traceEl) => {
+      this.stopTraceTimer(traceEl.dataset.messageId);
+    });
+  },
 
-    const responseA = comparison.querySelector('.ab-response-a');
-    const responseB = comparison.querySelector('.ab-response-b');
+  markABWinner(preference, comparisonState = null) {
+    const comparisonEl = this.findABComparisonElement(comparisonState);
+    if (!comparisonEl) return;
 
-    let winnerContent = '';
-    let winnerTrace = '';
-    if (preference === 'a') {
-      winnerContent = responseA?.querySelector('.ab-response-content')?.innerHTML || '';
-      winnerTrace = responseA?.querySelector('.trace-container')?.outerHTML || '';
-    } else if (preference === 'b') {
-      winnerContent = responseB?.querySelector('.ab-response-content')?.innerHTML || '';
-      winnerTrace = responseB?.querySelector('.trace-container')?.outerHTML || '';
-    } else {
-      // Tie - keep both visible but mark them
-      responseA?.classList.add('ab-response-tie');
-      responseB?.classList.add('ab-response-tie');
-      comparison.removeAttribute('id');
+    if (comparisonState?.responseAId) {
+      this.rekeyABArm(comparisonState.responseAUiId || comparisonState.responseAId, comparisonState.responseAId);
+      this.updateABArmPresentation(comparisonState.responseAId, {
+        variantName: comparisonState.variantA,
+        modelUsed: comparisonState.responseAModelUsed,
+      }, {
+        disclosureMode: comparisonState.disclosureMode,
+        reveal: true,
+      });
+    }
+    if (comparisonState?.responseBId) {
+      this.rekeyABArm(comparisonState.responseBUiId || comparisonState.responseBId, comparisonState.responseBId);
+      this.updateABArmPresentation(comparisonState.responseBId, {
+        variantName: comparisonState.variantB,
+        modelUsed: comparisonState.responseBModelUsed,
+      }, {
+        disclosureMode: comparisonState.disclosureMode,
+        reveal: true,
+      });
+    }
+
+    this.stopTraceTimersInElement(comparisonEl);
+
+    const arms = comparisonEl.querySelectorAll('.ab-arm');
+    const armA = arms[0];
+    const armB = arms[1];
+
+    if (preference === 'tie') {
+      // Tie — dim both equally and add a badge
+      armA?.classList.add('ab-arm-tie');
+      armB?.classList.add('ab-arm-tie');
+      delete comparisonEl.dataset.comparisonId;
       return;
     }
 
-    // Replace the entire comparison with a normal archi message (matching createMessageHTML format)
-    // Include the trace container from the winning response
-    const metaLabel = Chat.getEntryMetaLabel();
-    const metaHtml = metaLabel
-      ? `<div class="message-meta">${Utils.escapeHtml(metaLabel)}</div>`
-      : '';
+    // Winner/loser — collapse to single message
+    const winner = preference === 'a' ? armA : armB;
 
-    const normalMessage = `
-      <div class="message assistant" data-id="ab-winner-${Date.now()}">
-        <div class="message-inner">
-          <div class="message-header">
-            <div class="message-avatar">✦</div>
-            <span class="message-sender">archi</span>
-          </div>
-          ${winnerTrace}
-          <div class="message-content">${winnerContent}</div>
-          ${metaHtml}
-        </div>
-      </div>`;
+    if (winner) {
+      // Remove the AB label
+      winner.querySelector('.ab-arm-label')?.remove();
+      winner.classList.remove('ab-arm');
+    }
 
-    comparison.outerHTML = normalMessage;
+    // Move the live winner node out of the comparison container so its
+    // finalized timer text and bound trace interactions are preserved.
+    if (winner && comparisonEl.parentNode) {
+      comparisonEl.parentNode.insertBefore(winner, comparisonEl);
+      comparisonEl.remove();
+    }
   },
 
-  removeABComparisonContainer() {
-    document.getElementById('ab-comparison-active')?.remove();
+  removeABComparisonContainer(comparisonState = null) {
+    const comparisonEl = comparisonState
+      ? this.findABComparisonElement(comparisonState)
+      : document.querySelector('.ab-comparison:last-of-type');
+    this.stopTraceTimersInElement(comparisonEl);
+    comparisonEl?.remove();
     this.hideABVoteButtons();
   },
 
@@ -2197,12 +2906,12 @@ const UI = {
     const existingTrace = inner.querySelector('.trace-container');
     if (existingTrace) return;
 
-    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>`;
+    const traceIconSvg = this.getTraceIconSvg();
     const traceHtml = `
       <div class="trace-container" data-message-id="${messageId}">
         <div class="trace-header">
           ${traceIconSvg}
-          <span class="trace-label">Agent Activity</span>
+          <span class="trace-label">${this.getTraceLabelText()}</span>
           <span class="trace-timer" data-start="${Date.now()}">0.0s</span>
           <button class="trace-toggle" aria-label="Toggle agent activity details" title="Toggle agent activity" onclick="UI.toggleTraceExpanded('${messageId}')">
             <span class="toggle-icon" aria-hidden="true">&#9660;</span>
@@ -2218,31 +2927,80 @@ const UI = {
       </div>`;
 
     inner.insertAdjacentHTML('afterbegin', traceHtml);
-    
+
+    // Start collapsed in normal mode (user can expand on demand)
+    if (Chat.state.traceVerboseMode === 'normal') {
+      const tc = inner.querySelector('.trace-container');
+      if (tc) {
+        tc.classList.add('collapsed');
+        const ti = tc.querySelector('.toggle-icon');
+        if (ti) ti.innerHTML = '&#9654;';
+      }
+    }
+
     // Start elapsed timer
     this.startTraceTimer(messageId);
   },
 
-  startTraceTimer(messageId) {
-    const timerEl = document.querySelector(`.trace-container[data-message-id="${messageId}"] .trace-timer`);
-    if (!timerEl) return;
-    
-    const startTime = parseInt(timerEl.dataset.start, 10);
-    const updateTimer = () => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      timerEl.textContent = elapsed.toFixed(1) + 's';
-    };
-    
-    const intervalId = setInterval(updateTimer, 100);
-    timerEl.dataset.intervalId = intervalId;
+  getTraceTimerElement(messageId) {
+    return document.querySelector(`.trace-container[data-message-id="${messageId}"] .trace-timer`);
   },
 
-  stopTraceTimer(messageId) {
-    const timerEl = document.querySelector(`.trace-container[data-message-id="${messageId}"] .trace-timer`);
-    if (!timerEl || !timerEl.dataset.intervalId) return;
-    
-    clearInterval(parseInt(timerEl.dataset.intervalId, 10));
-    delete timerEl.dataset.intervalId;
+  getTraceElapsedMs(messageId) {
+    const timerEl = this.getTraceTimerElement(messageId);
+    if (!timerEl?.dataset.start) return null;
+    const startTime = Number.parseInt(timerEl.dataset.start, 10);
+    if (!Number.isFinite(startTime)) return null;
+    return Math.max(Date.now() - startTime, 0);
+  },
+
+  startTraceTimer(messageId) {
+    const timerKey = String(messageId);
+    const timerEl = this.getTraceTimerElement(messageId);
+    if (!timerEl) return;
+
+    this.stopTraceTimer(timerKey);
+    delete timerEl.dataset.finalDurationMs;
+
+    const startTime = Number.parseInt(timerEl.dataset.start, 10);
+    if (!Number.isFinite(startTime)) {
+      timerEl.dataset.start = String(Date.now());
+    }
+    const updateTimer = () => {
+      const baseTime = Number.parseInt(timerEl.dataset.start, 10);
+      const elapsed = (Date.now() - baseTime) / 1000;
+      timerEl.textContent = elapsed.toFixed(1) + 's';
+    };
+
+    updateTimer();
+    const intervalId = window.setInterval(updateTimer, 100);
+    this.traceTimerIntervals.set(timerKey, intervalId);
+  },
+
+  stopTraceTimer(messageId, durationMs = null) {
+    const timerKey = String(messageId);
+    const intervalId = this.traceTimerIntervals.get(timerKey);
+    if (intervalId != null) {
+      clearInterval(intervalId);
+      this.traceTimerIntervals.delete(timerKey);
+    }
+
+    const timerEl = this.getTraceTimerElement(messageId);
+    if (!timerEl) return;
+
+    let resolvedDurationMs = durationMs;
+    if (resolvedDurationMs == null && timerEl.dataset.finalDurationMs) {
+      const storedDurationMs = Number.parseInt(timerEl.dataset.finalDurationMs, 10);
+      if (Number.isFinite(storedDurationMs)) {
+        resolvedDurationMs = storedDurationMs;
+      }
+    }
+
+    const elapsedMs = resolvedDurationMs ?? this.getTraceElapsedMs(messageId);
+    if (elapsedMs != null) {
+      timerEl.dataset.finalDurationMs = String(elapsedMs);
+      timerEl.textContent = Utils.formatDuration(elapsedMs);
+    }
   },
 
   toggleTraceExpanded(messageId) {
@@ -2291,7 +3049,7 @@ const UI = {
   },
 
   renderThinkingEnd(messageId, event) {
-    const step = document.querySelector(`.thinking-step[data-step-id="${event.step_id}"]`);
+    const step = document.querySelector(`.trace-container[data-message-id="${messageId}"] .thinking-step[data-step-id="${event.step_id}"]`);
     if (!step) return;
 
     // If no thinking content, remove the step entirely - it's just noise
@@ -2372,7 +3130,7 @@ const UI = {
     this.scrollToBottom();
 
     // Auto-expand if verbose mode
-    if (Chat.state.traceVerboseMode === 'verbose') {
+    if (this.isTraceExpandedMode(this.getTraceModeForMessage(messageId))) {
       const step = timeline.querySelector(`[data-step-id="${event.tool_call_id}"]`);
       step?.classList.add('expanded');
       const details = step?.querySelector('.step-details');
@@ -2397,7 +3155,7 @@ const UI = {
   },
 
   renderToolOutput(messageId, event) {
-    const step = document.querySelector(`.tool-step[data-tool-call-id="${event.tool_call_id}"]`);
+    const step = document.querySelector(`.trace-container[data-message-id="${messageId}"] .tool-step[data-tool-call-id="${event.tool_call_id}"]`);
     if (!step) return;
 
     const outputSection = step.querySelector('.tool-output-section');
@@ -2426,7 +3184,7 @@ const UI = {
   },
 
   renderToolEnd(messageId, event) {
-    const step = document.querySelector(`.tool-step[data-tool-call-id="${event.tool_call_id}"]`);
+    const step = document.querySelector(`.trace-container[data-message-id="${messageId}"] .tool-step[data-tool-call-id="${event.tool_call_id}"]`);
     if (!step) return;
 
     step.classList.remove('tool-running');
@@ -2449,8 +3207,9 @@ const UI = {
     }
 
     // Auto-collapse if many tools
-    const toolCount = document.querySelectorAll('.tool-step').length;
-    if (Chat.state.traceVerboseMode === 'normal' && toolCount > CONFIG.TRACE.AUTO_COLLAPSE_TOOL_COUNT) {
+    const timeline = step.closest('.step-timeline');
+    const toolCount = timeline?.querySelectorAll('.tool-step').length || 0;
+    if (this.isTraceCollapsedMode(this.getTraceModeForMessage(messageId)) && toolCount > CONFIG.TRACE.AUTO_COLLAPSE_TOOL_COUNT) {
       step.classList.remove('expanded');
       const details = step.querySelector('.step-details');
       if (details) details.style.display = 'none';
@@ -2501,15 +3260,20 @@ const UI = {
   // =========================================================================
 
   finalizeTrace(messageId, trace, finalEvent) {
-    this.stopTraceTimer(messageId);
+    this.stopTraceTimer(messageId, finalEvent?.duration_ms ?? null);
     
     const container = document.querySelector(`.trace-container[data-message-id="${messageId}"]`);
     if (!container) return;
 
-    const toolCount = trace.toolCalls.size;
+    const toolCalls = trace?.toolCalls;
+    const toolCount = toolCalls instanceof Map
+      ? toolCalls.size
+      : Array.isArray(toolCalls)
+        ? toolCalls.length
+        : 0;
     const label = container.querySelector('.trace-label');
-    if (label && toolCount > 0) {
-      label.textContent = `Agent Activity (${toolCount} tool${toolCount === 1 ? '' : 's'})`;
+    if (label) {
+      label.textContent = this.getTraceLabelText(toolCount);
     }
     
     // Update context meter if usage available
@@ -2518,7 +3282,7 @@ const UI = {
     }
 
     // Auto-collapse in normal mode
-    if (Chat.state.traceVerboseMode === 'normal') {
+    if (this.isTraceCollapsedMode(this.getTraceModeForMessage(messageId))) {
       container.classList.add('collapsed');
       const toggleIcon = container.querySelector('.toggle-icon');
       if (toggleIcon) toggleIcon.innerHTML = '&#9654;';
@@ -2568,12 +3332,10 @@ const UI = {
     const durationMs = trace.total_duration_ms || 0;
     const durationStr = Utils.formatDuration(durationMs);
 
-    const traceIconSvg = `<svg class="trace-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>`;
+    const traceIconSvg = this.getTraceIconSvg();
     
     // Build trace container with collapsed state
-    const labelText = toolCount > 0 
-      ? `Agent Activity (${toolCount} tool${toolCount === 1 ? '' : 's'})` 
-      : 'Agent Activity';
+    const labelText = this.getTraceLabelText(toolCount);
 
     const traceHtml = `
       <div class="trace-container collapsed" data-message-id="${messageId}">
@@ -2943,8 +3705,17 @@ const Chat = {
     isStreaming: false,
     configs: [],
     // A/B Testing state
-    activeABComparison: null,  // { comparisonId, responseAId, responseBId, configAId, configBId, userPromptMid }
+    activeABComparison: null,  // { comparisonId, responseAId, responseBId, variantA, variantB }
+    pendingABComparisons: [],  // unresolved comparisons in creation order
     abVotePending: false,      // true when waiting for user vote
+    abPool: null,              // null or { enabled, champion, variants: [...] } from /api/ab/pool
+    abCapabilities: {
+      canView: false,
+      canManage: false,
+      canViewMetrics: false,
+      canParticipate: false,
+    },
+    abPreferenceSaveState: null,
     // Trace state
     activeTrace: null,         // { traceId, events: [], toolCalls: Map<toolCallId, toolData> }
     traceVerboseMode: localStorage.getItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE) || 'normal', // 'minimal' | 'normal' | 'verbose'
@@ -2955,10 +3726,60 @@ const Chat = {
     selectedProvider: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER) || null,
     selectedModel: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL) || null,
     selectedCustomModel: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_CUSTOM) || null,
-    selectedProviderB: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER_B) || null,
-    selectedModelB: localStorage.getItem(CONFIG.STORAGE_KEYS.SELECTED_MODEL_B) || null,
+
     agents: [],
+    allAgents: [],  // full list including ab_only variants, for pool editor
     activeAgentName: null,
+    currentUser: null,
+  },
+
+  getABPendingLimit() {
+    const configured = Number(
+      this.state.abPool?.max_pending_comparisons_per_conversation
+      ?? this.state.abPool?.max_pending_per_conversation
+      ?? 1
+    );
+    return Number.isFinite(configured) && configured >= 1 ? configured : 1;
+  },
+
+  hasReachedABPendingLimit() {
+    return this.state.pendingABComparisons.length >= this.getABPendingLimit();
+  },
+
+  syncABPendingState() {
+    const pending = Array.isArray(this.state.pendingABComparisons)
+      ? this.state.pendingABComparisons.filter(Boolean)
+      : [];
+    this.state.pendingABComparisons = pending;
+    this.state.activeABComparison = pending.length ? pending[pending.length - 1] : null;
+    this.state.abVotePending = pending.length > 0;
+
+    UI.hideABVoteButtons();
+    if (this.state.activeABComparison) {
+      UI.setABComparisonId(this.state.activeABComparison);
+      UI.showABVoteButtons(this.state.activeABComparison);
+    }
+
+    if (!this.state.isStreaming) {
+      UI.setInputDisabled(this.hasReachedABPendingLimit());
+    }
+  },
+
+  addPendingABComparison(comparisonState) {
+    if (!comparisonState?.comparisonId) return;
+    const remaining = this.state.pendingABComparisons.filter(
+      (item) => item?.comparisonId !== comparisonState.comparisonId,
+    );
+    remaining.push(comparisonState);
+    this.state.pendingABComparisons = remaining;
+    this.syncABPendingState();
+  },
+
+  removePendingABComparison(comparisonId) {
+    this.state.pendingABComparisons = this.state.pendingABComparisons.filter(
+      (item) => item?.comparisonId !== comparisonId,
+    );
+    this.syncABPendingState();
   },
 
   async init() {
@@ -2973,7 +3794,9 @@ const Chat = {
       this.loadPipelineDefaultModel(),
       this.loadApiKeyStatus(),
       UI.loadUserProfile(),
+      this.loadCurrentUser(),
       this.loadAgents(),
+      this.loadABPool(),
     ]);
 
     // Update model label after all data is loaded (configs, providers, pipeline default)
@@ -3003,13 +3826,81 @@ const Chat = {
   async loadAgents() {
     try {
       const data = await API.getAgentsList();
-      this.state.agents = data?.agents || [];
+      // Keep full list (including ab_only) for pool editor
+      this.state.allAgents = data?.agents || [];
+      // Filter out ab_only agents for main dropdown
+      this.state.agents = this.state.allAgents.filter(a => !a.ab_only);
       const activeName = data?.active_name || this.state.agents[0]?.name || null;
       this.state.activeAgentName = Utils.normalizeAgentName(activeName);
       UI.renderAgentsList(this.state.agents, this.state.activeAgentName);
       this.updateActiveModelLabel();
     } catch (e) {
       console.error('Failed to load agents list:', e);
+    }
+  },
+
+  async loadABPool() {
+    try {
+      const data = await API.getABPool();
+      this.state.abCapabilities = {
+        canView: data?.can_view === true,
+        canManage: data?.can_manage === true,
+        canViewMetrics: data?.can_view_metrics === true,
+        canParticipate: data?.can_participate === true,
+      };
+
+      this.state.abPool = data || null;
+      UI.updateABSettingsSection();
+      if (this.state.abCapabilities.canManage) {
+        UI.updateABPoolUI(data?.enabled ? data : { enabled: false });
+      }
+    } catch (e) {
+      console.warn('Failed to load A/B pool (pool mode disabled):', e);
+      this.state.abPool = null;
+      this.state.abCapabilities = {
+        canView: false,
+        canManage: false,
+        canViewMetrics: false,
+        canParticipate: false,
+      };
+      UI.updateABSettingsSection();
+    }
+  },
+
+  async loadCurrentUser() {
+    try {
+      const data = await API.getCurrentUser();
+      this.state.currentUser = data || null;
+      this.state.abPreferenceSaveState = null;
+      UI.updateABSettingsSection();
+    } catch (e) {
+      console.warn('Failed to load current user preferences:', e);
+      this.state.currentUser = null;
+      UI.updateABSettingsSection();
+    }
+  },
+
+  async saveABParticipationPreference(rate) {
+    const bounded = Math.max(0, Math.min(1, Number(rate)));
+    try {
+      const updated = await API.updateUserPreferences({ ab_participation_rate: bounded });
+      this.state.currentUser = {
+        ...(this.state.currentUser || {}),
+        ...updated,
+      };
+      this.state.abPreferenceSaveState = {
+        type: 'success',
+        message: 'Saved for your account.',
+      };
+      UI.updateABSettingsSection();
+    } catch (e) {
+      console.error('Failed to save A/B participation preference:', e);
+      this.state.abPreferenceSaveState = {
+        type: 'error',
+        message: e.message || 'Unable to save A/B participation preference.',
+      };
+      UI.showToast(e.message || 'Unable to save A/B participation preference.');
+      UI.updateABSettingsSection();
     }
   },
 
@@ -3166,11 +4057,6 @@ const Chat = {
         }
       }
 
-      // Also update Model B options if provider B is same as primary
-      if (!this.state.selectedProviderB || this.state.selectedProviderB === providerType) {
-        UI.renderModelBOptions(models, this.state.selectedModelB, providerType);
-      }
-
       // Show connected status
       if (provider.enabled) {
         UI.updateProviderStatus('connected', `Connected to ${provider.display_name}`);
@@ -3243,27 +4129,6 @@ const Chat = {
     this.updateActiveModelLabel();
   },
 
-  async handleProviderBChange(providerType) {
-    this.state.selectedProviderB = providerType || null;
-    
-    if (providerType) {
-      localStorage.setItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER_B, providerType);
-      
-      // Load models for provider B
-      const provider = this.state.providers.find(p => p.type === providerType);
-      if (provider) {
-        UI.renderModelBOptions(provider.models || [], this.state.selectedModelB, providerType);
-      }
-    } else {
-      localStorage.removeItem(CONFIG.STORAGE_KEYS.SELECTED_PROVIDER_B);
-      // Use primary provider's models
-      const primaryProvider = this.state.providers.find(p => p.type === this.state.selectedProvider);
-      if (primaryProvider) {
-        UI.renderModelBOptions(primaryProvider.models || [], this.state.selectedModelB, this.state.selectedProvider);
-      }
-    }
-  },
-
   getSelectedProviderAndModel() {
     const provider = this.state.selectedProvider || null;
     if (!provider) {
@@ -3273,21 +4138,6 @@ const Chat = {
       return { provider, model: this.state.selectedCustomModel || null };
     }
     return { provider, model: this.state.selectedModel };
-  },
-
-  getSelectedProviderAndModelB() {
-    const providerB = this.state.selectedProviderB || this.state.selectedProvider;
-    const modelB = UI.elements.modelSelectB?.value || this.state.selectedModelB;
-    if (!providerB) {
-      return { provider: null, model: null };
-    }
-    if (providerB === 'openrouter' && modelB === '__custom__') {
-      return { provider: providerB, model: this.state.selectedCustomModel || null };
-    }
-    return {
-      provider: providerB,
-      model: modelB,
-    };
   },
 
   // API Key Management
@@ -3368,6 +4218,9 @@ const Chat = {
 
       // Build history for API
       this.state.history = (data.messages || []).map((msg) => [msg.sender, msg.content]);
+      this.state.activeABComparison = null;
+      this.state.pendingABComparisons = [];
+      this.state.abVotePending = false;
 
       UI.renderMessages(this.state.messages);
       
@@ -3377,6 +4230,15 @@ const Chat = {
           UI.renderHistoricalTrace(msg.id, msg.trace);
         }
       }
+
+      if (Array.isArray(data.pending_ab_comparisons) && data.pending_ab_comparisons.length) {
+        this.restorePendingABComparisons(data.pending_ab_comparisons);
+      } else if (data.pending_ab_comparison) {
+        this.restorePendingABComparisons([data.pending_ab_comparison]);
+      } else {
+        UI.hideABVoteButtons();
+        UI.setInputDisabled(false);
+      }
       
       await this.loadConversations(); // Refresh list to show active state
     } catch (e) {
@@ -3384,10 +4246,94 @@ const Chat = {
       this.state.conversationId = null;
       this.state.messages = [];
       this.state.history = [];
+      this.state.activeABComparison = null;
+      this.state.pendingABComparisons = [];
+      this.state.abVotePending = false;
       Storage.setActiveConversationId(null);
       UI.renderMessages([]);
+      UI.hideABVoteButtons();
+      UI.setInputDisabled(false);
       UI.showToast('Conversation not found. Starting a new chat.');
     }
+  },
+
+  restorePendingABComparison(comparison) {
+    if (!comparison?.response_a || !comparison?.response_b) return;
+
+    const traceMode = UI.normalizeABTraceMode(
+      comparison.activity_panel_default_state ?? comparison.default_trace_mode
+    );
+    const disclosureMode = UI.normalizeABDisclosureMode(
+      comparison.variant_label_mode ?? comparison.disclosure_mode
+    );
+    const responseAId = comparison.response_a.message_id;
+    const responseBId = comparison.response_b.message_id;
+
+    UI.addABComparisonContainer(responseAId, responseBId, {
+      traceMode,
+      comparisonKey: comparison.comparison_id || `${responseAId}-${responseBId}`,
+    });
+    UI.updateABResponse(responseAId, Markdown.render(comparison.response_a.content || ''), false);
+    UI.updateABResponse(responseBId, Markdown.render(comparison.response_b.content || ''), false);
+    UI.updateABArmPresentation(responseAId, {
+      variantName: comparison.variant_a_name,
+      modelUsed: comparison.response_a.model_used,
+    }, {
+      disclosureMode,
+      reveal: false,
+    });
+    UI.updateABArmPresentation(responseBId, {
+      variantName: comparison.variant_b_name,
+      modelUsed: comparison.response_b.model_used,
+    }, {
+      disclosureMode,
+      reveal: false,
+    });
+
+    if (UI.isTraceVisibleMode(traceMode) && comparison.response_a.trace) {
+      document.querySelector(`.ab-arm[data-id="${responseAId}"] .trace-container`)?.remove();
+      UI.stopTraceTimer(responseAId);
+      UI.renderHistoricalTrace(responseAId, comparison.response_a.trace);
+    } else {
+      UI.stopTraceTimer(responseAId);
+      document.querySelector(`.ab-arm[data-id="${responseAId}"] .trace-container`)?.remove();
+    }
+    if (UI.isTraceVisibleMode(traceMode) && comparison.response_b.trace) {
+      document.querySelector(`.ab-arm[data-id="${responseBId}"] .trace-container`)?.remove();
+      UI.stopTraceTimer(responseBId);
+      UI.renderHistoricalTrace(responseBId, comparison.response_b.trace);
+    } else {
+      UI.stopTraceTimer(responseBId);
+      document.querySelector(`.ab-arm[data-id="${responseBId}"] .trace-container`)?.remove();
+    }
+
+    const state = {
+      comparisonId: comparison.comparison_id,
+      responseAId,
+      responseBId,
+      responseAUiId: responseAId,
+      responseBUiId: responseBId,
+      responseAText: comparison.response_a.content || '',
+      responseBText: comparison.response_b.content || '',
+      responseAModelUsed: comparison.response_a.model_used || '',
+      responseBModelUsed: comparison.response_b.model_used || '',
+      variantA: comparison.variant_a_name || '',
+      variantB: comparison.variant_b_name || '',
+      disclosureMode,
+      traceMode,
+    };
+    UI.setABComparisonId(state);
+    return state;
+  },
+
+  restorePendingABComparisons(comparisons) {
+    const restored = [];
+    (comparisons || []).forEach((comparison) => {
+      const state = this.restorePendingABComparison(comparison);
+      if (state) restored.push(state);
+    });
+    this.state.pendingABComparisons = restored;
+    this.syncABPendingState();
   },
 
   async newConversation() {
@@ -3396,9 +4342,14 @@ const Chat = {
       this.state.conversationId = null;
       this.state.messages = [];
       this.state.history = [];
+      this.state.activeABComparison = null;
+      this.state.pendingABComparisons = [];
+      this.state.abVotePending = false;
       Storage.setActiveConversationId(null);
       
       UI.renderMessages([]);
+      UI.hideABVoteButtons();
+      UI.setInputDisabled(false);
       await this.loadConversations();
     } catch (e) {
       console.error('Failed to create conversation:', e);
@@ -3415,8 +4366,13 @@ const Chat = {
         this.state.conversationId = null;
         this.state.messages = [];
         this.state.history = [];
+        this.state.activeABComparison = null;
+        this.state.pendingABComparisons = [];
+        this.state.abVotePending = false;
         Storage.setActiveConversationId(null);
         UI.renderMessages([]);
+        UI.hideABVoteButtons();
+        UI.setInputDisabled(false);
       }
       
       await this.loadConversations();
@@ -3435,9 +4391,10 @@ const Chat = {
       return;
     }
 
-    // Block if A/B vote is pending
-    if (this.state.abVotePending) {
-      UI.showToast('Please vote on the current comparison first, or disable A/B mode');
+    // Block only when the unresolved-comparison limit has been reached
+    if (this.hasReachedABPendingLimit()) {
+      const limit = this.getABPendingLimit();
+      UI.showToast(`Please resolve one of the pending comparisons before continuing (limit: ${limit}).`);
       return;
     }
 
@@ -3456,13 +4413,20 @@ const Chat = {
     UI.setStreamingState(true);
     this.state.isStreaming = true;
 
-    // Determine which configs to use
+    // Determine which config to use
     const configA = UI.getSelectedConfig('A');
-    const configB = UI.getSelectedConfig('B') || configA;
-    const isAB = UI.isABEnabled();
+    let isAB = false;
+    if (UI.shouldUseABForNextTurn()) {
+      try {
+        const decision = await API.getABDecision(this.state.conversationId);
+        isAB = decision?.use_ab === true;
+      } catch (e) {
+        console.warn('Failed to get server-side A/B decision, falling back to single response mode:', e);
+      }
+    }
 
     if (isAB) {
-      await this.sendABMessage(text, configA, configB);
+      await this.sendABMessage(text, configA);
     } else {
       await this.sendSingleMessage(configA);
     }
@@ -3492,94 +4456,188 @@ const Chat = {
     }
   },
 
-  async sendABMessage(userText, configA, configB) {
-        const selectedA = this.getSelectedProviderAndModel();
-        const selectedB = this.getSelectedProviderAndModelB();
-        if (selectedA.provider && !selectedA.model) {
-          UI.showToast('Please select a model for Provider A.');
-          this.state.isStreaming = false;
-          UI.setInputDisabled(false);
-          UI.setStreamingState(false);
-          return;
-        }
-        if (selectedB.provider && !selectedB.model) {
-          UI.showToast('Please select a model for Provider B.');
-          this.state.isStreaming = false;
-          UI.setInputDisabled(false);
-          UI.setStreamingState(false);
-          return;
-        }
-    // Randomize which config gets A vs B
-    const shuffled = Math.random() < 0.5;
-    const [actualConfigA, actualConfigB] = shuffled ? [configB, configA] : [configA, configB];
+  async sendABMessage(userText, configA) {
+    if (!this.state.abPool) {
+      UI.showToast('A/B pool is not configured on the server. Cannot run comparison.');
+      this.state.isStreaming = false;
+      this.syncABPendingState();
+      UI.setStreamingState(false);
+      return;
+    }
 
     const msgIdA = `${Date.now()}-ab-a`;
     const msgIdB = `${Date.now()}-ab-b`;
+    const traceMode = UI.getABTraceMode();
+    const disclosureMode = UI.getABDisclosureMode();
+    const { provider, model } = this.getSelectedProviderAndModel();
 
-    // Create side-by-side container
-    UI.addABComparisonContainer(msgIdA, msgIdB);
+    // Create side-by-side container using normal message styling
+    UI.addABComparisonContainer(msgIdA, msgIdB, {
+      traceMode,
+      comparisonKey: `${msgIdA}-${msgIdB}`,
+    });
 
-    // Track streaming results
-    const results = {
-      a: { text: '', messageId: null, configId: null, error: null },
-      b: { text: '', messageId: null, configId: null, error: null },
+    const armTexts = { a: '', b: '' };
+    const armTraces = {
+      a: { toolCalls: new Map(), events: [] },
+      b: { toolCalls: new Map(), events: [] },
     };
+    const finalEvents = { a: null, b: null };
+    let abMeta = null;
 
     try {
       this.state.abortController = new AbortController();
-      // Stream both responses in parallel
-      await Promise.all([
-        this.streamABResponse(msgIdA, actualConfigA, results.a, selectedA.provider, selectedA.model),
-        this.streamABResponse(msgIdB, actualConfigB, results.b, selectedB.provider, selectedB.model),
-      ]);
 
-      // Check for errors
-      if (results.a.error || results.b.error) {
-        const errorMsg = results.a.error || results.b.error;
-        UI.showABError(errorMsg);
-        this.state.isStreaming = false;
-        UI.setInputDisabled(false);
-        UI.setStreamingState(false);
-        await this.loadConversations();
-        return;
+      for await (const event of API.streamABComparison(
+        this.state.history,
+        this.state.conversationId,
+        configA,
+        this.state.abortController?.signal,
+        provider,
+        model,
+      )) {
+        if (event.type === 'meta' && event.event === 'stream_started') {
+          continue; // padding event
+        }
+
+        if (event.type === 'error') {
+          const errMsg = event.message || 'A/B stream error';
+          UI.showABError(errMsg);
+          this.state.isStreaming = false;
+          this.syncABPendingState();
+          UI.setStreamingState(false);
+          this.state.abortController = null;
+          await this.loadConversations();
+          return;
+        }
+
+        if (event.type === 'ab_arms') {
+          UI.updateABArmPresentation(msgIdA, { variantName: event.arm_a_name }, {
+            disclosureMode: event.variant_label_mode || event.disclosure_mode || disclosureMode,
+            reveal: false,
+          });
+          UI.updateABArmPresentation(msgIdB, { variantName: event.arm_b_name }, {
+            disclosureMode: event.variant_label_mode || event.disclosure_mode || disclosureMode,
+            reveal: false,
+          });
+          continue;
+        }
+
+        if (event.type === 'ab_meta') {
+          abMeta = event;
+          // Update conversation_id if server assigned one
+          if (event.conversation_id != null) {
+            this.state.conversationId = event.conversation_id;
+            Storage.setActiveConversationId(event.conversation_id);
+          }
+          continue;
+        }
+
+        const arm = event.arm; // 'a' or 'b'
+        if (!arm) continue;
+        const targetId = arm === 'a' ? msgIdA : msgIdB;
+        const traceState = armTraces[arm];
+
+        if (event.type === 'text' || event.type === 'chunk') {
+          const content = event.content || '';
+          if (content) {
+            armTexts[arm] = content; // Server sends accumulated text
+            UI.updateABResponse(targetId, Markdown.render(armTexts[arm]), true);
+          }
+        } else if (event.type === 'final') {
+          const finalText = event.response || armTexts[arm] || '';
+          armTexts[arm] = finalText;
+          finalEvents[arm] = event;
+          UI.updateABResponse(targetId, Markdown.render(finalText), false);
+          UI.finalizeTrace(targetId, traceState, event);
+          if (abMeta) {
+            UI.updateABArmPresentation(targetId, {
+              variantName: arm === 'a' ? abMeta.arm_a_variant : abMeta.arm_b_variant,
+              modelUsed: event.model_used || '',
+            }, {
+              disclosureMode: abMeta.variant_label_mode || abMeta.disclosure_mode || disclosureMode,
+              reveal: false,
+            });
+          }
+        } else if (event.type === 'step' && event.step_type === 'agent') {
+          const content = event.content || '';
+          if (content) {
+            armTexts[arm] = content;
+            UI.updateABResponse(targetId, Markdown.render(armTexts[arm]), true);
+          }
+        } else {
+          if (event.type === 'tool_start') {
+            traceState.toolCalls.set(event.tool_call_id, {
+              name: event.tool_name,
+              args: event.tool_args,
+              status: 'running',
+            });
+            traceState.events.push(event);
+          } else if (event.type === 'tool_output') {
+            const toolData = traceState.toolCalls.get(event.tool_call_id);
+            if (toolData) {
+              toolData.output = event.output;
+              toolData.status = 'success';
+            }
+            traceState.events.push(event);
+          } else if (event.type === 'tool_end') {
+            const toolData = traceState.toolCalls.get(event.tool_call_id);
+            if (toolData) {
+              toolData.status = event.status;
+              toolData.duration = event.duration_ms;
+            }
+            traceState.events.push(event);
+          } else if (event.type === 'thinking_start' || event.type === 'thinking_end') {
+            traceState.events.push(event);
+          }
+          this._renderStreamEvent(targetId, event);
+        }
       }
 
-      // Get config IDs
-      const configAId = this.getConfigId(actualConfigA);
-      const configBId = this.getConfigId(actualConfigB);
+      // Finalize both arms (remove streaming cursor)
+      UI.updateABResponse(msgIdA, Markdown.render(armTexts.a), false);
+      UI.updateABResponse(msgIdB, Markdown.render(armTexts.b), false);
 
-      // Create A/B comparison record
-      const response = await API.createABComparison({
-        conversation_id: this.state.conversationId,
-        user_prompt_mid: results.a.userPromptMid || results.b.userPromptMid,
-        response_a_mid: results.a.messageId,
-        response_b_mid: results.b.messageId,
-        config_a_id: configAId,
-        config_b_id: configBId,
-        is_config_a_first: !shuffled,
-      });
-
-      if (response?.comparison_id) {
-        this.state.activeABComparison = {
-          comparisonId: response.comparison_id,
-          responseAId: results.a.messageId,
-          responseBId: results.b.messageId,
-          responseAText: results.a.text,
-          responseBText: results.b.text,
-          configAId: configAId,
-          configBId: configBId,
+      // Set up voting if we got a comparison_id
+      if (abMeta?.comparison_id) {
+        if (abMeta.arm_a_message_id) {
+          UI.rekeyABArm(msgIdA, abMeta.arm_a_message_id);
+        }
+        if (abMeta.arm_b_message_id) {
+          UI.rekeyABArm(msgIdB, abMeta.arm_b_message_id);
+        }
+        const comparisonState = {
+          comparisonId: abMeta.comparison_id,
+          responseAId: abMeta.arm_a_message_id,
+          responseBId: abMeta.arm_b_message_id,
+          responseAUiId: abMeta.arm_a_message_id || msgIdA,
+          responseBUiId: abMeta.arm_b_message_id || msgIdB,
+          responseAText: armTexts.a,
+          responseBText: armTexts.b,
+          responseAModelUsed: finalEvents.a?.model_used || abMeta.arm_a_model_used || '',
+          responseBModelUsed: finalEvents.b?.model_used || abMeta.arm_b_model_used || '',
+          variantA: abMeta.arm_a_variant,
+          variantB: abMeta.arm_b_variant,
+          disclosureMode: abMeta.variant_label_mode || abMeta.disclosure_mode || disclosureMode,
+          traceMode,
         };
-        this.state.abVotePending = true;
+        UI.setABComparisonId(comparisonState);
+        this.addPendingABComparison(comparisonState);
+      } else {
+        UI.showToast('Comparison completed without a recorded vote state. Input has been re-enabled.');
+        UI.setInputDisabled(false);
+      }
 
-        // Show vote buttons
-        UI.showABVoteButtons(response.comparison_id);
+      // Highlight code
+      if (typeof hljs !== 'undefined') {
+        setTimeout(() => hljs.highlightAll(), 0);
       }
 
     } catch (e) {
       console.error('A/B comparison error:', e);
       UI.showABError(e.message || 'Failed to create comparison');
       this.state.isStreaming = false;
-      UI.setInputDisabled(false);
+      this.syncABPendingState();
       UI.setStreamingState(false);
       this.state.abortController = null;
       await this.loadConversations();
@@ -3589,143 +4647,40 @@ const Chat = {
     this.state.isStreaming = false;
     UI.setStreamingState(false);
     this.state.abortController = null;
-    // Keep input disabled until vote
+    this.syncABPendingState();
     await this.loadConversations();
-  },
-
-  async streamABResponse(elementId, configName, result, provider = null, model = null) {
-    let streamedText = '';
-    const showTrace = this.state.traceVerboseMode !== 'minimal';
-    const toolCalls = new Map(); // Track tool calls for this response
-
-    try {
-      for await (const event of API.streamResponse(
-        this.state.history,
-        this.state.conversationId,
-        configName,
-        this.state.abortController?.signal || null,
-        provider,
-        model
-      )) {
-        // Handle trace events
-        if (event.type === 'tool_start') {
-          toolCalls.set(event.tool_call_id, {
-            name: event.tool_name,
-            args: event.tool_args,
-            status: 'running',
-            output: null,
-            duration: null,
-          });
-          if (showTrace) {
-            UI.renderToolStart(elementId, event);
-          }
-        } else if (event.type === 'tool_output') {
-          const toolData = toolCalls.get(event.tool_call_id);
-          if (toolData) {
-            toolData.output = event.output;
-            toolData.status = 'success';
-          }
-          if (showTrace) {
-            UI.renderToolOutput(elementId, event);
-            UI.renderToolEnd(elementId, {
-              tool_call_id: event.tool_call_id,
-              status: 'success',
-            });
-          }
-        } else if (event.type === 'tool_end') {
-          const toolData = toolCalls.get(event.tool_call_id);
-          if (toolData) {
-            toolData.status = event.status;
-            toolData.duration = event.duration_ms;
-          }
-          if (showTrace) {
-            UI.renderToolEnd(elementId, event);
-          }
-        } else if (event.type === 'chunk') {
-          if (event.accumulated) {
-            streamedText = event.content || '';
-          } else {
-            streamedText += event.content || '';
-          }
-          UI.updateABResponse(elementId, Markdown.render(streamedText), true);
-        } else if (event.type === 'step' && event.step_type === 'agent') {
-          const content = event.content || '';
-          if (content) {
-            streamedText = content;
-            UI.updateABResponse(elementId, Markdown.render(streamedText), true);
-          }
-        } else if (event.type === 'final') {
-          const finalText = event.response || streamedText;
-          
-          // Finalize trace display
-          if (showTrace) {
-            UI.finalizeTrace(elementId, { toolCalls }, event);
-          }
-          
-          UI.updateABResponse(elementId, Markdown.render(finalText), false);
-
-          if (event.conversation_id != null) {
-            this.state.conversationId = event.conversation_id;
-            Storage.setActiveConversationId(event.conversation_id);
-          }
-
-          result.text = finalText;
-          result.messageId = event.message_id;
-          result.userPromptMid = event.user_message_id;
-
-          // Re-highlight code blocks
-          if (typeof hljs !== 'undefined') {
-            setTimeout(() => hljs.highlightAll(), 0);
-          }
-          return;
-        } else if (event.type === 'error') {
-          result.error = event.message || 'Stream error';
-          UI.updateABResponse(
-            elementId,
-            `<p style="color: var(--error-text);">${Utils.escapeHtml(result.error)}</p>`,
-            false
-          );
-          return;
-        }
-      }
-    } catch (e) {
-      console.error('A/B stream error:', e);
-      result.error = e.message || 'Streaming failed';
-      UI.updateABResponse(
-        elementId,
-        `<p style="color: var(--error-text);">${Utils.escapeHtml(result.error)}</p>`,
-        false
-      );
-    }
-  },
-
-  getConfigId(configName) {
-    const config = this.state.configs.find((c) => c.name === configName);
-    return config?.id || null;
   },
 
   async submitABPreference(preference) {
     if (!this.state.activeABComparison) return;
 
     try {
-      await API.submitABPreference(this.state.activeABComparison.comparisonId, preference);
+      const activeComparison = this.state.activeABComparison;
+      const result = await API.submitABPreference(activeComparison.comparisonId, preference);
+      if (result?.updated === false) {
+        console.info('A/B preference already recorded for comparison', activeComparison.comparisonId);
+      }
 
       // Update UI to show result
-      UI.markABWinner(preference);
+      UI.markABWinner(preference, activeComparison);
       UI.hideABVoteButtons();
 
-      // Add the winning response to history for context
-      const winningText =
-        preference === 'b'
-          ? this.state.activeABComparison.responseBText
-          : this.state.activeABComparison.responseAText;
+      // Add the chosen response to history for context
+      let winningText;
+      if (preference === 'tie') {
+        // For ties, use response A (arbitrary)
+        winningText = activeComparison.responseAText;
+      } else if (preference === 'b') {
+        winningText = activeComparison.responseBText;
+      } else {
+        winningText = activeComparison.responseAText;
+      }
       this.state.history.push(['archi', winningText]);
 
       // Clear A/B state
-      this.state.activeABComparison = null;
-      this.state.abVotePending = false;
-      UI.setInputDisabled(false);
+      this.removePendingABComparison(activeComparison.comparisonId);
       UI.elements.inputField?.focus();
+      await this.loadConversations();
     } catch (e) {
       console.error('Failed to submit preference:', e);
       UI.showToast('Failed to submit preference. Please try again.');
@@ -3736,20 +4691,55 @@ const Chat = {
     // Called when user disables A/B mode while vote is pending
     if (!this.state.abVotePending) return;
 
+    const activeComparison = this.state.activeABComparison;
+    if (!activeComparison) return;
+
+    // Submit 'tie' as a skip preference so the comparison is resolved in the DB
+    if (activeComparison.comparisonId) {
+      API.submitABPreference(activeComparison.comparisonId, 'tie')
+        .catch(e => console.warn('Failed to submit skip preference:', e));
+    }
+
     // Add response A to history as default
-    if (this.state.activeABComparison?.responseAText) {
-      this.state.history.push(['archi', this.state.activeABComparison.responseAText]);
+    if (activeComparison.responseAText) {
+      this.state.history.push(['archi', activeComparison.responseAText]);
     }
 
     // Mark as tie/skipped visually
-    UI.markABWinner('tie');
+    UI.markABWinner('tie', activeComparison);
     UI.hideABVoteButtons();
 
     // Clear state
-    this.state.activeABComparison = null;
-    this.state.abVotePending = false;
-    UI.setInputDisabled(false);
+    this.removePendingABComparison(activeComparison.comparisonId);
     UI.showToast('A/B comparison skipped');
+  },
+
+  /**
+   * Dispatch a single streaming event to the appropriate UI renderer.
+   * Shared between regular streaming and A/B comparison streaming so that
+   * tool/thinking rendering logic is defined in exactly one place.
+   */
+  _renderStreamEvent(messageId, event) {
+    const showTrace = UI.isTraceVisibleMode(UI.getTraceModeForMessage(messageId));
+    if (!showTrace) return;
+    switch (event.type) {
+      case 'tool_start':
+        UI.renderToolStart(messageId, event);
+        break;
+      case 'tool_output':
+        UI.renderToolOutput(messageId, event);
+        UI.renderToolEnd(messageId, { tool_call_id: event.tool_call_id, status: 'success' });
+        break;
+      case 'tool_end':
+        UI.renderToolEnd(messageId, event);
+        break;
+      case 'thinking_start':
+        UI.renderThinkingStart(messageId, event);
+        break;
+      case 'thinking_end':
+        UI.renderThinkingEnd(messageId, event);
+        break;
+    }
   },
 
   async streamResponse(messageId, configName) {
@@ -3809,9 +4799,7 @@ const Chat = {
             duration: null,
           });
           this.state.activeTrace.events.push(event);
-          if (showTrace) {
-            UI.renderToolStart(messageId, event);
-          }
+          this._renderStreamEvent(messageId, event);
         } else if (event.type === 'tool_output') {
           const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
           if (toolData) {
@@ -3819,13 +4807,7 @@ const Chat = {
             toolData.status = 'success';
           }
           this.state.activeTrace.events.push(event);
-          if (showTrace) {
-            UI.renderToolOutput(messageId, event);
-            UI.renderToolEnd(messageId, {
-              tool_call_id: event.tool_call_id,
-              status: 'success',
-            });
-          }
+          this._renderStreamEvent(messageId, event);
         } else if (event.type === 'tool_end') {
           const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
           if (toolData) {
@@ -3833,19 +4815,10 @@ const Chat = {
             toolData.duration = event.duration_ms;
           }
           this.state.activeTrace.events.push(event);
-          if (showTrace) {
-            UI.renderToolEnd(messageId, event);
-          }
-        } else if (event.type === 'thinking_start') {
+          this._renderStreamEvent(messageId, event);
+        } else if (event.type === 'thinking_start' || event.type === 'thinking_end') {
           this.state.activeTrace.events.push(event);
-          if (showTrace) {
-            UI.renderThinkingStart(messageId, event);
-          }
-        } else if (event.type === 'thinking_end') {
-          this.state.activeTrace.events.push(event);
-          if (showTrace) {
-            UI.renderThinkingEnd(messageId, event);
-          }
+          this._renderStreamEvent(messageId, event);
         } else if (event.type === 'chunk') {
           // Chunks may be accumulated or delta content
           if (event.accumulated) {
@@ -3985,6 +4958,35 @@ const Chat = {
       this.state.traceVerboseMode = mode;
       localStorage.setItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE, mode);
     }
+  },
+};
+
+window.__ARCHI_PLAYWRIGHT__ = {
+  ab: {
+    streamOverride: null,
+
+    setStreamOverride(override) {
+      this.streamOverride = typeof override === 'function' ? override : null;
+    },
+
+    clearStreamOverride() {
+      this.streamOverride = null;
+    },
+
+    patchPoolState(patch = {}) {
+      Chat.state.abPool = {
+        ...(Chat.state.abPool || {}),
+        ...patch,
+      };
+      if (typeof UI.updateABPoolUI === 'function') {
+        UI.updateABPoolUI(Chat.state.abPool || {});
+      }
+      return Chat.state.abPool;
+    },
+
+    reset() {
+      this.streamOverride = null;
+    },
   },
 };
 
