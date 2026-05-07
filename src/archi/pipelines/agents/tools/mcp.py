@@ -1,5 +1,7 @@
 from __future__ import annotations
 import os
+import httpx
+import base64
 from typing import List, Any, Tuple, Optional
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -9,8 +11,24 @@ from langchain.tools import BaseTool
 from src.utils.config_access import get_mcp_servers_config, get_full_config
 from src.utils.logging import get_logger
 from src.archi.pipelines.agents.utils.skill_utils import load_skill
+from src.utils.env import read_secret
 
 logger = get_logger(__name__)
+
+def mcp_http_client_factory(**kwargs) -> httpx.AsyncClient:
+    if "verify" in kwargs:
+        kwargs.setdefault("verify", kwargs["verify"])
+    user = read_secret("OS_USERNAME") or None
+    password = read_secret("OS_PASSWORD") or None
+    if user and password:
+        auth_bytes = f"{user}:{password}".encode("utf-8")
+        auth_b64 = base64.b64encode(auth_bytes).decode("utf-8")
+        if kwargs.get("headers"):
+            kwargs["headers"].update({"Authorization":f"Basic {auth_b64}"})
+        else:
+            kwargs["headers"] = {"Authorization":f"Basic {auth_b64}"}
+    return httpx.AsyncClient(**kwargs)
+
 
 async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[BaseTool], str]:
     """
@@ -55,6 +73,8 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
         else:
             # For HTTP-based transports, `env` is for the sidecar container (compose),
             # not the MCP client connection — drop it here.
+            if server_cfg.get("env").get("httpx_client_factory"):
+                cfg["httpx_client_factory"] = lambda **kwargs: mcp_http_client_factory(verify=server_cfg.get("host_file_mounts")[0],**kwargs)
             cfg.pop("env", None)
         client_configs[name] = cfg
 
@@ -73,7 +93,7 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
                 logger.info(f"Loaded tool from MCP server '{name}': {tool.name} - {tool.description}")
             all_tools.extend(tools)
         except Exception as e:
-            logger.error(f"Failed to fetch tools from MCP server '{name}': {e}")
+            logger.error(f"Failed to fetch tools from MCP server '{name}': {e}", exc_info=e)
             failed_servers[name] = str(e)
 
     logger.info(f"Active MCP servers: {[n for n in client_configs if n not in failed_servers]}")
