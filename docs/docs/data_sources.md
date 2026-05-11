@@ -147,13 +147,13 @@ Once enabled in config, deploy normally with `archi create --config <config.yaml
 
 ### Alternative: the Indico MCP sidecar (on-demand, bearer-authenticated)
 
-The batch scraper above is offline-friendly but heavy: it walks a list of URLs ahead of time and uses Selenium-driven CERN SSO for auth. For most setups the preferred path is the **Indico MCP sidecar** ([`mcp/indico/`](../../mcp/indico/README.md)), which:
+The batch scraper above is offline-friendly but heavy: it walks a list of URLs ahead of time and uses Selenium-driven CERN SSO for auth. For most setups the preferred path is the **Indico MCP sidecar** ([`mcp/indico/`](https://github.com/archi-physics/archi/tree/main/mcp/indico)), which:
 
 - Authenticates with a bearer token + API key/secret (no Selenium, no browser).
 - Lets the agent fetch event metadata, contributions, and attached files on demand at chat time.
 - Pairs with the agent-side `ingest_indico_event` tool to chunk + embed + index downloaded attachments via a shared docker volume, putting the same kind of resources into the catalog (`source_type=web`, `metadata.scraper=indico`, `metadata.event_id=<id>`) as the batch scraper would.
 
-The MCP path supplants the `use_sso: true` Selenium flow for new deployments; keep the batch IndicoScraper for offline ingest of large historical archives or when MCP isn't deployed. See [`mcp/indico/README.md`](../../mcp/indico/README.md) for configuration (one `shared_volume:` field in the `mcp_servers.indico` entry).
+The MCP path supplants the `use_sso: true` Selenium flow for new deployments; keep the batch IndicoScraper for offline ingest of large historical archives or when MCP isn't deployed. See [`mcp/indico/README.md`](https://github.com/archi-physics/archi/blob/main/mcp/indico/README.md) for configuration (one `shared_volume:` field in the `mcp_servers.indico` entry).
 
 ---
 
