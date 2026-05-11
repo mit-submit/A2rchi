@@ -12,11 +12,14 @@ etc.). Pinned to upstream commit `800c5fc3` (set in the [Dockerfile](Dockerfile)
 | | IndicoScraper (batch) | Indico MCP (live) |
 |---|---|---|
 | Path | `data_manager` ingestion → embeddings → vectorstore | Agent tool call at chat time |
+| Auth | Selenium + CERN SSO (fragile) | Bearer token / API key+secret |
 | Best for | "what was discussed at SUSY '24" — semantic recall over many past meetings | "list contributions for event 137346" — exact, current lookups |
 | Freshness | Whenever the scraper last ran | Now |
 | Cost per use | Cheap (one similarity search) | One Indico API call + LLM tool roundtrip per question |
 
-They are complementary — keep both.
+They are complementary, but the MCP path is the one we ship enabled. The MCP also
+*ingests* event attachments into the same vectorstore via a shared volume — see
+[Ingesting event attachments](#ingesting-event-attachments) below.
 
 ## Configuration
 
@@ -38,6 +41,10 @@ mcp_servers:
       BEARER_TOKEN: ${INDICO_BEARER_TOKEN}
       API_KEY: ${INDICO_API_KEY}
       API_SECRET: ${INDICO_API_SECRET}
+    # Names a docker volume that the data-manager also mounts read-only at the
+    # same path. INDICO_get_files writes downloads here, then ingest_indico_event
+    # picks them up. See "Ingesting event attachments" below.
+    shared_volume: indico-downloads
     skill: indico
 ```
 
@@ -74,7 +81,60 @@ From upstream's README — the server exposes 8 tools today:
 - `INDICO_get_event_details`
 - `INDICO_search_categories_by_id`
 - `INDICO_get_event_contributions`
-- `INDICO_get_files`
+- `INDICO_get_files` — when called with `download_files: true`, writes attachments
+  to the shared volume (see below). The default `download_dir` is patched in
+  [`entrypoint.py`](entrypoint.py) so the data-manager can read them.
+
+Paired with these is an archi-side agent tool, **`ingest_indico_event`**, that
+finishes the round trip — see the next section.
+
+## Ingesting event attachments
+
+The MCP server alone fetches *metadata*. To make the *contents* of attachments
+(slide text, agenda PDFs, supporting materials) searchable in the vectorstore,
+the agent chains two tool calls:
+
+```
+INDICO_get_files(event_id, download_files=true)   # MCP: auth + download to volume
+ingest_indico_event(event_id=…, event_url=…)      # archi: chunk + embed + index
+```
+
+The two halves are bridged by a docker named volume:
+
+- The MCP sidecar mounts it RW at `/shared/indico-downloads` (env
+  `INDICO_DOWNLOADS_DIR=/shared/indico-downloads`, declared in the Dockerfile and
+  enforced by the wrapper in `entrypoint.py`).
+- The data-manager mounts the same volume **read-only** at the same path. Its
+  `POST /document_index/ingest_local_path` endpoint validates the path is under
+  one of the allowlisted roots (default `/shared/indico-downloads`, override via
+  the `INGEST_ALLOWED_ROOTS` env var on the data-manager) and walks the directory.
+
+The compose template (`src/cli/templates/base-compose.yaml`) wires this up
+automatically when an MCP server entry sets `shared_volume: <name>`:
+
+- Declares a `<name>-<deployment>` named volume.
+- Mounts it RW on the MCP sidecar at `/shared/<name>`.
+- Mounts it RO on the data-manager at `/shared/<name>`.
+- Sets `<NAME_UPPER>_DIR` env on the MCP sidecar (e.g. `INDICO_DOWNLOADS_DIR`).
+
+After ingestion, the agent retrieves resources deterministically with
+`search_metadata_index` using `event_id:<id>` (stamped into each resource's
+metadata), then `fetch_catalog_document` by hash — *not* with
+`search_vectorstore_hybrid`, which won't reliably rank a freshly-added event
+near the top of a large corpus.
+
+Notes & caveats:
+
+- Upstream `INDICO_get_files` silently caps to ~10 attachments per event. Larger
+  events lose files; the response surfaces a `Limited downloads to first N files`
+  warning line — flag it to the user.
+- `ingest_url` (the generic-URL ingest tool) refuses Indico event URLs explicitly
+  and points the agent back to `ingest_indico_event`. Don't try to bypass it —
+  the LinkScraper can't authenticate against CERN SSO and would store the login
+  page.
+- For database compatibility, the stored `documents.source_type` is `"web"`
+  (the `valid_source` CHECK constraint doesn't allow `"indico"`); the actual
+  scraper is recorded as `metadata.scraper="indico"`.
 
 ## Bumping the upstream pin
 

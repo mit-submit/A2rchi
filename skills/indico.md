@@ -15,23 +15,33 @@ events, contributions, categories, or attached materials.
   starting from `"0"` (root) — don't guess IDs.
 - **Talks/contributions inside an event**: `INDICO_get_event_contributions`. Set
   `include_subcontributions: true` for sessions broken into sub-talks.
-- **Materials/slides attached to an event**: `INDICO_get_files` with `download_files: false`
-  to list URLs and metadata. **Do not** pass `download_files: true` — those files land
-  inside the MCP sidecar where archi can't read them.
+- **Materials/slides attached to an event** — two modes:
+  - **List only** (default): `INDICO_get_files(event_id, download_files=false)`. Returns
+    filenames, sizes, and API paths. Use this when the user just wants to know *what's
+    attached* to an event.
+  - **Download + ingest** (for "what's in the slides" questions): see the next section.
 - **Who am I / what perms do I have**: `INDICO_get_user_info`.
 
-## Making slides searchable: pair with `ingest_url`
+## Making slides searchable: pair with `ingest_indico_event`
 
 When the user wants the *contents* of an event (slide text, agenda body) — not just
-metadata — chain `INDICO_get_files` with `ingest_url`:
+metadata — use the authenticated MCP path. **Do NOT** use `ingest_url` on Indico URLs
+(it cannot authenticate against CERN SSO and would store the login redirect page;
+the tool will refuse and point you back here).
 
-1. `INDICO_get_files(event_id, download_files=false)` — confirm the event exists, get
-   the canonical event URL.
-2. `ingest_url(<event_url>)` — data-manager auto-routes Indico URLs through
-   `IndicoScraper`, which pulls slides via the API, converts them to markdown, and
-   indexes them in the vectorstore.
-3. After `ingest_url` returns its resource count, answer the question with
-   `search_vectorstore_hybrid`.
+1. `INDICO_get_files(event_id, download_files=true)` — the MCP server authenticates
+   with CERN, downloads each attachment to a shared volume (`/shared/indico-downloads/<event_id>/`),
+   and reports per-file status. This is the only step that hits the network.
+2. `ingest_indico_event(event_id=<id>, event_url=<canonical Indico URL>)` — asks the
+   data-manager to chunk + embed + index everything that just landed in the shared
+   dir. Stamps `event_id`, `url`, and `scraper=indico` into resource metadata.
+3. Retrieve DETERMINISTICALLY with `search_metadata_index` using `event_id:<id>`,
+   then `fetch_catalog_document` by hash. Do **not** loop on `search_vectorstore_hybrid`
+   — exact-match metadata lookups always surface a freshly-ingested event; vector
+   similarity does not.
+
+Limit: upstream `INDICO_get_files` truncates to ~10 attachments per event. If a
+large event is missing pieces, the response will say so — surface that to the user.
 
 ## Indico URL shape
 
