@@ -33,6 +33,7 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
     # knows about transport-specific fields.
     _archi_only_fields = {
         "env_from_secrets", "host_file_mounts", "build_context", "image", "path", "skill",
+        "shared_volume",
     }
     client_configs: dict[str, dict] = {}
     server_skills: dict[str, str] = {}

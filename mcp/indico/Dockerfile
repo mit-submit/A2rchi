@@ -24,6 +24,12 @@ WORKDIR /opt/mcp4indico/indico_mcp
 # Wrapper that reads env vars at HTTP-app import time. See entrypoint.py for why.
 COPY entrypoint.py ./entrypoint.py
 
+# Shared volume target for INDICO_get_files downloads. Compose mounts a named
+# volume here that the data-manager also mounts (read-only) so its
+# /document_index/ingest_local_path endpoint can ingest the just-downloaded files.
+RUN mkdir -p /shared/indico-downloads
+VOLUME ["/shared/indico-downloads"]
+
 EXPOSE 8012
 
 CMD ["uvicorn", "entrypoint:http_app", \

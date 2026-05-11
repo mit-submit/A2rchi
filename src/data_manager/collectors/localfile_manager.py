@@ -63,6 +63,52 @@ class LocalFileManager:
         target_dir = self.data_path / "local_files"
         return self._persist_file(staging_path, persistence, target_dir, base_dir=self.base_dir or self.staging_dir)
 
+    def ingest_directory(
+        self,
+        directory: Path,
+        persistence: PersistenceService,
+        *,
+        source_type: str = "local_files",
+        extra_metadata: Optional[Dict[str, Any]] = None,
+        target_subdir: Optional[str] = None,
+    ) -> list[Dict[str, Any]]:
+        """Recursively persist every file under ``directory`` into the catalog.
+
+        Used by the cross-container ingest endpoint to pull in files dropped by
+        another service (e.g. the Indico MCP container's authenticated downloads)
+        via a shared volume. Returns a list of ``{"hash", "relative_path",
+        "filename"}`` records for the agent to feed back into the catalog.
+        """
+        directory = Path(directory)
+        if not directory.exists() or not directory.is_dir():
+            raise ValueError(f"Not a directory: {directory}")
+
+        target_dir = self.data_path / (target_subdir or source_type)
+        results: list[Dict[str, Any]] = []
+        total = 0
+        for file_path in self._iter_files(directory):
+            total += 1
+            record = self._persist_file(
+                file_path,
+                persistence,
+                target_dir,
+                base_dir=directory,
+                source_type=source_type,
+                extra_metadata=extra_metadata or {},
+                return_record=True,
+            )
+            if record:
+                results.append(record)
+        logger.info(
+            "ingest_directory: persisted %d/%d file(s) from %s (source_type=%s%s)",
+            len(results),
+            total,
+            directory,
+            source_type,
+            f", event_id={(extra_metadata or {}).get('event_id')}" if (extra_metadata or {}).get("event_id") else "",
+        )
+        return results
+
     # internal helpers
 
     def _iter_files(self, directory: Path) -> Iterable[Path]:
@@ -70,19 +116,56 @@ class LocalFileManager:
             if file_path.is_file():
                 yield file_path
 
-    def _persist_file(self, path: Path, persistence: PersistenceService, target_dir: Path, *, base_dir: Optional[Path]) -> None:
+    def _persist_file(
+        self,
+        path: Path,
+        persistence: PersistenceService,
+        target_dir: Path,
+        *,
+        base_dir: Optional[Path],
+        source_type: str = "local_files",
+        extra_metadata: Optional[Dict[str, Any]] = None,
+        return_record: bool = False,
+    ):
+        """Persist a single file via the catalog. Returns:
+          - the persisted ``Path`` on success (default), or
+          - a ``{"hash","filename","relative_path"}`` dict when ``return_record=True``,
+          - ``None`` on read/persist failure.
+        Read and persist errors are logged but swallowed so directory walks keep going.
+        """
         try:
             content = path.read_bytes()
         except Exception as exc:
             logger.warning("Failed to read local file %s: %s", path, exc)
-            return
+            return None
 
-        resource = LocalFileResource(file_name=path.name, source_path=path, content=content, base_dir=base_dir)
+        resource = LocalFileResource(
+            file_name=path.name,
+            source_path=path,
+            content=content,
+            source_type=source_type,
+            base_dir=base_dir,
+            extra_metadata=dict(extra_metadata or {}),
+        )
         effective_target_dir = self._resolve_target_dir(path, target_dir, base_dir)
         try:
-            persistence.persist_resource(resource, effective_target_dir, overwrite=self.overwrite)
+            persisted_path = persistence.persist_resource(resource, effective_target_dir, overwrite=self.overwrite)
         except Exception as exc:
             logger.warning("Failed to persist local file %s: %s", path, exc)
+            return None
+
+        if not return_record:
+            return persisted_path
+
+        try:
+            relative_path = str(persisted_path.relative_to(self.data_path))
+        except ValueError:
+            relative_path = str(persisted_path)
+        return {
+            "hash": resource.get_hash(),
+            "filename": resource.get_filename(),
+            "relative_path": relative_path,
+        }
 
     def _resolve_target_dir(self, path: Path, target_dir: Path, base_dir: Optional[Path]) -> Path:
         if not base_dir:
