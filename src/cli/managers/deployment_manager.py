@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Tuple
 
 from src.cli.utils.command_runner import CommandRunner
+from src.cli.utils.helpers import HELM_PREFIX
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -21,9 +22,10 @@ class DeploymentError(Exception):
 class DeploymentManager:
     """Manages container deployment using Compose"""
     
-    def __init__(self, use_podman: bool = False):
+    def __init__(self, use_podman: bool = False, helm: bool = False):
         self.use_podman = use_podman
         self.compose_tool = "podman compose" if use_podman else "docker compose"
+        self.helm = helm
     
     def start_deployment(self, deployment_dir: Path) -> None:
         """Start the deployment using compose"""
@@ -221,6 +223,16 @@ class DeploymentManager:
                     logger.warning(f"Could not remove deployment directory: {e}")
         else:
             logger.info(f"Deployment directory does not exist: {deployment_dir}. Cannot take down deployment.")
+
+    def create_deployment_templates(self, base_dir: Path|str, services, env, name):
+        for service in services:
+            chart_dir = Path(base_dir) / "chart" / "templates" / f"{service}-deployment.yaml"
+            tmpl = env.get_template(str(HELM_PREFIX / service / "deployment.yaml"))  
+            helm_config = tmpl.render(name=name) 
+            with open(chart_dir,"w") as f:
+                f.write(helm_config)
+
+
     
     def _validate_compose_file(self, compose_file: Path) -> None:
         """Validate compose file syntax"""

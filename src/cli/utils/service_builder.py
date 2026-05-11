@@ -92,11 +92,15 @@ class DeploymentPlan:
     def get_enabled_services(self) -> List[str]:
         return [name for name, state in self.services.items() if state.enabled]
 
-    def get_required_volumes(self) -> List[str]:
-        volumes: Set[str] = set()
-        for state in self.services.values():
+    def get_required_volumes(self, helm=False) -> List[str]:
+        volumes: Set[str|dict] = set()
+        for service_name, state in self.services.items():
             if state.enabled and state.volume_name:
-                volumes.add(state.volume_name)
+                if helm:
+                    volumes.add((service_name,state.volume_name))
+                else:
+                    volumes.add(state.volume_name)
+
         if self.gpu_ids:
             volumes.add("archi-models")
         return sorted(volumes)
@@ -204,6 +208,61 @@ class ServiceBuilder:
                     }
                 )
             volume_name = definition.get_volume_name(name)
+            if volume_name:
+                config["volume_name"] = volume_name
+            plan.enable_service(service_name, **config)
+
+        return plan
+    
+    @staticmethod
+    def build_helm_config(
+        name: str,
+        verbosity: int,
+        base_dir: Path,
+        enabled_services: List[str],
+        enabled_sources: Optional[List[str]] = None,
+        secrets: Optional[Set[str]] = None,
+        **other_flags: object,
+    ) -> DeploymentPlan:
+        enabled_sources = enabled_sources or []
+
+        tag = other_flags.get("tag", "2000")
+        gpu_ids = other_flags.get("gpu_ids")
+        host_mode = other_flags.get("hostmode", other_flags.get("host_mode", False))
+        benchmarking_dest = other_flags.get("benchmarking_dest", "")
+
+        plan = DeploymentPlan(
+            name=name,
+            base_dir=base_dir,
+            tag=tag,
+            gpu_ids=gpu_ids,
+            host_mode=host_mode,
+            verbosity=verbosity,
+            benchmarking_dest=benchmarking_dest,
+            use_podman=False
+        )
+
+        plan.enabled_sources = set(enabled_sources)
+        plan.use_redmine = "redmine" in plan.enabled_sources
+        plan.use_jira = "jira" in plan.enabled_sources
+        if secrets:
+            plan.register_required_secrets(secrets)
+
+        all_services = service_registry.resolve_dependencies(enabled_services)
+        for service_name in all_services:
+            if service_name not in service_registry.get_all_services():
+                continue
+            definition = service_registry.get_service(service_name)
+            config: Dict[str, object] = {
+                "required_secrets": list(definition.required_secrets),
+                "required_config_fields": list(definition.required_config_fields),
+                "port_host": definition.default_host_port,
+                "port_container": definition.default_container_port,
+            }
+            
+            volume_name = definition.get_volume_name(name)
+            #TODO: where to fix this volume name?
+            volume_name = volume_name.replace(f"-{name}","").replace("archi-","")
             if volume_name:
                 config["volume_name"] = volume_name
             plan.enable_service(service_name, **config)

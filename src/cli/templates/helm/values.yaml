@@ -1,0 +1,14 @@
+verbosity: {{ verbosity }}
+archi:
+  name: {{ archi_name }}
+
+postgres:
+  image: registry.cern.ch/jsalasga_personal/archi-postgres:latest
+  port: {{ postgres_port }}
+  imagePullSecrets:
+     - name: cern-registry-secret
+
+chat:
+  image: registry.cern.ch/jsalasga_personal/archi-chat:latest
+  imagePullSecrets:
+     - name: cern-registry-secret

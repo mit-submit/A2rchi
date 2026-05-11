@@ -5,7 +5,7 @@ WORKDIR /root/archi
 
 COPY LICENSE LICENSE
 
-# Install Firefox and Geckodriver for Selenium 
+# Install Firefox and Geckodriver for Selenium
 RUN apt-get update && apt-get install -y \
     firefox-esr \
     wget \
@@ -38,4 +38,4 @@ RUN chmod g+rx /root; chmod -R g+w /root/archi/src/interfaces
 ARG APP_VERSION=unknown
 ENV APP_VERSION=${APP_VERSION}
 
-CMD ["python", "-u", "src/bin/service_chat.py"]
+CMD ["python", "-u", "src/bin/service_data_manager.py"]

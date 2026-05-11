@@ -1,0 +1,11 @@
+apiVersion: v1
+data:
+  {%- for filename, content in configs.items() %}
+  {{ filename }}: |
+    {{ content | indent(4) }}
+  {%- endfor %}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  name: {{ archi_name }}-chat-config

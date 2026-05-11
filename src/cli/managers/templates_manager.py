@@ -12,6 +12,7 @@ from jinja2 import Environment
 from src.cli.service_registry import service_registry
 from src.cli.utils.service_builder import DeploymentPlan
 from src.cli.utils.grafana_styling import assign_feedback_palette
+from src.cli.utils.helpers import HELM_PREFIX
 from src.utils.ab_testing import DEFAULT_AB_AGENTS_DIR
 from src.utils.logging import get_logger
 
@@ -27,6 +28,12 @@ BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 DEPLOYMENT_AGENTS_DIR = "/root/archi/agents"
+
+HELM_CHAT_CONFIG = "helm/templates/chatbot/configmap.yaml"
+HELM_POSTGRES_INIT = "helm/templates/postgres/configmap.yaml"
+HELM_CONFIG_SEED = "helm/templates/config-seed.yaml"
+HELM_CHART_YAML_TEMPLATE = "helm/Chart.yaml"
+HELM_VALUES_YAML_TEMPLATE = "helm/values.yaml"
 
 
 def get_git_information() -> Dict[str, str]:
@@ -93,12 +100,17 @@ class TemplateContext:
     @property
     def benchmarking(self) -> bool:
         return bool(self.options.get("benchmarking"))
+    
+    @property
+    def helm(self) -> bool:
+        return bool(self.options.get("helm"))
+    
 
 
 class TemplateManager:
     """Manages template rendering and file preparation using service registry"""
 
-    def __init__(self, jinja_env: Environment, verbosity: int):
+    def __init__(self, jinja_env: Environment, verbosity: int, helm: bool = False):
         self.env = jinja_env
         self.global_verbosity = verbosity
         self.registry = service_registry
@@ -106,6 +118,7 @@ class TemplateManager:
             "grafana": self._render_grafana_assets,
             "grader": self._copy_grader_assets,
         }
+        self.helm = helm
 
     def prepare_deployment_files(
         self,
@@ -135,19 +148,24 @@ class TemplateManager:
     # workflow construction
     def _build_workflow(self, context: TemplateContext) -> List[Callable[[TemplateContext], None]]:
         stages: List[Callable[[TemplateContext], None]] = [
-            self._stage_prompts,
-            self._stage_agents,
-            self._stage_skills,
-            self._stage_configs,
+            #self._stage_prompts,#TODO: still need to understand how this comes into play with HELM
+            #self._stage_agents, #TODO
+            #self._stage_skills, #TODO
+            self._stage_configs, 
             self._stage_service_artifacts,
             self._stage_postgres_init,
-            self._stage_compose,
-            self._stage_web_lists,
-            self._stage_source_copy,
+            #self._stage_compose,
+            #self._stage_web_lists,
+            #self._stage_source_copy,
         ]
 
         if context.benchmarking:
             stages.append(self._stage_benchmarking)
+
+        if context.helm:
+            stages.append(self._stage_chart)
+            stages.append(self._stage_values)
+            stages.append(self._stage_config_seed)
 
         return stages
 
@@ -209,6 +227,57 @@ class TemplateManager:
             empty_message=f"No A/B agent markdown files found in {ab_src_dir}",
             required=False,
         )
+
+    def _stage_chart(self, context: TemplateContext) -> None:
+        chart_dir = context.base_dir / "chart"  
+        tmpl = self.env.get_template(HELM_CHART_YAML_TEMPLATE)  
+        rendered = tmpl.render(  
+            name=context.plan.name,  
+            app_version=get_git_version(),   
+        )
+        with open(chart_dir / "Chart.yaml","w") as f:
+            f.write(rendered)
+
+    def _stage_values(self, context: TemplateContext) -> None:
+
+        template_vars = context.plan.to_template_vars()
+        port_config = self._extract_port_config(context)
+        allow_port_reuse = context.get_option("allow_port_reuse", False)
+        self._check_ports_available(context, port_config, allow_port_reuse=allow_port_reuse)
+        template_vars.update(port_config)
+        template_vars.setdefault("postgres_port", context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432))
+        template_vars.setdefault("verbosity", self.global_verbosity)
+
+        template_vars["app_version"] = get_git_version()
+
+        # Compose template still expects optional lists
+        template_vars.setdefault("prompt_files", [])
+        template_vars.setdefault("rubrics", [])
+
+        if context.plan.get_service("grader").enabled:
+            template_vars["rubrics"] = self._get_grader_rubrics(context.config_manager)
+
+        # Pass MCP server configs so compose can volume-mount stdio packages
+        # and emit sidecar services for servers with build_context/image.
+        mcp_servers = context.config_manager.config.get("mcp_servers", {}) or {}
+        template_vars["mcp_servers"] = mcp_servers
+
+        chart_dir = context.base_dir / "chart"  
+        tmpl = self.env.get_template(HELM_VALUES_YAML_TEMPLATE)  
+
+        #TODO verbosity
+        rendered = tmpl.render(archi_name=context.plan.name,**template_vars)
+        with open(chart_dir / "values.yaml","w") as f:
+            f.write(rendered)
+
+    def _stage_config_seed(self, context: TemplateContext) -> None:
+
+        chart_dir = context.base_dir / "chart"  
+        tmpl = self.env.get_template(HELM_CONFIG_SEED)  
+
+        rendered = tmpl.render(name=context.plan.name)
+        with open(chart_dir / "templates/config-seed.yaml","w") as f:
+            f.write(rendered)
 
     @staticmethod
     def _resolve_directory_path(raw_path: str, config: Dict[str, Any]) -> Path:
@@ -301,10 +370,22 @@ class TemplateManager:
         self._render_config_files(context)
 
     def _stage_service_artifacts(self, context: TemplateContext) -> None:
-        for name, hook in self._service_hooks.items():
-            if context.plan.get_service(name).enabled:
-                logger.info(f"Rendering supplemental assets for service {name}")
-                hook(context)
+        helm = context.helm
+        if helm:
+            enabled_services = context.plan.get_enabled_services()
+            print(f"JPS enabled services {enabled_services}")
+            for service in enabled_services:
+                chart_dir = context.base_dir / "chart" / "templates" / f"{service}-service.yaml"
+                tmpl = self.env.get_template(str(HELM_PREFIX / service / "service.yaml"))  
+                helm_config = tmpl.render(name=context.plan.name) 
+                with open(chart_dir,"w") as f:
+                    f.write(helm_config)
+        
+        else:
+            for name, hook in self._service_hooks.items():
+                if context.plan.get_service(name).enabled:
+                    logger.info(f"Rendering supplemental assets for service {name}")
+                    hook(context)
 
     def _stage_postgres_init(self, context: TemplateContext) -> None:
         self._render_postgres_init(context)
@@ -378,9 +459,11 @@ class TemplateManager:
         configs_path = context.base_dir / "configs"
         configs_path.mkdir(parents=True, exist_ok=True)
         benchmarking_enabled = bool(getattr(context, "benchmarking", False))
+        helm = bool(getattr(context, "helm", False))
 
         archi_configs = context.config_manager.get_configs()
         single_mode = len(archi_configs) == 1
+        config_data = {}
         for archi_config in archi_configs:
             name = archi_config["name"]
             updated_config = copy.deepcopy(archi_config)
@@ -411,9 +494,19 @@ class TemplateManager:
             config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)
 
             target_name = "config.yaml" if single_mode else f"{name}.yaml"
+            config_data[target_name] = config_rendered
             with open(configs_path / target_name, "w") as f:
                 f.write(config_rendered)
-            logger.info(f"Rendered configuration file {configs_path / target_name}")
+            logger.info(f"Rendered  configuration file {configs_path / target_name}")
+
+        if helm:
+            chart_dir = context.base_dir / "chart"  
+            tmpl = self.env.get_template(HELM_CHAT_CONFIG)  
+            helm_config = tmpl.render(configs=config_data, archi_name=context.plan.name) 
+            file_path = chart_dir / "templates/chatbot-configmap.yaml"
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path,"w") as f:
+                f.write(helm_config)
 
     # service-specific assets
     def _render_grafana_assets(self, context: TemplateContext) -> None:
@@ -475,6 +568,7 @@ class TemplateManager:
 
     # postgres + compose rendering
     def _render_postgres_init(self, context: TemplateContext) -> None:
+        helm = bool(getattr(context, "helm", False))
         grafana_enabled = context.plan.get_service("grafana").enabled
         grafana_pg_password = (
             context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD") if grafana_enabled else ""
@@ -517,6 +611,14 @@ class TemplateManager:
         with open(dest, "w") as f:
             f.write(init_sql)
         logger.debug(f"Wrote PostgreSQL init script to {dest}")
+
+        if helm:
+            chart_dir = context.base_dir / "chart"  
+            tmpl = self.env.get_template(HELM_POSTGRES_INIT)  
+            helm_config = tmpl.render(init_sql=init_sql,archi_name=context.plan.name) 
+            with open(chart_dir / "templates/postgres-init-configmap.yaml","w") as f:
+                f.write(helm_config)
+
 
 
     def _render_compose_file(self, context: TemplateContext) -> None:

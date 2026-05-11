@@ -2,12 +2,16 @@ from pathlib import Path
 from typing import List, Set, Tuple
 
 from dotenv import dotenv_values
+from jinja2 import Environment
+import base64
 
 from src.cli.service_registry import service_registry
 from src.cli.source_registry import source_registry
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+HELM_SECRETS = "helm/templates/secrets.yaml"
 
 class SecretsManager:
     """Manages secret loading and validation using .env files"""
@@ -149,6 +153,23 @@ class SecretsManager:
         # Also write a .env file for compose environment variable interpolation
         # This is needed for Podman compatibility (Docker secrets don't work reliably with podman-compose)
         self.write_env_file(target_dir, secrets)
+
+    def create_secret_template(self, templates_dir: Path, name: str, jinja_env: Environment, secrets: Set[str]) -> None:
+        encoded_secrets = {}
+        for secret_name in secrets:
+            try:
+                secret_value = self.get_secret(secret_name)
+                encoded_value = base64.b64encode(secret_value.encode('utf-8')).decode('utf-8')
+                encoded_secrets[secret_name] = encoded_value
+            except KeyError:
+                # should never happen if validate_secrets() was called first...
+                raise ValueError(f"Secret '{secret_name}' is required but not found in .env file")
+        template = jinja_env.get_template(HELM_SECRETS)  
+        rendered_secrets = template.render(encoded_secrets=encoded_secrets, name=name)
+        file_path = Path(templates_dir) / "chart/templates/secrets.yaml"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path,"w") as f:
+            f.write(rendered_secrets)
             
     def write_env_file(self, target_dir: Path, secrets: Set[str]) -> None:
         """Write a .env file for compose environment variable interpolation"""

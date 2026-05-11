@@ -1,7 +1,9 @@
 from typing import Optional
+from pathlib import Path
 
 from src.cli.utils.command_runner import CommandRunner
 from src.cli.utils.local_file_stager import stage_local_files_to_volume
+from src.cli.utils.helpers import HELM_PREFIX
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -9,9 +11,10 @@ logger = get_logger(__name__)
 class VolumeManager:
     """Manages Docker/Podman volume creation"""
     
-    def __init__(self, use_podman: bool = False):
+    def __init__(self, use_podman: bool = False, helm: bool = False):
         self.use_podman = use_podman
         self.container_tool = "podman" if use_podman else "docker"
+        self.helm = helm
     
     def create_required_volumes(self, compose_config, config: Optional[dict] = None) -> None:
         """Create all volumes required by the deployment and stage local files when configured."""
@@ -22,6 +25,17 @@ class VolumeManager:
         
         if config is not None:
             self._stage_local_files(compose_config, config)
+
+    def create_volume_templates(self, base_dir, compose_config, env, name):
+        required_volumes = compose_config.get_required_volumes(helm=True)
+        for volume in required_volumes:
+            chart_dir = Path(base_dir) / "chart" / "templates" / f"{volume[1]}-pvc.yaml"
+            service = volume[0]
+            tmpl = env.get_template(str(HELM_PREFIX / service / "pvc.yaml"))
+            #print(f"Volume {volume}, chart_dir {chart_dir}")
+            helm_config = tmpl.render(name=name) 
+            with open(chart_dir,"w") as f:
+                f.write(helm_config)
     
     def _create_volume(self, volume_name: str) -> None:
         """Create a single volume if it doesn't exist"""
