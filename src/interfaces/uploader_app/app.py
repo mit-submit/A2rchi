@@ -268,6 +268,13 @@ class FlaskAppWrapper:
     def upload_url(self):
         """
         Use the ScraperManager to collect and persist a single URL provided via form data.
+
+        Optional form field ``allow_sso_fallback=true`` enables a retry via the
+        Selenium ``CERNSSOScraper`` when the anonymous LinkScraper hits a
+        Keycloak login page. The agent decides per-request whether to opt in
+        (gated by its ``services.chat_app.tools.ingest_url`` config). The
+        retry only fires if the SSO source is enabled in data-manager config
+        (``data_manager.sources.sso.enabled``) and the SSO_* secrets exist.
         """
         url = request.form.get("url")
         depth_raw = request.form.get("depth")
@@ -282,20 +289,57 @@ class FlaskAppWrapper:
             # LinkScraper currently uses max_depth >= 1 for the initial URL fetch.
             if depth == 0:
                 depth = 1
+        allow_sso_fallback = (request.form.get("allow_sso_fallback") or "").strip().lower() in {"1", "true", "yes"}
         if url:
-            logger.info("Uploading the following URL: %s", url)
+            logger.info("Uploading the following URL: %s (allow_sso_fallback=%s)", url, allow_sso_fallback)
+            scraper_used: Optional[str] = None
             try:
                 if self.scraper_manager._is_indico_url(url):
                     scraped_count = self.scraper_manager.collect_indico(self.persistence, indico_urls=[url])
+                    scraper_used = "indico"
                 else:
                     scraped_count = self.scraper_manager.collect_links(self.persistence, link_urls=[url], max_depth=depth)
+                    scraper_used = "link"
                 # Guard: if LinkScraper followed an SSO redirect and ingested a Keycloak login
                 # page, the count above is misleading. Remove any just-ingested resources whose
                 # stored content matches the Keycloak login signature.
                 removed = self._purge_keycloak_login_pages_for_url(url)
                 if removed:
                     scraped_count = max(0, scraped_count - removed)
-                    if scraped_count == 0:
+                    if scraped_count == 0 and allow_sso_fallback:
+                        # Retry through the Selenium CERNSSOScraper. The agent opted
+                        # in by setting allow_sso_fallback=true; the data-manager
+                        # still requires the SSO source to be enabled. Pass the
+                        # request's depth (defaults to 1) — the Selenium crawl is
+                        # otherwise governed by base_source_depth=5, which can
+                        # spider hundreds of pages from a single seed and blow
+                        # past the agent's client timeout.
+                        sso_count = self._sso_retry(url, max_depth=(depth or 1))
+                        if sso_count is not None and sso_count > 0:
+                            scraped_count = sso_count
+                            scraper_used = "sso"
+                            logger.info(
+                                "ingest_url SSO retry succeeded for %s (%d resource(s))",
+                                url, sso_count,
+                            )
+                        else:
+                            self._notify_update()
+                            return (
+                                jsonify(
+                                    {
+                                        "error": "auth_required",
+                                        "detail": (
+                                            "URL redirected to a CERN SSO login page; "
+                                            "anonymous LinkScraper cannot fetch it. SSO "
+                                            "fallback was attempted but did not yield "
+                                            "any resources (see data-manager logs)."
+                                        ),
+                                        "url": url,
+                                    }
+                                ),
+                                502,
+                            )
+                    elif scraped_count == 0:
                         self._notify_update()
                         return (
                             jsonify(
@@ -304,7 +348,9 @@ class FlaskAppWrapper:
                                     "detail": (
                                         "URL redirected to a CERN SSO login page; "
                                         "anonymous LinkScraper cannot fetch it. "
-                                        "Use a tool that authenticates (e.g. ingest_indico_event)."
+                                        "Set allow_sso_fallback=true to retry via the "
+                                        "Selenium SSO scraper, or use a tool that "
+                                        "authenticates (e.g. ingest_indico_event)."
                                     ),
                                     "url": url,
                                 }
@@ -320,13 +366,46 @@ class FlaskAppWrapper:
                 upload_error = str(exc)
 
             if added_to_urls:
-                logger.info("URL uploaded successfully")
+                logger.info("URL uploaded successfully (scraper=%s)", scraper_used)
                 self._notify_update()
-                return jsonify({"status": "ok", "resources_scraped": scraped_count})
+                return jsonify(
+                    {
+                        "status": "ok",
+                        "resources_scraped": scraped_count,
+                        "scraper": scraper_used,
+                    }
+                )
             else:
                 return jsonify({"error": "upload_failed", "detail": upload_error}), 500
         else:
             return jsonify({"error": "missing_url"}), 400
+
+    def _sso_retry(self, url: str, max_depth: int = 1) -> Optional[int]:
+        """Run the configured CERNSSOScraper against *url* and return the number
+        of new resources persisted. ``None`` if SSO is not enabled or the retry
+        could not run (the caller treats that as failure).
+
+        ``max_depth`` defaults to 1 (just the seed URL). For one-shot agent
+        ingests, anything higher means crawling every internal link and
+        typically blowing past the client timeout.
+        """
+        if not getattr(self.scraper_manager, "sso_enabled", False):
+            logger.info(
+                "ingest_url SSO retry requested for %s but data_manager.sources.sso.enabled=false",
+                url,
+            )
+            return None
+        before = set(self.persistence.catalog.get_resource_hashes_by_metadata_filter("url", url))
+        logger.info("SSO retry starting for %s (max_depth=%d)", url, max_depth)
+        try:
+            self.scraper_manager.collect_sso(self.persistence, sso_urls=[url], max_depth=max_depth)
+        except Exception as exc:
+            logger.exception("SSO retry raised for %s: %s", url, exc)
+            return None
+        after = set(self.persistence.catalog.get_resource_hashes_by_metadata_filter("url", url))
+        new_hashes = after - before
+        logger.info("SSO retry done for %s: %d new resource(s)", url, len(new_hashes))
+        return len(new_hashes)
 
     def ingest_local_path(self):
         """Ingest every file under a directory living on a path the caller already

@@ -25,9 +25,10 @@ events, contributions, categories, or attached materials.
 ## Making slides searchable: pair with `ingest_indico_event`
 
 When the user wants the *contents* of an event (slide text, agenda body) — not just
-metadata — use the authenticated MCP path. **Do NOT** use `ingest_url` on Indico URLs
-(it cannot authenticate against CERN SSO and would store the login redirect page;
-the tool will refuse and point you back here).
+metadata — use the authenticated MCP path. **Do NOT** use `ingest_url` on Indico URLs:
+the agent's `ingest_url` is wired with a routing rule that refuses Indico event URLs
+and points you back here (it cannot authenticate against CERN SSO with the anonymous
+LinkScraper). If you ever see that refusal, follow it — don't retry.
 
 1. `INDICO_get_files(event_id, download_files=true)` — the MCP server authenticates
    with CERN, downloads each attachment to a shared volume (`/shared/indico-downloads/<event_id>/`),

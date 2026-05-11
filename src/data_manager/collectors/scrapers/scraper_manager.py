@@ -166,8 +166,15 @@ class ScraperManager:
         self,
         persistence: PersistenceService,
         sso_urls: Optional[List[str]] = None,
+        max_depth: Optional[int] = None,
     ) -> None:
-        """Collect only SSO sources."""
+        """Collect only SSO sources.
+
+        ``max_depth`` overrides the default crawl depth (``data_manager.sources
+        .links.base_source_depth``). One-shot callers — e.g. the ingest_url
+        SSO fallback — should pass ``max_depth=1`` to avoid crawling the entire
+        twiki/codimd link graph from a single seed URL.
+        """
         if not self.sso_enabled:
             logger.info("SSO disabled, skipping SSO scraping")
             return
@@ -177,7 +184,7 @@ class ScraperManager:
         sso_dir = persistence.data_path / "sso"
         if not os.path.exists(sso_dir):
             os.makedirs(sso_dir, exist_ok=True)
-        self._collect_sso_from_urls(sso_urls, persistence, sso_dir)
+        self._collect_sso_from_urls(sso_urls, persistence, sso_dir, max_depth=max_depth)
 
     def schedule_collect_links(
         self, persistence: PersistenceService, last_run: Optional[str] = None
@@ -267,8 +274,13 @@ class ScraperManager:
         urls: List[str],
         persistence: PersistenceService,
         output_dir: Path,
+        max_depth: Optional[int] = None,
     ) -> None:
-        """Collect SSO-protected URLs using selenium for authentication."""
+        """Collect SSO-protected URLs using selenium for authentication.
+
+        ``max_depth=None`` uses the configured ``base_depth`` (5 for the link
+        scraper). Callers doing a one-shot fetch should pass an explicit value.
+        """
         if not self.selenium_enabled:
             logger.error(
                 "SSO scraping requires data_manager.sources.links.selenium_scraper.enabled"
@@ -289,6 +301,7 @@ class ScraperManager:
             )
             return
 
+        effective_depth = self.base_depth if max_depth is None else max(1, int(max_depth))
         try:
             for url in urls:
                 # For SSO URLs, use selenium client for authentication
@@ -297,7 +310,7 @@ class ScraperManager:
                     url,
                     persistence,
                     output_dir,
-                    max_depth=self.base_depth,
+                    max_depth=effective_depth,
                     client=authenticator,
                     use_client_for_scraping=self.scrape_with_selenium,
                 )

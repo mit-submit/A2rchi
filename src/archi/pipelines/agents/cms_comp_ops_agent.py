@@ -275,11 +275,22 @@ class CMSCompOpsAgent(BaseReActAgent):
     def _build_ingest_url_tool(self) -> Callable:
         description = self._tool_definitions()["ingest_url"]["description"]
         data_manager_url, headers = self._data_manager_endpoint()
+        # services.chat_app.tools.ingest_url:
+        #   sso_fallback_enabled: bool        (default false)
+        #   routing_rules: list of {pattern, action, scraper?, message?}
+        #                                     (default: DEFAULT_ROUTING_RULES — Indico refusal)
+        tool_cfg = (self._chat_app_config.get("tools", {}) or {}).get("ingest_url", {}) or {}
+        sso_fallback_enabled = bool(tool_cfg.get("sso_fallback_enabled", False))
+        # `routing_rules` may be omitted (use defaults), an empty list (disable all),
+        # or a list of rule dicts (replace defaults). Pass through verbatim.
+        routing_rules = tool_cfg.get("routing_rules", None)
         return create_ingest_url_tool(
             data_manager_url,
             headers=headers,
             description=description,
             store_tool_input=getattr(self, "_store_tool_input", None),
+            routing_rules=routing_rules,
+            sso_fallback_enabled=sso_fallback_enabled,
         )
 
     def _build_ingest_indico_event_tool(self) -> Callable:

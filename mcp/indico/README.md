@@ -128,13 +128,71 @@ Notes & caveats:
 - Upstream `INDICO_get_files` silently caps to ~10 attachments per event. Larger
   events lose files; the response surfaces a `Limited downloads to first N files`
   warning line — flag it to the user.
-- `ingest_url` (the generic-URL ingest tool) refuses Indico event URLs explicitly
-  and points the agent back to `ingest_indico_event`. Don't try to bypass it —
-  the LinkScraper can't authenticate against CERN SSO and would store the login
-  page.
+- `ingest_url` (the generic-URL ingest tool) refuses Indico event URLs via a
+  built-in routing rule (see [Configuring `ingest_url` routing & SSO fallback](#configuring-ingest_url-routing--sso-fallback)).
+  The refusal returns an explicit message pointing at `ingest_indico_event`.
+  The routing list is configurable, so a deployment without MCP could in
+  principle remove the refusal — but the LinkScraper still can't authenticate
+  against CERN SSO and would store the login page, so don't.
 - For database compatibility, the stored `documents.source_type` is `"web"`
   (the `valid_source` CHECK constraint doesn't allow `"indico"`); the actual
   scraper is recorded as `metadata.scraper="indico"`.
+
+## Configuring `ingest_url` routing & SSO fallback
+
+`ingest_url` is the generic single-URL ingest tool the agent uses for plain web
+pages. Its behaviour is shaped by a small config block under
+`services.chat_app.tools.ingest_url`. Two knobs:
+
+- **`routing_rules`** (list, optional): regex → action rules evaluated in order
+  before the tool calls the data-manager. Two actions are supported:
+  - `refuse`: return the rule's `message` template to the agent immediately.
+    Used to redirect specific URL patterns to better tools (e.g. Indico events
+    to `ingest_indico_event`). The `message` template supports `{url}` plus
+    any named/positional regex groups (e.g. `{event_id}`).
+  - `sso_retry`: mark this URL as a candidate for SSO retry. Only takes effect
+    when `sso_fallback_enabled: true` (below).
+  If omitted, the built-in [`DEFAULT_ROUTING_RULES`](../../src/archi/pipelines/agents/tools/ingest.py)
+  apply — they refuse `indico.*/event/<id>` and the JSON export variant.
+- **`sso_fallback_enabled`** (bool, default `false`): opt-in switch. When `true`
+  and a URL matches an `sso_retry` rule, the tool POSTs `allow_sso_fallback=true`
+  to the data-manager. If the LinkScraper hits a Keycloak login page, the
+  data-manager retries via the Selenium-based `CERNSSOScraper`
+  (`data_manager.sources.sso.enabled` must also be `true` and the `SSO_USERNAME` /
+  `SSO_PASSWORD` secrets must be set, otherwise the retry is a no-op and the
+  call returns `auth_required`).
+
+Indico URLs are still better served by `ingest_indico_event` (it uses the
+authenticated MCP path — no Selenium). The SSO fallback is intended for other
+CERN-internal pages that need an authenticated browser session (codimd, twiki,
+internal docs).
+
+Example (CMS CompOps): refuse Indico, allow SSO retry on any other CERN host.
+
+```yaml
+services:
+  chat_app:
+    tools:
+      ingest_url:
+        sso_fallback_enabled: true
+        routing_rules:
+          # Defaults inlined so an operator can see the shape; pattern groups
+          # populate {event_id} in the message template.
+          - pattern: '^https?://[^/]*indico\.[^/]*/event/(?P<event_id>\d+)'
+            action: refuse
+            scraper: indico_mcp
+            message: |
+              Error: this URL is an Indico event page (event_id={event_id}).
+              Call `ingest_indico_event(event_id="{event_id}")` instead.
+          # New: any other URL on a CERN host is a candidate for SSO retry.
+          - pattern: '^https?://[^/]*\.cern\.ch(/|$)'
+            action: sso_retry
+            scraper: sso
+```
+
+A successful SSO retry shows up in the tool's reply as `[scraper=sso]`;
+LinkScraper-served pages report `[scraper=link]`. The agent sees this and can
+decide whether to flag the auth path to the user.
 
 ## Bumping the upstream pin
 
