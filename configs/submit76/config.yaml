@@ -27,11 +27,11 @@ services:
 
 data_manager:
   sources:
+    links:
+      enabled: false
+      input_lists: []
     redmine:
-      url: https://cleo.mit.edu
-      project: emails-to-ticket
-      projects:
-        - emails-to-ticket
+      enabled: false
   embedding_name: HuggingFaceEmbeddings
   captioning:
     enabled: true
