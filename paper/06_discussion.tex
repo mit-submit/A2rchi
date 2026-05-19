@@ -1,0 +1,79 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Comparison to alternatives.}
+A documentation-only retrieval chatbot~\cite{lewis2020rag} cannot
+answer the 116 live-state questions in the evaluation set
+(counters such as a transfer rate, a workflow's resubmission
+count, or a site's hourly readiness flag) because the indexed
+documentation does not contain operational state. A single tool
+call~\cite{yao2023react} reaches MonIT but does not compose
+across sources: triaging a stalled transfer requires the runbook
+entry, the current site-readiness counter, and the ticket history
+of past stalls on the same link, and the iterative ReAct loop is
+what threads them together. AccGPT~\cite{accgpt2025} and
+chATLAS~\cite{chatlas2025} deploy retrieval-augmented assistants
+over CERN- and ATLAS-wide documentation but do not pair retrieval
+with live operational tool calls or report a rubric-based
+evaluation against a curated production-question dataset.
+GAIA~\cite{mayet2024gaia} pairs ReAct over an open-weights LLM
+with control-system tools and a multi-expert RAG layer at DESY,
+and the multi-lab logbook work~\cite{sulc2024logbooks} extracts
+insight from electronic logbook entries at DESY, BESSY, Fermilab,
+BNL, SLAC, LBNL, and CERN; both target accelerator operations
+rather than offline computing operations and do not evaluate
+against a curated production-question dataset.
+
+\paragraph{Bounding the live-tool cost.}
+The full agent and the no-live-tools ablation tie in aggregate
+because live tools help on the 20\% of operator traffic that
+needs operational state and dilute the context on the other
+80\% (Section~\ref{sec:eval_lifts}). The dilution is mechanical:
+each live MonIT return is a structured payload of hundreds to
+thousands of tokens, and the agent issues several per question.
+The path to recover the per-category gap is not a separate
+upstream classifier but tighter tool-use instructions inside the
+agent itself: condition the decision to call MonIT on a
+short, structured judgement about whether the question requires
+operational state, and skip the live calls when the answer is
+already in the documentation. The agent already self-routes its
+tool families by question type
+(Figure~\ref{fig:tool_usage}); the remaining lift is making the
+``call no live tool'' branch first-class.
+
+\paragraph{The source-faithfulness inversion.}
+The agent's multi-pass reasoning trades single-passage citation
+for cross-source synthesis. On the 260-question single-judge run
+the agent scores 3.78 on source faithfulness against the RAG
+control's 4.62; the same inversion replicates on the
+53-question four-judge ensemble (3.10--3.74 for the agents
+against 4.26 for the RAG control). The deployed UI exposes the
+agent's tool-call trace per response as partial mitigation:
+operators can audit which retrieval each claim came from even
+when the rubric scores the cross-source synthesis lower on
+attribution. A knowledge-graph-backed retrieval layer is the
+deeper fix; we sketch it below.
+
+\paragraph{Judge methodology.}
+The reference-free rubric reduces some dependence on the judge,
+but the per-pipeline scores and the source-faithfulness inversion
+inherit known LLM-judge biases. The four-judge LLM ensemble on
+the 53-question subset (Section~\ref{sec:eval_ensemble}) agrees
+with the single-judge ordering across independent providers; the
+harshest judge, \texttt{gpt-5.5}, diverges most on specificity.
+The human evaluation of Section~\ref{sec:eval_human_53} provides
+the non-LLM reference once it completes.
+
+\paragraph{Richer knowledge representation.}
+The retrieval layer is currently a hybrid BM25-plus-vector index
+over passages (Section~\ref{sec:components}), and the agent's
+live-tool surface covers Rucio MonIT and HTCondor MonIT only.
+Operator workflows also touch Oracle-backed services and Indico,
+which are part of the deployment but not yet exposed as agent
+tools. We are designing a knowledge-graph-backed retrieval layer
+that exposes ticket--site--workflow--dataset relations directly,
+distinguishes stale fields (last-known transfer state) from
+durable metadata (site endpoints, dataset lineage), and lets
+the agent traverse paths that passage retrieval cannot. The same
+layer plugs in additional live sources without re-architecting
+the pipeline.

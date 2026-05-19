@@ -1,0 +1,7 @@
+tier,config,model_used,pipeline_used,n_questions,n_judges,core4_mean,core4_std,src_faith_mean,time_mean_s,tools_mean,sources_mean,human_correctness_mean,human_usefulness_mean,human_rank_mean,n_human_responses
+gold,gpt-5.5/live,gpt-5.5-2026-04-23,,53,4,4.63,0.713,3.74,157.27,17.57,71.94,4.64,4.56,1.37,59
+gold,qwen3.5-122b/live,qwen/qwen3.5-122b-a10b-20260224,,53,4,4.28,0.963,3.25,80.35,14.36,16.87,,,,0
+gold,qwen3.6-27b/live,qwen/qwen3.6-27b-20260422,,53,4,4.39,0.901,3.46,126.51,14.53,26.81,4.31,4.20,1.73,59
+gold,qwen3.6-27b/no-tools,qwen/qwen3.6-27b-20260422,,53,4,4.25,1.123,3.18,137.07,14.75,33.75,4.32,4.20,1.64,59
+gold,qwen3.6-27b/rag,qwen/qwen3.6-27b,QAPipeline,53,4,3.78,1.201,4.26,70.06,0.00,4.40,2.95,2.73,2.61,59
+gold,qwen3.6-35b/live,qwen/qwen3.6-35b-a3b-20260415,,53,4,4.22,1.065,3.10,100.99,15.13,27.79,4.22,4.17,1.76,59

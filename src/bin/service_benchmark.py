@@ -835,14 +835,38 @@ class Benchmarker:
                             entry['tool_output'] = tool_results[tcid]
                         formatted_messages.append(entry)
                 elif hasattr(msg, 'content'):
-                    content = msg.content or ''
+                    raw_content = msg.content or ''
                     thinking = ''
+                    # OpenAI Responses API returns content as a list of typed blocks
+                    # (e.g. [{"type": "text", "text": "..."}, {"type": "reasoning", "text": "..."}]).
+                    # Flatten reasoning blocks into `thinking` and concatenate text blocks into `content`.
+                    if isinstance(raw_content, list):
+                        text_parts = []
+                        reasoning_parts = []
+                        for block in raw_content:
+                            if isinstance(block, dict):
+                                btype = block.get('type', '')
+                                btext = block.get('text', '') or block.get('content', '')
+                                if 'reasoning' in btype.lower() or btype == 'thinking':
+                                    if btext:
+                                        reasoning_parts.append(str(btext))
+                                elif btype in ('text', 'output_text', 'content', ''):
+                                    if btext:
+                                        text_parts.append(str(btext))
+                            elif isinstance(block, str):
+                                text_parts.append(block)
+                        content = "\n".join(text_parts)
+                        if reasoning_parts:
+                            thinking = "\n".join(reasoning_parts)
+                    else:
+                        content = raw_content
                     # Extract <think>...</think> blocks (Qwen3-style)
                     think_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
-                    think_matches = think_pattern.findall(content)
-                    if think_matches:
-                        thinking = "\n".join(think_matches)
-                        content = think_pattern.sub('', content).strip()
+                    if isinstance(content, str):
+                        think_matches = think_pattern.findall(content)
+                        if think_matches:
+                            thinking = "\n".join(think_matches)
+                            content = think_pattern.sub('', content).strip()
                     # Extract reasoning_content (OpenAI o1/o3 style)
                     additional_kwargs = getattr(msg, 'additional_kwargs', None) or {}
                     reasoning = additional_kwargs.get('reasoning_content', '')

@@ -41,3 +41,4 @@ websites/
 data/
 bench_out/
 .env_tmp_smoke
+bench_out/grading/graders.tsv

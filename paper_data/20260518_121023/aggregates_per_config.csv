@@ -1,0 +1,8 @@
+config,llm_relevance_mean,llm_relevance_std,llm_relevance_n,llm_completeness_mean,llm_completeness_std,llm_completeness_n,llm_specificity_mean,llm_specificity_std,llm_specificity_n,llm_helpfulness_mean,llm_helpfulness_std,llm_helpfulness_n,llm_source_faithfulness_mean,llm_source_faithfulness_std,llm_source_faithfulness_n,llm_core4_mean,llm_core4_std,llm_core4_n,hum_correctness_mean,hum_correctness_std,hum_correctness_n,hum_usefulness_mean,hum_usefulness_std,hum_usefulness_n,hum_rank_mean,hum_rank_std,hum_rank_n
+gpt-5.5/live,4.986,0.118,212,4.792,0.428,212,4.189,1.015,212,4.557,0.674,212,3.736,1.089,212,4.631,0.713,848,4.644,0.798,59,4.559,0.829,59,1.373,0.779,59
+qwen3.5-122b/live,4.816,0.475,212,4.476,0.730,212,3.717,1.176,212,4.099,0.944,212,3.250,1.247,212,4.277,0.963,848,,,0,,,0,,,0
+qwen3.6-27b/live,4.863,0.396,211,4.526,0.737,211,3.924,1.133,211,4.265,0.890,211,3.464,1.201,211,4.395,0.901,844,4.305,1.154,59,4.203,1.101,59,1.729,1.006,59
+qwen3.6-27b/no-tools,4.754,0.806,211,4.493,0.905,211,3.664,1.264,211,4.085,1.136,211,3.184,1.272,207,4.249,1.123,844,4.322,1.171,59,4.203,1.132,59,1.644,0.754,59
+qwen3.6-27b/rag,4.528,0.786,212,3.623,1.243,212,3.439,1.233,212,3.533,1.151,212,4.255,1.008,196,3.781,1.201,848,2.949,1.751,59,2.729,1.614,59,2.610,1.193,59
+qwen3.6-35b/grep,4.868,0.339,53,4.811,0.551,53,4.321,0.885,53,4.660,0.699,53,3.774,0.924,53,4.665,0.684,212,,,0,,,0,,,0
+qwen3.6-35b/live,4.769,0.621,212,4.467,0.871,212,3.642,1.241,212,4.009,1.055,212,3.099,1.264,212,4.222,1.065,848,4.220,1.151,59,4.169,1.122,59,1.763,0.870,59

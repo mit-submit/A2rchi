@@ -28,8 +28,52 @@ logger = get_logger(__name__)
 _TIME_FORMAT = "strict_date_optional_time||epoch_millis"
 
 # Hard limits to prevent LLM context window overflow
-MAX_RESULTS_HARD_LIMIT = 50
-MAX_OUTPUT_CHARS = 50_000
+MAX_RESULTS_HARD_LIMIT = 10
+MAX_OUTPUT_CHARS = 8_000
+DEFAULT_MAX_RESULTS = 5
+DEFAULT_PAGE_SIZE = 5
+
+# ── Field projections per index ──────────────────────────────────────────────
+# Only these fields are shown in search summaries.  Full documents are
+# available via the fetch_monit_document tool.
+
+CONDOR_SUMMARY_FIELDS = [
+    "data.Site",
+    "data.CMS_JobType",
+    "data.Type",
+    "data.Status",
+    "data.ExitCode",
+    "data.CpuEff",
+    "data.WallClockHr",
+    "data.CpuTimeHr",
+    "data.RequestCpus",
+    "data.Workflow",
+    "data.WMAgent_TaskType",
+    "data.ScheddName",
+    "data.RecordTime",
+]
+
+RUCIO_SUMMARY_FIELDS = [
+    "data.event_type",
+    "data.scope",
+    "data.name",
+    "data.src_rse",
+    "data.dst_rse",
+    "data.rse",
+    "data.account",
+    "data.reason",
+    "data.bytes",
+    "data.transfer_id",
+    "data.created_at",
+    "data.started_at",
+    "data.transferred_at",
+]
+
+# Map index pattern prefixes to their summary field lists
+_INDEX_SUMMARY_FIELDS: Dict[str, list] = {
+    "monit_prod_condor_raw_metric": CONDOR_SUMMARY_FIELDS,
+    "monit_prod_cms_rucio_raw_events": RUCIO_SUMMARY_FIELDS,
+}
 
 
 # ── Client ───────────────────────────────────────────────────────────────────
@@ -118,6 +162,7 @@ class MONITOpenSearchClient:
         to_time: str = "now",
         time_field: str = "metadata.timestamp",
         size: int = 10,
+        offset: int = 0,
         index: str,
     ) -> Dict[str, Any]:
         """
@@ -129,6 +174,7 @@ class MONITOpenSearchClient:
             to_time: End time in date math (e.g., ``now``).
             time_field: Field to use for time range filtering.
             size: Maximum number of results to return.
+            offset: Number of results to skip (for pagination).
             index: Index pattern to query.
 
         Returns:
@@ -136,6 +182,7 @@ class MONITOpenSearchClient:
         """
         opensearch_query = {
             "size": size,
+            "from": offset,
             "_source": True,
             "query": {
                 "bool": {
@@ -277,8 +324,56 @@ class MONITOpenSearchClient:
             },
         }
 
+    def get_document_by_id(
+        self,
+        document_id: str,
+        *,
+        index: str,
+    ) -> Dict[str, Any]:
+        """
+        Fetch a single document by its ``_id``.
+
+        Uses a search query with ``_id`` filter since the MONIT Grafana
+        proxy may not support direct GET ``/<index>/_doc/<id>`` requests.
+
+        Args:
+            document_id: The OpenSearch document ``_id``.
+            index: Index pattern to query.
+
+        Returns:
+            Raw JSON response from OpenSearch.
+        """
+        opensearch_query = {
+            "size": 1,
+            "query": {
+                "ids": {"values": [document_id]}
+            },
+        }
+        return self.query(opensearch_query, index=index)
+
 
 # ── Response formatting helpers ──────────────────────────────────────────────
+
+
+def _get_summary_fields(index: str) -> Optional[list]:
+    """Return the summary field list for an index pattern, or None for full dump."""
+    for prefix, fields in _INDEX_SUMMARY_FIELDS.items():
+        if index.startswith(prefix):
+            return fields
+    return None
+
+
+def _extract_nested(source: dict, dotted_key: str) -> Any:
+    """Extract a value from a nested dict using dot-separated key (e.g. 'data.Site')."""
+    parts = dotted_key.split(".")
+    current = source
+    for part in parts:
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return None
+    return current
+
 
 def _format_opensearch_response(
     response: Dict[str, Any],
@@ -287,8 +382,16 @@ def _format_opensearch_response(
     max_results: int,
     from_time: str,
     to_time: str,
+    *,
+    summary_fields: Optional[list] = None,
+    page: int = 1,
 ) -> str:
-    """Format an OpenSearch search response for LLM consumption."""
+    """Format an OpenSearch search response for LLM consumption.
+
+    When *summary_fields* is provided, each document is rendered as a compact
+    one-line summary with only the projected fields.  Otherwise falls back to
+    the full recursive dump (``_append_fields``).
+    """
     logger.debug("Response keys: %s", list(response.keys()))
 
     # Handle _msearch response format (array of responses)
@@ -325,37 +428,65 @@ def _format_opensearch_response(
             f"Time window: {from_time} → {to_time}"
         )
 
+    # Pagination info
+    start_idx = (page - 1) * max_results + 1
+    end_idx = start_idx + min(len(hits), max_results) - 1
+
     # Format header
     lines = [
         f"Found {total_str} document(s) in '{index}' matching: {query}",
         f"Time window: {from_time} → {to_time}",
-        f"Showing {min(len(hits), max_results)} result(s):",
+        f"Showing results {start_idx}-{end_idx} of {total_str} (page {page}):",
         "",
     ]
 
-    # Format each hit generically
-    for idx, hit in enumerate(hits[:max_results], start=1):
+    # Format each hit
+    for idx, hit in enumerate(hits[:max_results], start=start_idx):
         source = hit.get("_source", {})
+        doc_id = hit.get("_id", "?")
 
         # Handle case where _source is a JSON string
         if isinstance(source, str):
             try:
                 source = json.loads(source)
             except json.JSONDecodeError:
-                lines.append(f"[{idx}] Error: Could not parse document data")
+                lines.append(f"[{idx}] id={doc_id}  Error: Could not parse document data")
                 continue
 
         if not isinstance(source, dict):
-            lines.append(f"[{idx}] Error: Unexpected document data format")
+            lines.append(f"[{idx}] id={doc_id}  Error: Unexpected document data format")
             continue
 
-        score = hit.get("_score")
-        lines.append(f"[{idx}] Document (score: {score})")
-        lines.append("─" * 50)
+        if summary_fields:
+            # Compact one-line summary with projected fields
+            parts = [f"id={doc_id}"]
+            for field in summary_fields:
+                value = _extract_nested(source, field)
+                if value is not None:
+                    # Use short field name (last component)
+                    short_name = field.rsplit(".", 1)[-1]
+                    str_val = str(value)
+                    if len(str_val) > 120:
+                        str_val = str_val[:120] + "…"
+                    parts.append(f"{short_name}={str_val}")
+            lines.append(f"[{idx}] {' | '.join(parts)}")
+        else:
+            # Full recursive dump (legacy behavior)
+            score = hit.get("_score")
+            lines.append(f"[{idx}] Document id={doc_id} (score: {score})")
+            lines.append("─" * 50)
+            _append_fields(lines, source, indent=2)
+            lines.append("")
 
-        # Flatten and display key fields from the document
-        _append_fields(lines, source, indent=2)
+    # Pagination hint
+    if total_count > end_idx:
         lines.append("")
+        lines.append(f"More results available. Call with page={page + 1} to see the next page.")
+
+    # Fetch hint when using summary fields
+    if summary_fields:
+        lines.append("")
+        lines.append("Use fetch_monit_document(document_id=<id>, index=<index>) for full document details.")
 
     output = "\n".join(lines)
 
@@ -460,7 +591,57 @@ def _format_aggregation_response(
     else:
         lines.append(f"Raw result: {json.dumps(agg_result, indent=2)}")
 
-    return "\n".join(lines)
+    output = "\n".join(lines)
+
+    # Truncate if output is too large
+    if len(output) > MAX_OUTPUT_CHARS:
+        output = output[:MAX_OUTPUT_CHARS] + "\n\n... [OUTPUT TRUNCATED]"
+
+    return output
+
+
+def _format_fetch_response(
+    response: Dict[str, Any],
+    document_id: str,
+    index: str,
+) -> str:
+    """Format a single document fetch response for LLM consumption."""
+    responses = response.get("responses", [response])
+    if not responses:
+        return f"Document '{document_id}' not found in '{index}'."
+
+    first_response = responses[0]
+
+    if first_response.get("error"):
+        error = first_response["error"]
+        error_type = error.get("type", "unknown")
+        error_reason = error.get("reason", str(error))
+        return f"Fetch error ({error_type}): {error_reason}"
+
+    hits = first_response.get("hits", {}).get("hits", [])
+    if not hits:
+        return f"Document '{document_id}' not found in '{index}'."
+
+    hit = hits[0]
+    source = hit.get("_source", {})
+    if isinstance(source, str):
+        try:
+            source = json.loads(source)
+        except json.JSONDecodeError:
+            return f"Error: Could not parse document data for '{document_id}'."
+
+    lines = [
+        f"Full document '{document_id}' from '{index}':",
+        "─" * 50,
+    ]
+    _append_fields(lines, source, indent=2)
+
+    output = "\n".join(lines)
+
+    if len(output) > MAX_OUTPUT_CHARS:
+        output = output[:MAX_OUTPUT_CHARS] + "\n\n... [OUTPUT TRUNCATED — document too large]"
+
+    return output
 
 
 # ── Tool description builders ────────────────────────────────────────────────
@@ -468,12 +649,18 @@ def _format_aggregation_response(
 def _build_search_tool_description(index: str, skill: Optional[str] = None) -> str:
     """Build the description for a search tool, optionally appending a skill."""
     base = (
-        f"Search the '{index}' OpenSearch index using Lucene query syntax.\n\n"
+        f"Search the '{index}' OpenSearch index using Lucene query syntax.\n"
+        "Returns compact summaries of matching documents with key fields only.\n\n"
+        "IMPORTANT:\n"
+        "- For counting or statistics, prefer the aggregation tool instead.\n"
+        "- For full document details, use fetch_monit_document with a document ID from the results.\n"
+        "- Start with a narrow query and small result set; expand if needed.\n\n"
         "Input parameters:\n"
         "- query: Lucene query string (required).\n"
         "- from_time: Start time (default: 'now-24h'). Supports date math (e.g., now-7d, now-24h).\n"
         "- to_time: End time (default: 'now'). Supports date math.\n"
-        f"- max_results: Max documents to return (default: 10, hard limit: {MAX_RESULTS_HARD_LIMIT}).\n"
+        f"- max_results: Max documents per page (default: {DEFAULT_MAX_RESULTS}, hard limit: {MAX_RESULTS_HARD_LIMIT}).\n"
+        "- page: Page number for pagination (default: 1). Use page=2 to see the next batch of results.\n"
     )
     if skill:
         base += f"\n--- Domain Knowledge ---\n{skill}"
@@ -484,7 +671,9 @@ def _build_aggregation_tool_description(index: str, skill: Optional[str] = None)
     """Build the description for an aggregation tool, optionally appending a skill."""
     base = (
         f"Run aggregation queries on the '{index}' OpenSearch index.\n\n"
-        "Use this for counting, grouping, statistics — NOT for fetching individual documents.\n\n"
+        "Use this for counting, grouping, statistics — NOT for fetching individual documents.\n"
+        "PREFER this tool over the search tool when the question asks about counts, distributions,\n"
+        "top errors, totals, averages, or any summary statistics.\n\n"
         "Input parameters:\n"
         "- query: Lucene query string to filter documents (required). Use '*' for all documents.\n"
         "- group_by: Field to aggregate on (required, e.g. 'data.reason').\n"
@@ -496,6 +685,17 @@ def _build_aggregation_tool_description(index: str, skill: Optional[str] = None)
     if skill:
         base += f"\n--- Domain Knowledge ---\n{skill}"
     return base
+
+
+def _build_fetch_tool_description(index: str) -> str:
+    """Build the description for the document fetch tool."""
+    return (
+        f"Fetch the full details of a single document from the '{index}' OpenSearch index by its ID.\n\n"
+        "Use this tool AFTER searching to retrieve the complete contents of a specific document.\n"
+        "The document_id comes from search results (shown as id=<value> in each result row).\n\n"
+        "Input parameters:\n"
+        "- document_id: The OpenSearch document _id (required).\n"
+    )
 
 
 # ── Tool factories ───────────────────────────────────────────────────────────
@@ -520,13 +720,15 @@ def create_monit_opensearch_search_tool(
         LangChain tool function.
     """
     tool_description = _build_search_tool_description(index, skill)
+    summary_fields = _get_summary_fields(index)
 
     @tool(tool_name, description=tool_description)
     def _search_opensearch(
         query: str,
         from_time: str = "now-24h",
         to_time: str = "now",
-        max_results: int = 10,
+        max_results: int = DEFAULT_MAX_RESULTS,
+        page: int = 1,
     ) -> str:
         """
         Search OpenSearch for documents matching a Lucene query.
@@ -535,7 +737,8 @@ def create_monit_opensearch_search_tool(
             query: Lucene query string.
             from_time: Start time in date math (default: now-24h).
             to_time: End time in date math (default: now).
-            max_results: Maximum number of results to return.
+            max_results: Maximum number of results per page.
+            page: Page number (default: 1).
 
         Returns:
             Formatted string with matching documents.
@@ -544,6 +747,8 @@ def create_monit_opensearch_search_tool(
             return "Please provide a non-empty Lucene query."
 
         effective_max = min(max_results, MAX_RESULTS_HARD_LIMIT)
+        page = max(1, page)
+        offset = (page - 1) * effective_max
 
         try:
             response = client.search_with_lucene(
@@ -551,11 +756,13 @@ def create_monit_opensearch_search_tool(
                 from_time=from_time,
                 to_time=to_time,
                 size=effective_max,
+                offset=offset,
                 index=index,
             )
             return _format_opensearch_response(
                 response, query.strip(), index, effective_max,
                 from_time=from_time, to_time=to_time,
+                summary_fields=summary_fields, page=page,
             )
 
         except requests.exceptions.Timeout:
@@ -575,6 +782,60 @@ def create_monit_opensearch_search_tool(
             return f"Error querying OpenSearch: {e}"
 
     return _search_opensearch
+
+
+def create_monit_fetch_document_tool(
+    client: MONITOpenSearchClient,
+    *,
+    tool_name: str = "fetch_monit_document",
+    index: str,
+) -> Callable[..., str]:
+    """
+    Create a LangChain tool for fetching a single document by ID from MONIT.
+
+    Args:
+        client: ``MONITOpenSearchClient`` instance.
+        tool_name: Tool name for LangChain.
+        index: Index pattern to query.
+
+    Returns:
+        LangChain tool function.
+    """
+    tool_description = _build_fetch_tool_description(index)
+
+    @tool(tool_name, description=tool_description)
+    def _fetch_document(document_id: str) -> str:
+        """
+        Fetch a single OpenSearch document by its _id.
+
+        Args:
+            document_id: The document _id from search results.
+
+        Returns:
+            Formatted string with full document contents.
+        """
+        if not document_id or not document_id.strip():
+            return "Please provide a document_id."
+
+        try:
+            response = client.get_document_by_id(
+                document_id=document_id.strip(),
+                index=index,
+            )
+            return _format_fetch_response(response, document_id.strip(), index)
+
+        except requests.exceptions.Timeout:
+            logger.warning("Fetch timed out for doc %s", document_id)
+            return "Fetch timed out. Please try again."
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response is not None else "unknown"
+            logger.warning("Fetch HTTP error %s for doc %s", status_code, document_id)
+            return f"Fetch failed with HTTP error {status_code}."
+        except Exception as e:
+            logger.error("Fetch error for doc %s: %s", document_id, e, exc_info=True)
+            return f"Error fetching document: {e}"
+
+    return _fetch_document
 
 
 def create_monit_opensearch_aggregation_tool(
@@ -664,4 +925,5 @@ __all__ = [
     "MONITOpenSearchClient",
     "create_monit_opensearch_search_tool",
     "create_monit_opensearch_aggregation_tool",
+    "create_monit_fetch_document_tool",
 ]

@@ -1,0 +1,291 @@
+% =============================================================================
+% ARCHIVED 2026-05-04 by draft-chep-paper-skeleton.
+%
+% This is the legacy single-judge (Claude Opus 4.6, reference-grounded) draft.
+% It is NOT \input from main.tex. The active evaluation section is
+% paper/05_evaluation.tex, which restructures around the multi-judge
+% OpenRouter methodology defined in openspec/changes/design-chep-evaluation/.
+%
+% Do not edit. Recoverable prose only. If you need to revive a paragraph,
+% copy it into 05_evaluation.tex and adapt to the new methodology.
+% =============================================================================
+
+\section{Evaluation}
+\label{sec:evaluation_legacy}
+
+We evaluate Archi across multiple pipeline architectures and model sizes using 260 curated questions drawn from real CMS Computing Operations (CompOps) support interactions. This section describes the experimental setup, evaluation methodology, and results.
+
+\subsection{Question Dataset}
+\label{sec:questions}
+
+We curated 260 questions from historical CompOps operator conversations, classified into six categories by question type (Table~\ref{tab:question_categories}). The dataset spans the full range of tasks encountered in day-to-day CMS operations, from factual lookups about site configurations to complex debugging workflows.
+
+\begin{table}[htbp]
+\centering
+\caption{Distribution of curated evaluation questions by category.}
+\label{tab:question_categories}
+\begin{tabular}{lrl}
+\hline
+\textbf{Category} & \textbf{Count} & \textbf{Description} \\
+\hline
+Factual lookup       & 76 & Site status, configuration, parameter values \\
+Data query           & 52 & Transfer statistics, job counts, MonIT data \\
+Jira investigation   & 39 & Ticket status, assignees, related issues \\
+Procedural           & 34 & How-to guides, workflow steps \\
+Exploratory          & 34 & Open-ended analysis, recommendations \\
+Debugging            & 25 & Error diagnosis, troubleshooting \\
+\hline
+\textbf{Total}       & \textbf{260} & \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:question_metadata} summarizes additional dataset characteristics. Over 40\% of questions are multi-turn (part of an ongoing conversation), approximately 21\% reference time-sensitive operational state, and 55\% are answerable from ingested documentation alone.
+
+\begin{table}[htbp]
+\centering
+\caption{Dataset metadata breakdown.}
+\label{tab:question_metadata}
+\begin{tabular}{lcc}
+\hline
+\textbf{Property} & \textbf{Count} & \textbf{Fraction} \\
+\hline
+Multi-turn           & 108 & 42\% \\
+Time-sensitive       & 55  & 21\% \\
+Answerable from docs & 144 & 55\% \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Reference Answers}
+\label{sec:reference_answers}
+
+For 237 of the 260 questions (91\%), we obtained reference answers from the production CMS CompOps assistant, which runs GPT-5 with full access to live operational tools and data. These reference answers were generated in the context of real operator interactions and represent high-quality, operationally grounded responses. The remaining 23 questions lack reference answers (e.g., questions that were not answered during production use). The judge is provided with the reference answer when available, enabling comparison-based correctness scoring rather than plausibility-only assessment.
+
+
+\subsection{Experimental Conditions}
+\label{sec:conditions}
+
+We evaluate four pipeline architectures, each tested with up to three locally-hosted open-weight language models spanning different sizes and architectures. All models are served via Ollama on GPU-equipped nodes; qwen3:32b and gpt-oss:120b are served on a node with NVIDIA Tesla V100-SXM2-32GB GPUs (4$\times$, 128\,GB total VRAM, NVLink interconnect), while gemma4:26b is served on a separate node with the same GPU configuration, accessed via an SSH tunnel.
+
+\begin{itemize}
+    \item \textbf{Bare LLM} (\texttt{BareLLMPipeline}): The question is sent directly to the LLM with no retrieval or tool access. This establishes what the model knows from pretraining alone.
+    \item \textbf{RAG-only} (\texttt{QAPipeline}): A classical retrieval-augmented generation pipeline. The question is used to retrieve relevant documents from the vector store, which are provided as context for the LLM to generate an answer.
+    \item \textbf{Copilot Agent} (\texttt{CopilotAgentPipeline}): An agentic pipeline built with LangChain that can iteratively invoke tools (Jira search, MonIT queries, site status lookups, etc.) to gather information before answering.
+    \item \textbf{CompOps Agent} (\texttt{CMSCompOpsAgent}): A LangGraph-based ReAct agent with the same tool suite as the Copilot Agent but using a graph-based execution model with explicit reasoning steps.
+\end{itemize}
+
+The three models under test are:
+\begin{itemize}
+    \item \textbf{qwen3:32b} --- Qwen 3 (32.8B parameters, 20\,GB, Q4\_K\_M), a dense transformer model.
+    \item \textbf{gpt-oss:120b} --- GPT-OSS (116.8B parameters, 65\,GB, MXFP4), a larger dense model.
+    \item \textbf{gemma4:26b} --- Gemma 4 (25.8B total parameters, 3.8B active, 18\,GB, Q4\_K\_M), a Mixture-of-Experts (MoE) model from Google DeepMind. Despite having fewer active parameters per token than qwen3:32b, the MoE architecture achieves significantly higher throughput (87\,tok/s vs.\ 29\,tok/s on identical hardware).
+\end{itemize}
+
+This yields 12 experimental configurations (4 pipelines $\times$ 3 models). Each configuration is evaluated on all 260 questions in a single trial. % Future work: multiple trials for variance estimation.
+
+\subsection{Evaluation Metrics}
+\label{sec:metrics}
+
+We use an LLM-as-judge framework with reference-answer grounding.
+
+\subsubsection{LLM-as-Judge}
+
+A strong external LLM (Claude Opus 4.6) evaluates each response on four dimensions, each scored from 1 (worst) to 5 (best):
+
+\begin{itemize}
+    \item \textbf{Correctness}: Factual accuracy of the response, scored against the reference answer when available.
+    \item \textbf{Completeness}: Whether all aspects of the question are addressed.
+    \item \textbf{Relevance}: How directly the response addresses the specific question asked.
+    \item \textbf{Helpfulness}: Overall practical utility for a CMS operator.
+\end{itemize}
+
+The judge is provided with the question, the system's response, and the production GPT-5 reference answer (available for 237/260 questions). For the remaining 23 questions, the reference field is set to ``N/A'' and the judge scores based on plausibility alone. Rubric-based prompts with explicit scoring criteria are used to reduce bias. We discuss limitations of this approach in Section~\ref{sec:judge_limitations}.
+
+\subsection{Results}
+\label{sec:results}
+
+\subsubsection{Overall Performance}
+
+Table~\ref{tab:overall_results} summarizes the mean scores across all 260 questions for each configuration.
+
+\begin{table}[htbp]
+\centering
+\caption{Mean evaluation scores ($\pm$ standard deviation) across 260 questions per configuration. All metrics scored 1--5. Best score in each column is \textbf{bolded}.}
+\label{tab:overall_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccc}
+\hline
+\textbf{Pipeline} & \textbf{Model} & \textbf{Correct.} & \textbf{Complete.} & \textbf{Relev.} & \textbf{Helpful.} \\
+\hline
+Bare LLM    & gpt-oss:120b & $3.15 \pm 1.30$ & $\mathbf{3.69 \pm 1.34}$ & $4.36 \pm 0.84$ & $3.01 \pm 1.16$ \\
+Bare LLM    & qwen3:32b    & $3.41 \pm 1.20$ & $2.78 \pm 1.16$ & $4.05 \pm 0.97$ & $2.71 \pm 0.95$ \\
+RAG-only    & gpt-oss:120b & $\mathbf{3.55 \pm 1.21}$ & $3.33 \pm 1.39$ & $\mathbf{4.61 \pm 0.67}$ & $\mathbf{3.05 \pm 1.07}$ \\
+RAG-only    & qwen3:32b    & $3.08 \pm 1.19$ & $2.77 \pm 1.18$ & $4.20 \pm 0.87$ & $2.58 \pm 0.93$ \\
+Copilot Agent & gpt-oss:120b & $2.35 \pm 1.07$ & $2.77 \pm 1.70$ & $3.36 \pm 1.41$ & $2.39 \pm 1.28$ \\
+Copilot Agent & qwen3:32b  & $2.52 \pm 0.92$ & $2.77 \pm 1.20$ & $3.76 \pm 1.07$ & $2.47 \pm 0.91$ \\
+CompOps Agent & gpt-oss:120b & \multicolumn{4}{c}{\textit{(evaluation in progress)}} \\
+CompOps Agent & qwen3:32b  & \multicolumn{4}{c}{\textit{(evaluation in progress)}} \\
+\hdashline
+Bare LLM      & gemma4:26b   & \multicolumn{4}{c}{\textit{(evaluation in progress)}} \\
+RAG-only      & gemma4:26b   & \multicolumn{4}{c}{\textit{(evaluation in progress)}} \\
+Copilot Agent & gemma4:26b   & \multicolumn{4}{c}{\textit{(evaluation in progress)}} \\
+CompOps Agent & gemma4:26b   & \multicolumn{4}{c}{\textit{(evaluation in progress)}} \\
+\hline
+\end{tabular}%
+}
+\end{table}
+
+The RAG-only pipeline with gpt-oss:120b achieves the highest correctness ($3.55$), relevance ($4.61$), and helpfulness ($3.05$) scores, outperforming both the bare LLM and the agentic pipelines. The bare LLM with gpt-oss:120b achieves the highest completeness ($3.69$), likely because the model generates detailed responses drawing on pretraining knowledge without being constrained by retrieved context.
+
+Notably, the Copilot Agent pipelines score lowest on correctness ($2.35$--$2.52$) despite having access to retrieval and tools. This is attributable to the agent's tendency to hallucinate details beyond what its tools return --- the system prompt instructs the agent to ``always provide your best guess at an answer'' and to ``never ask for clarification,'' which encourages confident confabulation when tools return insufficient information.
+
+\subsubsection{Performance by Question Category}
+
+Table~\ref{tab:correctness_by_category} breaks down judge correctness scores by question category. Different pipeline architectures exhibit distinct strengths.
+
+\begin{table}[htbp]
+\centering
+\caption{Mean judge correctness (1--5) by question category. Best score per category is \textbf{bolded}.}
+\label{tab:correctness_by_category}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccccc}
+\hline
+\textbf{Pipeline} & \textbf{Model} & \textbf{Factual} & \textbf{Data} & \textbf{Jira} & \textbf{Procedural} & \textbf{Exploratory} & \textbf{Debugging} \\
+ & & (n=76) & (n=52) & (n=39) & (n=34) & (n=34) & (n=25) \\
+\hline
+Bare LLM      & gpt-oss:120b & $2.83$ & $3.15$          & $3.67$          & $2.88$          & $3.41$ & $3.32$ \\
+Bare LLM      & qwen3:32b    & $2.99$ & $\mathbf{3.67}$ & $\mathbf{3.85}$ & $\mathbf{3.38}$ & $\mathbf{3.47}$ & $3.38$ \\
+RAG-only       & gpt-oss:120b & $\mathbf{3.50}$ & $3.60$ & $3.82$          & $3.35$          & $3.62$ & $\mathbf{3.32}$ \\
+RAG-only       & qwen3:32b    & $3.16$ & $2.67$          & $3.15$          & $3.32$          & $3.44$ & $2.76$ \\
+Copilot Agent  & gpt-oss:120b & $2.50$ & $1.92$          & $2.29$          & $2.67$          & $2.65$ & $2.08$ \\
+Copilot Agent  & qwen3:32b    & $2.49$ & $2.46$          & $2.44$          & $2.68$          & $2.68$ & $2.40$ \\
+CompOps Agent  & gpt-oss:120b & \multicolumn{6}{c}{\textit{(evaluation in progress)}} \\
+CompOps Agent  & qwen3:32b    & \multicolumn{6}{c}{\textit{(evaluation in progress)}} \\
+\hdashline
+Bare LLM       & gemma4:26b   & \multicolumn{6}{c}{\textit{(evaluation in progress)}} \\
+RAG-only       & gemma4:26b   & \multicolumn{6}{c}{\textit{(evaluation in progress)}} \\
+Copilot Agent  & gemma4:26b   & \multicolumn{6}{c}{\textit{(evaluation in progress)}} \\
+CompOps Agent  & gemma4:26b   & \multicolumn{6}{c}{\textit{(evaluation in progress)}} \\
+\hline
+\end{tabular}%
+}
+\end{table}
+
+The RAG-only pipeline with the larger model excels at factual lookups ($3.50$), where retrieval directly surfaces the needed information. The bare LLM with qwen3:32b, despite having no retrieval, achieves strong scores on data queries ($3.67$) and Jira investigation ($3.85$) --- categories where the model's pretraining knowledge about CMS operational patterns provides useful heuristics even without access to live data.
+
+The Copilot Agent consistently underperforms across all categories, with its weakest performance on data queries ($1.92$ for gpt-oss:120b). This suggests that the agentic pipeline's tool-calling overhead and hallucination tendency outweigh the benefit of dynamic tool access in our current configuration.
+
+\subsubsection{Model Size Effects}
+
+Across all pipeline architectures, the larger gpt-oss:120b model generally outperforms qwen3:32b. The effect is most pronounced for the RAG-only pipeline, where the 120B model improves correctness by $+0.47$ ($3.55$ vs.\ $3.08$). For the Copilot Agent, the size effect is reversed on correctness ($2.35$ vs.\ $2.52$), suggesting that the larger model's capacity enables more elaborate --- but factually unsupported --- responses.
+
+The addition of gemma4:26b, a Mixture-of-Experts model with only 3.8B active parameters per token (out of 25.8B total), provides a third data point that disentangles model architecture from raw parameter count. Its MoE design achieves 3$\times$ higher throughput than the similarly-sized qwen3:32b on identical hardware (87 vs.\ 29\,tok/s), making it a compelling option for latency-sensitive operational deployments.
+
+% TODO: Add gemma4:26b results and analyze MoE vs dense model performance.
+
+\subsection{Discussion}
+\label{sec:discussion}
+
+Our results reveal a counter-intuitive finding: the agentic pipelines, despite having access to live operational tools (Jira, MonIT, site status), score lower than the simpler RAG-only pipeline on all judge metrics. We attribute this to three factors:
+
+\begin{enumerate}
+    \item \textbf{Hallucination amplification}: The agent's system prompt encourages confident responses even when tools return insufficient data, leading to plausible but incorrect answers.
+    \item \textbf{Tool call overhead}: Failed or irrelevant tool calls consume context window space, leaving less room for the model to synthesize a coherent answer.
+    \item \textbf{Evaluation without live systems}: The benchmark runs against a static snapshot of ingested documentation. Questions about real-time data (site status, transfer rates) cannot be fully answered by any pipeline in this setup, but the agent generates fabricated ``live'' data while the RAG pipeline appropriately caveats its response.
+\end{enumerate}
+
+% TODO: CompOps Agent results are in progress and may change this picture --- the LangGraph
+% ReAct architecture with explicit reasoning steps may mitigate the hallucination issue
+% observed with the Copilot Agent's LangChain-based approach.
+% TODO: gemma4:26b (MoE) results will test whether architecture matters more than parameter count.
+
+These findings motivate architectural improvements: (1) modifying the agent prompt to express uncertainty rather than guess, (2) implementing tool-call validation to detect and discard irrelevant results, and (3) adding a self-consistency check before final answer generation.
+
+\subsection{Limitations of LLM-as-Judge}
+\label{sec:judge_limitations}
+
+The automated evaluation results presented above must be interpreted with significant caveats. We identify several structural weaknesses in the LLM-as-judge approach as applied in this study.
+
+\subsubsection{Reference Answer Coverage}
+
+Reference answers from the production GPT-5 CompOps agent are available for 237 of 260 questions (91\%). For these questions, the judge can compare responses against a high-quality reference grounded in live operational data. For the remaining 23 questions, the judge scores based on plausibility alone. Additionally, the reference answers themselves are LLM-generated (by GPT-5 in production) and are not human-verified gold answers, so they may contain errors. The judge's correctness scores for these 23 questions reflect the judge LLM's own assessment of plausibility rather than comparison against a verified answer.
+
+\subsubsection{Paradoxical Scoring Patterns}
+
+We observe a high rate of paradoxical scores --- answers rated as highly complete but factually incorrect. Table~\ref{tab:paradox} shows the fraction of answers per configuration receiving completeness $\geq 4$ simultaneously with correctness $\leq 2$.
+
+\begin{table}[htbp]
+\centering
+\caption{Fraction of answers exhibiting the ``complete but incorrect'' paradox (completeness $\geq 4$, correctness $\leq 2$). Higher rates indicate the judge is rewarding confident fabrication.}
+\label{tab:paradox}
+\begin{tabular}{llc}
+\hline
+\textbf{Pipeline} & \textbf{Model} & \textbf{Paradox rate} \\
+\hline
+Bare LLM      & gpt-oss:120b & $66/260$ (25\%) \\
+Copilot Agent & gpt-oss:120b & $36/260$ (14\%) \\
+Copilot Agent & qwen3:32b    & $32/260$ (12\%) \\
+RAG-only      & gpt-oss:120b & $29/260$ (11\%) \\
+RAG-only      & qwen3:32b    & $23/260$ (9\%) \\
+Bare LLM      & qwen3:32b    & $11/260$ (4\%) \\
+\hline
+\end{tabular}
+\end{table}
+
+The Bare LLM with the 120B model exhibits the highest paradox rate (25\%), consistent with its tendency to generate detailed, authoritative-sounding responses that draw on pretraining knowledge of CMS-like systems but fabricate specifics. The judge rewards the structural completeness of these answers while penalizing their factual accuracy, but these two dimensions should be more strongly coupled --- a fabricated answer that ``covers all aspects'' is arguably not truly complete.
+
+\subsubsection{Reward for Refusal}
+
+The judge assigns correctness scores of 5 to answers that explicitly refuse to answer (e.g., ``I'm unable to retrieve the contents of that JIRA ticket directly''). While technically accurate --- the system \textit{cannot} access external URLs --- this conflates ``not wrong'' with ``correct.'' A refusal provides no operational value yet receives the highest correctness score.
+
+\subsubsection{Inverted Model Size Effect}
+
+The smaller qwen3:32b model outscores the larger gpt-oss:120b on correctness for the Bare LLM pipeline ($3.41$ vs.\ $3.15$). We hypothesize that the 120B model's greater capacity enables more elaborate and specific responses, which in turn provide more surface area for the judge to detect fabrication. The 32B model's shorter, more conservative responses contain fewer falsifiable claims. While reference answers are available for most questions, this pattern warrants further investigation.
+
+\subsubsection{Summary}
+
+These limitations do not invalidate the automated evaluation --- the availability of production GPT-5 reference answers for 91\% of questions significantly strengthens the judge's correctness assessments compared to a purely reference-free setup. Relative rankings within the same metric are likely directionally correct, though absolute score values should not be interpreted as calibrated quality measurements. The human evaluation described in Section~\ref{sec:human_eval} is designed to provide additional validation.
+
+\subsection{Human Evaluation}
+\label{sec:human_eval}
+
+To address the limitations of automated evaluation, we supplement the LLM-as-judge scores with a human preference study using pairwise comparisons graded by CMS domain experts.
+
+\subsubsection{Tournament Design}
+
+With $n$ pipeline configurations, exhaustive pairwise comparison requires $\binom{n}{2}$ matchups per question, which is prohibitive for large $n$ across 260 questions. Instead, we employ a sequential champion-vs-challenger tournament that requires only $O(n)$ comparisons:
+
+\begin{enumerate}
+    \item An initial configuration is designated as the \textit{champion} (we use the top-ranked configuration from the automated evaluation as the seed).
+    \item Each remaining configuration is a \textit{challenger}. In each round, one challenger is compared against the current champion on a randomly sampled subset of questions.
+    \item For each question in the round, a human grader sees both answers side-by-side (in randomized order, with pipeline labels hidden) and selects which answer they prefer, or indicates a tie.
+    \item If the challenger wins a majority of comparisons, it becomes the new champion. The previous champion is eliminated.
+    \item After all challengers have competed, the final champion is declared the overall winner.
+\end{enumerate}
+
+For $n$ configurations, this requires $n - 1$ rounds --- linear in the number of conditions. Each round evaluates a subset of $k$ questions (e.g., $k = 50$), keeping the total human grading effort at $(n-1) \times k$ comparisons.
+
+\subsubsection{Grader Protocol}
+
+% TODO: finalize grader pool size and inter-annotator agreement plan
+Human graders are CMS CompOps operators or shifters with domain expertise. Each comparison is graded by at least two independent graders to measure inter-annotator agreement (Cohen's $\kappa$). Graders are shown:
+
+\begin{itemize}
+    \item The original question (with conversation history if multi-turn)
+    \item Answer A and Answer B (randomly assigned from the two configurations)
+    \item A rubric asking: ``Which answer would be more helpful to a CMS operator handling this question? Consider accuracy, actionability, and completeness.''
+    \item Options: \textit{A is better}, \textit{B is better}, \textit{Tie}
+\end{itemize}
+
+% TODO: insert tournament bracket results and win rates
+% TODO: report inter-annotator agreement (Cohen's kappa)
+% TODO: compare human preference rankings with automated judge rankings
+
+\subsubsection{Planned Outcomes}
+
+The human evaluation will produce: (1) a preference ranking over all configurations validated by domain experts, (2) a measurement of agreement between human preferences and automated judge scores, and (3) identification of question categories where automated and human evaluations diverge most, informing future judge prompt improvements.
+
+% TODO: Fill in gemma4:26b results across all 4 pipeline configurations.
+% TODO: Fill in CompOps Agent results for all 3 models.
+% TODO: Analyze MoE (gemma4:26b) vs dense (qwen3:32b, gpt-oss:120b) performance patterns.

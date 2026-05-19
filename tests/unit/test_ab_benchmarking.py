@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 # and module-level side effects. We stub all of them before importing.
 
 _STUB_MODULES = [
-    "pandas", "datasets", "yaml",
+    "datasets", "yaml",
     "langchain_huggingface", "langchain_openai",
     "langchain_core", "langchain_core.messages",
     "ragas", "ragas.embeddings", "ragas.llms", "ragas.metrics",
@@ -73,6 +73,10 @@ for mod_name in _STUB_MODULES:
         elif mod_name == "src.archi.providers":
             stub.get_model = MagicMock()
         sys.modules[mod_name] = stub
+
+# Restore real pandas — needed for DataFrame type annotation in Benchmarker
+import pandas as _real_pandas
+sys.modules["pandas"] = _real_pandas
 
 os.environ.setdefault("PG_PASSWORD", "fake")
 os.environ.setdefault("PGHOST", "localhost")

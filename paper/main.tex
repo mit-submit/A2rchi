@@ -1,0 +1,62 @@
+% =============================================================================
+% Archi --- CHEP 2026 paper, main orchestrator file.
+%
+% Read paper/style-notes.md before drafting any prose.
+%
+% Layout: one .tex file per section. This file is the orchestrator only ---
+% no body content lives here.
+%
+% Build: pdflatex main && bibtex main && pdflatex main && pdflatex main
+% =============================================================================
+
+\documentclass[twocolumn]{webofc}
+% webofc loads: amsmath, amssymb, graphicx, url, fontenc, inputenc,
+% babel (english), eurosym, calc, fancyhdr, cuted, geometry.
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{arydshln}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, fit, calc}
+\usepackage{xcolor}
+\definecolor{docgreen}{HTML}{2E7D5A}
+\definecolor{docfill}{HTML}{E6F2EA}
+\definecolor{liveorange}{HTML}{C75B25}
+\definecolor{livefill}{HTML}{FBE6D8}
+\definecolor{agentblue}{HTML}{0072B2}
+\definecolor{agentfill}{HTML}{DCEAF8}
+
+% \todocell --- visible placeholder for table cells whose values come from
+% in-flight benchmark runs. Renders as \textit{TBD} so it is unmistakable in
+% the PDF and greppable in source.
+\newcommand{\todocell}{\textit{TBD}}
+
+\title{Archi: An Agent for CMS Computing Operations}
+\titlerunning{Archi}
+\authorrunning{Archi authors}
+\author{%
+  \firstname{TBD} \lastname{TBD}\inst{1}
+}
+\institute{%
+  TBD --- co-author affiliations populated before submission.
+}
+
+\begin{document}
+
+\input{00_abstract}
+\maketitle
+\input{01_introduction}
+\input{02_workload}
+\input{03_agent}
+\input{05_evaluation}
+\input{06_discussion}
+\input{07_conclusions}
+
+% Acknowledgements heading restored when content lands.
+% TODO: Acknowledgements paragraph. Standard CHEP form: CMS Collaboration,
+% CERN, MIT SubMIT, named operators who provided feedback during deployment,
+% and funding agencies per co-author affiliations.
+
+% bibliography style is set by webofc (woc.bst).
+\bibliography{refs}
+
+\end{document}

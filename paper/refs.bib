@@ -1,0 +1,299 @@
+% =============================================================================
+% paper/refs.bib --- single bibliography source for the CHEP 2026 paper.
+%
+% Conventions:
+%   - one entry per cited work; do not duplicate
+%   - keys: lowercase author-year (e.g. lewis2020rag) or descriptive slug
+%   - groups marked by section comments below; not enforced by BibTeX
+%   - new co-authors: add your entry under the appropriate group, then
+%     \cite{key} in the section .tex file
+% =============================================================================
+
+% -----------------------------------------------------------------------------
+% Group: CMS computing
+% -----------------------------------------------------------------------------
+
+@techreport{cms_computing_tdr,
+  author      = {{CMS Collaboration}},
+  title       = {{CMS} Computing: Technical Design Report},
+  institution = {CERN},
+  number      = {CERN-LHCC-2005-023, CMS-TDR-7},
+  year        = {2005}
+}
+
+@misc{cms_compops,
+  author       = {{CMS Collaboration}},
+  title        = {{CMS} Computing Operations: Mission and Structure},
+  howpublished = {\url{https://cms-compops.web.cern.ch}},
+  year         = {2026}
+}
+
+@inproceedings{cms_monit,
+  author    = {Aimar, A. and Aguado Corman, A. and Andrade, P. and
+               Belov, S. and Garrido Bear, B. and Delgado Fernandez, J. and
+               Fiorot, A. and Georgiou, M. and Karavakis, E. and others},
+  title     = {Unified Monitoring Architecture for {IT} and Grid Services},
+  booktitle = {J. Phys.: Conf. Ser.},
+  volume    = {898},
+  pages     = {092033},
+  year      = {2017}
+}
+
+@inproceedings{rucio2014,
+  author    = {Serfon, C. and Barisits, M. and Beermann, T. and
+               Garonne, V. and Goossens, L. and Lassnig, M. and
+               Nairz, A. and Vigne, R.},
+  title     = {{Rucio}, the next-generation Data Management system in {ATLAS}},
+  booktitle = {Nuclear and Particle Physics Proceedings (ICHEP)},
+  volume    = {273--275},
+  pages     = {969--975},
+  year      = {2014},
+  doi       = {10.1016/j.nuclphysbps.2015.09.151}
+}
+
+@inproceedings{cms_rucio2020,
+  author    = {Vaandering, Eric},
+  title     = {Transitioning {CMS} to {Rucio} Data Management},
+  booktitle = {EPJ Web of Conferences},
+  volume    = {245},
+  pages     = {04033},
+  year      = {2020},
+  doi       = {10.1051/epjconf/202024504033}
+}
+
+@inproceedings{cms_dm2025,
+  author    = {{\"O}zt{\"u}rk, Hasan and Paparrigopoulos, Panos and
+               Manrique Ardila, Andres and Chauhan, Rahul and Ellis, Katy and
+               Emmanouil, Christos and Kovalskyi, Dmytro and Vaandering, Eric and
+               Voetberg, Maggie and Wightman, Andrew},
+  title     = {Recent Experience with the {CMS} Data Management System},
+  booktitle = {EPJ Web of Conferences (CHEP 2025)},
+  pages     = {01151},
+  year      = {2025},
+  doi       = {10.1051/epjconf/202533301151}
+}
+
+@inproceedings{cms_tier0_run3,
+  author    = {Amado, Jhonatan and Eysermans, Jan and Giraldo, German and
+               Hufnagel, Dirk and Kovalskyi, Dmytro and Linares Sancho, Antonio},
+  title     = {{CMS} {Tier-0} data processing during the detector
+               commissioning in {Run~3}},
+  booktitle = {EPJ Web of Conferences (CHEP 2024)},
+  volume    = {295},
+  pages     = {03007},
+  year      = {2024},
+  doi       = {10.1051/epjconf/202429503007}
+}
+
+@inproceedings{htcondor2005,
+  author    = {Thain, Douglas and Tannenbaum, Todd and Livny, Miron},
+  title     = {Distributed computing in practice: the {Condor} experience},
+  booktitle = {Concurrency and Computation: Practice and Experience},
+  volume    = {17},
+  pages     = {323--356},
+  year      = {2005},
+  doi       = {10.1002/cpe.938}
+}
+
+% -----------------------------------------------------------------------------
+% Group: HEP/CERN LLM-assistant priors
+% -----------------------------------------------------------------------------
+
+@inproceedings{accgpt2025,
+  author    = {Rehm, Florian and Guerrieri, Giovanni and Guijarro, Manuel
+               and Vallecorsa, Sofia and Kain, Verena},
+  title     = {{AccGPT}: A {CERN} Knowledge Retrieval Chatbot},
+  booktitle = {EPJ Web of Conferences},
+  volume    = {337},
+  pages     = {01279},
+  year      = {2025},
+  doi       = {10.1051/epjconf/202533701279}
+}
+
+@misc{chatlas2025,
+  author       = {Beringer, J. and Dal Santo, D. and Egan, G. and Elliot, A. A.
+                  and Facini, G. and Murnane, D. and Van Stroud, S. and Sopio, B.
+                  and Couthures, A. and Li, X. and Randazzo, A.},
+  title        = {{chATLAS}: An {AI} Assistant for the {ATLAS} Collaboration},
+  howpublished = {ATL-SOFT-SLIDE-2025-250, CERN Document Server record 2935252},
+  year         = {2025}
+}
+
+@misc{mayet2024gaia,
+  author       = {Mayet, Frank},
+  title        = {{GAIA}: A General {AI} Assistant for Intelligent Accelerator Operations},
+  howpublished = {arXiv:2405.01359},
+  year         = {2024}
+}
+
+@misc{sulc2024logbooks,
+  author       = {Sulc, Antonin and Hartmann, Gregor and Maldonado, J. and
+                  Eichler, J. and Kaiser, F. and Wilksen, T. and Kammering, R.
+                  and Mayet, F. and St.\ John, J. and Hoschouer, H. and
+                  Hazelwood, K. J. and Heller, T. and Ratner, D. and others},
+  title        = {Towards Unlocking Insights from Logbooks Using {AI}},
+  howpublished = {arXiv:2406.12881},
+  year         = {2024}
+}
+
+% -----------------------------------------------------------------------------
+% Group: Retrieval-Augmented Generation
+% -----------------------------------------------------------------------------
+
+@inproceedings{lewis2020rag,
+  author    = {Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra and
+               Petroni, Fabio and Karpukhin, Vladimir and Goyal, Naman and
+               K{\"u}ttler, Heinrich and Lewis, Mike and Yih, Wen-tau and
+               Rockt{\"a}schel, Tim and Riedel, Sebastian and Kiela, Douwe},
+  title     = {Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  year      = {2020}
+}
+
+@article{gao2023ragsurvey,
+  author  = {Gao, Yunfan and Xiong, Yun and Gao, Xinyu and Jia, Kangxiang and
+             Pan, Jinliu and Bi, Yuxi and Dai, Yi and Sun, Jiawei and
+             Wang, Haofen},
+  title   = {Retrieval-Augmented Generation for Large Language Models: A Survey},
+  journal = {arXiv preprint arXiv:2312.10997},
+  year    = {2023}
+}
+
+@inproceedings{reimers2019sbert,
+  author    = {Reimers, Nils and Gurevych, Iryna},
+  title     = {{Sentence-BERT}: Sentence Embeddings using {Siamese BERT}-Networks},
+  booktitle = {Proceedings of the 2019 Conference on Empirical Methods in
+               Natural Language Processing ({EMNLP})},
+  year      = {2019}
+}
+
+% -----------------------------------------------------------------------------
+% Group: Agentic LLM systems and tools
+% -----------------------------------------------------------------------------
+
+@inproceedings{yao2023react,
+  author    = {Yao, Shunyu and Zhao, Jeffrey and Yu, Dian and Du, Nan and
+               Shafran, Izhak and Narasimhan, Karthik and Cao, Yuan},
+  title     = {{ReAct}: Synergizing Reasoning and Acting in Language Models},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2023}
+}
+
+@misc{langchain,
+  author       = {{LangChain Authors}},
+  title        = {{LangChain}: Building Applications with {LLMs} through Composability},
+  howpublished = {\url{https://github.com/langchain-ai/langchain}},
+  year         = {2026}
+}
+
+@misc{langgraph,
+  author       = {{LangChain Authors}},
+  title        = {{LangGraph}: Stateful, Multi-Actor Applications with {LLMs}},
+  howpublished = {\url{https://github.com/langchain-ai/langgraph}},
+  year         = {2026}
+}
+
+@misc{ollama,
+  author       = {{Ollama Authors}},
+  title        = {Ollama},
+  howpublished = {\url{https://ollama.com}},
+  year         = {2026}
+}
+
+@misc{qwen3report,
+  author       = {{Qwen Team}},
+  title        = {{Qwen3} Technical Report},
+  howpublished = {arXiv:2505.09388},
+  year         = {2025}
+}
+
+@misc{gemma4card,
+  author       = {{Gemma Team}},
+  title        = {{Gemma} 4 Model Card},
+  howpublished = {\url{https://ai.google.dev/gemma/docs/core/model_card_4}},
+  year         = {2026},
+  note         = {Google DeepMind}
+}
+
+@inproceedings{glm130b,
+  author    = {Zeng, Aohan and Liu, Xiao and Du, Zhengxiao and Wang, Zihan and
+               Lai, Hanyu and Ding, Ming and Yang, Zhuoyi and Xu, Yifan and
+               Zheng, Wendi and Xia, Xiao and Tam, Weng Lam and Ma, Zixuan and
+               Xue, Yufei and Zhai, Jidong and Chen, Wenguang and Liu, Zhiyuan and
+               Zhang, Peng and Dong, Yuxiao and Tang, Jie},
+  title     = {{GLM-130B}: An Open Bilingual Pre-trained Model},
+  booktitle = {International Conference on Learning Representations ({ICLR})},
+  year      = {2023}
+}
+
+% -----------------------------------------------------------------------------
+% Group: LLM-as-judge calibration
+% -----------------------------------------------------------------------------
+
+@inproceedings{liu2023geval,
+  author    = {Liu, Yang and Iter, Dan and Xu, Yichong and Wang, Shuohang and
+               Xu, Ruochen and Zhu, Chenguang},
+  title     = {{G-Eval}: {NLG} Evaluation using {GPT-4} with Better Human Alignment},
+  booktitle = {Proceedings of the 2023 Conference on Empirical Methods in
+               Natural Language Processing ({EMNLP})},
+  year      = {2023}
+}
+
+@inproceedings{zheng2023judging,
+  author    = {Zheng, Lianmin and Chiang, Wei-Lin and Sheng, Ying and
+               Zhuang, Siyuan and Wu, Zhanghao and Zhuang, Yonghao and
+               Lin, Zi and Li, Zhuohan and Li, Dacheng and Xing, Eric P. and
+               Zhang, Hao and Gonzalez, Joseph E. and Stoica, Ion},
+  title     = {Judging {LLM-as-a-Judge} with {MT-Bench} and {Chatbot Arena}},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {36},
+  year      = {2023}
+}
+
+@inproceedings{wang2023fair,
+  author    = {Wang, Peiyi and Li, Lei and Chen, Liang and Cai, Zefan and
+               Zhu, Dawei and Lin, Binghuai and Cao, Yunbo and Liu, Qi and
+               Liu, Tianyu and Sui, Zhifang},
+  title     = {Large Language Models are not Fair Evaluators},
+  booktitle = {Proceedings of the 62nd Annual Meeting of the Association for
+               Computational Linguistics ({ACL})},
+  year      = {2024},
+  note      = {arXiv:2305.17926}
+}
+
+@inproceedings{hu2025lengthbias,
+  author    = {Hu, Zheng and others},
+  title     = {Explaining Length Bias in {LLM}-Based Preference Evaluations},
+  booktitle = {Findings of the Association for Computational Linguistics:
+               {EMNLP} 2025},
+  year      = {2025}
+}
+
+@inproceedings{panickssery2024selfpref,
+  author    = {Panickssery, Arjun and Bowman, Samuel R. and Feng, Shi},
+  title     = {{LLM} Evaluators Recognize and Favor Their Own Generations},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {37},
+  year      = {2024}
+}
+
+% -----------------------------------------------------------------------------
+% Group: Archi software
+% -----------------------------------------------------------------------------
+
+@misc{archi_repo,
+  author       = {{The Archi Authors}},
+  title        = {Archi: AI Augmented Research Chat Intelligence},
+  howpublished = {\url{https://github.com/archi-physics/archi}},
+  year         = {2026},
+  note         = {Software repository}
+}
+
+@misc{argilla,
+  author       = {{Argilla Team}},
+  title        = {{Argilla}: A platform for human feedback in {LLM} workflows},
+  howpublished = {\url{https://github.com/argilla-io/argilla}},
+  year         = {2024},
+  note         = {Software platform}
+}

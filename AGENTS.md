@@ -17,6 +17,29 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
+# Working Instructions
+
+Read `openspec/project.md` at the start of every session for project context. Run `openspec list` to see active proposals — this repo typically has many in-flight changes, so always confirm which one you're on before editing.
+
+## Staying on Task
+
+- **Before starting work:** Read the active proposal's `tasks.md`. Identify the specific task you're on. Do not start a second task until the first is verified complete.
+- **Don't fix tangential problems.** If you notice something broken that isn't your current task, say "I noticed X — want me to address that after the current task?" Don't silently start working on it.
+- **After long tool chains (10+ calls):** Stop and restate what you're doing and why. Check whether you're still on the original task.
+- **When you get an error:** Diagnose the root cause before retrying. Don't retry the same thing. Don't pivot to a different approach without explaining why the first one failed.
+
+## Proposals
+
+- Start every proposal with root cause analysis: "Why is this broken / why is this needed now?"
+- Every task in `tasks.md` must end with a verification step that checks real output (a passing run, a populated result JSON, an end-to-end deployment check) — not just "code compiles" or "imports resolve."
+- Run `openspec validate <change-id> --strict --no-interactive` before requesting approval.
+
+## Verification
+
+- Never mark a benchmark/eval task complete without running it and inspecting the actual output files (e.g., confirm `token_usage`, `model_used`, `trace_events` are populated in result JSON).
+- If something "should work" but the numbers don't change, there's a silent failure — investigate before moving on.
+- For deployment/service changes, validate both streamed events and persisted DB rows (e.g., `agent_traces.events`) when debugging trace or tool-call mismatches. Match the real runtime path: verify which code path the running service imports (workspace source vs installed `site-packages`) and patch the active path.
+
 # Repository Guidelines
 
 ## Project Structure & Module Organization

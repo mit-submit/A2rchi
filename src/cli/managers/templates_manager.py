@@ -161,22 +161,37 @@ class TemplateManager:
         services_cfg = config.get("services", {}) or {}
 
         if context.benchmarking:
-            benchmark_cfg = services_cfg.get("benchmarking", {}) or {}
-            agent_md_file = benchmark_cfg.get("agent_md_file")
-            if not agent_md_file:
-                raise ValueError("Missing required services.benchmarking.agent_md_file in config.")
-            source_path = Path(str(agent_md_file)).expanduser()
-            config_path = Path(str(config.get("_config_path", ""))).expanduser()
-            if not source_path.is_absolute() and config_path:
-                candidate = (config_path.parent / source_path).resolve()
-                if candidate.exists():
-                    source_path = candidate
-            if not source_path.exists() or not source_path.is_file():
-                raise ValueError(f"Benchmark agent file not found: {source_path}")
-            if source_path.suffix.lower() != ".md":
-                raise ValueError(f"Benchmark agent file must be a .md file: {source_path}")
+            # Multi-config benchmarking mode: each config in config_manager.configs
+            # may reference a different agent_md_file. We must stage ALL of them so
+            # the benchmark container can load whichever one the active config
+            # points at. (Single-config mode still works — configs has length 1.)
+            all_configs = list(getattr(context.config_manager, "configs", [])) or [config]
+            agent_sources: Dict[str, Path] = {}  # filename -> resolved source path
+            for cfg in all_configs:
+                cfg_services = (cfg.get("services") or {})
+                benchmark_cfg = (cfg_services.get("benchmarking") or {})
+                agent_md_file = benchmark_cfg.get("agent_md_file")
+                if not agent_md_file:
+                    raise ValueError(
+                        "Missing required services.benchmarking.agent_md_file in config."
+                    )
+                source_path = Path(str(agent_md_file)).expanduser()
+                cfg_path = Path(str(cfg.get("_config_path", ""))).expanduser()
+                if not source_path.is_absolute() and cfg_path:
+                    candidate = (cfg_path.parent / source_path).resolve()
+                    if candidate.exists():
+                        source_path = candidate
+                if not source_path.exists() or not source_path.is_file():
+                    raise ValueError(f"Benchmark agent file not found: {source_path}")
+                if source_path.suffix.lower() != ".md":
+                    raise ValueError(
+                        f"Benchmark agent file must be a .md file: {source_path}"
+                    )
+                agent_sources[source_path.name] = source_path
+
             dst_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source_path, dst_dir / source_path.name)
+            for filename, source_path in agent_sources.items():
+                shutil.copyfile(source_path, dst_dir / filename)
             return
 
         agents_dir = (services_cfg.get("chat_app") or {}).get("agents_dir")

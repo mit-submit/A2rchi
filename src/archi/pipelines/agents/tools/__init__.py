@@ -1,7 +1,7 @@
 from .base import check_tool_permission, require_tool_permission
 from .local_files import (
     create_document_fetch_tool,
-    create_file_search_tool,
+    create_grep_tool,
     create_metadata_search_tool,
     create_metadata_schema_tool,
     RemoteCatalogClient,
@@ -12,13 +12,14 @@ from .monit_opensearch import (
     MONITOpenSearchClient,
     create_monit_opensearch_search_tool,
     create_monit_opensearch_aggregation_tool,
+    create_monit_fetch_document_tool,
 )
 
 __all__ = [
     "check_tool_permission",
     "require_tool_permission",
     "create_document_fetch_tool",
-    "create_file_search_tool",
+    "create_grep_tool",
     "create_metadata_search_tool",
     "create_metadata_schema_tool",
     "RemoteCatalogClient",
@@ -27,4 +28,5 @@ __all__ = [
     "MONITOpenSearchClient",
     "create_monit_opensearch_search_tool",
     "create_monit_opensearch_aggregation_tool",
+    "create_monit_fetch_document_tool",
 ]

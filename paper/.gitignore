@@ -1,0 +1,16 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.toc
+*.lof
+*.lot
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.run.xml
+
+# Overleaf upload archive
+archi-chep2026.zip

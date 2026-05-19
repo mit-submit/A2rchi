@@ -1,0 +1,44 @@
+# Canonical judge rubric.
+#
+# Single source of truth for the LLM-as-Judge evaluation rubric used by
+# `scripts/run_evaluation.py` and the benchmark harness. Both the human-
+# readable doc (`scripts/judge_rubric.md`) and the judging code read from
+# here. Do not duplicate.
+#
+# Edit this file to change the rubric. Re-run judging after changes.
+
+name: archi-default-v1
+description: >
+  Default LLM-as-Judge rubric for the A2rchi benchmark. Each criterion is
+  scored 1-5 by the judge, with a short justification. Composite score is
+  a weighted sum.
+
+criteria:
+  - id: relevance
+    description: >
+      Does the answer address the user's actual question? Penalize
+      off-topic or tangential answers.
+    weight: 0.25
+    scale: 5
+
+  - id: completeness
+    description: >
+      Does the answer cover the key facets of the question? Penalize
+      answers that only handle one of several asked parts.
+    weight: 0.25
+    scale: 5
+
+  - id: specificity
+    description: >
+      Is the answer grounded in concrete, verifiable details (IDs,
+      numbers, paths, links) rather than vague generalities? Penalize
+      hand-waving.
+    weight: 0.25
+    scale: 5
+
+  - id: helpfulness
+    description: >
+      Would a domain engineer find this answer actionable? Penalize
+      correct-but-useless or overly cautious answers.
+    weight: 0.25
+    scale: 5

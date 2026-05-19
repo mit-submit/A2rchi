@@ -55,18 +55,24 @@ class BasePipeline:
         models_config = self.pipeline_config.get("models", {}) if isinstance(self.pipeline_config, dict) else {}
         self.llms: Dict[str, Any] = {}
 
+        providers_config = {}
+        if isinstance(self.config, dict):
+            services_cfg = self.config.get("services", {}) if isinstance(self.config.get("services", {}), dict) else {}
+            chat_cfg = services_cfg.get("chat_app", {}) if isinstance(services_cfg, dict) else {}
+            providers_config = chat_cfg.get("providers", {}) if isinstance(chat_cfg, dict) else {}
+
         all_models = dict(models_config.get("required", {}), **models_config.get("optional", {}))
         initialised_models: Dict[str, Any] = {}
 
         if not all_models and self.default_provider and self.default_model:
-            model_ref = f"{self.default_provider}/{self.default_model}"
+            provider_config = self._build_provider_config(self.default_provider, providers_config)
             default_keys = self._default_model_keys()
             if default_keys:
-                instance = get_model(self.default_provider, self.default_model)
+                instance = get_model(self.default_provider, self.default_model, provider_config)
                 for key in default_keys:
                     self.llms[key] = instance
             else:
-                self.llms["chat_model"] = get_model(self.default_provider, self.default_model)
+                self.llms["chat_model"] = get_model(self.default_provider, self.default_model, provider_config)
             return
 
         for model_name, model_class_name in all_models.items():
@@ -80,12 +86,13 @@ class BasePipeline:
                 continue
 
             provider, model_id = self._parse_provider_model(model_class_name)
-            instance = get_model(provider, model_id)
+            provider_config = self._build_provider_config(provider, providers_config)
+            instance = get_model(provider, model_id, provider_config)
             self.llms[model_name] = instance
             initialised_models[model_class_name] = instance
 
     @staticmethod
-    def _parse_provider_model(model_ref: str) -> (str, str):
+    def _parse_provider_model(model_ref: str) -> tuple:
         """Expect model_ref as 'provider/model'. Raise if malformed."""
         if not isinstance(model_ref, str) or "/" not in model_ref:
             raise ValueError(f"Model reference must be 'provider/model', got '{model_ref}'")
@@ -93,6 +100,24 @@ class BasePipeline:
         if not provider or not model_id:
             raise ValueError(f"Invalid model reference '{model_ref}'")
         return provider, model_id
+
+    @staticmethod
+    def _build_provider_config(provider: str, providers_config: Dict[str, Any]) -> dict:
+        """Build provider_config dict from the providers section of the config."""
+        provider_key = provider.lower() if isinstance(provider, str) else str(provider)
+        cfg = providers_config.get(provider_key, {}) if isinstance(providers_config, dict) else {}
+        if not cfg:
+            return {}
+        extra = {}
+        if cfg.get("mode"):
+            extra["local_mode"] = cfg.get("mode")
+        extra.update(cfg.get("options", {}))
+        return {
+            "base_url": cfg.get("base_url"),
+            "models": cfg.get("models", []),
+            "default_model": cfg.get("default_model"),
+            "extra_kwargs": extra,
+        }
 
     def _init_prompts(self) -> None:
         """Initialise prompts defined in pipeline configuration."""
@@ -136,6 +161,7 @@ class BasePipeline:
 
     def _default_model_keys(self) -> List[str]:
         return {
+            "BareLLMPipeline": ["chat_model"],
             "QAPipeline": ["condense_model", "chat_model"],
             "GradingPipeline": ["final_grade_model", "summary_model", "analysis_model"],
             "ImageProcessingPipeline": ["image_processing_model"],

@@ -9,7 +9,7 @@ from src.archi.pipelines.agents.base_react import BaseReActAgent
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 from src.archi.pipelines.agents.tools import (
     create_document_fetch_tool,
-    create_file_search_tool,
+    create_grep_tool,
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
@@ -18,6 +18,7 @@ from src.archi.pipelines.agents.tools import (
     MONITOpenSearchClient,
     create_monit_opensearch_search_tool,
     create_monit_opensearch_aggregation_tool,
+    create_monit_fetch_document_tool,
 )
 from src.archi.pipelines.agents.utils.skill_utils import load_skill
 
@@ -121,12 +122,17 @@ class CMSCompOpsAgent(BaseReActAgent):
 
     def _tool_definitions(self) -> Dict[str, Dict[str, Any]]:
         defs = {
-            "search_local_files": {
-                "builder": self._build_file_search_tool,
+            "grep": {
+                "builder": self._build_grep_tool,
                 "description": (
-                    "Grep-like search over file contents. Provide a distinctive phrase or regex; optionally use "
-                    "regex=true, case_sensitive=true, and context (before/after). Returns matching lines with hashes; "
-                    "use fetch_catalog_document for full text."
+                    "Literal/regex search for PATTERN in catalogued documents. "
+                    "Args: pattern (str, regex by default; pass fixed_strings=true for literal), "
+                    "ignore_case=false (-i), context=0 (-C lines of before/after), "
+                    "max_count=3 (--max-count per file), files_only=false (-l, paths only), "
+                    "limit=5 (files returned). Returns matching lines grouped by file with "
+                    "line numbers; use fetch_catalog_document for full text. "
+                    "Use this for exact-string matches (error codes, ticket IDs, log lines, "
+                    "file paths); use search_vectorstore_hybrid for semantic / paraphrased queries."
                 ),
             },
             "search_metadata_index": {
@@ -183,6 +189,10 @@ class CMSCompOpsAgent(BaseReActAgent):
                 "builder": self._build_monit_opensearch_aggregation_tool,
                 "description": "Run aggregation queries on MONIT OpenSearch for CMS Rucio events.",
             }
+            defs["monit_fetch_rucio_document"] = {
+                "builder": self._build_monit_fetch_rucio_document_tool,
+                "description": "Fetch full details of a single Rucio event document by its ID.",
+            }
 
         if getattr(self, "_condor_client", None) is not None:
             defs["condor_opensearch_search"] = {
@@ -193,12 +203,16 @@ class CMSCompOpsAgent(BaseReActAgent):
                 "builder": self._build_condor_opensearch_aggregation_tool,
                 "description": "Run aggregation queries on MONIT OpenSearch for CMS HTCondor job metrics.",
             }
+            defs["monit_fetch_condor_document"] = {
+                "builder": self._build_monit_fetch_condor_document_tool,
+                "description": "Fetch full details of a single HTCondor job document by its ID.",
+            }
 
         return defs
 
-    def _build_file_search_tool(self) -> Callable:
-        description = self._tool_definitions()["search_local_files"]["description"]
-        return create_file_search_tool(
+    def _build_grep_tool(self) -> Callable:
+        description = self._tool_definitions()["grep"]["description"]
+        return create_grep_tool(
             self.catalog_service,
             description=description,
             store_docs=self._store_documents,
@@ -266,6 +280,22 @@ class CMSCompOpsAgent(BaseReActAgent):
             tool_name="condor_metric_aggregation",
             index="monit_prod_condor_raw_metric*",
             skill=self._condor_metric_skill,
+        )
+
+    def _build_monit_fetch_rucio_document_tool(self) -> Callable:
+        """Build the MONIT document fetch tool for Rucio events."""
+        return create_monit_fetch_document_tool(
+            self._monit_client,
+            tool_name="fetch_rucio_document",
+            index="monit_prod_cms_rucio_raw_events*",
+        )
+
+    def _build_monit_fetch_condor_document_tool(self) -> Callable:
+        """Build the MONIT document fetch tool for HTCondor job metrics."""
+        return create_monit_fetch_document_tool(
+            self._condor_client,
+            tool_name="fetch_condor_document",
+            index="monit_prod_condor_raw_metric*",
         )
 
     # def _build_static_middleware(self) -> List[Callable]:

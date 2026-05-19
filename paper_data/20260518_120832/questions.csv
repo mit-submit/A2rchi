@@ -1,0 +1,335 @@
+question_id,question_text
+question_1,"We got 50513 exit code in production workflows. This is the error message. It's failing at multiple sites. How to approach it?
+
+SCRAMScriptFailure (Exit code: 50513)
+SCRAM scripts failed to run!
+<@========== WMException Start ==========@>
+Exception Class: PreScriptFailure
+Message: Error running command
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+/cvmfs/cms.cern.ch/cc8_amd64_gcc9/external/python3/3.8.2-555576dae8d03b340ea3079ddb8abb0d/bin/python3 -m WMCore.WMRuntime.ScriptInvoke WMTaskSpace.cmsRun2 SetupCMSSWPset
+
+1
+2026-02-16 23:33:52,909:INFO:ScriptInvoke:Invoking scripts in current directory: /srv/job/WMTaskSpace/cmsRun2
+2026-02-16 23:33:52,916:INFO:Bootstrap:Job Index = 519944
+Job Instance = {'input_files': [{'lfn': 'MCFakeFile-cmsunified_task_JME-Run3Winter26GS-00005__v1_T_260210_020550_6063-JME-Run3Winter26GS-00005_0-3498f6bb5f44b60b137422468cc61063', 'size': 0, 'events': 1000000, 'checksums': {}, 'runs': set(), 'merged': True, 'last_event': 0, 'first_event': 0, 'locations': set(), 'parents': set()}], 'id': 519944, 'jobgroup': 33360, 'name': '32f57a44-0d9e-4356-a1e0-8c70491555dd-1002', 'state': 'new', 'state_time': 1771215551, 'outcome': 'failure', 'retry_count': 3, 'location': None, 'mask': {'inclusivemask': True, 'FirstEvent': 28244001, 'LastEvent': 28245000, 'FirstLumi': 28001, 'LastLumi': 28001, 'FirstRun': 1, 'LastRun': 1, 'runAndLumis': {}, 'jobID': 519944}, 'task': '/cmsunified_ACDC0_task_JME-Run3Winter26GS-00005__v1_T_260216_031948_3447/JME-Run3Winter26GS-00005_0', 'fwjr': None, 'fwjr_path': None, 'workflow': 'cmsunified_ACDC0_task_JME-Run3Winter26GS-00005__v1_T_260216_031948_3447', 'owner': 'cmsunified', 'estimatedJobTime': 43200, 'estimatedMemoryUsage': 16000.0, 'estimatedDiskUsage': 3000000, 'cache_dir': '/data/srv/wmagent/2.4.5/install/JobCreator/JobCache/cmsunified_ACDC0_task_JME-Run3Winter26GS-00005__v1_T_260216_031948_3447/JME-Run3Winter26GS-00005_0/JobCollection_33360_1/job_519944', 'sandbox': '/data/srv/wmagent/2.4.5/install/WorkQueueManager/cache/cmsunified_ACDC0_task_JME-Run3Winter26GS-00005__v1_T_260216_031948_3447/cmsunified_ACDC0_task_JME-Run3Winter26GS-00005__v1_T_260216_031948_3447-Sandbox.tar.bz2', 'jobType': 'Production', 'taskType': 'reprocessing', 'counter': 10001003, 'spec': '/data/srv/wmagent/2.4.5/install/WorkQueueManager/cache/cmsunified_ACDC0_task_JME-Run3Winter26GS-00005__v1_T_260216_031948_3447/WMSandbox/WMWorkload.pkl', 'agentNumber': 282, 'agentName': 'vocms0282.cern.ch', 'ownerDN': '/DC=ch/DC=cern/OU=Organic Units/OU=Users/CN=cmsunified/CN=658085/CN=Robot: CMS Unified account', 'ownerGroup': 'unknown', 'ownerRole': 'unknown', 'numberOfCores': 8, 'allowOpportunistic': False, 'requiresGPU': 'forbidden', 'jobExtraMatchRequirements': '', 'requestType': 'StepChain', 'physicsTaskType': 'GEN,SIM,DIGI_classicalmix,RECO,MINIAOD,NANOAOD', 'campaignName': 'Run3Winter26GS,Run3Winter26Digi,Run3Winter26Reco,Run3Winter26MiniAODv6,Run3Winter26NanoAODv15'}
+
+2026-02-16 23:33:52,951:INFO:SetupCMSSWPset:Executing SetupCMSSWPSet...
+2026-02-16 23:33:52,951:INFO:SetupCMSSWPset:Creating Scram environment with scram arch: el8_amd64_gcc12 and CMSSW version: CMSSW_15_0_18
+2026-02-16 23:34:01,282:INFO:SetupCMSSWPset:DEBUG: Now in the none scenario to load PSET
+2026-02-16 23:34:01,282:INFO:SetupCMSSWPset:Working dir: /srv/job/WMTaskSpace/cmsRun2
+2026-02-16 23:34:01,282:INFO:SetupCMSSWPset:ScramRun command args: edm_pset_pickler.py --input /srv/job/WMTaskSpace/cmsRun2/PSet.py --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl
+2026-02-16 23:34:01,282:INFO:Scram:Creating a subprocess to run the PSet setup.
+2026-02-16 23:34:01,282:INFO:Scram:Also recording SCRAM command-line related output.
+2026-02-16 23:34:01,295:INFO:Scram: Invoking command: edm_pset_pickler.py --input /srv/job/WMTaskSpace/cmsRun2/PSet.py --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl
+2026-02-16 23:34:09,224:INFO:Scram:Subprocess stdout was:
+
+2026-02-16 23:34:09,224:INFO:Scram:Subprocess stderr was:
+None
+2026-02-16 23:34:10,003:INFO:SetupCMSSWPset:ScramRun command args: cmssw_handle_condor_status_service.py --input_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --name cmsRun2
+2026-02-16 23:34:10,004:INFO:Scram:Creating a subprocess to run the PSet setup.
+2026-02-16 23:34:10,004:INFO:Scram:Also recording SCRAM command-line related output.
+2026-02-16 23:34:10,019:INFO:Scram: Invoking command: cmssw_handle_condor_status_service.py --input_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --name cmsRun2
+2026-02-16 23:34:12,628:INFO:Scram:Subprocess stdout was:
+Added CondorStatusService
+
+2026-02-16 23:34:12,628:INFO:Scram:Subprocess stderr was:
+None
+2026-02-16 23:34:12,628:INFO:SetupCMSSWPset:DEBUG output module = RAWSIMoutput
+2026-02-16 23:34:12,630:INFO:SetupCMSSWPset:ScramRun command args: edm_pset_tweak.py --input_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --json /srv/job/WMTaskSpace/cmsRun2/PSetTweak.json --skip_if_set
+2026-02-16 23:34:12,631:INFO:Scram:Creating a subprocess to run the PSet setup.
+2026-02-16 23:34:12,631:INFO:Scram:Also recording SCRAM command-line related output.
+2026-02-16 23:34:12,645:INFO:Scram: Invoking command: edm_pset_tweak.py --input_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --json /srv/job/WMTaskSpace/cmsRun2/PSetTweak.json --skip_if_set
+2026-02-16 23:34:15,229:INFO:Scram:Subprocess stdout was:
+Attribute already set process.options. Not changing
+Attribute already set process.RAWSIMoutput.dataset. Not changing
+
+2026-02-16 23:34:15,229:INFO:Scram:Subprocess stderr was:
+None
+2026-02-16 23:34:15,230:INFO:SetupCMSSWPset:ScramRun command args: edm_pset_tweak.py --input_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --json /srv/job/WMTaskSpace/cmsRun2/PSetTweak.json --skip_if_set
+2026-02-16 23:34:15,230:INFO:Scram:Creating a subprocess to run the PSet setup.
+2026-02-16 23:34:15,230:INFO:Scram:Also recording SCRAM command-line related output.
+2026-02-16 23:34:15,246:INFO:Scram: Invoking command: edm_pset_tweak.py --input_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --output_pkl /srv/job/WMTaskSpace/cmsRun2/PSet.pkl --json /srv/job/WMTaskSpace/cmsRun2/PSetTweak.json --skip_if_set
+2026-02-16 23:34:17,481:INFO:Scram:Subprocess stdout was:
+Attribute already set process.RAWSIMoutput.fileName. Not changing
+Set attribute process.RAWSIMoutput.logicalFileName to cms.untracked.string('')"
+question_2,I am a Tier-0 operator. I made a mistake and I need to reprocess a 5 runs. The streamer files are still avaible; how do I proceed with this?
+question_3,A CMS user needs to extend his user quota at my site (T2_CN_Beijing) in Rucio. Actually I don't know how to do this. Is there any wiki or application webpage I could follow?
+question_4,Check CMSPROD-368 ticket. Help to understand who and how sets MergedLFNBase correctly
+question_5,Look at https://its.cern.ch/jira/browse/CMSTRANSF-1316 and give me the rucio command to do these operations
+question_6,Make a summary of the most relevant activity in the CMSDM and CMSTRANSF for last year 2025.
+question_7,"what does if PhEDExNodeName in blockDict[""PhEDExNodeNames""] or useAAA: do in https://github.com/dmwm/WMCore"
+question_8,is there any ticket open about the decommissioning of Russian T2s?
+question_9,What are the most repeated topics in the CMSTRANSF tickets starting from CMSTRANSF-1059 until CMSTRANSF-1400?
+question_10,How do I create a new Tier0 release
+question_11,How can I deploy tier 0 replay?
+question_12,"How to create rules using local account quota. I'm interested in T2_CH_CERN, which keep identities of user in t2_ch_cern_local_users"
+question_13,"How to get dataset block name from lumilist from das
+""LumiList"": {
+    ""398420"": [
+      [
+        550,
+        700
+      ]
+    ]
+  },
+
+
+
+List of known DAS keys
+dataset
+release
+site
+parent
+child
+block
+file
+run
+date
+group
+user
+role
+jobsummary
+era
+datatype
+tier
+status
+primary_dataset
+prepid
+summary
+config
+lumi
+events
+mcm
+rules
+
+Examples:
+BLOCK QUERIES:
+# find blocks for a given dataset/block/file
+block dataset=/ElectronHad/Run2011A-05Aug2011-v1/AOD
+block=/EG/Run2010A-Dec4ReReco_v1/AOD#f15ed71e-6491-4f73-a0e3-ac4248a6367d
+block file=/store/data/Run2010B/ZeroBias/RAW-RECO/v2/000/145/820/784478E3-52C2-DF11-A0CC-0018F3D0969A.root
+
+# find blocks for a given block/dataset and site name
+block block=/Cosmics/Run2010B-TkAlCosmics0T* site=T1_DE_KIT*
+block dataset=/AlCaP0/Run2011A-ALCARECOEcalCalEtaCalib-v4/ALCARECO site=T1_US_FNAL*
+
+# find blocks for a give site/SE
+block site=T3_US_Cornell
+block site=osg-se.cac.cornell.edu
+
+# find blocks for a given dataset and run conditions
+block dataset=/SingleElectron/Run2011A-414_preprod_GR_H_V16-v1/RAW run=161311
+block dataset=/SingleMu/Run2012A-v1/RAW run in [191842, 191845]
+block dataset=/SingleMu/Run2012A-v1/RAW run between [191840, 191845]
+
+# find blocks for a given data tier and date range
+block tier=GEN-SIM date between [20120223, 20120224]
+
+FILE QUERIES:
+# find file info
+file=/store/data/Run2010A/EG/AOD/Dec4ReReco_v1/0031/E26F28FC-4A07-E011-9CF3-0030487F1653.root
+
+# find files for different set of conditions
+file block=/EG/Run2010A-Dec4ReReco_v1/AOD#f15ed71e-6491-4f73-a0e3-ac4248a6367d
+file run=148126 dataset=/ZeroBias/Run2010B-Dec4ReReco_v1/RECO
+file dataset=/ZeroBias/Run2010B-Skim_logerror-v2/RAW-RECO run=145820 lumi=1
+file dataset=/AlCaP0/Run2011A-ALCARECOEcalCalEtaCalib-Jun3ReReco-v1/ALCARECO run between [160383,160400]
+file dataset=/AlCaP0/Run2011A-ALCARECOEcalCalEtaCalib-Jun3ReReco-v1/ALCARECO run=160383
+file dataset=/AlCaP0/Run2011A-ALCARECOEcalCalEtaCalib-Jun3ReReco-v1/ALCARECO run=160383 site=T1_US_FNAL
+file dataset=/AlCaP0/Run2011A-ALCARECOEcalCalEtaCalib-Jun3ReReco-v1/ALCARECO run in [160383,162921] site=T1_US_FNAL
+file dataset=/AlCaP0/Run2011A-ALCARECOEcalCalEtaCalib-Jun3ReReco-v1/ALCARECO run=160383 lumi=67
+file dataset=/ElectronHad/Run2011A-05Aug2011-v1/AOD
+file block=/Cosmics/Run2010B-TkAlCosmics0T-v1/ALCARECO#* site=T1_US_FNAL
+file dataset=/Cosmics/Run2010B-TkAlCosmics0T-v1/ALCARECO site=T1_US_FNAL_Buffer
+file dataset=/WGstarToLNu2Tau_TuneZ2_7TeV-madgraph-tauola/Summer11-PU_S4_START42_V11-v1/AODSIM status=INVALID
+file block=/WGstarToLNu2Tau_TuneZ2_7TeV-madgraph-tauola/Summer11-PU_S4_START42_V11-v1/AODSIM#29e86674-fe2d-11e0-a5f0-00221959e69e status=*
+
+
+file dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO run=177718
+file dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO run in [177718, 177053]
+file block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a run=177487
+file block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a run in [177487,177878]
+file dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO run in [177487,177878] site=T2_CH_CERN
+file block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a run in [177487,177878] site=T2_CH_CERN
+
+# check if auto-detection of detail query works
+file dataset=/ZMM/Summer11-DESIGN42_V11_428_SLHC1-v1/GEN-SIM | grep file.nevents
+
+LUMI QUERIES:
+# find lumi for a given set of conditions
+lumi file=/store/data/Run2010B/ZeroBias/RAW-RECO/v2/000/145/820/784478E3-52C2-DF11-A0CC-0018F3D0969A.root
+lumi file=/store/data/Run2010B/Cosmics/ALCARECO/TkAlCosmics0T-Dec22ReReco_v2/0153/9221DEAF-7223-E011-B79F-002618943886.root run=149011
+lumi block=/ZeroBias/Run2010B-Skim_logerror-v2/RAW-RECO#a14a71ba-055f-4469-9180-4653f8db4fe6
+
+MCM QUERIES:
+# find McM information for various set of conditions
+mcm prepid=HIG-Summer12-01312
+mcm dataset=/GluGluToHToWWTo2LAndTau2Nu_M-115_8TeV-minloHJJ-pythia6-tauola/Summer12-START53_V7C-v3/GEN
+dataset prepid=TSG-Fall13dr-00015
+mcm dataset=/WToENu_Tune4C_13TeV-pythia8/Fall13dr-tsg_PU40bx25_POSTLS162_V2-v1/GEN-SIM-RAW
+
+RUN QUERIES:
+# find run information for various set of conditions
+run dataset=/Monitor/Commissioning08-v1/RAW
+run block=/SingleElectron/Run2011A-414_preprod_GR_H_V16-v1/RAW#12ac2478-3b25-4a02-a7d4-6f2138f35171
+run file=/store/data/Commissioning11/Commissioning/RAW/v3/000/160/292/E863DF08-024C-E011-B2ED-0030487A3232.root
+run=160915
+run between [160910, 160920]
+run between [160910, 160920] | sum(run.delivered_lumi), sum(run.nevents), sum(run.nlumis)
+run in [160915,190595]
+run in [160915,190595] | sum(run.delivered_lumi), sum(run.nevents), sum(run.nlumis)
+run between [148124,148126]
+run date = 20110320
+run date between [20101001, 20101002]
+
+DATASET QUERIES:
+# find dataset for given primary dataset pattern and data tiers
+dataset primary_dataset=ZJetToEE_Pt*
+dataset primary_dataset=ZJetToEE_Pt* tier=*GEN*
+
+# get information about dataset
+dataset=/ElectronHad/Run2011A-05Aug2011-v1/AOD
+
+# find datasets for given tier/group/site
+dataset tier=*GEN-SIM-RECO*
+dataset group=Top
+dataset group=local site=T2_CH_CERN
+
+# find datasets for given dataset pattern
+dataset=/ZMM*/*/*
+
+# find datasets for given pattern and site
+dataset dataset=/Cosmics/Run2010B-TkAlCosmics0T*/* site=T1_DE_KIT
+
+# find datasets for given release and/or site
+dataset release=CMSSW_2_0_8
+dataset release=CMSSW_7_4_14 site=T2_FI_HIP
+
+# find datasets for given dataset name and run
+dataset dataset=/Cosmics/Run2010B-TkAlCosmics0T-Dec22ReReco_v2/ALCARECO run=149011
+
+# parent/child queries
+parent dataset=/Cosmics/Run2010B-TkAlCosmics0T-Dec22ReReco_v2/ALCARECO
+dataset parent=/Cosmics/Run2010B-v1/RAW site=T1_US_FNAL release=CMSSW_3_9_7
+child dataset=/Cosmics/Run2010B-v1/RAW site=T1_US_FNAL release=CMSSW_3_9_7
+
+# find datasets for given block/file/run/status/dates
+dataset block=/ZG_Inclusive_8TeV-madgraph_v2/Summer12_DR53X-PU_S10_START53_V7A-v1/AODSIM#8ce42772-2410-11e2-85d7-003048f02c8a
+dataset file=/store/data/Run2010B/ZeroBias/RAW-RECO/v2/000/145/820/784478E3-52C2-DF11-A0CC-0018F3D0969A.root
+dataset run=148126
+dataset status=PRODUCTION
+dataset date=20141103
+dataset date between [20101001, 20101002]
+
+JOBSUMMARY QUERIES:
+# job-summary queries
+jobsummary date last 24h
+jobsummary site=T1_DE_KIT date last 24h
+jobsummary user=AlekoKhukhunaishvili
+jobsummary date between [20110208, 20110209]
+
+MISC QUERIES:
+# find primary datasets for given pattern
+primary_dataset=Cosmics*
+# find release info
+release=CMSSW_2_0_8
+release dataset=/ElectronHad/Run2011A-05Aug2011-v1/AOD
+release file=/store/data/Run2011A/ElectronHad/AOD/05Aug2011-v1/0000/00157DBB-0AC0-E011-AB7A-0019BB3DE6F4.root
+
+# find configuration for a given dataset
+config dataset=/Cosmics/Run2010B-TkAlCosmics0T-Dec22ReReco_v2/ALCARECO
+
+# find info about given user name
+user=YOUR_USER_NAME
+user=YOUR_EMAIL@gmail.com
+
+# find info about specific data-ops group
+group=DataOps
+
+# find parent/child info about dataset
+child dataset=/QCDpt30/Summer08_IDEAL_V9_v1/GEN-SIM-RAW
+parent dataset=/QCDpt30/Summer08_IDEAL_V9_skim_hlt_v1/USER
+child file=/store/mc/Summer08/QCDpt30/GEN-SIM-RAW/IDEAL_V9_v1/0000/1C3B1D33-027C-DD11-A62B-001CC4A63C2A.root
+parent file=/store/mc/Summer08/QCDpt30/USER/IDEAL_V9_skim_hlt_v1/0003/367E05A0-707E-DD11-B0B9-001CC4A6AE4E.root
+
+# summary information about dataset/block
+summary dataset=/Cosmics/Run2010B-TkAlCosmics0T-Dec22ReReco_v2/ALCARECO
+summary dataset=/Cosmics/Run2010B-TkAlCosmics0T-Dec22ReReco_v2/ALCARECO run=149011
+summary dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO run in [177718, 177053]
+summary block=/Cosmics/Run2010B-TkAlCosmics0T-Dec22ReReco_v2/ALCARECO#ee89be3a-5a9a-46a7-91eb-28c4728f3aaa
+
+# examples of finding file, run, lumis for a given dataset/block and run conditions
+run,lumi dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO
+run,lumi dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO run in [177718, 177053]
+run,lumi block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a
+run,lumi block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a run in [177487, 177878]
+file,lumi dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO
+file,lumi dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO run in [177718, 177053]
+file,lumi block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a
+file,lumi block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a run in [177487, 177878]
+file,run,lumi dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO
+file,run,lumi dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO run in [177718, 177053]
+file,run,lumi block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a
+file,run,lumi block=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO#19110c74-1b66-11e1-a98b-003048f02c8a run in [177487, 177878]
+
+# examples of using between clause and status fields
+file,run,lumi dataset=/DoubleMu/Run2012A-22Jan2013-v1/AOD run between [190456,190500]
+file,run,lumi dataset=/SingleMu/Run2011B-WMu-19Nov2011-v1/RAW-RECO status=VALID
+
+# event_count queries
+file,run,lumi,events dataset=/SingleMuon/Run2017D-MuTau-PromptReco-v1/RAW-RECO
+file,run,lumi,events dataset=/SingleMuon/Run2017D-MuTau-PromptReco-v1/RAW-RECO run in [302553, 302548]
+file,run,lumi,events block=/SingleMuon/Run2017D-MuTau-PromptReco-v1/RAW-RECO#ed75eb1a-97de-11e7-8029-02163e01ab31
+file,run,lumi,events block=/SingleMuon/Run2017D-MuTau-PromptReco-v1/RAW-RECO#ed75eb1a-97de-11e7-8029-02163e01ab31 run in [302553, 302548]
+
+SITE QUERIES:
+# find site information for various set of conditions
+site=T3_*
+site=T1_CH_CERN
+site dataset=/WJets_matchingup_7TeV-madgraph/Summer10-START36_V10_FastSim-v3/DQM
+site dataset=/QCD_Pt_0to5_TuneZ2_7TeV_pythia6/wteo-qcd_tunez2_pt0to5_pythia_fall10_387-250136cb6ade55a0822a3f1b6b851d5a/USER instance=cms_dbs_ph_analysis_02"
+question_14,"dasgoclient -query ""file dataset=/ZeroBias/Run2025G-v1/RAW run=398420""  
+/store/data/Run2025G/ZeroBias/RAW/v1/000/398/420/00000/a5e51d1d-4083-4559-933b-7c0a47814617.root
+/store/data/Run2025G/ZeroBias/RAW/v1/000/398/420/00000/2f5e601c-7631-4265-835d-6bf58f429285.root
+
+how to get the lumi ranges in these files?"
+question_15,i want to see more details about my rucio rule. what is the command to do this via cli
+question_16,"provide das query for run 393974 ""/IonPhysics16/pORun2025-v1/RAW"""
+question_17,rucio command to see location of block
+question_18,How can users create a container? Give me the rucio command to run it
+question_19,Give me the rucio CLI command to create a rule
+question_20,I'm running the client version 38. I know the CLI structure of rucio has changed. Can you give me the command compatible with the new structure?
+question_21,How to set quota in rucio for an account in a given RSE?
+question_22,In DAS there's a dataset with block completion 75%. How can I check the blocks that have not been completed?
+question_23,how can I find the full gridpack file path?
+question_24,What's the status of the Winter 26 campaing?
+question_25,Where do I find the full logs for a workflow?
+question_26,How to access wmagent config?
+question_27,Summarize the latest mess with the Winter26 workflows
+question_28,Could you please explain the current PnR policy in terms of doing the operations and addressing the requests by different parties ?
+question_29,Where do I check site readiness and downtime status referenced by production tickets?
+question_30,Under what cases will a rule stay in replicating state for more than two weeks and not switch to stuck?
+question_31,"what is the difference between crabschedd, prodschedd and tier0schedd?"
+question_32,who and how controls the transition from staged to acquired and how it can goes into failed ?
+question_33,Provide a description of Production Output activity. How are the rules created and where is the output written to (disk/tape)?
+question_34,What are rucio probes and how are they used to monitoring?
+question_35,How to check the integrity of a file?
+question_36,Why may a rule get stuck in INJECT state?
+question_37,explain how msunmerged works and if there are any open issues that might affect it
+question_38,Please find documentation for PnR Campaign manager responsibilities and explain to me the meaning of `partial_copy` parameter
+question_39,What's the policy for HLTSCOUT and L1SCOUT datasets at the moment?
+question_40,Summarize the MINIAOD policy change in 2025
+question_41,what should be trustpulists field for minbias workflows?
+question_42,where can I find Unified source code
+question_43,Why is overwrite not enabled for tape transfers?
+question_44,Is it possible to stage a single raw file from tape?
+question_45,what is the primary use for wma_prod and wmcore_output Rucio accounts?
+question_46,When was T0_CH_CERN_Tape disabled for production output?
+question_47,how much data did we delete in the deletion campaign 2025?
+question_48,give me the link to the workflow updater doc
+question_49,When did we reduce wma_prod copies from 2 to 1?
+question_50,When FTS enabled overwrite-on-buffer feature for CMS?
+question_51,What is the link to the wmagent training document? Please return the exact URL and a short title.
+question_52,What is the status of the transitioning from x509 to OIDC tokens in CMS data management?
+question_53,When did we stop sending Monte Carlo data to CERN tape?

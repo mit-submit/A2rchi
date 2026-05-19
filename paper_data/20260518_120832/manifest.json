@@ -1,0 +1,218 @@
+{
+  "generated_at": "2026-05-18T12:08:33.167852",
+  "argilla_db": "bench_out/grading/backups/grading_20260518_103449/argilla.db",
+  "sidecar": "bench_out/grading/samples/cms-compops-5way-grading-v9-may2026-unblinding.json",
+  "configs": [
+    "gpt-5.5/live",
+    "qwen3.6-27b/live",
+    "qwen3.6-27b/no-tools",
+    "qwen3.6-27b/rag",
+    "qwen3.6-35b/live",
+    "qwen3.5-122b/live",
+    "qwen3.6-35b/grep"
+  ],
+  "judges": [
+    "glm-5.1",
+    "gemini-3.1-pro-preview",
+    "gpt-5.5",
+    "claude-opus-4.7"
+  ],
+  "n_questions": 53,
+  "n_judged_files_total": 25,
+  "n_judged_files_present": 25,
+  "files": [
+    {
+      "config": "gpt-5.5/live",
+      "judge_run": "glm-5.1_run1",
+      "file": "bench_out/judged/glm-5.1_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "gpt-5.5/live",
+      "judge_run": "gemini-3.1-pro-preview_gemini31pro_run1",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "gpt-5.5/live",
+      "judge_run": "gpt-5.5_gpt55_run1",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "gpt-5.5/live",
+      "judge_run": "claude-opus-4.7_opus47_run1",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge_run": "glm-5.1_run1",
+      "file": "bench_out/judged/glm-5.1_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge_run": "gemini-3.1-pro-preview_gemini31pro_run1",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge_run": "gpt-5.5_gpt55_run1",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge_run": "claude-opus-4.7_opus47_run1",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge_run": "glm-5.1_run1",
+      "file": "bench_out/judged/glm-5.1_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge_run": "gemini-3.1-pro-preview_gemini31pro_run1",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge_run": "gpt-5.5_gpt55_run1",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge_run": "claude-opus-4.7_opus47_run1",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge_run": "glm-5.1_run1",
+      "file": "bench_out/judged/glm-5.1_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge_run": "gemini-3.1-pro-preview_gemini31pro_run1",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge_run": "gpt-5.5_gpt55_run1",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge_run": "claude-opus-4.7_opus47_run1",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge_run": "glm-5.1_run1",
+      "file": "bench_out/judged/glm-5.1_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge_run": "gemini-3.1-pro-preview_gemini31pro_run1",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge_run": "gpt-5.5_gpt55_run1",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge_run": "claude-opus-4.7_opus47_run1",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge_run": "glm-5.1_run1",
+      "file": "bench_out/judged/glm-5.1_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge_run": "gemini-3.1-pro-preview_gemini31pro_run1",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge_run": "gpt-5.5_gpt55_run1",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge_run": "claude-opus-4.7_opus47_run1",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/grep",
+      "judge_run": "glm-5.1_run1",
+      "file": "bench_out/judged/glm-5.1_run1/qwen-35b-grep-clean.json",
+      "found": true,
+      "n_records": 53
+    }
+  ],
+  "human_grading": {
+    "n_unique_records": 62,
+    "by_status": {
+      "submitted": 58,
+      "discarded": 3,
+      "draft": 1
+    },
+    "by_grader_status": {
+      "dima": {
+        "submitted": 48,
+        "discarded": 3
+      },
+      "hasan": {
+        "submitted": 10,
+        "draft": 1
+      }
+    }
+  }
+}

@@ -18,6 +18,26 @@ logger = get_logger(__name__)
 # Default models available from OpenAI
 DEFAULT_OPENAI_MODELS = [
     ModelInfo(
+        id="gpt-5.5-2026-04-23",
+        name="gpt-5.5-2026-04-23",
+        display_name="GPT-5.5 (2026-04-23)",
+        context_window=272000,
+        supports_tools=True,
+        supports_streaming=True,
+        supports_vision=True,
+        max_output_tokens=16384,
+    ),
+    ModelInfo(
+        id="gpt-5.5",
+        name="gpt-5.5",
+        display_name="GPT-5.5",
+        context_window=272000,
+        supports_tools=True,
+        supports_streaming=True,
+        supports_vision=True,
+        max_output_tokens=16384,
+    ),
+    ModelInfo(
         id="gpt-5",
         name="gpt-5",
         display_name="GPT-5",
@@ -121,12 +141,23 @@ class OpenAIProvider(BaseProvider):
         config_stream_options = self.config.extra_kwargs.get("stream_options")
         request_stream_options = kwargs.get("stream_options")
 
-        # Request usage in streamed responses so downstream token accounting/UI can rely on it.
-        merged_stream_options = {"include_usage": True}
-        if isinstance(config_stream_options, dict):
-            merged_stream_options.update(config_stream_options)
-        if isinstance(request_stream_options, dict):
-            merged_stream_options.update(request_stream_options)
+        # The Responses API rejects stream_options.include_usage as an unknown
+        # parameter (it surfaces usage through a different mechanism). When
+        # use_responses_api is set, skip the include_usage merge entirely.
+        use_responses_api = bool(
+            self.config.extra_kwargs.get("use_responses_api")
+            or kwargs.get("use_responses_api")
+        )
+
+        if not use_responses_api:
+            # Request usage in streamed responses so downstream token accounting/UI can rely on it.
+            merged_stream_options = {"include_usage": True}
+            if isinstance(config_stream_options, dict):
+                merged_stream_options.update(config_stream_options)
+            if isinstance(request_stream_options, dict):
+                merged_stream_options.update(request_stream_options)
+        else:
+            merged_stream_options = None
 
         model_kwargs = {
             "model": model_name,
@@ -135,15 +166,18 @@ class OpenAIProvider(BaseProvider):
             **kwargs,
         }
 
-        if isinstance(model_kwargs.get("stream_options"), dict) or "stream_options" not in model_kwargs:
-            model_kwargs["stream_options"] = merged_stream_options
-        
+        if merged_stream_options is not None:
+            if isinstance(model_kwargs.get("stream_options"), dict) or "stream_options" not in model_kwargs:
+                model_kwargs["stream_options"] = merged_stream_options
+        else:
+            model_kwargs.pop("stream_options", None)
+
         if self._api_key:
             model_kwargs["api_key"] = self._api_key
-            
+
         if self.config.base_url:
             model_kwargs["base_url"] = self.config.base_url
-            
+
         return ChatOpenAI(**model_kwargs)
     
     def list_models(self) -> List[ModelInfo]:

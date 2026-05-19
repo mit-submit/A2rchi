@@ -223,94 +223,83 @@ def _collect_snippet(text: str, match: re.Match, *, window: int = 240) -> str:
     return f"{prefix}{excerpt}{suffix}"
 
 
-def create_file_search_tool(
+def create_grep_tool(
     catalog: RemoteCatalogClient,
     *,
-    name: str = "search_local_files",
+    name: str = "grep",
     description: Optional[str] = None,
-    max_results: int = 3,
-    window: int = 240,
+    max_results: int = 5,
     store_docs: Optional[Callable[[str, Sequence[Path]], None]] = None,
     required_permission: Optional[str] = None,
     store_tool_input: Optional[Callable[[str, object], None]] = None,
-) -> Callable[[str], str]:
-    """Create a LangChain tool that performs keyword search in catalogued files.
-    
-    Args:
-        catalog: The RemoteCatalogClient instance.
-        name: The name of the tool.
-        description: Human-readable description of the tool.
-        max_results: Maximum number of results to return.
-        window: Context window size for snippets.
-        store_docs: Optional callback to store retrieved documents.
-        required_permission: Optional RBAC permission required to use this tool.
-            If None, no permission check is performed (allow all).
+) -> Callable[..., str]:
+    """Create a LangChain tool that exposes a standard grep-style interface.
+
+    The pattern is treated as a regex by default (matching the real ``grep``
+    command's BRE semantics); pass ``fixed_strings=True`` for literal search.
     """
 
     _default_description = (
-        "Grep-like search over local document contents only (not filenames/paths).\n"
-        "Input: query (string), regex=false, case_sensitive=false, max_results_override=None, "
-        "max_matches_per_file=3, before=0, after=0.\n"
-        "Output: lines grouped by file with hash/path and matching line numbers, plus context lines.\n"
-        "Example input: \"timeout error\" (regex=false)."
+        "Literal/regex search for PATTERN in catalogued documents. Returns "
+        "matching lines grouped by file with line numbers and optional context. "
+        "Use this for exact-string matches (error codes, ticket IDs, log lines, "
+        "file paths); use search_vectorstore_hybrid for semantic / paraphrased "
+        "queries."
     )
-    tool_description = (
-        description
-        or _default_description
-    )
+    tool_description = description or _default_description
 
     @tool(name, description=tool_description)
     @require_tool_permission(required_permission)
-    def _search_local_files(
-        query: str,
-        regex: bool = False,
-        case_sensitive: bool = False,
-        max_results_override: Optional[int] = None,
-        max_matches_per_file: int = 3,
-        before: int = 0,
-        after: int = 0,
+    def _grep(
+        pattern: str,
+        ignore_case: bool = False,
+        fixed_strings: bool = False,
+        context: int = 0,
+        max_count: int = 3,
+        files_only: bool = False,
+        limit: int = 5,
     ) -> str:
-        if not query.strip():
-            return "Please provide a non-empty search query."
+        if not pattern.strip():
+            return "Please provide a non-empty PATTERN."
         if store_tool_input:
             try:
                 store_tool_input(
                     name,
                     {
-                        "query": query,
-                        "regex": regex,
-                        "case_sensitive": case_sensitive,
-                        "max_results_override": max_results_override,
-                        "max_matches_per_file": max_matches_per_file,
-                        "before": before,
-                        "after": after,
+                        "pattern": pattern,
+                        "ignore_case": ignore_case,
+                        "fixed_strings": fixed_strings,
+                        "context": context,
+                        "max_count": max_count,
+                        "files_only": files_only,
+                        "limit": limit,
                     },
                 )
             except Exception:
                 logger.debug("Failed to store runtime input for tool '%s'", name, exc_info=True)
 
-        hits: List[Dict[str, object]] = []
-        docs: List[Document] = []
-        limit = max_results_override or max_results
-
+        # Map grep-style flags onto the existing catalog HTTP API:
+        #   ignore_case=True  → case_sensitive=False
+        #   fixed_strings=True → regex=False (server escapes the pattern)
+        #   context=N         → before=N AND after=N
         try:
             results = catalog.search(
-                query.strip(),
-                limit=limit,
+                pattern.strip(),
+                limit=limit or max_results,
                 search_content=True,
-                regex=regex,
-                case_sensitive=case_sensitive,
-                max_matches_per_file=max_matches_per_file,
-                before=before,
-                after=after,
+                regex=not fixed_strings,
+                case_sensitive=not ignore_case,
+                max_matches_per_file=max_count,
+                before=context,
+                after=context,
                 mode="grep",
             )
         except Exception as exc:
-            logger.warning("Catalog search failed: %s", exc)
-            return "Catalog search failed."
+            logger.warning("Catalog grep failed: %s", exc)
+            return "Catalog grep failed."
 
-        for item in results:
-            hits.append(item)
+        hits: List[Dict[str, object]] = list(results)
+        docs: List[Document] = []
 
         if store_docs and hits:
             for item in hits:
@@ -324,11 +313,19 @@ def create_file_search_tool(
                     continue
 
         if store_docs:
-            store_docs(f"{name}: {query}", docs)
+            store_docs(f"{name}: {pattern}", docs)
+
+        if files_only:
+            if not hits:
+                return "No catalogued documents matched that pattern."
+            lines = []
+            for idx, item in enumerate(hits, start=1):
+                lines.append(f"[{idx}] {item.get('path', '')} (hash={item.get('hash')})")
+            return "\n".join(lines)
 
         return _format_grep_hits(hits)
 
-    return _search_local_files
+    return _grep
 
 
 def _flatten_metadata(data: Dict[str, object], prefix: str = "") -> Dict[str, str]:
@@ -537,7 +534,7 @@ def create_document_fetch_tool(
 __all__ = [
     "RemoteCatalogClient",
     "create_retriever_tool",
-    "create_file_search_tool",
+    "create_grep_tool",
     "create_metadata_search_tool",
     "create_document_fetch_tool",
 ]

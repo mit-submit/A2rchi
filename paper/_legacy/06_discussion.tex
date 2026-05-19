@@ -1,0 +1,41 @@
+% =============================================================================
+% Section 6: Discussion and Lessons
+%
+% Intent: three threads.
+%   (1) Why agentic pipelines underperformed RAG in our setup. Hallucination
+%       amplification, tool-call overhead, evaluation against a static
+%       snapshot. Concrete: the "always provide your best guess" prompt
+%       pattern as a known anti-pattern.
+%   (2) What the paradoxical-completeness pattern (high completeness,
+%       low correctness) reveals about LLM-as-judge for domain ops.
+%       Forward reference back to Sec. 5.7.
+%   (3) Deployment lessons: latency vs. throughput tradeoffs, cost,
+%       prompt fragility. The MoE-vs-dense throughput observation
+%       (gemma4 vs qwen3) belongs here.
+%
+% Budget: 0.5 pp. Tight. No padding.
+% =============================================================================
+
+\section{Discussion and Lessons}
+\label{sec:discussion}
+
+% TODO: 3 paragraphs.
+%
+% P1 --- agentic regression. Why the Copilot agent scored lowest on
+%        correctness despite having tools. Three causes: hallucination
+%        amplification, tool-call overhead consuming context, evaluation
+%        runs against a static snapshot of doc+tool state. Concrete remedy:
+%        revise the agent prompt to permit clarification questions and to
+%        express uncertainty.
+%
+% P2 --- judge fragility. The paradoxical-completeness pattern means the
+%        judge rewards confident structure independently of factual
+%        accuracy. The methodology's response: reference-free with a
+%        production-answer ceiling, multiple judges with agreement metrics.
+%        Open question for the field: judge calibration on domain ops.
+%
+% P3 --- deployment lessons. Latency-vs-correctness tradeoffs we observed.
+%        Cost of serving 32B vs 120B locally. Prompt fragility under tool
+%        addition. The MoE throughput finding (gemma4 ~3x faster than
+%        qwen3:32b on identical hardware) and what it implies for
+%        latency-sensitive ops deployments.

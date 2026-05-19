@@ -271,6 +271,22 @@ class BaseReActAgent:
             logger.debug(answer_output)
             messages = self._extract_messages(answer_output)
             metadata = self._metadata_from_agent_output(answer_output)
+            # Extract token usage from messages (same as stream() path)
+            usage = self._extract_usage_from_messages(messages)
+            if usage is None:
+                # Fallback: check last AI message's response_metadata
+                for msg in reversed(messages):
+                    msg_type = str(getattr(msg, "type", "")).lower()
+                    if msg_type in {"ai", "assistant"}:
+                        resp_meta = getattr(msg, "response_metadata", None)
+                        usage = self._extract_usage_from_metadata(resp_meta)
+                        if usage:
+                            break
+            if usage:
+                metadata["usage"] = usage
+            model = self._extract_model_from_messages(messages)
+            if model:
+                metadata["model"] = model
             output = self._build_output_from_messages(messages, metadata=metadata)
             return output
         except GraphRecursionError as exc:
@@ -1274,10 +1290,30 @@ class BaseReActAgent:
         return []
 
     def _message_content(self, message: BaseMessage) -> str:
-        """Normalise message content to a printable string."""
+        """Normalise message content to a printable string.
+
+        For OpenAI Responses API streams, content arrives as a list of typed
+        blocks (e.g. {'type': 'text', 'text': '...'}, {'type': 'reasoning', ...},
+        {'type': 'function_call', ...}). Concatenate only the visible text
+        blocks; reasoning is surfaced separately via reasoning_content.
+        """
         content = getattr(message, "content", "")
         if isinstance(content, list):
-            content = " ".join(str(part) for part in content)
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict):
+                    btype = str(block.get("type", "")).lower()
+                    if btype in ("text", "output_text", "content", ""):
+                        text = block.get("text") or block.get("content") or ""
+                        if text:
+                            parts.append(str(text))
+                    # Skip "reasoning", "function_call", "tool_use", etc. —
+                    # those are not user-visible answer text.
+                else:
+                    parts.append(str(block))
+            content = "".join(parts)
         return str(content)
 
     def _format_message(self, message: BaseMessage) -> str:

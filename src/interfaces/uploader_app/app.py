@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json as _json
 import os
 import shlex
+import shutil
+import subprocess
 import time
 from pathlib import Path
-from typing import Callable, Optional, Dict, List, Tuple
-from functools import wraps
+from typing import Callable, Iterable, Optional, Dict, List, Tuple
+from functools import lru_cache, wraps
 import secrets
 import re
 
@@ -448,7 +451,7 @@ class FlaskAppWrapper:
     # -------------------------
     def api_catalog_search(self):
         start_time = time.monotonic()
-        logger.debug("Received catalog search request: %s", request.args)
+        logger.debug("[catalog_search] BEGIN args=%s", dict(request.args))
         query = request.args.get("q") or request.args.get("query") or ""
         if not query.strip():
             return jsonify({"hits": [], "total_duration": 0.0})
@@ -465,7 +468,9 @@ class FlaskAppWrapper:
         filters, free_query = _parse_metadata_query(query)
         q_lower = free_query.lower()
         hits = []
+        _t = time.monotonic()
         self.catalog.refresh()
+        logger.debug("[catalog_search] after refresh: %.3fs", time.monotonic() - _t)
         if not search_content:
             results = self.catalog.search_metadata(free_query, limit=limit, filters=filters)
             for item in results:
@@ -489,12 +494,6 @@ class FlaskAppWrapper:
             if mode == "grep":
                 if not free_query.strip():
                     return jsonify({"hits": [], "total_duration": 0.0})
-                try:
-                    pattern = _compile_query_pattern(
-                        free_query, regex=regex, case_sensitive=case_sensitive
-                    )
-                except re.error as exc:
-                    return jsonify({"error": f"invalid_regex: {exc}"}), 400
 
                 candidate_hashes = None
                 candidate_metadata: Dict[str, Dict[str, object]] = {}
@@ -506,44 +505,137 @@ class FlaskAppWrapper:
                         for item in candidates
                     }
 
-                if candidate_hashes is None:
-                    iterable = list(self.catalog.iter_files())
-                else:
-                    iterable = []
-                    for resource_hash in candidate_hashes:
-                        path = self.catalog.get_filepath_for_hash(resource_hash)
-                        if path:
-                            iterable.append((resource_hash, path))
+                if _ripgrep_available():
+                    logger.debug("[catalog_search] entered ripgrep branch (+%.3fs)", time.monotonic() - start_time)
+                    # When filters narrowed the candidates, pass the file
+                    # paths directly. Otherwise let ripgrep walk the corpus
+                    # root and we look the hash up by path afterwards.
+                    candidate_paths: Optional[List[Path]] = None
+                    if candidate_hashes is not None:
+                        candidate_paths = []
+                        for resource_hash in candidate_hashes:
+                            p = self.catalog.get_filepath_for_hash(resource_hash)
+                            if p:
+                                candidate_paths.append(Path(p))
 
-                for resource_hash, path in iterable:
-                    metadata = candidate_metadata.get(resource_hash) or self.catalog.get_metadata_for_hash(resource_hash) or {}
-                    text = load_text_from_path(path) or ""
-                    if not text:
-                        continue
-                    matches = _grep_text_lines(
-                        text,
-                        pattern,
-                        before=before,
-                        after=after,
-                        max_matches=max_matches_per_file,
-                    )
-                    if not matches:
-                        continue
-                    hits.append(
-                        {
-                            "hash": resource_hash,
-                            "path": str(path),
-                            "metadata": metadata,
-                            "matches": matches,
-                            "snippet": matches[0].get("text", ""),
-                        }
-                    )
-                    if len(hits) >= limit:
-                        break
+                    try:
+                        _t = time.monotonic()
+                        if candidate_paths is not None and 0 < len(candidate_paths) <= 1000:
+                            rg_hits = _run_ripgrep(
+                                free_query,
+                                roots=candidate_paths,
+                                regex=regex,
+                                case_sensitive=case_sensitive,
+                                before=before,
+                                after=after,
+                                max_matches_per_file=max_matches_per_file,
+                                limit=limit,
+                            )
+                        else:
+                            root = getattr(self.catalog, "data_path", None)
+                            if root is None:
+                                rg_hits = []
+                            else:
+                                rg_hits = _run_ripgrep(
+                                    free_query,
+                                    roots=[Path(root)],
+                                    regex=regex,
+                                    case_sensitive=case_sensitive,
+                                    before=before,
+                                    after=after,
+                                    max_matches_per_file=max_matches_per_file,
+                                    # Pull a few extra in case some hit paths
+                                    # aren't in the catalog (raw FS entries).
+                                    limit=max(limit * 4, limit),
+                                )
+                        logger.debug("[catalog_search] _run_ripgrep took %.3fs, %d hits", time.monotonic() - _t, len(rg_hits))
+                    except re.error as exc:
+                        return jsonify({"error": f"invalid_regex: {exc}"}), 400
+
+                    # Look hash up by path. The catalog stores relative
+                    # file_path values; build a string → hash dict from the
+                    # in-memory _file_index without any filesystem calls.
+                    _t = time.monotonic()
+                    file_index = getattr(self.catalog, "_file_index", {}) or {}
+                    data_root = str(getattr(self.catalog, "data_path", "") or "").rstrip("/")
+                    hash_by_relpath: Dict[str, str] = {str(p): h for h, p in file_index.items()}
+                    logger.debug("[catalog_search] built hash_by_relpath (%d entries) in %.3fs", len(hash_by_relpath), time.monotonic() - _t)
+
+                    for rec in rg_hits:
+                        p_str = str(rec["path"])
+                        rel = p_str
+                        if data_root and p_str.startswith(data_root + "/"):
+                            rel = p_str[len(data_root) + 1:]
+                        resource_hash = (
+                            hash_by_relpath.get(rel)
+                            or hash_by_relpath.get(p_str)
+                        )
+                        if not resource_hash:
+                            continue
+                        metadata = (
+                            candidate_metadata.get(resource_hash)
+                            or self.catalog.get_metadata_for_hash(resource_hash)
+                            or {}
+                        )
+                        matches = rec["matches"]
+                        hits.append(
+                            {
+                                "hash": resource_hash,
+                                "path": p_str,
+                                "metadata": metadata,
+                                "matches": matches,
+                                "snippet": matches[0].get("text", "") if matches else "",
+                            }
+                        )
+                        if len(hits) >= limit:
+                            break
+                else:
+                    # Fallback: original Python regex scan.
+                    try:
+                        pattern = _compile_query_pattern(
+                            free_query, regex=regex, case_sensitive=case_sensitive
+                        )
+                    except re.error as exc:
+                        return jsonify({"error": f"invalid_regex: {exc}"}), 400
+
+                    if candidate_hashes is None:
+                        iterable = list(self.catalog.iter_files())
+                    else:
+                        iterable = []
+                        for resource_hash in candidate_hashes:
+                            path = self.catalog.get_filepath_for_hash(resource_hash)
+                            if path:
+                                iterable.append((resource_hash, path))
+
+                    for resource_hash, path in iterable:
+                        metadata = candidate_metadata.get(resource_hash) or self.catalog.get_metadata_for_hash(resource_hash) or {}
+                        text = load_text_from_path(path) or ""
+                        if not text:
+                            continue
+                        matches = _grep_text_lines(
+                            text,
+                            pattern,
+                            before=before,
+                            after=after,
+                            max_matches=max_matches_per_file,
+                        )
+                        if not matches:
+                            continue
+                        hits.append(
+                            {
+                                "hash": resource_hash,
+                                "path": str(path),
+                                "metadata": metadata,
+                                "matches": matches,
+                                "snippet": matches[0].get("text", ""),
+                            }
+                        )
+                        if len(hits) >= limit:
+                            break
 
                 total_duration = time.monotonic() - start_time
-                logger.debug(
-                    "Catalog grep search completed in %.3f seconds with %d hits",
+                logger.warning(
+                    "[catalog_search] DONE in %.3fs with %d hits",
                     total_duration,
                     len(hits),
                 )
@@ -627,7 +719,8 @@ class FlaskAppWrapper:
         if not path:
             return jsonify({"error": "not_found"}), 404
         metadata = self.catalog.get_metadata_for_hash(resource_hash) or {}
-        text = load_text_from_path(path) or ""
+        # Cache the full document body; per-request truncation happens below.
+        text = _cached_document_text(str(path))
         if max_chars and len(text) > max_chars:
             text = text[:max_chars]
         return jsonify({"hash": resource_hash, "path": str(path), "metadata": metadata, "text": text})
@@ -747,3 +840,217 @@ def _collect_snippet(text: str, start_idx: int, query_len: int, window: int = -1
     suffix = "..." if end < len(text) else ""
     excerpt = text[start:end].replace("\n", " ")
     return f"{prefix}{excerpt}{suffix}"
+
+
+# --- ripgrep integration ----------------------------------------------------
+
+_RG_MISSING_WARNED = False
+
+
+def _ripgrep_available() -> bool:
+    """Return True iff `rg` is on PATH; warn once if not."""
+    global _RG_MISSING_WARNED
+    if shutil.which("rg") is not None:
+        return True
+    if not _RG_MISSING_WARNED:
+        logger.warning(
+            "ripgrep (`rg`) not found on PATH; catalog grep endpoint will "
+            "fall back to the legacy Python regex scan. Install ripgrep to "
+            "speed up corpus search 10–100×."
+        )
+        _RG_MISSING_WARNED = True
+    return False
+
+
+def _rg_record_text(rec: Dict[str, object]) -> str:
+    """Extract the text from a ripgrep --json record (handles bytes form)."""
+    if not isinstance(rec, dict):
+        return ""
+    if "text" in rec:
+        return str(rec.get("text") or "")
+    if "bytes" in rec:
+        try:
+            import base64
+            return base64.b64decode(str(rec.get("bytes"))).decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+    return ""
+
+
+# Per-match-line truncation (chars). Caps a single matching line so that
+# files with very long single-line content (e.g. Jira ticket Description
+# fields stored without newlines) cannot blow up the LLM context.
+RG_MAX_LINE_CHARS = 500
+
+# Total response budget across all matches in a single grep call. Once
+# accumulated match/context text exceeds this, we stop adding more matches.
+# Keeps a worst-case grep call well under the LLM context window.
+RG_MAX_RESPONSE_CHARS = 40_000
+
+_TRUNC_SUFFIX = "...[truncated]"
+
+
+def _clip_line(text: str, *, limit: int = RG_MAX_LINE_CHARS) -> str:
+    if not text:
+        return text
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - len(_TRUNC_SUFFIX))] + _TRUNC_SUFFIX
+
+
+def _run_ripgrep(
+    pattern: str,
+    *,
+    roots: List[Path],
+    regex: bool,
+    case_sensitive: bool,
+    before: int,
+    after: int,
+    max_matches_per_file: int,
+    limit: int,
+    timeout_s: float = 30.0,
+) -> List[Dict[str, object]]:
+    """Invoke `rg --json` and return a list of file-grouped hit dicts:
+    [{"path": str, "matches": [{"line": int, "text": str,
+                                 "before": [str], "after": [str]}]}, ...].
+
+    Output is bounded by two server-side guards:
+      * `--max-columns 500 --max-columns-preview` truncates any single ripgrep
+        line at 500 chars (matters for files with very long single lines —
+        Jira Description fields can be 80KB+ on one line, which would
+        otherwise dominate the response).
+      * Total accumulated response text is capped at RG_MAX_RESPONSE_CHARS;
+        further hits past that point are dropped (caller can see this via
+        the file count returned).
+
+    Stops after `limit` distinct files. Caller is responsible for resolving
+    path → resource_hash and metadata.
+    """
+    if not roots:
+        return []
+    cmd: List[str] = [
+        "rg",
+        "--json",
+        "--no-config",
+        "--no-ignore",
+        "--hidden",
+        "--max-columns", str(RG_MAX_LINE_CHARS),
+        "--max-columns-preview",
+        "-e", pattern,
+        "--max-count", str(max(1, max_matches_per_file)),
+    ]
+    if not case_sensitive:
+        cmd.append("-i")
+    if not regex:
+        cmd.append("-F")
+    if before > 0:
+        cmd.extend(["--before-context", str(before)])
+    if after > 0:
+        cmd.extend(["--after-context", str(after)])
+    for root in roots:
+        cmd.append(str(root))
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("ripgrep timed out after %.1fs for pattern %r", timeout_s, pattern)
+        return []
+    if proc.returncode == 2:
+        # Invalid regex (or other rg error). Surface via exception to allow
+        # caller to return HTTP 400.
+        raise re.error(proc.stderr.strip() or "ripgrep invalid pattern")
+
+    # Parse the JSONL stream. Group `match` and `context` events under their
+    # file's `begin` path. ripgrep emits `begin` once per file, then a
+    # sequence of `match`/`context` events, then `end`.
+    by_path: Dict[str, Dict[str, object]] = {}
+    cur_path: Optional[str] = None
+    order: List[str] = []
+    # We keep a per-file rolling buffer of "pending before-context lines"
+    # so we can attach context to the matches.
+    pending_before: Dict[str, List[str]] = {}
+    last_match_by_path: Dict[str, Dict[str, object]] = {}
+    after_remaining: Dict[str, int] = {}
+    # Running budget — once accumulated text exceeds the cap, drop further
+    # match/context events but keep parsing JSON cheaply.
+    accumulated_chars = 0
+    budget_exhausted = False
+
+    for raw in proc.stdout.splitlines():
+        if not raw:
+            continue
+        try:
+            evt = _json.loads(raw)
+        except Exception:
+            continue
+        etype = evt.get("type")
+        data = evt.get("data") or {}
+        if etype == "begin":
+            cur_path = (data.get("path") or {}).get("text") or ""
+            if cur_path and cur_path not in by_path:
+                by_path[cur_path] = {"path": cur_path, "matches": []}
+                order.append(cur_path)
+                pending_before[cur_path] = []
+                after_remaining[cur_path] = 0
+        elif etype == "match" and cur_path and not budget_exhausted:
+            raw_text = _rg_record_text((data.get("lines") or {})).rstrip("\n")
+            text = _clip_line(raw_text)
+            line_no = data.get("line_number")
+            match_entry = {
+                "line": int(line_no) if isinstance(line_no, int) else 0,
+                "text": text,
+                "before": [_clip_line(b) for b in pending_before.get(cur_path, [])[-before:]] if before else [],
+                "after": [],
+            }
+            by_path[cur_path]["matches"].append(match_entry)
+            last_match_by_path[cur_path] = match_entry
+            after_remaining[cur_path] = after
+            pending_before[cur_path] = []
+            accumulated_chars += len(text) + sum(len(b) for b in match_entry["before"])
+            if accumulated_chars >= RG_MAX_RESPONSE_CHARS:
+                budget_exhausted = True
+        elif etype == "context" and cur_path and not budget_exhausted:
+            raw_text = _rg_record_text((data.get("lines") or {})).rstrip("\n")
+            text = _clip_line(raw_text)
+            remaining = after_remaining.get(cur_path, 0)
+            if remaining > 0 and last_match_by_path.get(cur_path) is not None:
+                last_match_by_path[cur_path]["after"].append(text)
+                after_remaining[cur_path] = remaining - 1
+                accumulated_chars += len(text)
+                if accumulated_chars >= RG_MAX_RESPONSE_CHARS:
+                    budget_exhausted = True
+            else:
+                pending_before.setdefault(cur_path, []).append(text)
+        elif etype == "end":
+            cur_path = None
+
+    if budget_exhausted:
+        logger.debug("[catalog_search] grep response budget exhausted (%d chars) for pattern %r",
+                     accumulated_chars, pattern)
+
+    # Cap to `limit` files in the order ripgrep returned them.
+    out: List[Dict[str, object]] = []
+    for p in order:
+        rec = by_path[p]
+        if rec["matches"]:
+            out.append(rec)
+        if len(out) >= max(1, limit):
+            break
+    return out
+
+
+# --- Document-fetch LRU cache ----------------------------------------------
+
+_DOC_CACHE_SIZE = int(os.environ.get("CATALOG_DOC_CACHE_SIZE", "256"))
+
+
+@lru_cache(maxsize=_DOC_CACHE_SIZE)
+def _cached_document_text(path_str: str) -> str:
+    """Cache the *full* document text. Per-request truncation happens above."""
+    return load_text_from_path(Path(path_str)) or ""

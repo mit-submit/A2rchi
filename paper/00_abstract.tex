@@ -1,0 +1,28 @@
+\abstract{%
+Archi is the operator chat agent deployed for CMS Computing
+Operations (CompOps) since February 2026. CompOps spans three
+activities: Tier-0 reconstruction with dual-tape archival,
+Production \& Reprocessing of Monte Carlo and data-reprocessing
+campaigns through the Workflow Management system, and
+Rucio-based Data Management across more than sixty Tier-1 and
+Tier-2 WLCG sites. Operators field questions about all three from CMS TWiki
+runbooks, the CompOps Jira ticket history, and the live MonIT
+operational-state index. Archi pairs hybrid retrieval over the
+TWiki and Jira with live MonIT queries against Rucio and HTCondor
+in a ReAct loop, surfacing tool traces for operator audit.
+We sample a 260-question evaluation set from six weeks of
+production operator traffic (144 answerable from documentation
+alone, 116 requiring a live tool call) and benchmark four
+pipeline layers (bare LLM, RAG, agent without live tools, full
+agent) on three open-weight models against the GPT-5.3
+production answers re-scored on the same rubric. Each layer
+earns a measurable lift: bare LLM 2.86, RAG 3.97 (+1.1), agent
+without live tools 4.22 (+0.25), and live MonIT calls add
+0.19 more points on the 20\% of operator traffic that needs
+operational state. On the largest open-weight model the full
+agent reaches $4.22 \pm 0.06$ against the GPT-5.3 production
+reference's $4.08 \pm 0.08$ under \texttt{glm-5.1}. A four-judge
+LLM ensemble on a 53-question subset preserves the pipeline
+ordering, and a parallel human evaluation by a panel of five
+CMS Computing Operations domain experts is in progress.
+}

@@ -1,0 +1,199 @@
+\section{The Archi Agent}
+\label{sec:agent}
+
+Archi is implemented as an open-source Python framework
+configured per deployment; this section describes the CompOps
+configuration. Section~\ref{sec:components} covers the three
+top-level components, Section~\ref{sec:pipelines} the agent
+pipeline and the controls evaluated against it,
+Section~\ref{sec:tools} the tool catalogue, and
+Section~\ref{sec:deployment} the production rollout.
+
+\subsection{Components}
+\label{sec:components}
+
+The framework decomposes into three components: a data manager
+that ingests and indexes documentation sources, a pipeline layer
+that the chat service routes user questions through, and a chat
+interface. Figure~\ref{fig:architecture} shows the top-level
+dataflow.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    >={Latex[length=2.2mm]},
+    every node/.style={font=\small},
+    node distance=7mm,
+    box/.style={
+        rectangle, rounded corners=2pt, draw, line width=0.7pt,
+        inner sep=3pt, align=center, minimum height=9mm,
+    },
+    iobox/.style={box, fill=gray!8, minimum width=58mm},
+    rxn/.style={box, fill=agentfill, draw=agentblue, line width=1.0pt,
+        minimum width=42mm},
+    docbox/.style={box, fill=docfill, draw=docgreen, line width=0.7pt,
+        minimum width=27mm, minimum height=13mm},
+    livebox/.style={box, fill=livefill, draw=liveorange, line width=0.7pt,
+        minimum width=27mm, minimum height=13mm},
+    arrlbl/.style={font=\footnotesize\itshape, inner sep=1.5pt,
+        fill=white, inner ysep=0.5pt}
+]
+
+% Top: question
+\node[iobox] (q) {Operator question};
+
+% ReAct loop core
+\node[rxn, below=of q] (reason)
+    {\textcolor{agentblue}{\textbf{Reason}} (LLM step)};
+\node[rxn, below=of reason] (tool)
+    {\textcolor{agentblue}{\textbf{Tool call}}};
+
+% Tool families
+\node[docbox, below=of tool, xshift=-15mm] (docs)
+    {\textcolor{docgreen}{\textbf{Doc.\ retrieval}}\\
+     \footnotesize TWiki, Jira};
+\node[livebox, below=of tool, xshift=15mm] (live)
+    {\textcolor{liveorange}{\textbf{Live MonIT}}\\
+     \footnotesize Rucio, HTCondor};
+
+% Final answer below, centered under the loop
+\node[iobox, below=24mm of tool] (out)
+    {Answer with tool-call trace};
+
+% --- Forward flow ---
+\draw[->, line width=0.8pt] (q.south) -- (reason.north);
+\draw[->, line width=0.8pt] (reason.south) -- (tool.north)
+    node[arrlbl, midway, right=1pt] {dispatch};
+\draw[->, line width=0.8pt] (tool.south) -- (docs.north);
+\draw[->, line width=0.8pt] (tool.south) -- (live.north);
+
+% --- Loop back: tool return on the right ---
+\draw[->, line width=0.8pt, rounded corners=4pt]
+    (tool.east) -- ++(11mm,0) |- (reason.east)
+    node[arrlbl, pos=0.25, right=1pt] {return};
+
+% --- Final exit: reason directly emits the answer (curves down on the left) ---
+\draw[->, line width=0.8pt, rounded corners=4pt]
+    (reason.west) -- ++(-11mm,0) |- (out.west)
+    node[arrlbl, pos=0.04, left=1pt] {final};
+
+\end{tikzpicture}
+\caption{Archi's ReAct loop. Each iteration the
+\textsc{Reason} step dispatches a \textsc{Tool call} (either
+documentation retrieval or live MonIT), and the tool return
+becomes the next reason input. When \textsc{Reason} decides no
+further tools are needed it emits the answer with its tool-call
+trace.}
+\label{fig:architecture}
+\end{figure}
+
+The data manager ingests web pages, git repositories, local
+files, and Jira projects into a PostgreSQL \texttt{pgvector}
+index of chunked passages embedded with
+\texttt{sentence-transformers/all-MiniLM-L6-v2}~\cite{reimers2019sbert}.
+For the CompOps deployment the sources are the CMS TWiki, a
+curated list of public CMS documentation repositories, and seven
+CompOps Jira projects (\texttt{CMSPROD}, \texttt{CMSTRANSF},
+\texttt{CMSDM}, \texttt{CMSTZ}, \texttt{PRCAMPAIGNS},
+\texttt{CMSMONIT}, \texttt{CMSVOC}); ticket text is anonymised at
+ingest.
+
+A pipeline takes a question, the prior conversation, and the
+deployment configuration, and returns an answer with the
+documents and tool calls that supported it. Pipelines are
+declared in YAML and selected per deployment; the pipelines
+compared in Section~\ref{sec:evaluation} differ on two axes:
+whether they retrieve from the documentation store and whether
+they call live MonIT.
+
+\subsection{The CompOps Agent}
+\label{sec:pipelines}
+
+The deployed assistant runs an agent built on the ReAct pattern
+\cite{yao2023react} using the LangGraph state-graph framework
+\cite{langgraph}.
+The graph alternates a reasoning step (which emits a textual
+trace) with a tool-call step (which invokes either a
+documentation-retrieval tool or a live MonIT query); when the
+reasoning step decides no further tools are needed, it emits the
+final answer with the accumulated tool-call trace.
+The system prompt steers the agent toward parallel exploratory
+tool calls, aggregation queries when counting, and fetch-by-ID
+fallback when a search returns only summaries. It also forbids
+asking the operator for clarification, requiring a best-guess
+answer with explicit refusal when live state is unreachable.
+
+Two control pipelines and one ablation are summarised in
+Table~\ref{tab:pipeline_summary}. The bare-LLM control sends the
+question and conversation history directly to the language model;
+the RAG control retrieves the top-eight passages from the
+documentation store using a hybrid BM25-plus-vector retriever and
+conditions on them~\cite{lewis2020rag}; the \emph{agent (no live
+tools)} ablation runs the agent with the live MonIT tools removed
+while retaining documentation retrieval, isolating the
+contribution of live MonIT relative to the full agent and the
+contribution of the agent loop relative to RAG.
+
+\begin{table}[htbp]
+\centering
+\caption{The four pipelines compared in this paper, including a
+no-live-tools ablation of the agent. Documentation refers to the
+hybrid retriever over the CMS TWiki and ingested Jira tickets;
+MonIT refers to live OpenSearch queries against the Rucio and
+HTCondor monitoring indices.}
+\label{tab:pipeline_summary}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Pipeline} & \textbf{Documentation} & \textbf{Live MonIT} \\
+\midrule
+Bare LLM               & no  & no  \\
+RAG                    & yes & no  \\
+Agent (no live tools)  & yes & no  \\
+Agent                  & yes & yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Tools}
+\label{sec:tools}
+
+The agent has access to three tool families, listed in
+Table~\ref{tab:tool_catalogue}: documentation retrieval, the
+Rucio data-management MonIT index, and the
+HTCondor~\cite{htcondor2005} jobs MonIT index. Each MonIT family
+exposes search, aggregation, and fetch variants; the documentation
+family exposes hybrid BM25-plus-vector search, metadata-index
+browse, and fetch-by-ID. MonIT tools authenticate against the
+central CERN Grafana-OpenSearch endpoint with bearer tokens; every
+tool call is recorded in the trace surfaced to the operator.
+
+\begin{table}[htbp]
+\centering
+\caption{Tools exposed to the agent. Each family supports a
+search, an aggregation, and a fetch-by-ID variant against its
+backend.}
+\label{tab:tool_catalogue}
+\begin{tabular}{@{}lp{0.55\columnwidth}@{}}
+\toprule
+\textbf{Family} & \textbf{Backend} \\
+\midrule
+Documentation  & \texttt{pgvector} over CMS TWiki and Jira tickets \\
+Rucio MonIT    & WLCG OpenSearch, Rucio events \\
+HTCondor MonIT & WLCG OpenSearch, HTCondor jobs \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Production Deployment}
+\label{sec:deployment}
+
+Archi has run as the CMS CompOps operator chat assistant since
+February 2026 on shared CMS infrastructure at CERN, serving the
+operations team, on-call experts, and contributors debugging
+production workflows. Operators interact through a web chat interface that
+maintains turn-by-turn conversation history, lists source
+documents per response, and exposes the agent's tool-call trace.
+The deployed pipeline runs on GPT-5; the evaluation in
+Section~\ref{sec:evaluation} re-scores those production answers
+on the same rubric and benchmarks local-weight alternatives
+against them.

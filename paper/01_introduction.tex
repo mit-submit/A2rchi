@@ -1,0 +1,46 @@
+\section{Introduction}
+\label{sec:introduction}
+
+CMS Computing Operations
+(CompOps)~\cite{cms_computing_tdr,cms_compops} turns raw CMS
+detector output into usable scientific data through three
+activities (Section~\ref{sec:workload}): Tier-0 repacks the
+detector stream, archives two tape copies, and runs express and
+prompt reconstruction; Production \& Reprocessing drives Monte
+Carlo and reprocessing campaigns through the CMS Workflow
+Management system; and Data
+Management~\cite{cms_dm2025} executes transfers and placement
+across more than sixty Tier-1 and Tier-2 WLCG sites with
+Rucio~\cite{rucio2014,cms_rucio2020}.
+Day-to-day, CompOps operators run workflows, triage tickets,
+watch live operational state (the MonIT index, surfaced through
+OpenSearch and Grafana), conduct root-cause analysis, and onboard
+new team members; their support is fragmented across the CMS
+TWiki, the CompOps Jira projects, MonIT, and Mattermost channels,
+and resolving a stalled transfer requires the runbook entry, the
+current MonIT counters, and the ticket history of past stalls on
+the same link.
+
+Archi is an operator chat agent deployed for CompOps since 16
+February 2026. Archi combines retrieval over the CMS TWiki and
+CompOps Jira with live MonIT calls and surfaces the tool trace
+for operator audit. The production pipeline uses GPT-5; to
+evaluate local-weight alternatives we sample a 260-question
+subset from the recorded conversations after deduplication and
+filtering (Section~\ref{sec:question_patterns}; 144 answerable
+from documentation alone, 116 requiring a live tool call) and
+re-score the GPT-5.3 production answers on the same rubric as
+the GPT-5.3 reference.
+
+Each pipeline layer earns a measurable lift on the rubric. On
+the largest open-weight model the bare LLM scores 2.86, the
+RAG control 3.97, the agent without live tools 4.22, and the
+full agent 4.22 in aggregate with $+0.19$ on the 20\% of
+operator traffic that needs operational state. The full agent
+at $4.22 \pm 0.06$ matches the GPT-5.3 production reference at
+$4.08 \pm 0.08$ under the same judge.
+Section~\ref{sec:agent} describes the agent and its tool
+surface, Section~\ref{sec:evaluation} the four-layer rubric
+evaluation and a four-judge replication, and
+Section~\ref{sec:discussion} the trade-offs the agent loop
+carries.

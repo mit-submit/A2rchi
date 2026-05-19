@@ -1,0 +1,214 @@
+{
+  "tier": "old",
+  "description": "Pre-v9 runs covering the 53q subset of an earlier 260-question eval set. Each file used a different agent-instruction iteration (compops, copilot, no-tools, rag-only, bare-llm, optimized-tools, etc.) and/or different model (gemma4:26b, qwen3.5:122b, qwen3.5:27b with thinking on/off). LLM-judged by glm-5.1 only. Not directly comparable to gold because instructions differ \u2014 quote as earlier-iteration baselines, not as head-to-head.",
+  "generated_at": "2026-05-18T12:24:07.901927",
+  "judges": [
+    "glm-5.1"
+  ],
+  "n_questions": 53,
+  "n_configs": 25,
+  "configs": [
+    "bare-llm_gemma4-26b",
+    "benchmarking-gemma4-off-bare-llm-20260416_105737",
+    "benchmarking-gemma4-off-multi-20260416_101751",
+    "benchmarking-gemma4-on-opt-rerun-20260416_053838",
+    "benchmarking-gemma4-think-on-bare-llm-20260415_080352",
+    "benchmarking-gemma4-think-on-no-tools-20260415_170848",
+    "benchmarking-gemma4-think-on-optimized-20260415_195013",
+    "benchmarking-gemma4-think-on-rag-only-20260415_152307",
+    "benchmarking-okg-live-gemma4-26b-thinking-on-20260422_041114",
+    "benchmarking-qwen122b-off-bare-llm-20260420_144108",
+    "benchmarking-qwen122b-off-multi-20260420_125900",
+    "benchmarking-qwen122b-on-bare-llm-20260419_183443",
+    "benchmarking-qwen122b-on-multi-20260419_133538",
+    "benchmarking-qwen27b-off-bare-llm-20260418_045558",
+    "benchmarking-qwen27b-off-multi-20260418_024237",
+    "benchmarking-qwen27b-on-bare-llm-20260417_032032",
+    "compops-no-tools_gemma4-26b",
+    "compops-tools-fixed_gemma4-26b",
+    "compops-tools_gemma4-26b",
+    "compops_gemma4-26b",
+    "copilot-no-tools_gemma4-26b",
+    "copilot_gemma4-26b",
+    "optimized-tools_compops-gemma4-26b",
+    "optimized-tools_copilot-gemma4-26b",
+    "rag-only_gemma4-26b"
+  ],
+  "files": [
+    {
+      "file": "glm-5.1_run1/bare-llm_gemma4-26b.json",
+      "found": true,
+      "config": "bare-llm_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run1/compops-no-tools_gemma4-26b.json",
+      "found": true,
+      "config": "compops-no-tools_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run1/compops-tools_gemma4-26b.json",
+      "found": true,
+      "config": "compops-tools_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run1/compops_gemma4-26b.json",
+      "found": true,
+      "config": "compops_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run1/copilot-no-tools_gemma4-26b.json",
+      "found": true,
+      "config": "copilot-no-tools_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run1/copilot_gemma4-26b.json",
+      "found": true,
+      "config": "copilot_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run1/rag-only_gemma4-26b.json",
+      "found": true,
+      "config": "rag-only_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-gemma4-off-bare-llm-20260416_105737.json",
+      "found": true,
+      "config": "benchmarking-gemma4-off-bare-llm-20260416_105737",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-gemma4-off-multi-20260416_101751.json",
+      "found": true,
+      "config": "benchmarking-gemma4-off-multi-20260416_101751",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-gemma4-on-opt-rerun-20260416_053838.json",
+      "found": true,
+      "config": "benchmarking-gemma4-on-opt-rerun-20260416_053838",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-okg-live-gemma4-26b-thinking-on-20260422_041114.json",
+      "found": true,
+      "config": "benchmarking-okg-live-gemma4-26b-thinking-on-20260422_041114",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-qwen122b-off-bare-llm-20260420_144108.json",
+      "found": true,
+      "config": "benchmarking-qwen122b-off-bare-llm-20260420_144108",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-qwen122b-off-multi-20260420_125900.json",
+      "found": true,
+      "config": "benchmarking-qwen122b-off-multi-20260420_125900",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-qwen122b-on-bare-llm-20260419_183443.json",
+      "found": true,
+      "config": "benchmarking-qwen122b-on-bare-llm-20260419_183443",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-qwen122b-on-multi-20260419_133538.json",
+      "found": true,
+      "config": "benchmarking-qwen122b-on-multi-20260419_133538",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-qwen27b-off-bare-llm-20260418_045558.json",
+      "found": true,
+      "config": "benchmarking-qwen27b-off-bare-llm-20260418_045558",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-qwen27b-off-multi-20260418_024237.json",
+      "found": true,
+      "config": "benchmarking-qwen27b-off-multi-20260418_024237",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_run2/benchmarking-qwen27b-on-bare-llm-20260417_032032.json",
+      "found": true,
+      "config": "benchmarking-qwen27b-on-bare-llm-20260417_032032",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_glm-5.1_run1/compops-tools-fixed_gemma4-26b.json",
+      "found": true,
+      "config": "compops-tools-fixed_gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_glm-5.1_run1/optimized-tools_compops-gemma4-26b.json",
+      "found": true,
+      "config": "optimized-tools_compops-gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "glm-5.1_glm-5.1_run1/optimized-tools_copilot-gemma4-26b.json",
+      "found": true,
+      "config": "optimized-tools_copilot-gemma4-26b",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "thinking-on-batch/glm-5.1_run1/benchmarking-gemma4-think-on-bare-llm-20260415_080352.json",
+      "found": true,
+      "config": "benchmarking-gemma4-think-on-bare-llm-20260415_080352",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "thinking-on-batch/glm-5.1_run1/benchmarking-gemma4-think-on-no-tools-20260415_170848.json",
+      "found": true,
+      "config": "benchmarking-gemma4-think-on-no-tools-20260415_170848",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "thinking-on-batch/glm-5.1_run1/benchmarking-gemma4-think-on-optimized-20260415_195013.json",
+      "found": true,
+      "config": "benchmarking-gemma4-think-on-optimized-20260415_195013",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    },
+    {
+      "file": "thinking-on-batch/glm-5.1_run1/benchmarking-gemma4-think-on-rag-only-20260415_152307.json",
+      "found": true,
+      "config": "benchmarking-gemma4-think-on-rag-only-20260415_152307",
+      "n_records_total": 260,
+      "n_records_in_53q": 53
+    }
+  ]
+}

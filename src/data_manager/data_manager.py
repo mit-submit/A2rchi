@@ -24,10 +24,13 @@ class DataManager():
 
         os.makedirs(self.data_path, exist_ok=True)
 
-        self.pg_config = {
-            "password": read_secret("PG_PASSWORD"),
-            **self.config["services"]["postgres"],
-        }
+        if factory and factory._conn_params:
+            self.pg_config = dict(factory._conn_params)
+        else:
+            self.pg_config = {
+                "password": read_secret("PG_PASSWORD"),
+                **self.config["services"]["postgres"],
+            }
         self.persistence = PersistenceService(self.data_path, pg_config=self.pg_config)
         self.config_service = factory.config_service if factory else ConfigService(pg_config=self.pg_config)
         static_config = self.config_service.get_static_config()

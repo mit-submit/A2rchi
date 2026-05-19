@@ -248,7 +248,7 @@ class ConfigurationManager:
             raise ValueError(f"agent_md_file must be a markdown file (.md): '{agent_md_file}'")
 
         # Validate modes enum
-        VALID_MODES = {"SOURCES", "RAGAS"}
+        VALID_MODES = {"SOURCES", "RAGAS", "LLM_JUDGE"}
         modes = benchmarking_cfg.get("modes", [])
         if modes:
             if not isinstance(modes, list):
@@ -261,7 +261,7 @@ class ConfigurationManager:
                 )
 
         # Validate provider enum
-        VALID_PROVIDERS = {"openai", "ollama", "local", "huggingface", "anthropic"}
+        VALID_PROVIDERS = {"openai", "ollama", "local", "huggingface", "anthropic", "openrouter"}
         provider = str(benchmarking_cfg.get("provider", "")).lower()
         if provider and provider not in VALID_PROVIDERS:
             raise ValueError(

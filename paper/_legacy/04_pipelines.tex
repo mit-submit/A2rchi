@@ -1,0 +1,85 @@
+% =============================================================================
+% Section 4: Pipelines and Tools
+%
+% Intent: define the four pipeline architectures evaluated in Sec. 5. State
+% which have retrieval, which have tools, which have neither. Provide a tool
+% catalogue table. Note the no-tools ablations (copilot-no-tools,
+% compops-no-tools) so the reader is not surprised by them in Sec. 5.
+%
+% Budget: 1.25 pp.
+%
+% This is the section that the evaluation reader will keep flipping back to.
+% Make the table self-contained.
+% =============================================================================
+
+\section{Pipelines and Tools}
+\label{sec:pipelines}
+
+\subsection{Pipeline Architectures}
+\label{sec:pipeline_architectures}
+
+% TODO: short prose intro (1 paragraph) listing the four architectures and
+% how they differ along two axes: retrieval (yes/no) and tools (yes/no).
+%
+% Then four named paragraphs, one per pipeline, each ~3-4 sentences:
+%
+%   Bare LLM (BareLLMPipeline)
+%     - question goes directly to the model
+%     - no retrieval, no tools
+%     - establishes pretraining knowledge baseline
+%
+%   RAG (QAPipeline)
+%     - retrieve top-k from vector store, condition the model on the docs
+%     - no tools
+%     - the classical RAG control
+%
+%   Copilot agent (CopilotAgentPipeline)
+%     - LangChain-based agent
+%     - retrieval plus tool calls
+%     - iterative tool use until the agent decides to answer
+%
+%   CompOps agent (CMSCompOpsAgent)
+%     - LangGraph ReAct agent
+%     - same tool suite
+%     - explicit reasoning steps in the graph
+
+\subsection{Tool Catalogue}
+\label{sec:tools}
+
+% TODO: a single table listing the tools the agentic pipelines have access
+% to. Suggested columns: tool name, what it queries, what it returns,
+% which pipelines use it.
+%
+% Skeleton table below.
+
+\begin{table}[htbp]
+\centering
+\caption{Tools available to the agentic pipelines.
+% TODO: caption sentence stating the takeaway, not just the contents.
+}
+\label{tab:tool_catalogue}
+\begin{tabular}{llll}
+\hline
+\textbf{Tool} & \textbf{Queries} & \textbf{Returns} & \textbf{Used by} \\
+\hline
+Jira search        & \todocell 
+                   & \todocell 
+                   & Copilot, CompOps \\
+MonIT query        & \todocell 
+                   & \todocell 
+                   & Copilot, CompOps \\
+Site status        & \todocell 
+                   & \todocell 
+                   & Copilot, CompOps \\
+% TODO: add other tools as wired up
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Ablations}
+\label{sec:pipeline_ablations}
+
+% TODO: 1 short paragraph naming the no-tools ablations
+% (copilot-no-tools, compops-no-tools) and why they exist:
+% to isolate the contribution of tool access from prompt and model effects.
+% Reference the configuration matrix that lands in Sec. 5.5.

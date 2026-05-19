@@ -1,0 +1,212 @@
+{
+  "tier": "gold",
+  "description": "v9-era runs on the 53q grading set. 6 agent configs \u00d7 4 judges (glm-5.1 + gemini-3.1-pro-preview + gpt-5.5 + claude-opus-4.7). 5 of the 6 configs (everything except qwen3.5-122b/live) also have human grading in the Argilla v9 dataset.",
+  "generated_at": "2026-05-18T12:24:06.949556",
+  "argilla_db": "bench_out/grading/backups/grading_20260518_103449/argilla.db",
+  "sidecar": "bench_out/grading/samples/cms-compops-5way-grading-v9-may2026-unblinding.json",
+  "configs": [
+    "gpt-5.5/live",
+    "qwen3.6-27b/live",
+    "qwen3.6-27b/no-tools",
+    "qwen3.6-27b/rag",
+    "qwen3.6-35b/live",
+    "qwen3.5-122b/live"
+  ],
+  "judges": [
+    "glm-5.1",
+    "gemini-3.1-pro-preview",
+    "gpt-5.5",
+    "claude-opus-4.7"
+  ],
+  "n_questions": 53,
+  "n_files_total": 24,
+  "n_files_present": 24,
+  "files": [
+    {
+      "config": "gpt-5.5/live",
+      "judge": "glm-5.1",
+      "file": "bench_out/judged/glm-5.1_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "gpt-5.5/live",
+      "judge": "gemini-3.1-pro-preview",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "gpt-5.5/live",
+      "judge": "gpt-5.5",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "gpt-5.5/live",
+      "judge": "claude-opus-4.7",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/benchmarking-optimized-tools-gpt-5-5-merged-v2.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge": "glm-5.1",
+      "file": "bench_out/judged/glm-5.1_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge": "gemini-3.1-pro-preview",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge": "gpt-5.5",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/live",
+      "judge": "claude-opus-4.7",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/qwen-27b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge": "glm-5.1",
+      "file": "bench_out/judged/glm-5.1_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge": "gemini-3.1-pro-preview",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge": "gpt-5.5",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/no-tools",
+      "judge": "claude-opus-4.7",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/no-tools-qwen3.6-27b-openrouter.rerun-full53.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge": "glm-5.1",
+      "file": "bench_out/judged/glm-5.1_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge": "gemini-3.1-pro-preview",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge": "gpt-5.5",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-27b/rag",
+      "judge": "claude-opus-4.7",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/rag-qwen-27b-53q.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge": "glm-5.1",
+      "file": "bench_out/judged/glm-5.1_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge": "gemini-3.1-pro-preview",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge": "gpt-5.5",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.6-35b/live",
+      "judge": "claude-opus-4.7",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/qwen-35b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge": "glm-5.1",
+      "file": "bench_out/judged/glm-5.1_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge": "gemini-3.1-pro-preview",
+      "file": "bench_out/judged/gemini-3.1-pro-preview_gemini31pro_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge": "gpt-5.5",
+      "file": "bench_out/judged/gpt-5.5_gpt55_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    },
+    {
+      "config": "qwen3.5-122b/live",
+      "judge": "claude-opus-4.7",
+      "file": "bench_out/judged/claude-opus-4.7_opus47_run1/qwen-122b-merged.json",
+      "found": true,
+      "n_records": 53
+    }
+  ],
+  "human_grading": {
+    "n_unique_records": 64,
+    "by_status": {
+      "submitted": 59,
+      "discarded": 4,
+      "draft": 1
+    },
+    "by_grader_status": {
+      "dima": {
+        "submitted": 49,
+        "discarded": 4
+      },
+      "hasan": {
+        "submitted": 10,
+        "draft": 1
+      }
+    }
+  }
+}

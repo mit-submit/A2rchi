@@ -320,8 +320,9 @@ class CopilotAgentPipeline:
             build_document_fetch_tool, build_file_search_tool,
             build_metadata_schema_tool, build_metadata_search_tool)
         from src.archi.pipelines.copilot_agents.tools.monit_search import (
-            build_condor_aggregation_tool, build_condor_search_tool,
-            build_monit_aggregation_tool, build_monit_search_tool)
+            build_condor_aggregation_tool, build_condor_fetch_tool,
+            build_condor_search_tool, build_monit_aggregation_tool,
+            build_monit_fetch_tool, build_monit_search_tool)
 
         store_docs = collector.make_store_docs_callback()
         tools: list = []
@@ -395,6 +396,14 @@ class CopilotAgentPipeline:
                         skill=self._rucio_events_skill,
                     )
                 )
+            if _want("monit_fetch_rucio_document"):
+                tools.append(
+                    build_monit_fetch_tool(
+                        self._monit_client,
+                        tool_name="fetch_rucio_document",
+                        index=monit_index,
+                    )
+                )
 
         # Condor tools
         if self._condor_client:
@@ -413,6 +422,13 @@ class CopilotAgentPipeline:
                         self._condor_client,
                         index=condor_index,
                         skill=self._condor_metric_skill,
+                    )
+                )
+            if _want("monit_fetch_condor_document"):
+                tools.append(
+                    build_condor_fetch_tool(
+                        self._condor_client,
+                        index=condor_index,
                     )
                 )
 

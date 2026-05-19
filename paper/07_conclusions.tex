@@ -1,0 +1,21 @@
+\section{Conclusions and Outlook}
+\label{sec:conclusions}
+
+Archi has run as the CMS Computing Operations operator chat
+assistant since February 2026, pairing hybrid retrieval over the
+CMS TWiki and Jira with live MonIT queries against Rucio and
+HTCondor in a ReAct loop. On a 260-question evaluation set
+sampled from six weeks of production operator traffic, the four
+pipeline layers (bare LLM, RAG, agent without live tools, full
+agent) walk from 2.86 to 4.22 on the rubric under
+\texttt{glm-5.1} on the largest open-weight model; each layer
+earns its keep, and the full agent at 4.22 lands 0.14 points
+above the GPT-5.3 production reference (4.08) on the same
+judge. A four-judge LLM ensemble on a 53-question subset
+(Section~\ref{sec:eval_ensemble}) preserves the pipeline
+ordering, and a parallel human evaluation by a CompOps domain
+expert panel (Section~\ref{sec:eval_human_53}) provides the
+non-LLM cross-check once it completes. The next architecture step is a knowledge-graph-backed
+retrieval layer that exposes ticket--site--workflow--dataset
+relations directly and narrows the source-faithfulness gap
+between the agent loop and single-shot RAG.
