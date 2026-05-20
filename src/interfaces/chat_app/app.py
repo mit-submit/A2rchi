@@ -1625,6 +1625,7 @@ class ChatWrapper:
             client_sent_msg_ts,
             client_timeout,
             timestamps,
+            config_name,
             user_id=user_id,
         )
         if error_code is not None:
@@ -1808,17 +1809,18 @@ class ChatWrapper:
                 logger.error("Failed to store user message: %s", exc)
 
         # Store both responses as messages
+        pipeline_used = ChatWrapper._get_agent_class_from_cfg(self.services_config.get("chat_app", {})) or ""
         arm_a_mid = self._store_assistant_message(
             context.conversation_id,
             arm_a_final_text,
             model_used=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-            pipeline_used=self.current_pipeline_used,
+            pipeline_used=pipeline_used,
         )
         arm_b_mid = self._store_assistant_message(
             context.conversation_id,
             arm_b_final_text,
             model_used=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-            pipeline_used=self.current_pipeline_used,
+            pipeline_used=pipeline_used,
         )
 
         # Persist per-arm latency for analysis by reusing the timing table keyed by message_id.
@@ -1839,9 +1841,9 @@ class ChatWrapper:
                     response_a_mid=arm_a_mid,
                     response_b_mid=arm_b_mid,
                     model_a=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-                    pipeline_a=self.current_pipeline_used or "",
+                    pipeline_a=pipeline_used,
                     model_b=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-                    pipeline_b=self.current_pipeline_used or "",
+                    pipeline_b=pipeline_used,
                     is_config_a_first=is_champion_first,
                     variant_a_name=arm_a_variant.name,
                     variant_b_name=arm_b_variant.name,
