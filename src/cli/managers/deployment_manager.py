@@ -3,6 +3,7 @@ import shlex
 import subprocess
 import sys
 import threading
+import json
 from pathlib import Path
 from typing import Tuple
 
@@ -228,10 +229,45 @@ class DeploymentManager:
         for service in services:
             chart_dir = Path(base_dir) / "chart" / "templates" / f"{service}-deployment.yaml"
             tmpl = env.get_template(str(HELM_PREFIX / service / "deployment.yaml"))  
-            helm_config = tmpl.render(name=name) 
+            helm_config = tmpl.render(name=name, selenium_scraper=True) 
             with open(chart_dir,"w") as f:
                 f.write(helm_config)
 
+    def helm_install(self, name: str, templates_dir: Path, force_reinstall: bool) -> None:
+        """Start the deployment using compose"""
+        
+        name = name.replace("_","-")
+        logger.info(f"Starting helm deployment from templates at  {templates_dir}")
+        logger.info(f"(This might take a minute...)")
+
+        check_existing_command = f"helm status {name} -o json"
+        stdout, stderr, exit_code = CommandRunner.run_simple(check_existing_command)
+        deployment_exists = not 'not found' in stderr
+
+        if deployment_exists and force_reinstall:
+            status_data = json.loads(stdout)
+            status = status_data.get("info", {}).get("status")
+
+            helm_uninstall_command = f"helm uninstall {name} --wait"
+            logger.info(f"Uninstalling existing {name} deployment")
+            stdout, stderr, exit_code = CommandRunner.run_simple(helm_uninstall_command)
+            if exit_code != 0:
+                error_msg = f"Helm uninstall failed with exit code {exit_code}"
+                if stderr.strip():
+                    error_msg += f"\nError output:\n{stderr}"
+                raise DeploymentError(error_msg, exit_code, stderr)
+                
+
+        chart_dir = Path(templates_dir) / 'chart'
+        helm_command = f"helm upgrade --install {name} {chart_dir} -f {chart_dir}/values.yaml"
+        
+        logger.info(f"Installing {name} deployment")
+        stdout, stderr, exit_code = CommandRunner.run_simple(helm_command)
+        if exit_code != 0:
+            error_msg = f"Helm installation failed with exit code {exit_code}"
+            if stderr.strip():
+                error_msg += f"\nError output:\n{stderr}"
+            raise DeploymentError(error_msg, exit_code, stderr)
 
     
     def _validate_compose_file(self, compose_file: Path) -> None:

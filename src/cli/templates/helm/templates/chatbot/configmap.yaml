@@ -1,3 +1,4 @@
+{% if configs %}
 apiVersion: v1
 data:
   {%- for filename, content in configs.items() %}
@@ -9,3 +10,56 @@ metadata:
   annotations:
     use-subpath: "true"
   name: {{ archi_name }}-chat-config
+{% endif %}
+{% if agents %}
+apiVersion: v1
+data:
+  {%- for agent_filename, content in agents.items() %}
+  {{ agent_filename }}: |
+    {{ content | indent(4) }}
+  {%- endfor %}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  name: {{ archi_name }}-chat-agents
+{% endif %}
+{% if skills %}
+apiVersion: v1
+data:
+  {%- for skill_filename, content in skills.items() %}
+  {{ skill_filename }}: |
+    {{ content | indent(4) }}
+  {%- endfor %}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  name: {{ archi_name }}-chat-skills
+{% endif %}
+{% if prompts %}
+apiVersion: v1
+data:
+  {%- for prompt_filename, content in prompts.items() %}
+  {{ prompt_filename }}: |
+    {{ content | indent(4) }}
+  {%- endfor %}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  name: {{ archi_name }}-chat-prompts
+{% endif %}
+{% if tools %}
+apiVersion: v1
+data:
+  {%- for tool_filename, content in tools.items() %}
+  {{ tool_filename }}: |
+    {{ content | indent(4) }}
+  {%- endfor %}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  name: {{ archi_name }}-chat-tools
+{% endif %}

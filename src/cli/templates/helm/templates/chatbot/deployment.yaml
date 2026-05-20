@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  {{ name }}-chatbot
+  labels:
+    app: {{ name }}-chatbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ name }}-chatbot
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ name }}-chatbot
+      annotations:
+        rollout-timestamp: {{ "{{ now | quote }}" }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: {{ name }}-chatbot
+          envFrom:
+            - secretRef:
+                name: {{ name }}-secrets
+          env:
+            - name: PGDATABASE
+              value: archi-db
+            - name: PGHOST
+              value: {{ name }}-postgres
+            - name: PGPORT
+              value: "{{ "{{ .Values.postgres.port }}" }}"
+            - name: PGUSER
+              value: archi
+            - name: VERBOSITY
+              value: "{{ "{{ .Values.verbosity }}" }}"
+          image: {{ "{{ .Values.chat.image }}" }}
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /api/health 
+              port: {{ "{{ .Values.chat.port }}" }}
+            initialDelaySeconds: 900
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health 
+              port: {{ "{{ .Values.chat.port }}" }}
+            initialDelaySeconds: 60
+            periodSeconds: 5
+          ports:
+          - containerPort: {{ "{{ .Values.chat.port }}" }}
+            protocol: TCP
+          volumeMounts:
+            - mountPath: /root/data
+              name: {{ name }}-chatbot-pvc
+            - mountPath: /root/archi/configs
+              name: {{ name }}-chat-config
+            - mountPath: /root/archi/data/prompts
+              name: {{ name }}-chat-prompts
+            - name: {{ name }}-chat-agents
+              mountPath: /root/archi/agents
+            - name: {{ name }}-chat-agents
+              mountPath: /root/archi/src/archi/pipelines/extra_agents
+            - name: {{ name }}-chat-tools
+              mountPath: /root/archi/src/archi/pipelines/agents/tools/extra_tools
+            - mountPath: /root/.accounts
+              name: root-accounts
+            - mountPath: /.cache
+              name: hf-cache
+      restartPolicy: Always
+      volumes:
+        - emptyDir: {}
+          name: root-accounts
+        - emptyDir: {}
+          name: hf-cache
+        - name: {{ name }}-chatbot-pvc
+          persistentVolumeClaim:
+            claimName: {{ name }}-chatbot-pvc
+        - configMap:
+            name: {{ name }}-chat-config
+          name: {{ name }}-chat-config
+        - name: {{ name }}-chat-prompts
+          configMap:
+            name: {{ name }}-chat-prompts
+        - configMap:
+            name: {{ name }}-chat-agents
+          name: {{ name }}-chat-agents
+        - configMap:
+            name: {{ name }}-chat-skills
+          name: {{ name }}-chat-skills
+        - configMap:
+            name: {{ name }}-chat-tools
+          name: {{ name }}-chat-tools

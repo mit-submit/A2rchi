@@ -2,13 +2,17 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   labels:
-    app: {{ name }}-config-seed
-  name:  {{ name }}-config-seed
+    app: {{ name }}-config-seed-{{ "{{ .Release.Revision }}" }}
+  name:  {{ name }}-config-seed-{{ "{{ .Release.Revision }}" }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
+  ttlSecondsAfterFinished: 100
   template:
     metadata:
       labels:
-        app: {{ name }}-config-seed
+        app: {{ name }}-config-seed-{{ "{{ .Release.Revision }}" }}
     spec:
       automountServiceAccountToken: false
       containers:
@@ -33,7 +37,7 @@ spec:
                   name: {{ name }}-secrets
                   key: PG_PASSWORD
             - name: VERBOSITY
-              value: "{{ verbosity }}"
+              value: "{{ "{{ .Values.verbosity }}" }}"
           image: {{ "{{ .Values.chat.image }}" }}
           imagePullPolicy: Always
           name: config-seed-{{ name }}

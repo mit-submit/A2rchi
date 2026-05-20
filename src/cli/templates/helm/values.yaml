@@ -10,5 +10,14 @@ postgres:
 
 chat:
   image: registry.cern.ch/jsalasga_personal/archi-chat:latest
+  port: {{ chatbot_port_host }}
+  externalPort: {{ chatbot_port_container }}
+  imagePullSecrets:
+     - name: cern-registry-secret
+
+data_manager:
+  image: registry.cern.ch/jsalasga_personal/archi-data-manager:latest
+  port: {{ data_manager_port_host }}
+  externalPort: {{ data_manager_port_container }}
   imagePullSecrets:
      - name: cern-registry-secret

@@ -35,7 +35,7 @@ spec:
                   name: {{ name }}-secrets
                   key: PG_PASSWORD
             - name: VERBOSITY
-              value: "{{ verbosity }}"
+              value: "{{ "{{ .Values.verbosity }}" }}"
           image: {{ "{{ .Values.postgres.image }}" }}
           livenessProbe:
             tcpSocket:

@@ -261,8 +261,6 @@ class ServiceBuilder:
             }
             
             volume_name = definition.get_volume_name(name)
-            #TODO: where to fix this volume name?
-            volume_name = volume_name.replace(f"-{name}","").replace("archi-","")
             if volume_name:
                 config["volume_name"] = volume_name
             plan.enable_service(service_name, **config)

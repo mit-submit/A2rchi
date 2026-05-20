@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ name }}-chatbot
+  labels:
+    app: {{ name }}-chatbot
+spec:
+  selector:
+    app: {{ name }}-chatbot
+  ports:
+    - name: chat-port
+      port: {{ "{{ .Values.chat.port }}" }}  
+      targetPort: {{ "{{ .Values.chat.port }}" }}  

@@ -605,7 +605,8 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
 @click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
 @click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
-def generate(name: str, config_files: list, config_dir: str, templates_dir: str, env_file: str, services: list, dry: bool, verbosity: int, host_mode:bool, **other_flags):
+@click.option('--reinstall', 'force_reinstall', is_flag=True, help="Force reinstall helm installation")
+def install(name: str, config_files: list, config_dir: str, templates_dir: str, env_file: str, services: list, dry: bool, verbosity: int, host_mode:bool, force_reinstall: bool, **other_flags):
     
     """Create an ARCHI deployment with selected services and data sources."""
 
@@ -677,10 +678,6 @@ def generate(name: str, config_files: list, config_dir: str, templates_dir: str,
     # Handle dry run
     service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
                                 if s in service_registry.get_all_services()]
-    if dry:
-        print_dry_run_summary(helm_name, services, service_only_resolved, enabled_sources, 
-                                required_secrets, helm_config, other_flags, base_dir)
-        return
     
     # Actual deployment
     helm_template_manager = TemplateManager(env, verbosity,helm=True)
@@ -696,6 +693,7 @@ def generate(name: str, config_files: list, config_dir: str, templates_dir: str,
         config_manager,
         secrets_manager,
         helm=True,
+        allow_port_reuse=True, #checked later
         **other_flags,
     )
 
@@ -704,6 +702,9 @@ def generate(name: str, config_files: list, config_dir: str, templates_dir: str,
     deployment_manager = DeploymentManager(helm=True)
     deployment_manager.create_deployment_templates(base_dir, services=service_only_resolved, env=env, name=helm_name)
     
+    if not dry:
+        deployment_manager.helm_install(name, templates_dir, force_reinstall)
+
     # Log success
     service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
                             if s in service_registry.get_all_services()]
@@ -720,5 +721,5 @@ def main():
     cli.add_command(list_services)
     cli.add_command(list_deployments)
     cli.add_command(evaluate)
-    cli.add_command(generate)
+    cli.add_command(install)
     cli()
