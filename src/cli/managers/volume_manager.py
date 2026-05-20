@@ -32,7 +32,6 @@ class VolumeManager:
             chart_dir = Path(base_dir) / "chart" / "templates" / f"{volume[1]}-pvc.yaml"
             service = volume[0]
             tmpl = env.get_template(str(HELM_PREFIX / service / "pvc.yaml"))
-            #print(f"Volume {volume}, chart_dir {chart_dir}")
             helm_config = tmpl.render(name=name) 
             with open(chart_dir,"w") as f:
                 f.write(helm_config)

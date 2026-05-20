@@ -23,8 +23,7 @@ _PIPELINE_EXPORTS = {
 agents_dir = Path("/root/archi/src/archi/pipelines/extra_agents")
 
 if agents_dir.exists() and agents_dir.is_dir():
-    # INSTEAD of adding /root/archi, add the EXACT folder to sys.path
-    # This lets us treat 'wisdqm_agent' as a top-level module directly!
+    # Add the exact folder to sys.path
     extra_agents_path = str(agents_dir.resolve())
     if extra_agents_path not in sys.path:
         sys.path.insert(0, extra_agents_path)

@@ -629,7 +629,6 @@ def install(name: str, config_files: list, config_dir: str, templates_dir: str, 
     
     # Combine services and data sources for processing
     enabled_services = services.copy()
-    #base_dir = Path(ARCHI_DIR) / f"archi-{name}"
     base_dir = Path(templates_dir)
     helm_name = name.replace("_","-")
 
