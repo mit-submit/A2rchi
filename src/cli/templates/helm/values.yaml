@@ -3,21 +3,15 @@ archi:
   name: {{ archi_name }}
 
 postgres:
-  image: registry.cern.ch/jsalasga_personal/archi-postgres:latest
+  image: juanpablosalasg/archi-postgres:latest
   port: {{ postgres_port }}
-  imagePullSecrets:
-     - name: cern-registry-secret
 
 chat:
-  image: registry.cern.ch/jsalasga_personal/archi-chat:latest
+  image: juanpablosalasg/archi-chat:latest
   port: {{ chatbot_port_host }}
   externalPort: {{ chatbot_port_container }}
-  imagePullSecrets:
-     - name: cern-registry-secret
 
 data_manager:
-  image: registry.cern.ch/jsalasga_personal/archi-data-manager:latest
+  image: juanpablosalasg/archi-data-manager:latest
   port: {{ data_manager_port_host }}
   externalPort: {{ data_manager_port_container }}
-  imagePullSecrets:
-     - name: cern-registry-secret
