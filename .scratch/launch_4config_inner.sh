@@ -14,6 +14,7 @@ set -euo pipefail
 
 LIMIT="${ARCHI_LIMIT:-260}"
 CONCURRENCY="${ARCHI_CONCURRENCY:-32}"
+QUESTIONS_PATH="${ARCHI_QUESTIONS_PATH:-/workspace/configs/submit75/curated_questions.json}"
 MAX_TOOL_CALLS="${ARCHI_MAX_TOOL_CALLS:-30}"
 TOOL_TIMEOUT_S="${ARCHI_TOOL_TIMEOUT_S:-30}"
 PER_QUESTION_TIMEOUT_S="${ARCHI_PER_QUESTION_TIMEOUT_S:-600}"
@@ -53,6 +54,7 @@ apptainer exec \\
   --env CC=/usr/bin/gcc --env CXX=/usr/bin/g++ \\
   \$HOME/.archi-bundle-state/sif/archi-data-manager.sif \\
   python3 /workspace/.scratch/run_260q_orcd_qa.py \\
+    --questions $QUESTIONS_PATH \\
     --limit $LIMIT \\
     --tool-set ${jobname} \\
     --concurrency $CONCURRENCY \\
@@ -98,6 +100,7 @@ apptainer exec \\
   --env CC=/usr/bin/gcc --env CXX=/usr/bin/g++ \\
   \$HOME/.archi-bundle-state/sif/archi-data-manager.sif \\
   python3 /workspace/.scratch/run_260q_orcd_v3.py \\
+    --questions $QUESTIONS_PATH \\
     --limit $LIMIT \\
     --tool-set ${jobname} \\
     --concurrency $CONCURRENCY \\

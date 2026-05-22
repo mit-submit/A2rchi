@@ -31,7 +31,7 @@ from typing import List, Optional
 REPO = Path(os.environ.get("ORCD_REPO", os.path.expanduser("~/A2rchi")))
 SECRETS_DIR = Path(os.environ.get("ARCHI_SECRETS_DIR",
                                   os.path.expanduser("~/.archi-bundle-state/bundle/secrets/archi")))
-QUESTIONS = REPO / "configs/submit75/curated_questions.json"
+DEFAULT_QUESTIONS = REPO / "configs/submit75/curated_questions.json"
 OUT_DIR = Path(os.environ.get("ORCD_OUT_DIR", os.path.expanduser("~/bench_out/run_260q_orcd_v3")))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -378,6 +378,8 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--start", type=int, default=0)
+    parser.add_argument("--questions", type=str, default=str(DEFAULT_QUESTIONS),
+                        help="Question JSON file. Defaults to the canonical 260-question set.")
     parser.add_argument("--out", type=str, default=None)
     parser.add_argument("--tool-set", choices=["rag", "bare"], required=True)
     parser.add_argument("--concurrency", type=int,
@@ -385,8 +387,10 @@ async def main():
     parser.add_argument("--retry-errored", action="store_true")
     args = parser.parse_args()
 
+    questions_file = Path(args.questions)
     out_file = Path(args.out) if args.out else OUT_DIR / f"results_v3_{args.tool_set}_{int(time.time())}.json"
     print(f"Output: {out_file}")
+    print(f"Questions: {questions_file}")
     print(f"tool_set={args.tool_set}  concurrency={args.concurrency}  per_question_timeout={PER_QUESTION_TIMEOUT_S}s")
     print(f"vllm: {VLLM_URL}  model: {VLLM_MODEL}  seed={SEED}")
 
@@ -419,7 +423,7 @@ async def main():
         except Exception as e:
             print(f"WARN: vectorstore probe failed: {type(e).__name__}: {e}", file=sys.stderr)
 
-    questions = json.loads(QUESTIONS.read_text())
+    questions = json.loads(questions_file.read_text())
     if args.limit:
         questions = questions[args.start:args.start + args.limit]
     elif args.start:

@@ -40,7 +40,7 @@ from langchain_openai import ChatOpenAI
 REPO = Path(os.environ.get("ORCD_REPO", os.path.expanduser("~/A2rchi")))
 SECRETS_DIR = Path(os.environ.get("ARCHI_SECRETS_DIR",
                                   os.path.expanduser("~/.archi-bundle-state/bundle/secrets/archi")))
-QUESTIONS = REPO / "configs/submit75/curated_questions.json"
+DEFAULT_QUESTIONS = REPO / "configs/submit75/curated_questions.json"
 OUT_DIR = Path(os.environ.get("ORCD_OUT_DIR", os.path.expanduser("~/bench_out/run_260q_orcd_v3")))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -60,7 +60,7 @@ spec = importlib.util.spec_from_file_location("smoke", str(REPO / ".scratch/run_
 smoke = importlib.util.module_from_spec(spec)
 smoke.__dict__["REPO"] = REPO
 spec.loader.exec_module(smoke)
-smoke.QUESTIONS = QUESTIONS
+smoke.QUESTIONS = DEFAULT_QUESTIONS
 
 # Vectorstore hybrid-search tool (BM25 + semantic) for the RAG config.
 # Matches the convention in .scratch/run_aux_q10_all_configs.py.
@@ -381,6 +381,8 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--start", type=int, default=0)
+    parser.add_argument("--questions", type=str, default=str(DEFAULT_QUESTIONS),
+                        help="Question JSON file. Defaults to the canonical 260-question set.")
     parser.add_argument("--out", type=str, default=None,
                         help="Output file. If exists, completed (no-error) qids are skipped (idempotent resume).")
     parser.add_argument("--tool-set", choices=["live", "no-tools"], default="live",
@@ -392,8 +394,10 @@ async def main():
                         help="On resume, also retry questions whose prior run errored (default: skip them too).")
     args = parser.parse_args()
 
+    questions_file = Path(args.questions)
     out_file = Path(args.out) if args.out else OUT_DIR / f"results_v3_{args.tool_set}_{int(time.time())}.json"
     print(f"Output: {out_file}")
+    print(f"Questions: {questions_file}")
     print(f"tool_set={args.tool_set}  concurrency={args.concurrency}  max_tool_calls={args.max_tool_calls}")
     print(f"timeouts: tool={TOOL_TIMEOUT_S}s  llm={LLM_TIMEOUT_S}s  question={PER_QUESTION_TIMEOUT_S}s")
     print(
@@ -461,7 +465,7 @@ async def main():
             http_async_client=async_http_client, extra_body=extra_body,
         )
 
-    questions = json.loads(QUESTIONS.read_text())
+    questions = json.loads(questions_file.read_text())
     if args.limit:
         questions = questions[args.start:args.start + args.limit]
     elif args.start:

@@ -306,7 +306,8 @@ run_full_4config_sweep() {
   rm -f $HOME/bench_out/run_260q_orcd_v3/results_v3_*.json
 
   log "  submitting 4-config sweep (using launch_4config_inner.sh)"
-  export ARCHI_LIMIT=260 ARCHI_CONCURRENCY=16 ARCHI_MAX_TOOL_CALLS=30
+  export ARCHI_LIMIT=270 ARCHI_CONCURRENCY=16 ARCHI_MAX_TOOL_CALLS=30
+  export ARCHI_QUESTIONS_PATH=/workspace/configs/submit75/curated_questions_270.json
   export ARCHI_TOOL_TIMEOUT_S=30 ARCHI_PER_QUESTION_TIMEOUT_S=600
   bash $HOME/A2rchi/.scratch/launch_4config_inner.sh 2>&1 | sed 's/^/    /'
 
