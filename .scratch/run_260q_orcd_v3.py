@@ -76,6 +76,9 @@ MAX_TOOL_CALLS         = int(os.environ.get("MAX_TOOL_CALLS", "30"))
 TOOL_TIMEOUT_S         = int(os.environ.get("TOOL_TIMEOUT_S", "30"))
 PER_QUESTION_TIMEOUT_S = int(os.environ.get("PER_QUESTION_TIMEOUT_S", "600"))
 LLM_TIMEOUT_S          = int(os.environ.get("LLM_TIMEOUT_S", "200"))
+CATALOG_HTTP_TIMEOUT_S = max(1.0, min(float(os.environ.get("CATALOG_HTTP_TIMEOUT_S", "20")), TOOL_TIMEOUT_S - 5.0))
+BULK_FETCH_MAX_HASHES  = int(os.environ.get("BULK_FETCH_MAX_HASHES", "8"))
+BULK_FETCH_WORKERS     = int(os.environ.get("BULK_FETCH_WORKERS", "4"))
 SEED                   = int(os.environ.get("VLLM_SEED", "42"))
 OUTPUT_PREVIEW_CHARS   = int(os.environ.get("OUTPUT_PREVIEW_CHARS", "2000"))
 WARN_FRACTIONS         = [0.5, 0.75, 0.9]
@@ -91,7 +94,8 @@ smoke.collect_rucio_tools = _collect_rucio_orcd
 
 
 def _build_catalog_orcd():
-    catalog = smoke.RemoteCatalogClient(base_url=ARCHI_DM_URL, timeout=20.0)
+    catalog = smoke.RemoteCatalogClient(base_url=ARCHI_DM_URL, timeout=CATALOG_HTTP_TIMEOUT_S)
+    catalog._headers = {**getattr(catalog, "_headers", {}), "Connection": "close"}
     schema_probe = catalog.schema()
     n_indexed = schema_probe.get("counts", {}).get("documents")
     print(f"  catalog API reachable at {ARCHI_DM_URL}; {n_indexed} indexed docs")
@@ -122,11 +126,14 @@ def _make_bulk_fetch_tool(catalog):
         hashes = [h.strip() for h in resource_hashes if isinstance(h, str) and h.strip()]
         if not hashes:
             return "ERROR: no non-empty resource hashes provided."
-        if len(hashes) > 50:
-            return f"ERROR: max 50 hashes per call (got {len(hashes)})."
+        truncated = False
+        if len(hashes) > BULK_FETCH_MAX_HASHES:
+            hashes = hashes[:BULK_FETCH_MAX_HASHES]
+            truncated = True
 
         results = {}
-        with ThreadPoolExecutor(max_workers=10) as ex:
+        max_workers = max(1, min(BULK_FETCH_WORKERS, len(hashes)))
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
             futs = {ex.submit(catalog.get_document, h, max_chars=max_chars_per_doc): h for h in hashes}
             for fut in as_completed(futs):
                 h = futs[fut]
@@ -134,7 +141,12 @@ def _make_bulk_fetch_tool(catalog):
                     results[h] = fut.result()
                 except Exception as e:
                     results[h] = {"_error": f"{type(e).__name__}: {e}"}
-        out = [f"Fetched {len(hashes)} documents:\n"]
+        out = [f"Fetched {len(hashes)} documents with max_workers={max_workers}:\n"]
+        if truncated:
+            out.append(
+                f"NOTE: input was truncated to the first {BULK_FETCH_MAX_HASHES} "
+                "resource hashes to keep catalog load bounded.\n"
+            )
         for h in hashes:
             doc = results.get(h) or {}
             if "_error" in doc:
@@ -384,6 +396,10 @@ async def main():
     print(f"Output: {out_file}")
     print(f"tool_set={args.tool_set}  concurrency={args.concurrency}  max_tool_calls={args.max_tool_calls}")
     print(f"timeouts: tool={TOOL_TIMEOUT_S}s  llm={LLM_TIMEOUT_S}s  question={PER_QUESTION_TIMEOUT_S}s")
+    print(
+        f"catalog_http_timeout={CATALOG_HTTP_TIMEOUT_S}s  "
+        f"bulk_fetch_max_hashes={BULK_FETCH_MAX_HASHES}  bulk_fetch_workers={BULK_FETCH_WORKERS}"
+    )
     print(f"seed={SEED}  preview_chars={OUTPUT_PREVIEW_CHARS}")
 
     # ---- idempotent resume ----

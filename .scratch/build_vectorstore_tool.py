@@ -8,9 +8,17 @@ the hybrid endpoint interprets as filters and returns zero hits. The
 bare /api/catalog/search with just q+limit+mode returns the expected
 hybrid result set."""
 import json
+import os
+import asyncio
+
 import requests
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
+
+try:
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover - ORCD image has httpx
+    httpx = None
 
 # RemoteCatalogClient is already loaded into smoke.RemoteCatalogClient
 # (via the direct-load path in run_aux_q10_smoke.py). The hybrid endpoint
@@ -34,16 +42,53 @@ def make_search_vectorstore_hybrid(catalog_client, *, max_documents: int = 4, ma
         "Returns up to `limit` document snippets with source filename and a relevance score."
     )
 
+    def _headers():
+        headers = dict(getattr(catalog_client, "_headers", {}) or {})
+        # The benchmark fires many short-lived catalog calls from cancellation-
+        # heavy agent loops. Avoid HTTP keep-alive so abandoned calls do not
+        # leave a larger pool of half-closed sockets on the Flask dev server.
+        headers.setdefault("Connection", "close")
+        return headers
+
+    def _request_timeout() -> float:
+        configured = float(getattr(catalog_client, "timeout", 20.0) or 20.0)
+        cap = float(os.environ.get("CATALOG_HTTP_TIMEOUT_S", "20"))
+        return max(1.0, min(configured, cap))
+
     def _hybrid_call(query: str, limit: int = 5):
         # Bare HTTP call with only q/limit/mode — avoids the grep-specific
         # params RemoteCatalogClient.search() adds.
         resp = requests.get(
             f"{catalog_client.base_url}/api/catalog/search",
             params={"q": query, "limit": limit or max_documents, "mode": "hybrid"},
-            headers=catalog_client._headers,
-            timeout=catalog_client.timeout,
+            headers=_headers(),
+            timeout=_request_timeout(),
             allow_redirects=False,
         )
+        resp.raise_for_status()
+        return resp.json().get("hits", []) or []
+
+    async def _hybrid_call_async(query: str, limit: int = 5):
+        # This must stay genuinely async. A prior implementation called
+        # requests.get() inside the coroutine, which blocked the event loop and
+        # prevented asyncio.wait_for() from enforcing per-tool timeouts.
+        if httpx is None:
+            return await asyncio.to_thread(_hybrid_call, query, limit)
+
+        timeout_s = _request_timeout()
+        timeout = httpx.Timeout(
+            timeout_s,
+            connect=min(5.0, timeout_s),
+            read=timeout_s,
+            write=min(5.0, timeout_s),
+            pool=min(5.0, timeout_s),
+        )
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            resp = await client.get(
+                f"{catalog_client.base_url}/api/catalog/search",
+                params={"q": query, "limit": limit or max_documents, "mode": "hybrid"},
+                headers=_headers(),
+            )
         resp.raise_for_status()
         return resp.json().get("hits", []) or []
 
@@ -74,7 +119,7 @@ def make_search_vectorstore_hybrid(catalog_client, *, max_documents: int = 4, ma
         return _format_hits(_hybrid_call(query, limit))
 
     async def async_wrapper(query: str, limit: int = 5):
-        return _format_hits(_hybrid_call(query, limit))
+        return _format_hits(await _hybrid_call_async(query, limit))
 
     return StructuredTool.from_function(
         func=sync_wrapper,
