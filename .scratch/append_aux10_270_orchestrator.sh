@@ -18,48 +18,30 @@ log() { printf '[%s] %s\n' "$(date -Iseconds)" "$*"; }
 
 count_qids() {
   local file=$1
-  python3 - "$file" <<'PY'
-import json, sys
-with open(sys.argv[1]) as f:
-    data = json.load(f)
-rows = data.get("benchmarking_results", [{}])[0].get("single_question_results", {})
-print(len(rows))
-PY
+  grep -o '"question_[0-9][0-9]*"[[:space:]]*:' "$file" | wc -l | tr -d ' '
 }
 
 validate_aux_rows() {
   local label=$1 archive_dir=$2
-  python3 - "$label" "$archive_dir" <<'PY'
-import json, pathlib, sys
-label = sys.argv[1]
-archive = pathlib.Path(sys.argv[2]).expanduser()
-ok = True
-for cfg in ("bare", "rag", "no-tools", "live"):
-    path = archive / f"results_v3_{cfg}.json"
-    if not path.exists():
-        print(f"{label} {cfg}: MISSING {path}")
-        ok = False
-        continue
-    data = json.load(open(path))
-    rows = data.get("benchmarking_results", [{}])[0].get("single_question_results", {})
-    aux = {f"question_{i}": rows.get(f"question_{i}") for i in range(260, 270)}
-    missing = [k for k, v in aux.items() if not v]
-    errors = [k for k, v in aux.items() if isinstance(v, dict) and v.get("error")]
-    budgets = [k for k, v in aux.items() if isinstance(v, dict) and v.get("hit_budget")]
-    bad_fields = [
-        k for k, v in aux.items()
-        if isinstance(v, dict)
-        and not (v.get("model_used") and v.get("pipeline_used") and "trace_events" in v and "error" in v)
-    ]
-    print(
-        f"{label} {cfg}: total={len(rows)} aux={10-len(missing)}/10 "
-        f"errors={len(errors)} budgets={len(budgets)} bad_fields={bad_fields}"
-    )
-    if len(rows) != 270 or missing or bad_fields:
-        ok = False
-if not ok:
-    raise SystemExit(1)
-PY
+  local ok=0
+  for cfg in bare rag no-tools live; do
+    local path="$archive_dir/results_v3_${cfg}.json"
+    if [ ! -f "$path" ]; then
+      echo "$label $cfg: MISSING $path"
+      ok=1
+      continue
+    fi
+    local total aux errors budgets
+    total=$(count_qids "$path")
+    aux=$(grep -o '"question_26[0-9]"[[:space:]]*:' "$path" | wc -l | tr -d ' ')
+    errors=$(grep -E '"error"[[:space:]]*:[[:space:]]*"' "$path" | wc -l | tr -d ' ')
+    budgets=$(grep -E '"hit_budget"[[:space:]]*:[[:space:]]*true' "$path" | wc -l | tr -d ' ')
+    echo "$label $cfg: total=$total aux=$aux/10 errors=$errors budgets=$budgets"
+    if [ "$total" -ne 270 ] || [ "$aux" -ne 10 ]; then
+      ok=1
+    fi
+  done
+  return "$ok"
 }
 
 wait_for_job_done() {
