@@ -21,6 +21,11 @@ count_qids() {
   grep -o '"question_[0-9][0-9]*"[[:space:]]*:' "$file" | wc -l | tr -d ' '
 }
 
+grep_count() {
+  local pattern=$1 file=$2
+  (grep -E "$pattern" "$file" || true) | wc -l | tr -d ' '
+}
+
 validate_aux_rows() {
   local label=$1 archive_dir=$2
   local ok=0
@@ -33,9 +38,9 @@ validate_aux_rows() {
     fi
     local total aux errors budgets
     total=$(count_qids "$path")
-    aux=$(grep -o '"question_26[0-9]"[[:space:]]*:' "$path" | wc -l | tr -d ' ')
-    errors=$(grep -E '"error"[[:space:]]*:[[:space:]]*"' "$path" | wc -l | tr -d ' ')
-    budgets=$(grep -E '"hit_budget"[[:space:]]*:[[:space:]]*true' "$path" | wc -l | tr -d ' ')
+    aux=$(grep_count '"question_26[0-9]"[[:space:]]*:' "$path")
+    errors=$(grep_count '"error"[[:space:]]*:[[:space:]]*"' "$path")
+    budgets=$(grep_count '"hit_budget"[[:space:]]*:[[:space:]]*true' "$path")
     echo "$label $cfg: total=$total aux=$aux/10 errors=$errors budgets=$budgets"
     if [ "$total" -ne 270 ] || [ "$aux" -ne 10 ]; then
       ok=1
