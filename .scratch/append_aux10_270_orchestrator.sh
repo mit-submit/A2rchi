@@ -49,6 +49,23 @@ validate_aux_rows() {
   return "$ok"
 }
 
+model_needs_append() {
+  local archive_dir=$1
+  for cfg in bare rag no-tools live; do
+    local path="$archive_dir/results_v3_${cfg}.json"
+    if [ ! -f "$path" ]; then
+      return 0
+    fi
+    local total aux
+    total=$(count_qids "$path")
+    aux=$(grep_count '"question_26[0-9]"[[:space:]]*:' "$path")
+    if [ "$total" -lt 270 ] || [ "$aux" -lt 10 ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 wait_for_job_done() {
   local jid=$1 label=$2
   log "waiting for $label job $jid"
@@ -252,13 +269,23 @@ main() {
     wait_for_job_done "$ANCHOR_JOB" "anchor"
   fi
 
-  restart_services
-  ensure_vllm_model "Qwen/Qwen3.6-35B-A3B-FP8" 1 1
-  submit_append_model "35b" "$HOME/bench_out/run_260q_orcd_v3_35b"
+  if model_needs_append "$HOME/bench_out/run_260q_orcd_v3_35b"; then
+    restart_services
+    ensure_vllm_model "Qwen/Qwen3.6-35B-A3B-FP8" 1 1
+    submit_append_model "35b" "$HOME/bench_out/run_260q_orcd_v3_35b"
+  else
+    log "35b archives already have aux10; skipping 35b vLLM startup"
+    validate_aux_rows "35b" "$HOME/bench_out/run_260q_orcd_v3_35b"
+  fi
 
-  restart_services
-  ensure_vllm_model "Qwen/Qwen3.6-27B-FP8" 0 0
-  submit_append_model "27b" "$HOME/bench_out/run_260q_orcd_v3_27b"
+  if model_needs_append "$HOME/bench_out/run_260q_orcd_v3_27b"; then
+    restart_services
+    ensure_vllm_model "Qwen/Qwen3.6-27B-FP8" 0 0
+    submit_append_model "27b" "$HOME/bench_out/run_260q_orcd_v3_27b"
+  else
+    log "27b archives already have aux10; skipping 27b vLLM startup"
+    validate_aux_rows "27b" "$HOME/bench_out/run_260q_orcd_v3_27b"
+  fi
 
   log "append aux10 270 orchestrator complete"
 }
