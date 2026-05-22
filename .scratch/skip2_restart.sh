@@ -1,5 +1,6 @@
 #!/bin/bash
 scp -q /Users/jason/projects/A2rchi/.scratch/recovery_orchestrator.sh orcd-login:recovery_orchestrator.sh
+scp -q /Users/jason/projects/A2rchi/.scratch/launch_4config_inner.sh orcd-login:A2rchi/.scratch/launch_4config_inner.sh
 ssh orcd-login bash <<'REMOTE'
 echo "=== kill orchestrator + pending 35B vllm ==="
 pkill -f recovery_orchestrator.sh 2>/dev/null
