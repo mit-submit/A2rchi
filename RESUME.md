@@ -67,16 +67,26 @@ On ORCD (under `~/bench_out/`):
 3. **State decay.** Same code, same args: original 35B no-tools got 89 errs; rerun
    on a fresh-restarted archi-services after 4h of bench abuse got 213 errs.
 
-## Bugs in the orchestrator (still unfixed; need to fix before relaunching)
+## Orchestrator fixes
+
+Fixed in `.scratch/recovery_orchestrator.sh`:
 
 1. **27B (dense) crashed at vllm startup**:
    `Number of experts must be > 0 when expert parallelism is enabled`.
-   Recovery copy-pasted 35B MoE flags. **Need `enable_ep=0, mtp=0` for Qwen3.6-27B**.
-2. **Gemma-4-31B-it** is also dense — same fix.
-3. **Gemma-4-26B-A4B-it** is MoE but Qwen MTP isn't portable → `enable_ep=1, mtp=0`.
-4. **Orchestrator dies on missing `~/archi-vllm.env`** (vllm exit deletes it, then
-   `source` under `set -u` exits with `unbound variable`). Needs guarded source.
-5. **HF_TOKEN file missing** — Gemma sweeps require
+   Recovery copy-pasted 35B MoE flags. `Qwen/Qwen3.6-27B-FP8` now uses
+   `enable_ep=0, mtp=0`.
+2. **Gemma-4-31B-it** is also dense. It now uses `enable_ep=0, mtp=0`.
+3. **Gemma-4-26B-A4B-it** is MoE but Qwen MTP isn't portable. It now uses
+   `enable_ep=1, mtp=0`.
+4. **Missing `~/archi-vllm.env` after a failed/dead vLLM job** is now guarded.
+   `start_vllm_for` validates that the env file exists and matches the expected
+   job id + model before sourcing it, and reports `sacct` state cleanly on failure.
+   `.scratch/launch_4config_inner.sh` also fails fast if service/vLLM env files
+   are absent or incomplete.
+
+Remaining operational prerequisite:
+
+1. **HF_TOKEN file missing** — Gemma sweeps require
    `~/.archi-bundle-state/bundle/secrets/archi/hf_token.txt` (gated on HF).
 
 ## Fixes already landed in this snapshot
@@ -91,7 +101,11 @@ On ORCD (under `~/bench_out/`):
 
 1. Read `.scratch/recovery_orchestrator.sh`. Understand the chain
    (35B → 27B → Gemma-31B → Gemma-26B-A4B).
-2. Apply the four orchestrator bug fixes from the section above.
+2. Confirm the orchestrator and launcher still pass syntax checks:
+   ```bash
+   bash -n .scratch/recovery_orchestrator.sh
+   bash -n .scratch/launch_4config_inner.sh
+   ```
 3. Pre-flight checks:
    ```bash
    ssh orcd-login 'squeue -u $USER -o "%i %j %T %M"'

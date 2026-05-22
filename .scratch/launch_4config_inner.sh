@@ -3,8 +3,14 @@
 # Reads LIMIT/CONCURRENCY/etc from ARCHI_* env vars set by the outer ssh call.
 set -euo pipefail
 
-. $HOME/archi-services.env
-. $HOME/archi-vllm.env
+[ -f "$HOME/archi-services.env" ] || { echo "ERROR: missing $HOME/archi-services.env" >&2; exit 2; }
+[ -f "$HOME/archi-vllm.env" ] || { echo "ERROR: missing $HOME/archi-vllm.env" >&2; exit 3; }
+. "$HOME/archi-services.env"
+. "$HOME/archi-vllm.env"
+
+[ -n "${ARCHI_DM_URL:-}" ] || { echo "ERROR: ARCHI_DM_URL is unset after sourcing archi-services.env" >&2; exit 4; }
+[ -n "${VLLM_URL:-}" ] || { echo "ERROR: VLLM_URL is unset after sourcing archi-vllm.env" >&2; exit 5; }
+[ -n "${VLLM_MODEL:-}" ] || { echo "ERROR: VLLM_MODEL is unset after sourcing archi-vllm.env" >&2; exit 6; }
 
 LIMIT="${ARCHI_LIMIT:-260}"
 CONCURRENCY="${ARCHI_CONCURRENCY:-32}"

@@ -106,6 +106,26 @@ wait_for_url "$ARCHI_DM_URL/api/catalog/schema" 40 "archi data-manager" || { log
 # would put the env-file source in a subshell and not propagate VLLM_URL.
 # Reuses an existing vllm if it's already serving the requested model.
 LAST_VLLM_JID=""
+source_vllm_env_for() {
+  local jid=$1 model=$2
+  if [ ! -f "$HOME/archi-vllm.env" ]; then
+    log "  ERROR: $HOME/archi-vllm.env is missing for vllm jid=$jid"
+    sacct -u "$USER" -j "$jid" --format=JobID,State,ExitCode 2>/dev/null | head -8 | sed 's/^/    /'
+    return 1
+  fi
+  if ! grep -q "SLURM_JOB_ID=$jid" "$HOME/archi-vllm.env"; then
+    log "  ERROR: $HOME/archi-vllm.env does not point to jid=$jid"
+    sed 's/^/    /' "$HOME/archi-vllm.env"
+    return 1
+  fi
+  if ! grep -q "VLLM_MODEL=$model" "$HOME/archi-vllm.env"; then
+    log "  ERROR: $HOME/archi-vllm.env does not point to model=$model"
+    sed 's/^/    /' "$HOME/archi-vllm.env"
+    return 1
+  fi
+  . "$HOME/archi-vllm.env"
+}
+
 start_vllm_for() {
   local model=$1 enable_ep=$2 tool_parser=$3 reasoning_parser=$4 disable_thinking=$5 mtp=$6
 
@@ -117,7 +137,7 @@ start_vllm_for() {
        && grep -q "VLLM_MODEL=$model" "$HOME/archi-vllm.env"; then
       log "  reusing existing vllm for $model (jid=$existing_jid)"
       LAST_VLLM_JID=$existing_jid
-      . $HOME/archi-vllm.env
+      source_vllm_env_for "$existing_jid" "$model" || return 1
       return 0
     fi
     log "  existing vllm is wrong model; cancelling jid=$existing_jid"
@@ -138,13 +158,20 @@ start_vllm_for() {
   wait_for_jid_running "$jid" 30 "vllm($model)" || return 1
 
   log "  waiting for $HOME/archi-vllm.env to point to new vllm…"
+  local env_ready=0
   for i in $(seq 1 60); do
     if grep -q "SLURM_JOB_ID=$jid" $HOME/archi-vllm.env 2>/dev/null; then
+      env_ready=1
       break
     fi
     sleep 10
   done
-  . $HOME/archi-vllm.env
+  if [ "$env_ready" != "1" ]; then
+    log "  ERROR: timed out waiting for $HOME/archi-vllm.env for jid=$jid"
+    sacct -u "$USER" -j "$jid" --format=JobID,State,ExitCode 2>/dev/null | head -8 | sed 's/^/    /'
+    return 1
+  fi
+  source_vllm_env_for "$jid" "$model" || return 1
   log "  VLLM_URL=$VLLM_URL  VLLM_MODEL=$VLLM_MODEL"
   wait_for_url "$VLLM_URL/models" 40 "vllm /v1/models" || return 2
   LAST_VLLM_JID=$jid
