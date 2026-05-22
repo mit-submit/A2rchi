@@ -90,10 +90,20 @@ Each LLM judge scores responses on a 1--5 scale across five
 dimensions: relevance, completeness, specificity, helpfulness,
 and source faithfulness. Source faithfulness is conditioned on
 the pipeline emitting sources; the other four apply to every
-question. The specificity rubric rewards explicit refusal over
-unsupported confidence, so a clean refusal on a live-access
-question is not penalized. The judge prompt omits the
-production reference answer, making the rubric reference-free.
+question. The specificity rubric penalizes fabricated specifics
+(claims without sources or tool output) below honest
+acknowledgment of limits, but caps both well below specifics
+that are traceable to cited sources or tool output. A bare-LLM
+that honestly says ``I don't have access to look that up'' is
+not penalized for the honesty, but it cannot reach the top of
+the specificity scale: that band is reserved for answers whose
+specifics are grounded in retrieved sources or live tool calls.
+The full agent and the RAG control therefore remain free to
+outscore the bare-LLM on questions whose answer is in the
+documentation, and only the full agent can reach the top band
+on data-query questions where live tool output is necessary.
+The judge prompt omits the production reference answer, making
+the rubric reference-free.
 The mean rubric score reported below is the average of the four
 core dimensions; source faithfulness is reported separately.
 The 260q track uses a single judge (\texttt{glm-5.1}

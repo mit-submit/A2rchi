@@ -82,6 +82,27 @@ All job data lives under `data.*`. Envelope metadata is under `metadata.*`.
 | `data.WMAgent_JobID`          | WMAgent job ID                                         |
 | `data.AccountingGroup`        | Accounting group (e.g. `production.cmsdataops`)        |
 
+### Derived metrics — compute client-side
+
+The condor index stores raw fields; **the aggregation tool does NOT support
+computed-field filters** (e.g. you cannot write a Lucene query like
+`data.RequestMemory/data.RequestCpus:>2200`). For derived metrics, fetch
+the component fields and do the math in your final answer, not in the query:
+
+- **memory per core** = `data.RequestMemory_Eval` / `data.RequestCpus`
+  - To find jobs above a threshold, aggregate `terms` by `data.Workflow`
+    with the `query` filtering only on the components you can express
+    directly (e.g. `data.RequestMemory_Eval:>2200`), then filter further
+    when rendering the table.
+- **per-job wall-clock** = `data.CompletionDate` − `data.JobStartDate`
+- **efficiency by core-hour** = aggregate `sum(data.CpuTimeHr)` and
+  divide by `sum(data.CoreHr)` in your answer text
+- **CPU efficiency** is already pre-computed as `data.CpuEff` (0–100)
+
+If you cannot express the filter with the components directly, retrieve
+a top-N sample with the broadest reasonable filter and compute the
+threshold in the answer.
+
 ### Resource usage
 
 | Field                         | Description                                           |
