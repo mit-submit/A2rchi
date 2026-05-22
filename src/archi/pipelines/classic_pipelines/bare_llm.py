@@ -33,7 +33,7 @@ class BareLLMPipeline(BasePipeline):
                 messages.append(AIMessage(content=content))
 
         response = self.chat_model.invoke(messages)
-        answer = response.content if hasattr(response, "content") else str(response)
+        answer = _extract_text_content(response.content) if hasattr(response, "content") else str(response)
 
         model_used = getattr(self.chat_model, "model_name", None) or getattr(self.chat_model, "model", "unknown")
 
@@ -71,6 +71,29 @@ def _extract_thinking(response) -> str:
         if isinstance(v, str) and v.strip():
             return v
     return ""
+
+
+def _extract_text_content(content) -> str:
+    """Normalize provider content blocks into the answer text.
+
+    OpenAI's Responses API can surface AIMessage.content as a list containing
+    reasoning and text blocks. Benchmark outputs expect answer to be a string.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+                elif isinstance(text, dict) and isinstance(text.get("value"), str):
+                    parts.append(text["value"])
+        return "\n\n".join(part for part in parts if part)
+    return str(content)
 
 
 def _extract_usage(response) -> dict:

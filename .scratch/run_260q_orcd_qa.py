@@ -326,6 +326,24 @@ def _event(d: dict) -> dict:
     return d
 
 
+def _message_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+                elif isinstance(text, dict) and isinstance(text.get("value"), str):
+                    parts.append(text["value"])
+        return "\n\n".join(part for part in parts if part)
+    return str(content)
+
+
 def _result_skeleton(qid, qtext, pipeline_name, t0, *, answer="", error=None, tb=None,
                      model_name=None):
     out = {
@@ -350,7 +368,7 @@ def _convert_pipeline_output(qid, qtext, po, t0, pipeline_name, model_name):
         qid, qtext, pipeline_name, t0,
         model_name=meta.get("model_used") or model_name,
     )
-    answer = getattr(po, "answer", "") or ""
+    answer = _message_text(getattr(po, "answer", "") or "")
     result["answer"] = answer
     src_docs = getattr(po, "source_documents", None) or []
     scores = meta.get("retriever_scores") or []

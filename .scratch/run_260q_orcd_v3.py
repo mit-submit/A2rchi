@@ -198,6 +198,24 @@ def _forced_final_msg(n_max: int) -> str:
     )
 
 
+def _message_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+                elif isinstance(text, dict) and isinstance(text.get("value"), str):
+                    parts.append(text["value"])
+        return "\n\n".join(part for part in parts if part)
+    return str(content)
+
+
 # ------------ pipelines ------------
 
 async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_calls, model_name):
@@ -244,7 +262,7 @@ async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_c
         rm = getattr(ai, "response_metadata", None) or {}
         if isinstance(rm, dict):
             finish_reason = rm.get("finish_reason") or rm.get("stop_reason")
-        content = getattr(ai, "content", "") or ""
+        content = _message_text(getattr(ai, "content", "") or "")
         tool_calls = getattr(ai, "tool_calls", None) or []
 
         trace_events.append(_event({
@@ -290,13 +308,13 @@ async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_c
                     }))
                     ai = await call_llm(use_tools=False, iter_idx=iter_idx)
                     messages.append(ai)
-                    return getattr(ai, "content", "") or "", True
+                    return _message_text(getattr(ai, "content", "") or ""), True
 
                 ai = await call_llm(use_tools=True, iter_idx=iter_idx)
                 messages.append(ai)
                 tool_calls = getattr(ai, "tool_calls", None) or []
                 if not tool_calls:
-                    return getattr(ai, "content", "") or "", False
+                    return _message_text(getattr(ai, "content", "") or ""), False
 
                 for call_idx, tc in enumerate(tool_calls):
                     tc_name = tc.get("name", "?")
