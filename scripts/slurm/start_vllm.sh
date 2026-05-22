@@ -58,6 +58,7 @@ mkdir -p "$HF_CACHE" "$SIF_DIR"
 #   VLLM_MAX_NUM_SEQS=N    cap concurrent sequences (smaller graph capture set)
 #   VLLM_GPU_MEM_UTIL=F    gpu-memory-utilization (default 0.92)
 VLLM_GPU_MEM_UTIL=${VLLM_GPU_MEM_UTIL:-0.92}
+rm -f "$HOME/archi-vllm.env"
 VLLM_EXTRA_ARGS=()
 if [ "${VLLM_ENFORCE_EAGER:-0}" = "1" ]; then
   VLLM_EXTRA_ARGS+=(--enforce-eager)
@@ -178,17 +179,29 @@ apptainer run --nv --no-eval \
   "${VLLM_EXTRA_ARGS[@]}" \
   &
 VLLM_PID=$!
+cleanup() {
+  log "Caught signal; stopping vLLM…"
+  kill -TERM "$VLLM_PID" 2>/dev/null || true
+  wait "$VLLM_PID" 2>/dev/null || true
+  rm -f "$HOME/archi-vllm.env"
+}
+trap cleanup EXIT TERM INT
 
 # Wait for the OpenAI endpoint to come alive (vllm takes 2-5 min to load weights)
 log "Waiting for vLLM /health to be ready (up to 600s)…"
 deadline=$(( $(date +%s) + 600 ))
+healthy=0
 while [ $(date +%s) -lt $deadline ]; do
   if curl -fsS -m 5 "http://127.0.0.1:${VLLM_PORT}/health" >/dev/null 2>&1; then
     log "  vLLM healthy"
+    healthy=1
     break
   fi
   sleep 5
 done
+if [ "$healthy" != "1" ]; then
+  die "vLLM /health did not become ready before the 600s deadline"
+fi
 
 # Publish endpoint
 {
@@ -202,11 +215,4 @@ log "Wrote $HOME/archi-vllm.env:"
 cat "$HOME/archi-vllm.env"
 
 # Wait for vllm to exit (or for the job to be killed)
-cleanup() {
-  log "Caught signal; stopping vLLM…"
-  kill -TERM "$VLLM_PID" 2>/dev/null || true
-  wait "$VLLM_PID" 2>/dev/null || true
-  rm -f "$HOME/archi-vllm.env"
-}
-trap cleanup EXIT TERM INT
 wait "$VLLM_PID"
