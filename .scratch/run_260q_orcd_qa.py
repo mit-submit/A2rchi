@@ -35,14 +35,21 @@ DEFAULT_QUESTIONS = REPO / "configs/submit75/curated_questions.json"
 OUT_DIR = Path(os.environ.get("ORCD_OUT_DIR", os.path.expanduser("~/bench_out/run_260q_orcd_v3")))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-ARCHI_DM_URL = os.environ.get("ARCHI_DM_URL") or sys.exit("ARCHI_DM_URL required")
-VLLM_URL     = os.environ.get("VLLM_URL")     or sys.exit("VLLM_URL required")
-VLLM_MODEL   = os.environ.get("VLLM_MODEL")   or sys.exit("VLLM_MODEL required")
+ARCHI_DM_URL = os.environ.get("ARCHI_DM_URL")
+VLLM_URL     = os.environ.get("VLLM_URL")
+VLLM_MODEL   = os.environ.get("VLLM_MODEL")
 
 PER_QUESTION_TIMEOUT_S = int(os.environ.get("PER_QUESTION_TIMEOUT_S", "600"))
 SEED                   = int(os.environ.get("VLLM_SEED", "42"))
 RAG_K                  = int(os.environ.get("RAG_K", "15"))
 OUTPUT_PREVIEW_CHARS   = int(os.environ.get("OUTPUT_PREVIEW_CHARS", "2000"))
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 for name in ("openai_api_key", "openrouter_api_key", "monit_grafana_token",
              "jira_pat", "dm_api_token"):
@@ -205,34 +212,72 @@ class HTTPHybridVectorstore(_VectorStore):
 
 # ------------ config builder ------------
 
-def build_archi_config(tool_set: str) -> dict:
-    """Minimum config dict BasePipeline needs to wire vLLM as the LLM.
+def build_archi_config(
+    tool_set: str,
+    *,
+    llm_provider: str,
+    model_name: str,
+    base_url: Optional[str],
+    use_responses_api: bool,
+    reasoning_effort: Optional[str],
+) -> dict:
+    """Minimum config dict BasePipeline needs to wire the selected LLM.
 
     Path: BasePipeline._init_llms reads
       config["archi"]["pipeline_map"][<ClassName>]["models"]["required" | "optional"]
-    Each entry is "provider/model_id". We use "local" → LocalProvider which
-    routes to ChatOpenAI when extra_kwargs.local_mode == "openai_compat".
+    Each entry is "provider/model_id". For vLLM we use "local" → LocalProvider
+    with openai_compat; for GPT-5.5 we use the OpenAI provider directly.
     """
-    provider_options = {
-        "local_mode": "openai_compat",
-        "temperature": 0,
-        # vLLM honors seed via OpenAI chat completions extra
-        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}, "seed": SEED},
-        "max_retries": 1,
-        # request timeout (seconds)
-        "timeout": 200,
-    }
+    provider_key = "local" if llm_provider == "vllm" else llm_provider
+    model_ref = f"{provider_key}/{model_name}"
+
+    if llm_provider == "vllm":
+        provider_options = {
+            "local_mode": "openai_compat",
+            "temperature": 0,
+            # vLLM honors seed via OpenAI chat completions extra
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}, "seed": SEED},
+            "max_retries": 1,
+            # request timeout (seconds)
+            "timeout": 200,
+        }
+        providers = {
+            "local": {
+                "base_url": base_url,
+                "mode": "openai_compat",
+                "options": provider_options,
+            }
+        }
+    else:
+        provider_options = {
+            "temperature": 0,
+            "max_retries": 1,
+            "timeout": 200,
+        }
+        if llm_provider == "openai":
+            provider_options["use_responses_api"] = use_responses_api
+            if reasoning_effort:
+                provider_options["reasoning_effort"] = reasoning_effort
+        providers = {
+            llm_provider: {
+                "base_url": base_url,
+                "default_model": model_name,
+                "models": [model_name],
+                "options": provider_options,
+            }
+        }
+
     common_pipeline_map = {
         "BareLLMPipeline": {
             "models": {
-                "required": {"chat_model": f"local/{VLLM_MODEL}"},
+                "required": {"chat_model": model_ref},
             },
         },
         "QAPipeline": {
             "models": {
                 "required": {
-                    "chat_model":    f"local/{VLLM_MODEL}",
-                    "condense_model": f"local/{VLLM_MODEL}",
+                    "chat_model":    model_ref,
+                    "condense_model": model_ref,
                 },
             },
             "max_tokens": 7000,
@@ -251,13 +296,7 @@ def build_archi_config(tool_set: str) -> dict:
         },
         "services": {
             "chat_app": {
-                "providers": {
-                    "local": {
-                        "base_url": VLLM_URL,
-                        "mode": "openai_compat",
-                        "options": provider_options,
-                    }
-                }
+                "providers": providers
             }
         },
     }
@@ -265,8 +304,8 @@ def build_archi_config(tool_set: str) -> dict:
 
 # ------------ pipeline constructors ------------
 
-def make_pipeline(tool_set: str):
-    config = build_archi_config(tool_set)
+def make_pipeline(tool_set: str, llm_settings: dict):
+    config = build_archi_config(tool_set, **llm_settings)
     prompt_overrides = {
         "condense_prompt": str(REPO / "examples/defaults/prompts/condense/default.prompt"),
         "chat_prompt":     str(REPO / "examples/defaults/prompts/chat/default.prompt"),
@@ -287,12 +326,13 @@ def _event(d: dict) -> dict:
     return d
 
 
-def _result_skeleton(qid, qtext, pipeline_name, t0, *, answer="", error=None, tb=None):
+def _result_skeleton(qid, qtext, pipeline_name, t0, *, answer="", error=None, tb=None,
+                     model_name=None):
     out = {
         "question": qtext,
         "answer": answer,
         "time_elapsed": time.time() - t0,
-        "model_used": VLLM_MODEL,
+        "model_used": model_name or VLLM_MODEL or "?",
         "pipeline_used": pipeline_name,
         "trace_events": [],
         "sources_metadata": [],
@@ -303,12 +343,15 @@ def _result_skeleton(qid, qtext, pipeline_name, t0, *, answer="", error=None, tb
     return out
 
 
-def _convert_pipeline_output(qid, qtext, po, t0, pipeline_name):
+def _convert_pipeline_output(qid, qtext, po, t0, pipeline_name, model_name):
     """PipelineOutput → v3-format result dict + synthetic trace events."""
-    result = _result_skeleton(qid, qtext, pipeline_name, t0)
+    meta = getattr(po, "metadata", {}) or {}
+    result = _result_skeleton(
+        qid, qtext, pipeline_name, t0,
+        model_name=meta.get("model_used") or model_name,
+    )
     answer = getattr(po, "answer", "") or ""
     result["answer"] = answer
-    meta = getattr(po, "metadata", {}) or {}
     src_docs = getattr(po, "source_documents", None) or []
     scores = meta.get("retriever_scores") or []
 
@@ -340,7 +383,7 @@ def _convert_pipeline_output(qid, qtext, po, t0, pipeline_name):
     result["trace_events"].append(_event({
         "type": "llm_call",
         "iter": 1,
-        "model": VLLM_MODEL,
+        "model": result["model_used"],
         "duration_s": time.time() - t0,  # whole-pipeline duration; per-call not exposed
         "input_tokens": usage.get("prompt_tokens"),
         "output_tokens": usage.get("completion_tokens"),
@@ -352,7 +395,7 @@ def _convert_pipeline_output(qid, qtext, po, t0, pipeline_name):
     return result
 
 
-async def run_one(qid, qtext, pipeline, vectorstore, *, pipeline_name):
+async def run_one(qid, qtext, pipeline, vectorstore, *, pipeline_name, model_name):
     t0 = time.time()
     try:
         def _invoke_sync():
@@ -362,14 +405,15 @@ async def run_one(qid, qtext, pipeline, vectorstore, *, pipeline_name):
             return pipeline.invoke(**kwargs)
 
         po = await asyncio.wait_for(asyncio.to_thread(_invoke_sync), timeout=PER_QUESTION_TIMEOUT_S)
-        return _convert_pipeline_output(qid, qtext, po, t0, pipeline_name)
+        return _convert_pipeline_output(qid, qtext, po, t0, pipeline_name, model_name)
     except asyncio.TimeoutError:
         return _result_skeleton(qid, qtext, pipeline_name, t0,
-                                error=f"per-question timeout {PER_QUESTION_TIMEOUT_S}s")
+                                error=f"per-question timeout {PER_QUESTION_TIMEOUT_S}s",
+                                model_name=model_name)
     except Exception as e:
         return _result_skeleton(qid, qtext, pipeline_name, t0,
                                 error=f"{type(e).__name__}: {e}",
-                                tb=traceback.format_exc())
+                                tb=traceback.format_exc(), model_name=model_name)
 
 
 # ------------ main ------------
@@ -385,14 +429,54 @@ async def main():
     parser.add_argument("--concurrency", type=int,
                         default=int(os.environ.get("CONCURRENCY_OVERRIDE", "32")))
     parser.add_argument("--retry-errored", action="store_true")
+    parser.add_argument("--llm-provider", choices=["vllm", "openai", "openrouter"],
+                        default=os.environ.get("LLM_PROVIDER", "vllm"),
+                        help="LLM backend. Defaults to vllm to preserve Qwen runs.")
+    parser.add_argument("--model", default=os.environ.get("LLM_MODEL"),
+                        help="Model id for the chosen provider.")
+    parser.add_argument("--base-url", default=os.environ.get("LLM_BASE_URL"),
+                        help="Optional OpenAI-compatible base URL.")
+    parser.add_argument("--api-key-env", default=os.environ.get("LLM_API_KEY_ENV"),
+                        help="Environment variable holding the API key for API providers.")
+    parser.add_argument("--reasoning-effort", default=os.environ.get("OPENAI_REASONING_EFFORT", "high"))
+    parser.add_argument("--use-responses-api", dest="use_responses_api", action="store_true",
+                        default=_env_bool("OPENAI_USE_RESPONSES_API", True))
+    parser.add_argument("--no-use-responses-api", dest="use_responses_api", action="store_false")
     args = parser.parse_args()
+
+    llm_provider = args.llm_provider.lower()
+    if llm_provider == "vllm":
+        model_name = args.model or VLLM_MODEL or sys.exit("VLLM_MODEL required for --llm-provider vllm")
+        base_url = args.base_url or VLLM_URL or sys.exit("VLLM_URL required for --llm-provider vllm")
+        api_key_env = None
+    elif llm_provider == "openai":
+        model_name = args.model or os.environ.get("OPENAI_MODEL") or "gpt-5.5-2026-04-23"
+        base_url = args.base_url
+        api_key_env = args.api_key_env or "OPENAI_API_KEY"
+        os.environ.get(api_key_env) or sys.exit(f"{api_key_env} required for --llm-provider openai")
+    elif llm_provider == "openrouter":
+        model_name = args.model or os.environ.get("OPENROUTER_MODEL") or "openai/gpt-5.5"
+        base_url = args.base_url or "https://openrouter.ai/api/v1"
+        api_key_env = args.api_key_env or "OPENROUTER_API_KEY"
+        os.environ.get(api_key_env) or sys.exit(f"{api_key_env} required for --llm-provider openrouter")
+        args.use_responses_api = False
+    else:
+        raise ValueError(f"unknown llm provider {llm_provider!r}")
+
+    llm_settings = {
+        "llm_provider": llm_provider,
+        "model_name": model_name,
+        "base_url": base_url,
+        "use_responses_api": args.use_responses_api,
+        "reasoning_effort": args.reasoning_effort,
+    }
 
     questions_file = Path(args.questions)
     out_file = Path(args.out) if args.out else OUT_DIR / f"results_v3_{args.tool_set}_{int(time.time())}.json"
     print(f"Output: {out_file}")
     print(f"Questions: {questions_file}")
     print(f"tool_set={args.tool_set}  concurrency={args.concurrency}  per_question_timeout={PER_QUESTION_TIMEOUT_S}s")
-    print(f"vllm: {VLLM_URL}  model: {VLLM_MODEL}  seed={SEED}")
+    print(f"llm_provider={llm_provider}  model={model_name}  seed={SEED}")
 
     existing_results = {}
     if out_file.exists():
@@ -409,12 +493,14 @@ async def main():
         if prev.get("error") and args.retry_errored: return False
         return True
 
-    pipeline = make_pipeline(args.tool_set)
+    pipeline = make_pipeline(args.tool_set, llm_settings)
     pipeline_name = pipeline.__class__.__name__
     print(f"  pipeline: {pipeline_name} instantiated")
 
     vectorstore = None
     if args.tool_set == "rag":
+        if not ARCHI_DM_URL:
+            sys.exit("ARCHI_DM_URL required for --tool-set rag")
         vectorstore = HTTPHybridVectorstore(ARCHI_DM_URL)
         # Sanity: one call
         try:
@@ -446,7 +532,8 @@ async def main():
     async def process_one(i, q, qid):
         qtext = q.get("question", q.get("text", ""))
         print(f"--- [{i+1}/{len(questions)}] START {qid}: {qtext[:80]}", flush=True)
-        result = await run_one(qid, qtext, pipeline, vectorstore, pipeline_name=pipeline_name)
+        result = await run_one(qid, qtext, pipeline, vectorstore,
+                               pipeline_name=pipeline_name, model_name=model_name)
         tag = "ERR" if result.get("error") else "OK"
         n_hits = len(result.get("sources_metadata") or [])
         print(f"--- [{i+1}/{len(questions)}] DONE  {qid} {tag}: "

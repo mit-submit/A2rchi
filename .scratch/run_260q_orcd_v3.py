@@ -45,9 +45,16 @@ OUT_DIR = Path(os.environ.get("ORCD_OUT_DIR", os.path.expanduser("~/bench_out/ru
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 ARCHI_DM_URL        = os.environ.get("ARCHI_DM_URL")        or sys.exit("ARCHI_DM_URL required")
-ARCHI_RUCIO_MCP_URL = os.environ.get("ARCHI_RUCIO_MCP_URL") or sys.exit("ARCHI_RUCIO_MCP_URL required")
-VLLM_URL   = os.environ.get("VLLM_URL")   or sys.exit("VLLM_URL required")
-VLLM_MODEL = os.environ.get("VLLM_MODEL") or sys.exit("VLLM_MODEL required")
+ARCHI_RUCIO_MCP_URL = os.environ.get("ARCHI_RUCIO_MCP_URL")
+VLLM_URL            = os.environ.get("VLLM_URL")
+VLLM_MODEL          = os.environ.get("VLLM_MODEL")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 for name in ("openai_api_key", "openrouter_api_key", "monit_grafana_token",
              "jira_pat", "dm_api_token", "git_token", "git_username"):
@@ -193,7 +200,7 @@ def _forced_final_msg(n_max: int) -> str:
 
 # ------------ pipelines ------------
 
-async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_calls):
+async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_calls, model_name):
     """React loop with budget control, per-tool timeout, comprehensive trace."""
     t0 = time.time()
     trace_events: list = []
@@ -243,7 +250,7 @@ async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_c
         trace_events.append(_event({
             "type": "llm_call",
             "iter": iter_idx,
-            "model": VLLM_MODEL,
+            "model": model_name,
             "duration_s": duration_s,
             "input_tokens": usage.get("input_tokens"),
             "output_tokens": usage.get("output_tokens"),
@@ -339,15 +346,17 @@ async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_c
         answer, hit_budget = await asyncio.wait_for(_inner(), timeout=PER_QUESTION_TIMEOUT_S)
         return _finalize(qid, qtext, answer, trace_events, t0, error=None,
                          hit_budget=hit_budget, n_tool_calls=n_tool_calls, n_iters=iter_idx,
-                         pipeline="agent_v3")
+                         pipeline="agent_v3", model_name=model_name)
     except asyncio.TimeoutError:
         return _finalize(qid, qtext, "", trace_events, t0,
                          error=f"per-question timeout {PER_QUESTION_TIMEOUT_S}s",
-                         n_tool_calls=n_tool_calls, n_iters=iter_idx, pipeline="agent_v3")
+                         n_tool_calls=n_tool_calls, n_iters=iter_idx, pipeline="agent_v3",
+                         model_name=model_name)
     except Exception as e:
         return _finalize(qid, qtext, "", trace_events, t0,
                          error=f"{type(e).__name__}: {e}", tb=traceback.format_exc(),
-                         n_tool_calls=n_tool_calls, n_iters=iter_idx, pipeline="agent_v3")
+                         n_tool_calls=n_tool_calls, n_iters=iter_idx, pipeline="agent_v3",
+                         model_name=model_name)
 
 
 # bare and rag live in run_260q_orcd_qa.py (uses real QAPipeline + BareLLMPipeline)
@@ -355,12 +364,12 @@ async def run_agent(qid, qtext, *, llm_factory, tools, system_prompt, max_tool_c
 
 def _finalize(qid, qtext, answer, trace_events, t0, *, error, tb=None,
               hit_budget=False, n_tool_calls=None, n_iters=None, pipeline=None,
-              n_retrieval_hits=None):
+              n_retrieval_hits=None, model_name=None):
     out = {
         "question": qtext,
         "answer": answer,
         "time_elapsed": time.time() - t0,
-        "model_used": VLLM_MODEL,
+        "model_used": model_name or VLLM_MODEL or "?",
         "pipeline_used": pipeline or "?",
         "trace_events": trace_events,
         "sources_metadata": [],
@@ -392,13 +401,47 @@ async def main():
     parser.add_argument("--max-tool-calls", type=int, default=MAX_TOOL_CALLS)
     parser.add_argument("--retry-errored", action="store_true",
                         help="On resume, also retry questions whose prior run errored (default: skip them too).")
+    parser.add_argument("--llm-provider", choices=["vllm", "openai", "openrouter"],
+                        default=os.environ.get("LLM_PROVIDER", "vllm"),
+                        help="LLM backend. Defaults to vllm to preserve Qwen runs.")
+    parser.add_argument("--model", default=os.environ.get("LLM_MODEL"),
+                        help="Model id for the chosen provider.")
+    parser.add_argument("--base-url", default=os.environ.get("LLM_BASE_URL"),
+                        help="Optional OpenAI-compatible base URL.")
+    parser.add_argument("--api-key-env", default=os.environ.get("LLM_API_KEY_ENV"),
+                        help="Environment variable holding the API key for API providers.")
+    parser.add_argument("--reasoning-effort", default=os.environ.get("OPENAI_REASONING_EFFORT", "high"))
+    parser.add_argument("--use-responses-api", dest="use_responses_api", action="store_true",
+                        default=_env_bool("OPENAI_USE_RESPONSES_API", True))
+    parser.add_argument("--no-use-responses-api", dest="use_responses_api", action="store_false")
     args = parser.parse_args()
+
+    llm_provider = args.llm_provider.lower()
+    if llm_provider == "vllm":
+        model_name = args.model or VLLM_MODEL or sys.exit("VLLM_MODEL required for --llm-provider vllm")
+        base_url = args.base_url or VLLM_URL or sys.exit("VLLM_URL required for --llm-provider vllm")
+        api_key = "EMPTY"
+        api_key_env = None
+    elif llm_provider == "openai":
+        model_name = args.model or os.environ.get("OPENAI_MODEL") or "gpt-5.5-2026-04-23"
+        base_url = args.base_url
+        api_key_env = args.api_key_env or "OPENAI_API_KEY"
+        api_key = os.environ.get(api_key_env) or sys.exit(f"{api_key_env} required for --llm-provider openai")
+    elif llm_provider == "openrouter":
+        model_name = args.model or os.environ.get("OPENROUTER_MODEL") or "openai/gpt-5.5"
+        base_url = args.base_url or "https://openrouter.ai/api/v1"
+        api_key_env = args.api_key_env or "OPENROUTER_API_KEY"
+        api_key = os.environ.get(api_key_env) or sys.exit(f"{api_key_env} required for --llm-provider openrouter")
+        args.use_responses_api = False
+    else:
+        raise ValueError(f"unknown llm provider {llm_provider!r}")
 
     questions_file = Path(args.questions)
     out_file = Path(args.out) if args.out else OUT_DIR / f"results_v3_{args.tool_set}_{int(time.time())}.json"
     print(f"Output: {out_file}")
     print(f"Questions: {questions_file}")
     print(f"tool_set={args.tool_set}  concurrency={args.concurrency}  max_tool_calls={args.max_tool_calls}")
+    print(f"llm_provider={llm_provider}  model={model_name}")
     print(f"timeouts: tool={TOOL_TIMEOUT_S}s  llm={LLM_TIMEOUT_S}s  question={PER_QUESTION_TIMEOUT_S}s")
     print(
         f"catalog_http_timeout={CATALOG_HTTP_TIMEOUT_S}s  "
@@ -440,6 +483,8 @@ async def main():
 
     tools = []
     if args.tool_set == "live":
+        if not ARCHI_RUCIO_MCP_URL:
+            sys.exit("ARCHI_RUCIO_MCP_URL required for --tool-set live")
         rucio_tools_all = await smoke.collect_rucio_tools()
         rucio_tools = [t for t in rucio_tools_all if t.name not in RUCIO_TOOL_DENYLIST]
         monit_tools = smoke.build_monit_tools()
@@ -455,15 +500,24 @@ async def main():
     def llm_factory():
         timeout = httpx.Timeout(connect=10.0, read=180.0, write=10.0, pool=10.0)
         async_http_client = httpx.AsyncClient(timeout=timeout)
-        extra_body = {
-            "chat_template_kwargs": {"enable_thinking": False},
-            "seed": SEED,
-        }
-        return ChatOpenAI(
-            model=VLLM_MODEL, api_key="EMPTY", base_url=VLLM_URL,
+        kwargs = dict(
+            model=model_name, api_key=api_key,
             temperature=0, timeout=LLM_TIMEOUT_S, max_retries=1,
-            http_async_client=async_http_client, extra_body=extra_body,
+            http_async_client=async_http_client,
         )
+        if base_url:
+            kwargs["base_url"] = base_url
+        if llm_provider == "vllm":
+            kwargs["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "seed": SEED,
+            }
+        elif llm_provider == "openai":
+            if args.use_responses_api:
+                kwargs["use_responses_api"] = True
+            if args.reasoning_effort:
+                kwargs["reasoning_effort"] = args.reasoning_effort
+        return ChatOpenAI(**kwargs)
 
     questions = json.loads(questions_file.read_text())
     if args.limit:
@@ -492,7 +546,8 @@ async def main():
         result = await run_agent(qid, qtext,
                                  llm_factory=llm_factory, tools=tools,
                                  system_prompt=system_prompt,
-                                 max_tool_calls=args.max_tool_calls)
+                                 max_tool_calls=args.max_tool_calls,
+                                 model_name=model_name)
 
         n_tool = result.get("n_tool_calls", sum(1 for e in result["trace_events"] if e["type"] == "tool_call"))
         tag = "BUDGET" if result.get("hit_budget") else ("ERR" if result.get("error") else "OK")
