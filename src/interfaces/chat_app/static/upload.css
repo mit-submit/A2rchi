@@ -397,6 +397,71 @@
   margin-bottom: 24px;
 }
 
+.source-box {
+  background-color: var(--bg-primary, #0d1117);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.source-box:last-of-type {
+  margin-bottom: 0;
+}
+
+.source-box-header {
+  margin-bottom: 12px;
+}
+
+.source-box-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e6edf3);
+}
+
+.source-box-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted, #6e7681);
+}
+
+.schedule-box .form-section,
+.schedule-box .form-group {
+  margin-bottom: 0;
+}
+
+.schedule-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.schedule-help {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted, #6e7681);
+}
+
+.schedule-current {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted, #6e7681);
+}
+
+.schedule-current span,
+.schedule-detail span {
+  color: var(--text-secondary, #8b949e);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.schedule-detail {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted, #6e7681);
+}
+
 .form-row {
   display: flex;
   align-items: flex-end;

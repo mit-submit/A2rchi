@@ -127,6 +127,57 @@ class DeploymentManager:
             raise
         except subprocess.SubprocessError as e:
             raise DeploymentError(f"Failed to restart service: {e}", getattr(e, 'returncode', 1))
+
+    def has_service(self, deployment_dir: Path, service_name: str) -> bool:
+        compose_file = deployment_dir / "compose.yaml"
+        if not compose_file.exists():
+            raise FileNotFoundError(f"Compose file not found: {compose_file}")
+        self._validate_compose_file(compose_file)
+        import yaml
+        with open(compose_file, 'r') as f:
+            compose_data = yaml.safe_load(f) or {}
+        services = compose_data.get("services") or {}
+        return service_name in services
+
+    def run_service_once(self, deployment_dir: Path, service_name: str, build: bool = True,
+                         no_deps: bool = True) -> None:
+        """Run a one-shot compose service and remove the container when it exits."""
+        compose_file = deployment_dir / "compose.yaml"
+
+        if not compose_file.exists():
+            raise FileNotFoundError(f"Compose file not found: {compose_file}")
+
+        logger.info(f"Running one-shot service '{service_name}'")
+
+        try:
+            self._validate_compose_file(compose_file)
+        except Exception as e:
+            raise DeploymentError(f"Invalid compose file: {e}", 1)
+
+        flags = ["--rm"]
+        if no_deps:
+            flags.append("--no-deps")
+        if build:
+            flags.append("--build")
+
+        flags_str = " ".join(flags)
+        compose_cmd = f"{self.compose_tool} -f {compose_file} run {flags_str} {service_name}".strip()
+
+        try:
+            stdout, stderr, exit_code = CommandRunner.run_streaming(compose_cmd, cwd=deployment_dir)
+
+            if exit_code != 0:
+                error_msg = f"One-shot service '{service_name}' failed with exit code {exit_code}"
+                if stderr.strip():
+                    error_msg += f"\nError output:\n{stderr}"
+                raise DeploymentError(error_msg, exit_code, stderr)
+
+            logger.info(f"One-shot service '{service_name}' completed successfully")
+        except KeyboardInterrupt:
+            logger.warning("One-shot service interrupted by user")
+            raise
+        except subprocess.SubprocessError as e:
+            raise DeploymentError(f"Failed to run one-shot service: {e}", getattr(e, 'returncode', 1))
     
     def delete_deployment(self, deployment_name: str, remove_images: bool = False, 
                          remove_volumes: bool = False, remove_files: bool = True) -> None:

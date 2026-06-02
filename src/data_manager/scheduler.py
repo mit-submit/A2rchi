@@ -5,7 +5,7 @@ import json
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
 from croniter import croniter
@@ -44,7 +44,7 @@ class CronScheduler:
         self._config_loader: Optional[Callable[[], Dict[str, str]]] = None
         self._job_factory: Optional[Callable[[str], Callable[[], None]]] = None
         self._config_hash: Optional[str] = None
-        self._last_config_check = datetime.now()
+        self._last_config_check = datetime.now(timezone.utc)
 
     def set_config_loader(
         self, 
@@ -74,7 +74,7 @@ class CronScheduler:
     def add_job(self, name: str, cron: str, callback: Callable[[], None]) -> None:
         with self._lock:
             job = CronJob(name=name, cron=cron, callback=callback)
-            job.schedule_next(datetime.now())
+            job.schedule_next(datetime.now(timezone.utc))
             self.jobs.append(job)
             logger.info("Scheduled %s with cron '%s' (next run %s)", name, cron, job.next_run)
 
@@ -95,7 +95,7 @@ class CronScheduler:
                 if job.name == name:
                     if job.cron != cron:
                         job.cron = cron
-                        job.schedule_next(datetime.now())
+                        job.schedule_next(datetime.now(timezone.utc))
                         logger.info("Updated job %s: cron='%s' (next run %s)", name, cron, job.next_run)
                     return True
             return False
@@ -150,14 +150,14 @@ class CronScheduler:
                     job = current_jobs[name]
                     if job.cron != cron:
                         job.cron = cron
-                        job.schedule_next(datetime.now())
+                        job.schedule_next(datetime.now(timezone.utc))
                         logger.info("Updated job %s: cron='%s' (next run %s)", name, cron, job.next_run)
                 else:
                     # Add new job
                     try:
                         callback = self._job_factory(name)
                         job = CronJob(name=name, cron=cron, callback=callback)
-                        job.schedule_next(datetime.now())
+                        job.schedule_next(datetime.now(timezone.utc))
                         self.jobs.append(job)
                         logger.info("Added scheduled job %s: cron='%s' (next run %s)", name, cron, job.next_run)
                     except Exception as e:
@@ -189,7 +189,7 @@ class CronScheduler:
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             
             # Check for config changes periodically
             if self._config_loader and (now - self._last_config_check).total_seconds() > self.config_poll_interval:
@@ -214,7 +214,7 @@ class CronScheduler:
                     next_wake = job.next_run
 
             if next_wake:
-                sleep_for = max(0.0, (next_wake - datetime.now()).total_seconds())
+                sleep_for = max(0.0, (next_wake - datetime.now(timezone.utc)).total_seconds())
                 time.sleep(min(self.poll_interval, sleep_for))
             else:
                 time.sleep(self.poll_interval)

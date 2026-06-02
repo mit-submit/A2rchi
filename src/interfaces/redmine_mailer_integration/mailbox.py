@@ -227,7 +227,7 @@ class Mailbox:
         Open the mailbox
         """
         logger.info(f"Open mailbox (U:{self.user} P:*********)")
-        mailbox = imaplib.IMAP4(host='ppc.mit.edu', port=self.config["imap4_port"], timeout=None)
+        mailbox = imaplib.IMAP4_SSL(host='ppc.mit.edu', port=self.config["imap4_port"], timeout=None)
         mailbox.login(self.user, self.password)
 
         return mailbox

@@ -19,6 +19,7 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/archi_notext.png') }}">
 </head>
 <body>
+{% include '_alert_banner.html' %}
   <div class="upload-app">
     <!-- Header -->
     <header class="upload-header">
@@ -166,133 +167,188 @@
 
         <!-- URLs Panel -->
         <div class="upload-panel" id="panel-urls">
-          <div class="form-section">
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label class="form-label">URL to Scrape</label>
-                <input type="url" class="form-input" id="url-input" placeholder="https://docs.example.com/guide">
+          <div class="source-box">
+            <div class="source-box-header">
+              <h3 class="source-box-title">Ingest Source</h3>
+              <p class="source-box-subtitle">Add one URL at a time and scrape immediately.</p>
+            </div>
+            <div class="form-section">
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label class="form-label">URL to Scrape</label>
+                  <input type="url" class="form-input" id="url-input" placeholder="https://docs.example.com/guide">
+                </div>
+                <button class="btn btn-primary" id="add-url-btn">Add</button>
               </div>
-              <button class="btn btn-primary" id="add-url-btn">Add</button>
+
+              <div class="checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="url-follow-links" checked>
+                  <span>Follow links (crawl pages)</span>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="url-requires-sso">
+                  <span>Requires SSO authentication</span>
+                </label>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Crawl Depth</label>
+                <select class="form-select" id="url-crawl-depth" style="width: 140px;">
+                  <option value="0">0 levels (URL only)</option>
+                  <option value="1">1 level</option>
+                  <option value="2" selected>2 levels</option>
+                  <option value="3">3 levels</option>
+                  <option value="5">5 levels</option>
+                </select>
+              </div>
             </div>
 
-            <div class="checkbox-group">
-              <label class="checkbox-label">
-                <input type="checkbox" id="url-follow-links" checked>
-                <span>Follow links (crawl pages)</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" id="url-requires-sso">
-                <span>Requires SSO authentication</span>
-              </label>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Crawl Depth</label>
-              <select class="form-select" id="url-crawl-depth" style="width: 140px;">
-                <option value="1">1 level</option>
-                <option value="2" selected>2 levels</option>
-                <option value="3">3 levels</option>
-                <option value="5">5 levels</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Auto-sync Schedule</label>
-              <select class="form-select" id="links-schedule" style="width: 180px;">
-                <option value="disabled">Disabled</option>
-                <option value="hourly">Every hour</option>
-                <option value="every_6h">Every 6 hours</option>
-                <option value="daily">Every 24 hours</option>
-              </select>
+            <div class="source-list">
+              <div class="source-list-header">
+                <span class="source-list-title">Queued URLs</span>
+                <button class="btn-text" id="scrape-urls-btn">Start Scraping</button>
+              </div>
+              <div class="source-list-items" id="url-queue">
+                <div class="empty-list-message">No URLs queued</div>
+              </div>
             </div>
           </div>
 
-          <div class="source-list">
-            <div class="source-list-header">
-              <span class="source-list-title">Queued URLs</span>
-              <button class="btn-text" id="scrape-urls-btn">Start Scraping</button>
+          <div class="source-box schedule-box">
+            <div class="source-box-header">
+              <h3 class="source-box-title">Source Schedule</h3>
+              <p class="source-box-subtitle">Configure auto-sync for all URL sources.</p>
             </div>
-            <div class="source-list-items" id="url-queue">
-              <div class="empty-list-message">No URLs queued</div>
+            <div class="form-group schedule-group">
+              <div class="schedule-inputs">
+                <input type="number" min="1" class="form-input schedule-interval" id="links-schedule-interval" placeholder="e.g. 6" style="width: 80px; display: inline-block;">
+                <select class="form-select schedule-unit" id="links-schedule-unit" style="width: 120px; display: inline-block;">
+                  <option value="minutes">minutes</option>
+                  <option value="hours" selected>hours</option>
+                  <option value="days">days</option>
+                </select>
+                <button class="btn btn-secondary" id="save-links-schedule-btn">Save Schedule</button>
+              </div>
+              <div class="schedule-help">Enter a number and unit (e.g. “6 hours”). Leave blank to disable.</div>
+              <div class="schedule-current">Current schedule: <span id="links-current-schedule">Loading…</span></div>
+              <div class="schedule-detail">Next run: <span id="links-next-run">Loading…</span></div>
+              <div class="schedule-detail">Last run: <span id="links-last-run">Loading…</span></div>
             </div>
           </div>
         </div>
 
         <!-- Git Panel -->
         <div class="upload-panel" id="panel-git">
-          <div class="form-section">
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label class="form-label">Repository URL</label>
-                <input type="url" class="form-input" id="git-url-input" placeholder="https://github.com/org/repo.git">
+          <div class="source-box">
+            <div class="source-box-header">
+              <h3 class="source-box-title">Ingest Source</h3>
+              <p class="source-box-subtitle">Add and sync repositories one-by-one.</p>
+            </div>
+            <div class="form-section">
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label class="form-label">Repository URL</label>
+                  <input type="url" class="form-input" id="git-url-input" placeholder="https://github.com/org/repo.git">
+                </div>
+                <button class="btn btn-primary" id="clone-repo-btn">Clone</button>
               </div>
-              <button class="btn btn-primary" id="clone-repo-btn">Clone</button>
+
+              <div class="checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="git-index-mkdocs" checked>
+                  <span>Index MkDocs documentation</span>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="git-index-code" checked>
+                  <span>Index code files (.py, .js, .ts, .md)</span>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="git-readme-only">
+                  <span>Include only README files</span>
+                </label>
+              </div>
             </div>
 
-            <div class="checkbox-group">
-              <label class="checkbox-label">
-                <input type="checkbox" id="git-index-mkdocs" checked>
-                <span>Index MkDocs documentation</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" id="git-index-code" checked>
-                <span>Index code files (.py, .js, .ts, .md)</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" id="git-readme-only">
-                <span>Include only README files</span>
-              </label>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Auto-sync Schedule</label>
-              <select class="form-select" id="git-schedule" style="width: 180px;">
-                <option value="disabled">Disabled</option>
-                <option value="hourly">Every hour</option>
-                <option value="every_6h">Every 6 hours</option>
-                <option value="daily">Every 24 hours</option>
-              </select>
+            <div class="source-list">
+              <div class="source-list-header">
+                <span class="source-list-title">Active Repositories</span>
+              </div>
+              <div class="source-list-items" id="git-repos-list">
+                <div class="loading-message">Loading repositories...</div>
+              </div>
             </div>
           </div>
 
-          <div class="source-list">
-            <div class="source-list-header">
-              <span class="source-list-title">Active Repositories</span>
+          <div class="source-box schedule-box">
+            <div class="source-box-header">
+              <h3 class="source-box-title">Source Schedule</h3>
+              <p class="source-box-subtitle">Configure auto-sync for all Git repositories.</p>
             </div>
-            <div class="source-list-items" id="git-repos-list">
-              <div class="loading-message">Loading repositories...</div>
+            <div class="form-group schedule-group">
+              <div class="schedule-inputs">
+                <input type="number" min="1" class="form-input schedule-interval" id="git-schedule-interval" placeholder="e.g. 6" style="width: 80px; display: inline-block;">
+                <select class="form-select schedule-unit" id="git-schedule-unit" style="width: 120px; display: inline-block;">
+                  <option value="minutes">minutes</option>
+                  <option value="hours" selected>hours</option>
+                  <option value="days">days</option>
+                </select>
+                <button class="btn btn-secondary" id="save-git-schedule-btn">Save Schedule</button>
+              </div>
+              <div class="schedule-help">Enter a number and unit (e.g. “6 hours”). Leave blank to disable.</div>
+              <div class="schedule-current">Current schedule: <span id="git-current-schedule">Loading…</span></div>
+              <div class="schedule-detail">Next run: <span id="git-next-run">Loading…</span></div>
+              <div class="schedule-detail">Last run: <span id="git-last-run">Loading…</span></div>
             </div>
           </div>
         </div>
 
         <!-- Jira Panel -->
         <div class="upload-panel" id="panel-jira">
-          <div class="form-section">
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Project Key</label>
-                <input type="text" class="form-input" id="jira-project-input" placeholder="PROJ" style="width: 120px;">
+          <div class="source-box">
+            <div class="source-box-header">
+              <h3 class="source-box-title">Ingest Source</h3>
+              <p class="source-box-subtitle">Sync a single Jira project at a time.</p>
+            </div>
+            <div class="form-section">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Project Key</label>
+                  <input type="text" class="form-input" id="jira-project-input" placeholder="PROJ" style="width: 120px;">
+                </div>
+                <button class="btn btn-primary" id="sync-jira-btn">Sync Project</button>
               </div>
-              <button class="btn btn-primary" id="sync-jira-btn">Sync Project</button>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Auto-sync Schedule</label>
-              <select class="form-select" id="jira-schedule" style="width: 180px;">
-                <option value="disabled">Disabled</option>
-                <option value="hourly">Every hour</option>
-                <option value="every_6h">Every 6 hours</option>
-                <option value="daily">Every 24 hours</option>
-              </select>
+            <div class="source-list">
+              <div class="source-list-header">
+                <span class="source-list-title">Synced Projects</span>
+              </div>
+              <div class="source-list-items" id="jira-projects-list">
+                <div class="loading-message">Loading projects...</div>
+              </div>
             </div>
           </div>
 
-          <div class="source-list">
-            <div class="source-list-header">
-              <span class="source-list-title">Synced Projects</span>
+          <div class="source-box schedule-box">
+            <div class="source-box-header">
+              <h3 class="source-box-title">Source Schedule</h3>
+              <p class="source-box-subtitle">Configure auto-sync for all Jira projects.</p>
             </div>
-            <div class="source-list-items" id="jira-projects-list">
-              <div class="loading-message">Loading projects...</div>
+            <div class="form-group schedule-group">
+              <div class="schedule-inputs">
+                <input type="number" min="1" class="form-input schedule-interval" id="jira-schedule-interval" placeholder="e.g. 6" style="width: 80px; display: inline-block;">
+                <select class="form-select schedule-unit" id="jira-schedule-unit" style="width: 120px; display: inline-block;">
+                  <option value="minutes">minutes</option>
+                  <option value="hours" selected>hours</option>
+                  <option value="days">days</option>
+                </select>
+                <button class="btn btn-secondary" id="save-jira-schedule-btn">Save Schedule</button>
+              </div>
+              <div class="schedule-help">Enter a number and unit (e.g. “6 hours”). Leave blank to disable.</div>
+              <div class="schedule-current">Current schedule: <span id="jira-current-schedule">Loading…</span></div>
+              <div class="schedule-detail">Next run: <span id="jira-next-run">Loading…</span></div>
+              <div class="schedule-detail">Last run: <span id="jira-last-run">Loading…</span></div>
             </div>
           </div>
 

@@ -88,6 +88,7 @@ class ScraperManager:
         self,
         persistence: PersistenceService,
         link_urls: List[str] = [],
+        max_depth: Optional[int] = None,
     ) -> int:
         """Collect only standard link sources. Returns count of resources scraped."""
         if not self.links_enabled:
@@ -98,7 +99,7 @@ class ScraperManager:
         websites_dir = persistence.data_path / "websites"
         if not os.path.exists(websites_dir):
             os.makedirs(websites_dir, exist_ok=True)
-        return self._collect_links_from_urls(link_urls, persistence, websites_dir)
+        return self._collect_links_from_urls(link_urls, persistence, websites_dir, max_depth=max_depth)
 
     def collect_git(
         self,
@@ -138,8 +139,10 @@ class ScraperManager:
         Scheduled collection of link sources.
         For now, this behaves the same as a full collection, overriding last_run depending on the persistence layer.
         """
-        metadata = persistence.catalog.get_metadata_by_filter("source_type", source_type="links", metadata_keys=["url"])
-        catalog_urls = [m[1].get("url", "") for m in metadata]
+        metadata = persistence.catalog.get_metadata_by_filter("source_type", source_type="web", metadata_keys=["url"])
+        catalog_urls = [m[1].get("url", "").strip() for m in metadata]
+        catalog_urls = [u for u in catalog_urls if u]
+        logger.info("Scheduled links collection found %d URL(s) in catalog", len(catalog_urls))
         self.collect_links(persistence, link_urls=catalog_urls)
 
     def schedule_collect_git(self, persistence: PersistenceService, last_run: Optional[str] = None) -> None:
@@ -157,6 +160,7 @@ class ScraperManager:
         urls: List[str],
         persistence: PersistenceService,
         output_dir: Path,
+        max_depth: Optional[int] = None,
     ) -> int:
         """Collect links from URLs and return total count of resources scraped."""
         # Initialize authenticator if selenium is enabled
@@ -175,7 +179,7 @@ class ScraperManager:
                     url, 
                     persistence, 
                     output_dir, 
-                    max_depth=self.base_depth,
+                    max_depth=max_depth if max_depth is not None else self.base_depth,
                     client=None,
                     use_client_for_scraping=False
                 )
@@ -278,6 +282,7 @@ class ScraperManager:
     def _resolve_scraper(self):
         class_name = self.selenium_config.get("selenium_class")
         class_map = self.selenium_config.get("selenium_class_map", {})
+        selenium_url = self.selenium_config.get("selenium_url",None)
 
         entry = class_map.get(class_name)
 
@@ -294,6 +299,7 @@ class ScraperManager:
             module = importlib.import_module(module_name)
             scraper_class = getattr(module, scraper_class)
         scraper_kwargs = entry.get("kwargs", {})
+        scraper_kwargs["selenium_url"] = selenium_url
         return scraper_class, scraper_kwargs
 
 

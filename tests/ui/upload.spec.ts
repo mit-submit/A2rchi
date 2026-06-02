@@ -12,6 +12,12 @@ test.describe('Upload Page', () => {
   // Setup: Mock API endpoints
   // ============================================================
   test.beforeEach(async ({ page }) => {
+    const sourceSchedules: Record<string, { cron: string; display: string; next_run: string | null; last_run: string | null }> = {
+      git: { cron: '0 */6 * * *', display: 'every_6h', next_run: '2026-03-03T18:00:00Z', last_run: '2026-03-03T12:00:00Z' },
+      jira: { cron: '', display: 'disabled', next_run: null, last_run: null },
+      links: { cron: '', display: 'disabled', next_run: null, last_run: null },
+    };
+
     // Mock embedding status - matches /api/upload/status endpoint
     await page.route('**/api/upload/status', async (route) => {
       await route.fulfill({
@@ -129,6 +135,40 @@ test.describe('Upload Page', () => {
         status: 200,
         json: { projects: [] }
       });
+    });
+
+    await page.route('**/api/sources/schedules', async (route) => {
+      const method = route.request().method();
+      if (method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          json: { schedules: sourceSchedules }
+        });
+        return;
+      }
+
+      if (method === 'PUT') {
+        const body = route.request().postDataJSON() as { source?: string; schedule?: string } | null;
+        const source = body?.source ?? '';
+        const schedule = body?.schedule ?? '';
+
+        if (source) {
+          sourceSchedules[source] = {
+            cron: schedule,
+            display: schedule ? 'custom' : 'disabled',
+            next_run: null,
+            last_run: null
+          };
+        }
+
+        await route.fulfill({
+          status: 200,
+          json: { success: true, schedules: sourceSchedules }
+        });
+        return;
+      }
+
+      await route.fulfill({ status: 405, json: { error: 'Method not allowed' } });
     });
 
     // Mock file upload
@@ -272,7 +312,11 @@ test.describe('Upload Page', () => {
       // Check depth options
       const depthSelect = page.locator('select').filter({ hasText: 'level' }).first();
       if (await depthSelect.isVisible()) {
-        await expect(depthSelect.locator('option')).toHaveCount(4); // 1, 2, 3, 5 levels
+        // Depth options can evolve; ensure common levels remain available.
+        await expect(depthSelect).toContainText('1 level');
+        await expect(depthSelect).toContainText('2 levels');
+        await expect(depthSelect).toContainText('3 levels');
+        await expect(depthSelect).toContainText('5 levels');
       }
     });
 
@@ -318,14 +362,17 @@ test.describe('Upload Page', () => {
       await expect(page.getByText('Include only README files')).toBeVisible();
     });
 
-    test('shows auto-sync schedule selector', async ({ page }) => {
+    test('shows source schedule inputs for Git', async ({ page }) => {
       await page.goto('/upload');
       await page.getByRole('button', { name: /Git Repos/ }).click();
       
-      // Wait for panel switch, then find auto-sync within the git panel
+      // Wait for panel switch, then find schedule controls within the git panel
       await page.waitForTimeout(300);
       const gitPanel = page.locator('#panel-git');
-      await expect(gitPanel.getByText('Auto-sync Schedule')).toBeVisible();
+      await expect(gitPanel.getByText('Source Schedule')).toBeVisible();
+      await expect(gitPanel.locator('#git-schedule-interval')).toBeVisible();
+      await expect(gitPanel.locator('#git-schedule-unit')).toBeVisible();
+      await expect(gitPanel.locator('#save-git-schedule-btn')).toBeVisible();
     });
 
     test('displays existing repositories', async ({ page }) => {
@@ -409,14 +456,17 @@ test.describe('Upload Page', () => {
       await expect(page.getByText('No Jira projects synced')).toBeVisible();
     });
 
-    test('shows auto-sync schedule for Jira', async ({ page }) => {
+    test('shows source schedule for Jira', async ({ page }) => {
       await page.goto('/upload');
       await page.getByRole('button', { name: /Jira/ }).click();
       
-      // Wait for panel switch, then find auto-sync within the jira panel
+      // Wait for panel switch, then find schedule controls within the jira panel
       await page.waitForTimeout(300);
       const jiraPanel = page.locator('#panel-jira');
-      await expect(jiraPanel.getByText('Auto-sync Schedule')).toBeVisible();
+      await expect(jiraPanel.getByText('Source Schedule')).toBeVisible();
+      await expect(jiraPanel.locator('#jira-schedule-interval')).toBeVisible();
+      await expect(jiraPanel.locator('#jira-schedule-unit')).toBeVisible();
+      await expect(jiraPanel.locator('#save-jira-schedule-btn')).toBeVisible();
     });
   });
 

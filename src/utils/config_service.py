@@ -56,6 +56,7 @@ class StaticConfig:
     data_manager_config: Dict[str, Any] = field(default_factory=dict)
     archi_config: Dict[str, Any] = field(default_factory=dict)
     global_config: Dict[str, Any] = field(default_factory=dict)
+    mcp_servers_config: Dict[str, Any] = field(default_factory=dict)
     
     created_at: Optional[str] = None
 
@@ -218,6 +219,7 @@ class ConfigService:
                     ADD COLUMN IF NOT EXISTS services_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS data_manager_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS archi_config JSONB DEFAULT '{}'::jsonb,
+                    ADD COLUMN IF NOT EXISTS mcp_servers_config JSONB DEFAULT '{}'::jsonb,
                     ADD COLUMN IF NOT EXISTS global_config JSONB DEFAULT '{}'::jsonb
                     """
                 )
@@ -288,7 +290,7 @@ class ConfigService:
                            chunk_size, chunk_overlap, distance_metric,
                            available_pipelines, available_models, available_providers,
                            auth_enabled, session_lifetime_days, sources_config,
-                           services_config, data_manager_config, archi_config, global_config,
+                           services_config, data_manager_config, archi_config, mcp_servers_config, global_config,
                            created_at
                     FROM static_config
                     WHERE id = 1
@@ -318,6 +320,7 @@ class ConfigService:
                     services_config=row.get("services_config") or {},
                     data_manager_config=row.get("data_manager_config") or {},
                     archi_config=row.get("archi_config") or {},
+                    mcp_servers_config=row.get("mcp_servers_config") or {},
                     global_config=row.get("global_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
@@ -343,6 +346,7 @@ class ConfigService:
         auth_enabled: bool = False,
         sources_config: Optional[Dict[str, Any]] = None,
         services_config: Optional[Dict[str, Any]] = None,
+        mcp_servers_config: Optional[Dict[str, Any]] = None,
         data_manager_config: Optional[Dict[str, Any]] = None,
         archi_config: Optional[Dict[str, Any]] = None,
         global_config: Optional[Dict[str, Any]] = None,
@@ -366,7 +370,7 @@ class ConfigService:
             available_models: List of available models
             available_providers: List of available providers
             auth_enabled: Whether authentication is enabled
-            
+            mcp_servers_config: Configuration for MCP servers
         Returns:
             Created StaticConfig
             
@@ -377,6 +381,7 @@ class ConfigService:
         services_section = services_config or {}
         data_manager_section = data_manager_config or {}
         archi_section = archi_config or {}
+        mcp_servers_section = mcp_servers_config or {}
         global_section = global_config or {}
         conn = self._get_connection()
         try:
@@ -389,9 +394,9 @@ class ConfigService:
                         chunk_size, chunk_overlap, distance_metric,
                         available_pipelines, available_models, available_providers,
                         auth_enabled, sources_config,
-                        services_config, data_manager_config, archi_config, global_config
+                        services_config, data_manager_config, archi_config, mcp_servers_config, global_config
                     )
-                    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         deployment_name = EXCLUDED.deployment_name,
                         config_version = EXCLUDED.config_version,
@@ -409,13 +414,14 @@ class ConfigService:
                         services_config = EXCLUDED.services_config,
                         data_manager_config = EXCLUDED.data_manager_config,
                         archi_config = EXCLUDED.archi_config,
+                        mcp_servers_config = EXCLUDED.mcp_servers_config,
                         global_config = EXCLUDED.global_config
                     RETURNING deployment_name, config_version, data_path,
                               embedding_model, embedding_dimensions,
                               chunk_size, chunk_overlap, distance_metric,
                               available_pipelines, available_models, available_providers,
                               auth_enabled, sources_config,
-                              services_config, data_manager_config, archi_config, global_config,
+                              services_config, data_manager_config, archi_config, mcp_servers_config, global_config,
                               created_at
                     """,
                     (
@@ -430,6 +436,7 @@ class ConfigService:
                         psycopg2.extras.Json(services_section),
                         psycopg2.extras.Json(data_manager_section),
                         psycopg2.extras.Json(archi_section),
+                        psycopg2.extras.Json(mcp_servers_section),
                         psycopg2.extras.Json(global_section),
                     )
                 )
@@ -453,6 +460,7 @@ class ConfigService:
                     services_config=row.get("services_config") or {},
                     data_manager_config=row.get("data_manager_config") or {},
                     archi_config=row.get("archi_config") or {},
+                    mcp_servers_config=row.get("mcp_servers_config") or {},
                     global_config=row.get("global_config") or {},
                     created_at=str(row["created_at"]) if row["created_at"] else None,
                 )
@@ -461,6 +469,52 @@ class ConfigService:
                 return self._static_cache
         finally:
             self._release_connection(conn)
+
+    @staticmethod
+    def _deep_merge_dict(base: Optional[Dict[str, Any]], patch: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Recursively merge a patch dict into a copy of base."""
+        merged = dict(base or {})
+        for key, value in (patch or {}).items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = ConfigService._deep_merge_dict(merged.get(key), value)
+            else:
+                merged[key] = value
+        return merged
+
+    def update_services_config(self, patch: Dict[str, Any]) -> StaticConfig:
+        """
+        Persist a partial update to static_config.services_config.
+
+        The patch is deep-merged into the current services configuration and the
+        full static config row is then upserted through initialize_static_config.
+        """
+        static = self.get_static_config(force_reload=True)
+        if static is None:
+            raise ValueError("Static config not initialized")
+
+        merged_services = self._deep_merge_dict(static.services_config, patch)
+        updated = self.initialize_static_config(
+            deployment_name=static.deployment_name,
+            config_version=static.config_version,
+            data_path=static.data_path,
+            embedding_model=static.embedding_model,
+            embedding_dimensions=static.embedding_dimensions,
+            chunk_size=static.chunk_size,
+            chunk_overlap=static.chunk_overlap,
+            distance_metric=static.distance_metric,
+            available_pipelines=static.available_pipelines,
+            available_models=static.available_models,
+            available_providers=static.available_providers,
+            auth_enabled=static.auth_enabled,
+            sources_config=static.sources_config,
+            services_config=merged_services,
+            mcp_servers_config=static.mcp_servers_config,
+            data_manager_config=static.data_manager_config,
+            archi_config=static.archi_config,
+            global_config=static.global_config,
+        )
+        self._static_cache = updated
+        return updated
 
     # =========================================================================
     # Embedding helpers
@@ -920,6 +974,7 @@ class ConfigService:
             available_providers=available_providers,
             auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
             sources_config=data_manager.get("sources", {}),
+            mcp_servers_config=config.get("mcp_servers", {}),
         )
         
         # Initialize dynamic config from data_manager settings
@@ -995,6 +1050,7 @@ class ConfigService:
             available_providers=available_providers,
             auth_enabled=config.get("services", {}).get("chat_app", {}).get("auth", {}).get("enabled", False),
             sources_config=sources_config,
+            mcp_servers_config=config.get("mcp_servers", {}),
         )
         
         # Initialize dynamic config from data_manager settings

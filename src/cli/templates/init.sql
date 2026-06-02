@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
     theme VARCHAR(20) NOT NULL DEFAULT 'system',
     preferred_model VARCHAR(200),          -- Override global default
     preferred_temperature NUMERIC(3,2),    -- Override global default
+    ab_participation_rate NUMERIC(3,2),    -- Per-user A/B sampling override
     preferred_max_tokens INTEGER,          -- Override global default
     preferred_num_documents INTEGER,       -- Override retrieval count
     preferred_condense_prompt VARCHAR(100), -- Prompt selection
@@ -62,11 +63,11 @@ CREATE TABLE IF NOT EXISTS users (
     api_key_anthropic BYTEA,       -- Encrypted
     
     -- Session tracking
-    last_login_at TIMESTAMP,
+    last_login_at TIMESTAMPTZ,
     login_count INTEGER NOT NULL DEFAULT 0,
     
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
@@ -81,8 +82,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     id VARCHAR(64) PRIMARY KEY,
     user_id VARCHAR(200) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     data JSONB,                           -- Additional session data
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
@@ -125,9 +126,10 @@ CREATE TABLE IF NOT EXISTS static_config (
     data_manager_config JSONB NOT NULL DEFAULT '{}'::jsonb,
     archi_config JSONB NOT NULL DEFAULT '{}'::jsonb,
     global_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    mcp_servers_config JSONB NOT NULL DEFAULT '{}'::jsonb,
     
     -- Timestamps
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================================
@@ -168,7 +170,7 @@ CREATE TABLE IF NOT EXISTS dynamic_config (
     verbosity INTEGER NOT NULL DEFAULT 3,
     
     -- Metadata
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_by VARCHAR(200)  -- user_id who made the change
 );
 
@@ -182,7 +184,7 @@ INSERT INTO dynamic_config (id) VALUES (1) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS config_audit (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(200) NOT NULL,
-    changed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     config_type VARCHAR(20) NOT NULL,  -- 'dynamic', 'user_pref'
     field_name VARCHAR(100) NOT NULL,
     old_value TEXT,
@@ -228,10 +230,10 @@ CREATE TABLE IF NOT EXISTS documents (
     extra_text TEXT,             -- Searchable text representation
     
     -- Timestamps
-    file_modified_at TIMESTAMP,
-    ingested_at TIMESTAMP,
-    indexed_at TIMESTAMP,        -- When embeddings were created
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    file_modified_at TIMESTAMPTZ,
+    ingested_at TIMESTAMPTZ,
+    indexed_at TIMESTAMPTZ,        -- When embeddings were created
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     -- Ingestion tracking
     ingestion_status VARCHAR(20) NOT NULL DEFAULT 'pending',
@@ -239,7 +241,7 @@ CREATE TABLE IF NOT EXISTS documents (
     
     -- Soft delete
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMP,
+    deleted_at TIMESTAMPTZ,
     
     CONSTRAINT valid_source CHECK (source_type IN ('local_files', 'web', 'ticket', 'git', 'sso', 'unknown')),
     CONSTRAINT valid_ingestion_status CHECK (ingestion_status IN ('pending', 'embedding', 'embedded', 'failed'))
@@ -270,7 +272,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     end_char INTEGER,
     metadata JSONB,              -- Original document metadata propagated to chunk
     
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     UNIQUE(document_id, chunk_index)
 );
@@ -316,7 +318,7 @@ CREATE TABLE IF NOT EXISTS user_document_defaults (
     user_id VARCHAR(200) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     enabled BOOLEAN NOT NULL DEFAULT FALSE,  -- FALSE = opted out
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     PRIMARY KEY (user_id, document_id)
 );
@@ -328,7 +330,7 @@ CREATE TABLE IF NOT EXISTS conversation_doc_overrides (
     conversation_id INTEGER NOT NULL,  -- FK added after conversation_metadata created
     document_hash VARCHAR NOT NULL,  -- Hash reference to document (denormalized for simplicity)
     enabled BOOLEAN NOT NULL,  -- Explicit override value
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     PRIMARY KEY (conversation_id, document_hash)
 );
@@ -352,8 +354,8 @@ CREATE TABLE IF NOT EXISTS conversation_metadata (
     user_id VARCHAR(200) REFERENCES users(id) ON DELETE SET NULL,
     client_id TEXT,
     title TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     archi_version VARCHAR(50)
 );
 
@@ -393,7 +395,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     link TEXT NOT NULL DEFAULT '',
     context TEXT NOT NULL DEFAULT '',
     
-    ts TIMESTAMP NOT NULL,
+    ts TIMESTAMPTZ NOT NULL,
     
     conf_id INTEGER REFERENCES configs(config_id)
 );
@@ -405,7 +407,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_model ON conversations(model_used);
 -- Feedback on messages
 CREATE TABLE IF NOT EXISTS feedback (
     mid INTEGER NOT NULL REFERENCES conversations(message_id) ON DELETE CASCADE,
-    feedback_ts TIMESTAMP NOT NULL,
+    feedback_ts TIMESTAMPTZ NOT NULL,
     feedback TEXT NOT NULL,           -- 'like', 'dislike', 'comment'
     feedback_msg TEXT,                -- Optional text feedback/comment
     incorrect BOOLEAN,                -- Flag: response was factually incorrect
@@ -420,16 +422,16 @@ CREATE INDEX IF NOT EXISTS idx_feedback_mid ON feedback(mid);
 -- Response timing metrics
 CREATE TABLE IF NOT EXISTS timing (
     mid INTEGER PRIMARY KEY REFERENCES conversations(message_id) ON DELETE CASCADE,
-    client_sent_msg_ts TIMESTAMP NOT NULL,
-    server_received_msg_ts TIMESTAMP NOT NULL,
-    lock_acquisition_ts TIMESTAMP NOT NULL,
-    vectorstore_update_ts TIMESTAMP NOT NULL,
-    query_convo_history_ts TIMESTAMP NOT NULL,
-    chain_finished_ts TIMESTAMP NOT NULL,
-    archi_message_ts TIMESTAMP NOT NULL,
-    insert_convo_ts TIMESTAMP NOT NULL,
-    finish_call_ts TIMESTAMP NOT NULL,
-    server_response_msg_ts TIMESTAMP NOT NULL,
+    client_sent_msg_ts TIMESTAMPTZ NOT NULL,
+    server_received_msg_ts TIMESTAMPTZ NOT NULL,
+    lock_acquisition_ts TIMESTAMPTZ NOT NULL,
+    vectorstore_update_ts TIMESTAMPTZ NOT NULL,
+    query_convo_history_ts TIMESTAMPTZ NOT NULL,
+    chain_finished_ts TIMESTAMPTZ NOT NULL,
+    archi_message_ts TIMESTAMPTZ NOT NULL,
+    insert_convo_ts TIMESTAMPTZ NOT NULL,
+    finish_call_ts TIMESTAMPTZ NOT NULL,
+    server_response_msg_ts TIMESTAMPTZ NOT NULL,
     msg_duration INTERVAL NOT NULL
 );
 
@@ -447,8 +449,8 @@ CREATE TABLE IF NOT EXISTS agent_traces (
     pipeline_name VARCHAR(100) NOT NULL,
     events JSONB NOT NULL DEFAULT '[]',
     
-    started_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMP,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
     status VARCHAR(20) NOT NULL DEFAULT 'running',  -- running, completed, cancelled, failed
     
     total_tool_calls INTEGER DEFAULT 0,
@@ -458,7 +460,7 @@ CREATE TABLE IF NOT EXISTS agent_traces (
     cancelled_by VARCHAR(100),
     cancellation_reason TEXT,
     
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_agent_traces_conv ON agent_traces(conversation_id);
@@ -475,7 +477,7 @@ CREATE TABLE IF NOT EXISTS agent_tool_calls (
     tool_args JSONB,
     tool_result TEXT,
     
-    ts TIMESTAMP NOT NULL DEFAULT NOW()
+    ts TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_tool_calls_message ON agent_tool_calls(message_id);
@@ -502,16 +504,64 @@ CREATE TABLE IF NOT EXISTS ab_comparisons (
     config_a_id INTEGER REFERENCES configs(config_id),
     config_b_id INTEGER REFERENCES configs(config_id),
     
+    -- Pool-based variant info (populated when ab_testing pool is active)
+    variant_a_name VARCHAR(200),
+    variant_b_name VARCHAR(200),
+    variant_a_meta JSONB,
+    variant_b_meta JSONB,
+    
     is_config_a_first BOOLEAN NOT NULL,
     preference VARCHAR(10),
-    preference_ts TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    preference_ts TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_ab_comparisons_conversation ON ab_comparisons(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_ab_comparisons_models ON ab_comparisons(model_a, model_b);
 CREATE INDEX IF NOT EXISTS idx_ab_comparisons_preference ON ab_comparisons(preference) WHERE preference IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ab_comparisons_pending ON ab_comparisons(conversation_id) WHERE preference IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_variant_a ON ab_comparisons(variant_a_name) WHERE variant_a_name IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ab_comparisons_variant_b ON ab_comparisons(variant_b_name) WHERE variant_b_name IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ab_agent_specs (
+    spec_id SERIAL PRIMARY KEY,
+    filename VARCHAR(255) NOT NULL UNIQUE,
+    current_name VARCHAR(255) NOT NULL UNIQUE,
+    current_version_id INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_saved_by VARCHAR(200)
+);
+
+CREATE TABLE IF NOT EXISTS ab_agent_spec_versions (
+    version_id SERIAL PRIMARY KEY,
+    spec_id INTEGER NOT NULL REFERENCES ab_agent_specs(spec_id) ON DELETE CASCADE,
+    version_number INTEGER NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    tools TEXT[] NOT NULL DEFAULT '{}',
+    prompt TEXT NOT NULL,
+    content TEXT NOT NULL,
+    ab_only BOOLEAN NOT NULL DEFAULT FALSE,
+    content_hash VARCHAR(64) NOT NULL,
+    prompt_hash VARCHAR(64) NOT NULL,
+    source_type VARCHAR(50) NOT NULL DEFAULT 'ui',
+    source_path TEXT,
+    created_by VARCHAR(200),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (spec_id, version_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ab_agent_spec_versions_spec ON ab_agent_spec_versions(spec_id, version_number DESC);
+
+-- Per-variant aggregate metrics (wins/losses/ties)
+CREATE TABLE IF NOT EXISTS ab_variant_metrics (
+    variant_name VARCHAR(200) PRIMARY KEY,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    ties INTEGER NOT NULL DEFAULT 0,
+    total_comparisons INTEGER NOT NULL DEFAULT 0,
+    last_updated TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
 -- ============================================================================
 -- 9. MIGRATION STATE (for resumable migrations)
@@ -520,15 +570,35 @@ CREATE INDEX IF NOT EXISTS idx_ab_comparisons_pending ON ab_comparisons(conversa
 CREATE TABLE IF NOT EXISTS migration_state (
     id SERIAL PRIMARY KEY,
     migration_name VARCHAR(100) NOT NULL UNIQUE,
-    started_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMP,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
     last_checkpoint JSONB,  -- {phase: str, last_id: int, count: int}
     status VARCHAR(20) NOT NULL DEFAULT 'in_progress',  -- 'in_progress', 'completed', 'failed'
     error_message TEXT
 );
 
 -- ============================================================================
--- 10. GRAFANA ACCESS
+-- 10. SERVICE ALERTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS service_alerts (
+    id SERIAL PRIMARY KEY,
+    severity VARCHAR(10) NOT NULL DEFAULT 'info'
+        CHECK (severity IN ('info', 'warning', 'alarm', 'news')),
+    message TEXT NOT NULL,          -- short text shown in banner
+    description TEXT,               -- optional longer detail for status board
+    created_by VARCHAR(200),        -- username from session, NULL when auth is off
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP,           -- NULL = never expires from banner
+    active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_alerts_banner
+    ON service_alerts (active, expires_at)
+    WHERE active = TRUE;
+
+-- ============================================================================
+-- 11. GRAFANA ACCESS
 -- ============================================================================
 
 {% if use_grafana -%}
@@ -555,6 +625,7 @@ GRANT SELECT ON
     timing,
     agent_tool_calls,
     ab_comparisons,
+    ab_variant_metrics,
     migration_state
 TO grafana;
 {% endif %}

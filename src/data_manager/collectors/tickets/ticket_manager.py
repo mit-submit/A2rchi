@@ -63,6 +63,7 @@ class TicketManager:
             self.jira_client, "JIRA",
             persistence=persistence,
             projects=projects or [],
+            overwrite=False,
             **(kwargs or {})
         )
 
@@ -76,6 +77,7 @@ class TicketManager:
             self.redmine_client, "Redmine",
             persistence=persistence,
             projects=projects or [],
+            overwrite=False,
             **kwargs
         )
 
@@ -92,6 +94,7 @@ class TicketManager:
             self.jira_client, "JIRA",
             persistence=persistence,
             projects=self.jira_projects,
+            overwrite=True,
             since_iso=last_run
         )
 
@@ -108,7 +111,8 @@ class TicketManager:
             self.redmine_client, "Redmine",
             persistence=persistence,
             projects=self.redmine_projects,
-            since_iso=last_run
+            overwrite=True,
+            since_iso=last_run,
         )
 
     def _collect_from_client(
@@ -116,6 +120,7 @@ class TicketManager:
         client,
         name: str,
         persistence: PersistenceService,
+        overwrite: bool,
         projects: List[str],
         **kwargs,
     ) -> None:
@@ -137,4 +142,4 @@ class TicketManager:
             return
 
         for resource in resources:
-            persistence.persist_resource(resource, outdir)
+            persistence.persist_resource(resource, outdir,overwrite)

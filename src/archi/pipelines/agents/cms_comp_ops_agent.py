@@ -13,6 +13,7 @@ from src.archi.pipelines.agents.tools import (
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
+    initialize_mcp_client,
     RemoteCatalogClient,
     MONITOpenSearchClient,
     create_monit_opensearch_search_tool,
@@ -52,9 +53,11 @@ class CMSCompOpsAgent(BaseReActAgent):
         self._vector_tool = None
         self.enable_vector_tools = "search_vectorstore_hybrid" in self.selected_tool_names
 
-        # Initialize MONIT client (shared across search and aggregation tools)
+        # Initialize MONIT clients (one per datasource proxy)
         self._monit_client = None
         self._rucio_events_skill = None
+        self._condor_client = None
+        self._condor_metric_skill = None
         self._init_monit()
 
         self.rebuild_static_tools()
@@ -94,26 +97,61 @@ class CMSCompOpsAgent(BaseReActAgent):
         return {}
 
     def _init_monit(self) -> None:
-        """Initialize the MONIT OpenSearch client if credentials and config are available."""
-        monit_token = read_secret("MONIT_GRAFANA_TOKEN")
-        monit_url = (
-            self._chat_app_config.get("tools", {}).get("monit", {}).get("url")
-        )
+        """Initialize MONIT OpenSearch clients if credentials and config are available.
 
-        if monit_token and monit_url:
-            try:
-                self._monit_client = MONITOpenSearchClient(url=monit_url, token=monit_token)
-                self._rucio_events_skill = load_skill("rucio_events", self.config)
-                logger.info("MONIT OpenSearch client initialized successfully")
-            except Exception as e:
-                logger.warning("Failed to initialize MONIT OpenSearch client: %s", e)
-        elif not monit_url:
-            logger.info(
-                "No MONIT URL configured in services.chat_app.tools.monit.url; "
-                "MONIT OpenSearch tools not available"
-            )
-        else:
+        Supports the following config layout for the MONIT URL(s)::
+
+            # Per-source URLs (rucio + condor, etc.)
+            tools:
+              monit:
+                rucio:
+                  url: "https://...proxy/9269/_msearch"
+                condor:
+                  url: "https://...proxy/8787/_msearch"
+        """
+        monit_token = read_secret("MONIT_GRAFANA_TOKEN")
+        if not monit_token:
             logger.info("MONIT_GRAFANA_TOKEN not found; MONIT OpenSearch tools not available")
+            return
+
+        tools_cfg = self._chat_app_config.get("tools", {})
+        monit_cfg = tools_cfg.get("monit", {})
+
+        # Rucio source
+        rucio_url = (
+            monit_cfg.get("rucio", {}).get("url")
+            or monit_cfg.get("url")  # backward compat
+        )
+        if rucio_url:
+            try:
+                self._monit_client = MONITOpenSearchClient(url=rucio_url, token=monit_token)
+                self._rucio_events_skill = load_skill("rucio_events", self.config)
+                logger.info("MONIT rucio client initialized (proxy: %s)", rucio_url)
+            except Exception as e:
+                logger.warning("Failed to initialize MONIT rucio client: %s", e)
+        else:
+            logger.info(
+                "No MONIT rucio URL configured in services.chat_app.tools.monit; "
+                "rucio OpenSearch tools not available"
+            )
+
+        # Condor source
+        condor_url = (
+            tools_cfg.get("condor", {}).get("url")
+            or monit_cfg.get("condor", {}).get("url")
+        )
+        if condor_url:
+            try:
+                self._condor_client = MONITOpenSearchClient(url=condor_url, token=monit_token)
+                self._condor_metric_skill = load_skill("condor_raw_metric", self.config)
+                logger.info("MONIT condor client initialized (proxy: %s)", condor_url)
+            except Exception as e:
+                logger.warning("Failed to initialize MONIT condor client: %s", e)
+        else:
+            logger.info(
+                "No MONIT condor URL configured in services.chat_app.tools; "
+                "condor OpenSearch tools not available"
+            )
 
     def get_tool_registry(self) -> Dict[str, Callable[[], Any]]:
         return {name: entry["builder"] for name, entry in self._tool_definitions().items()}
@@ -156,7 +194,15 @@ class CMSCompOpsAgent(BaseReActAgent):
             "search_vectorstore_hybrid": {
                 "builder": self._build_vector_tool_placeholder,
                 "description": (
-                    "Hybrid search over the knowledge base that combines both lexical (BM25) and semantic (vector) search."
+                    "Hybrid search over the knowledge base that combines lexical (BM25) and semantic (vector) matching.\n"
+                    "Input must be a plain text query string.\n"
+                    "Query writing guidance:\n"
+                    "- Use one short, specific question or request (not a long keyword dump).\n"
+                    "- Keep only the most informative terms (about 3-8 keywords or a short sentence).\n"
+                    "- Do not repeat terms unless repetition is intentional for emphasis.\n"
+                    "- Avoid partial/trailing fragments (e.g., ending with a single character).\n"
+                    "- Include exact identifiers when known (component names, APIs, error strings), using quotes for multi-word phrases.\n"
+                    "- If results are weak, run a second query that is narrower (add identifiers) or broader (remove overly specific terms)."
                 ),
             },
             "mcp": {
@@ -178,6 +224,16 @@ class CMSCompOpsAgent(BaseReActAgent):
                 "description": "Run aggregation queries on MONIT OpenSearch for CMS Rucio events.",
             }
 
+        if getattr(self, "_condor_client", None) is not None:
+            defs["condor_opensearch_search"] = {
+                "builder": self._build_condor_opensearch_search_tool,
+                "description": "Search MONIT OpenSearch for CMS HTCondor job metrics.",
+            }
+            defs["condor_opensearch_aggregation"] = {
+                "builder": self._build_condor_opensearch_aggregation_tool,
+                "description": "Run aggregation queries on MONIT OpenSearch for CMS HTCondor job metrics.",
+            }
+
         return defs
 
     def _build_file_search_tool(self) -> Callable:
@@ -186,6 +242,7 @@ class CMSCompOpsAgent(BaseReActAgent):
             self.catalog_service,
             description=description,
             store_docs=self._store_documents,
+            store_tool_input=getattr(self, "_store_tool_input", None),
         )
 
     def _build_metadata_search_tool(self) -> Callable:
@@ -194,6 +251,7 @@ class CMSCompOpsAgent(BaseReActAgent):
             self.catalog_service,
             description=description,
             store_docs=self._store_documents,
+            store_tool_input=getattr(self, "_store_tool_input", None),
         )
 
     def _build_metadata_schema_tool(self) -> Callable:
@@ -208,6 +266,7 @@ class CMSCompOpsAgent(BaseReActAgent):
         return create_document_fetch_tool(
             self.catalog_service,
             description=description,
+            store_tool_input=getattr(self, "_store_tool_input", None),
         )
 
     def _build_vector_tool_placeholder(self) -> List[Callable]:
@@ -229,6 +288,24 @@ class CMSCompOpsAgent(BaseReActAgent):
             tool_name="rucio_events_aggregation",
             index="monit_prod_cms_rucio_raw_events*",
             skill=self._rucio_events_skill,
+        )
+
+    def _build_condor_opensearch_search_tool(self) -> Callable:
+        """Build the MONIT OpenSearch search tool for HTCondor job metrics."""
+        return create_monit_opensearch_search_tool(
+            self._condor_client,
+            tool_name="condor_metric_search",
+            index="monit_prod_condor_raw_metric*",
+            skill=self._condor_metric_skill,
+        )
+
+    def _build_condor_opensearch_aggregation_tool(self) -> Callable:
+        """Build the MONIT OpenSearch aggregation tool for HTCondor job metrics."""
+        return create_monit_opensearch_aggregation_tool(
+            self._condor_client,
+            tool_name="condor_metric_aggregation",
+            index="monit_prod_condor_raw_metric*",
+            skill=self._condor_metric_skill,
         )
 
     # def _build_static_middleware(self) -> List[Callable]:
@@ -273,5 +350,6 @@ class CMSCompOpsAgent(BaseReActAgent):
                 name="search_vectorstore_hybrid",
                 description=hybrid_description,
                 store_docs=self._store_documents,
+                store_tool_input=getattr(self, "_store_tool_input", None),
             )
         )

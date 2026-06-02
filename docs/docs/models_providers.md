@@ -4,7 +4,7 @@ Archi uses a **provider-based architecture** for LLM access. Each provider wraps
 
 ## Provider Architecture
 
-All providers extend the `BaseProvider` abstract class and are registered in a global provider registry. The system supports five provider types:
+All providers extend the `BaseProvider` abstract class and are registered in a global provider registry. The system supports six provider types:
 
 | Provider | Type | API Key Env Var | Default Model | LangChain Backend |
 |----------|------|----------------|---------------|-------------------|
@@ -12,11 +12,12 @@ All providers extend the `BaseProvider` abstract class and are registered in a g
 | Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` | `ChatAnthropic` |
 | Google Gemini | `gemini` | `GOOGLE_API_KEY` | `gemini-2.0-flash` | `ChatGoogleGenerativeAI` |
 | OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `anthropic/claude-3.5-sonnet` | `ChatOpenAI` (custom base URL) |
+| CERN LiteLLM | `cern_litellm` | `CERN_LITELLM_API_KEY` | Configured via YAML | `ChatOpenAI` (CERN LLM Gateway) |
 | Local (Ollama/vLLM) | `local` | N/A | Dynamic (fetched from server) | `ChatOllama` or `ChatOpenAI` |
 
 ### Key Concepts
 
-- **`ProviderType`**: An enum of supported provider names (`OPENAI`, `ANTHROPIC`, `GEMINI`, `OPENROUTER`, `LOCAL`).
+- **`ProviderType`**: An enum of supported provider names (`OPENAI`, `ANTHROPIC`, `GEMINI`, `OPENROUTER`, `LOCAL`, `CERN_LITELLM`).
 - **`ProviderConfig`**: A dataclass holding provider settings — type, API key, base URL, enabled state, models list, and extra kwargs.
 - **`ModelInfo`**: Describes a model's capabilities — context window, tool support, streaming support, vision support, and max output tokens.
 - **Provider Registry**: Providers are lazily registered at first use. Factory functions (`get_provider`, `get_model`) handle instantiation and caching.

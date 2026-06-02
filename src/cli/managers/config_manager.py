@@ -7,6 +7,7 @@ import yaml
 
 from src.cli.managers.templates_manager import BASE_CONFIG_TEMPLATE
 from src.cli.source_registry import source_registry
+from src.utils.ab_testing import ABPool, ABPoolError, load_ab_pool_state
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -133,6 +134,7 @@ class ConfigurationManager:
             required_fields = static_requirements + pipeline_requirements
             self._validate_config(required_fields, config)
             self._validate_chat_app_config(config, services)
+            self._validate_benchmarking_config(config, services)
             self._validate_source_fields(config, sources)
 
         self._collect_embedding_metadata()
@@ -169,6 +171,104 @@ class ConfigurationManager:
                 raise ValueError(f"agents_dir must be a directory: '{agents_dir}'")
             if not list(agents_dir.glob("*.md")):
                 raise ValueError(f"agents_dir must contain at least one .md file: '{agents_dir}'")
+
+        # Guard against self-contradictory provider config:
+        # default_provider cannot be explicitly disabled in providers.<name>.enabled.
+        default_provider = str(chat_cfg.get("default_provider", "")).strip().lower()
+        providers_cfg = chat_cfg.get("providers", {}) or {}
+        default_provider_cfg = providers_cfg.get(default_provider, {}) if isinstance(providers_cfg, dict) else {}
+        if isinstance(default_provider_cfg, dict) and default_provider_cfg.get("enabled") is False:
+            raise ValueError(
+                "Invalid chat config: services.chat_app.default_provider "
+                f"'{default_provider}' is explicitly disabled via "
+                f"services.chat_app.providers.{default_provider}.enabled=false"
+            )
+
+        timeout_path = "services.chat_app.client_timeout_seconds"
+        timeout_raw = chat_cfg.get("client_timeout_seconds", 600)
+        if isinstance(timeout_raw, bool):
+            raise ValueError(f"Invalid field: '{timeout_path}' must be a positive number of seconds")
+        try:
+            timeout_value = float(timeout_raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid field: '{timeout_path}' must be a positive number of seconds")
+        if timeout_value <= 0:
+            raise ValueError(f"Invalid field: '{timeout_path}' must be > 0")
+        if timeout_value > 86400:
+            raise ValueError(f"Invalid field: '{timeout_path}' must be <= 86400 seconds")
+
+        self._validate_ab_testing_config(chat_cfg)
+
+    def _validate_ab_testing_config(self, chat_cfg: Dict[str, Any]) -> None:
+        ab_cfg = chat_cfg.get("ab_testing")
+        if not isinstance(ab_cfg, dict) or not ab_cfg.get("enabled", False):
+            return
+        state = load_ab_pool_state({"services": {"chat_app": chat_cfg}})
+        for warning in state.warnings:
+            logger.warning("A/B testing config warning: %s", warning)
+        try:
+            ABPool.from_config(ab_cfg)
+        except ABPoolError as exc:
+            incomplete_markers = (
+                "ab_testing.pool must be a mapping",
+                "ab_testing.pool.champion must be a non-empty string",
+                "ab_testing.pool.variants must be a non-empty list",
+                "at least 2 variants",
+                "not found in pool",
+                "must include a string 'label'",
+                "must include a string 'agent_spec'",
+            )
+            if any(marker in str(exc) for marker in incomplete_markers):
+                logger.warning(
+                    "A/B testing config is incomplete and will start inactive until configured in the admin UI: %s",
+                    exc,
+                )
+                return
+            raise ValueError(
+                "Invalid field: 'services.chat_app.ab_testing' is misconfigured. "
+                f"{exc}"
+            )
+
+    def _validate_benchmarking_config(self, config: Dict[str, Any], services: List[str]) -> None:
+        if not services or "benchmarking" not in services:
+            return
+
+        services_cfg = config.get("services", {}) or {}
+        benchmarking_cfg = services_cfg.get("benchmarking", {}) or {}
+
+        required = [
+            ("agent_class", "services.benchmarking.agent_class"),
+            ("agent_md_file", "services.benchmarking.agent_md_file"),
+            ("provider", "services.benchmarking.provider"),
+            ("model", "services.benchmarking.model"),
+        ]
+        for key, path in required:
+            value = benchmarking_cfg.get(key)
+            if not value:
+                raise ValueError(f"Missing required field: '{path}' in the configuration")
+
+        if "agents_dir" in benchmarking_cfg:
+            raise ValueError(
+                "Unsupported field: 'services.benchmarking.agents_dir'. "
+                "Use 'services.benchmarking.agent_md_file' instead."
+            )
+        if benchmarking_cfg.get("provider") == "local" and not benchmarking_cfg.get("ollama_url"):
+            raise ValueError(
+                "Missing required field: 'services.benchmarking.ollama_url' when provider is 'local'"
+            )
+
+        agent_md_file = Path(str(benchmarking_cfg.get("agent_md_file"))).expanduser()
+        config_path = Path(str(config.get("_config_path", ""))).expanduser()
+        if not agent_md_file.is_absolute() and config_path:
+            candidate = (config_path.parent / agent_md_file).resolve()
+            if candidate.exists():
+                agent_md_file = candidate
+        if not agent_md_file.exists():
+            raise ValueError(f"agent_md_file not found: '{agent_md_file}'")
+        if not agent_md_file.is_file():
+            raise ValueError(f"agent_md_file must be a file: '{agent_md_file}'")
+        if agent_md_file.suffix.lower() != ".md":
+            raise ValueError(f"agent_md_file must be a markdown file (.md): '{agent_md_file}'")
 
     def _validate_source_fields(self, config: Dict[str, Any], sources: List[str]) -> None:
         if not sources:

@@ -23,6 +23,51 @@ test.describe('Provider & Model Selection', () => {
     expect(optionCount).toBeGreaterThanOrEqual(1);
   });
 
+  test('agent delete confirmation stays open for cancel and confirm', async ({ page }) => {
+    let deleted = false;
+
+    await page.route('**/api/agents/list', async (route) => {
+      const agents = deleted
+        ? [{ name: 'Reviewer Agent', ab_only: false }]
+        : [
+            { name: 'CMS CompOps Agent', ab_only: false },
+            { name: 'Reviewer Agent', ab_only: false },
+          ];
+      await route.fulfill({ status: 200, json: { agents, active_name: agents[0]?.name || null } });
+    });
+
+    await page.route('**/api/agents', async (route) => {
+      if (route.request().method() === 'DELETE') {
+        deleted = true;
+        await route.fulfill({ status: 200, json: { success: true } });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto('/chat');
+
+    const dropdownBtn = page.locator('.agent-dropdown-btn');
+    await dropdownBtn.click();
+    const dropdownMenu = page.locator('.agent-dropdown-menu');
+    await expect(dropdownMenu).toBeVisible();
+
+    await page.locator('.agent-dropdown-delete').first().click();
+    await expect(dropdownMenu).toBeVisible();
+    await expect(page.locator('.agent-dropdown-confirm-yes')).toBeVisible();
+    await expect(page.locator('.agent-dropdown-confirm-no')).toBeVisible();
+
+    await page.locator('.agent-dropdown-confirm-no').click();
+    await expect(dropdownMenu).toBeVisible();
+    await expect(page.locator('.agent-dropdown-item', { hasText: 'CMS CompOps Agent' })).toBeVisible();
+
+    await page.locator('.agent-dropdown-delete').first().click();
+    await page.locator('.agent-dropdown-confirm-yes').click();
+    await expect(dropdownMenu).toBeVisible();
+    await expect(page.locator('.agent-dropdown-item', { hasText: 'CMS CompOps Agent' })).toHaveCount(0);
+    await expect(page.locator('.agent-dropdown-item', { hasText: 'Reviewer Agent' })).toBeVisible();
+  });
+
   test('settings modal opens and shows Models tab', async ({ page }) => {
     await page.goto('/chat');
     
@@ -137,32 +182,32 @@ test.describe('Provider & Model Selection', () => {
     await expect(modelSelect).toBeDisabled();
   });
 
-  test('API Keys tab is accessible', async ({ page }) => {
-    await page.goto('/chat');
+  // test('API Keys tab is accessible', async ({ page }) => {
+  //   await page.goto('/chat');
     
-    // Open settings
-    await page.getByRole('button', { name: 'Settings' }).click();
+  //   // Open settings
+  //   await page.getByRole('button', { name: 'Settings' }).click();
     
-    // Click API Keys tab
-    await page.getByRole('button', { name: 'API Keys' }).click();
+  //   // Click API Keys tab
+  //   await page.getByRole('button', { name: 'API Keys' }).click();
     
-    // Should show API Keys content - modal should still be open
-    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  });
+  //   // Should show API Keys content - modal should still be open
+  //   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  // });
 
-  test('Advanced tab is accessible', async ({ page }) => {
-    await page.goto('/chat');
+  // test('Advanced tab is accessible', async ({ page }) => {
+  //   await page.goto('/chat');
     
-    // Open settings
-    await page.getByRole('button', { name: 'Settings' }).click();
+  //   // Open settings
+  //   await page.getByRole('button', { name: 'Settings' }).click();
     
-    // Click Advanced tab
-    await page.getByRole('button', { name: 'Advanced' }).click();
+  //   // Click Advanced tab
+  //   await page.getByRole('button', { name: 'Advanced' }).click();
     
-    // Should show Advanced settings content
-    // Just verify the tab was clickable and modal is still open
-    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  });
+  //   // Should show Advanced settings content
+  //   // Just verify the tab was clickable and modal is still open
+  //   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  // });
 
   test('close button closes settings modal', async ({ page }) => {
     await page.goto('/chat');

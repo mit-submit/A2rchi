@@ -27,9 +27,9 @@ factory = PostgresServiceFactory.from_env(password_override=read_secret("PG_PASS
 PostgresServiceFactory.set_instance(factory)
 
 mailbox_config = get_services_config().get("redmine_mailbox", {})
-redmine = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize archi() class
+redmine_instance = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize archi() class
 
 while True:
     mail = mailbox.Mailbox(user = user, password = password)
-    mail.process_messages(redmine)
+    mail.process_messages(redmine_instance)
     time.sleep(int(mailbox_config["mailbox_update_time"]))

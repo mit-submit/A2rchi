@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -20,7 +20,7 @@ class PromptLogger(BaseCallbackHandler):
     
     def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
         """Log the prompt when LLM starts"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         with open(self.logfile, 'a', encoding='utf-8') as f:
             f.write("-" * 41)
             f.write(f"\n[{timestamp}] Prompt sent to LLM:\n")
@@ -30,7 +30,7 @@ class PromptLogger(BaseCallbackHandler):
     
     def on_llm_end(self, response, **kwargs: Any) -> None:
         """Log the response when LLM ends"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         with open(self.logfile, 'a', encoding='utf-8') as f:
             f.write("-" * 35)
             f.write(f"\n[{timestamp}] LLM Response:\n")

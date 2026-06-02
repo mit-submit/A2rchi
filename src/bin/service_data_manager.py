@@ -64,6 +64,8 @@ def main() -> None:
             logger.info("Running ingestion task: %s", name)
             set_source_status(name, state="running")
             func()
+            logger.info("Updating vectorstore after scheduled task: %s", name)
+            data_manager.update_vectorstore(force=True)
             set_source_status(name, state="idle", last_run=datetime.now(timezone.utc).isoformat())
 
     def trigger_update() -> None:
@@ -190,6 +192,9 @@ def main() -> None:
         """Trigger a reload of all schedules from the database."""
         try:
             new_schedules = scheduler.reload_schedules()
+            # If schedules were added after startup, ensure the scheduler loop is running.
+            if scheduler.jobs:
+                scheduler.start()
             # Update status file with new schedules
             status = load_status()
             for source_name, schedule in new_schedules.items():
@@ -205,7 +210,14 @@ def main() -> None:
 
     def get_schedule_status():
         """Get current schedule status for all jobs."""
-        return jsonify({"jobs": scheduler.get_job_status()})
+        status = load_status()
+        jobs = scheduler.get_job_status()
+        for job in jobs:
+            source_name = job.get("name")
+            source_status = status.get(source_name, {}) if source_name else {}
+            job["last_run"] = source_status.get("last_run")
+            job["state"] = source_status.get("state", "idle")
+        return jsonify({"jobs": jobs})
 
     app.add_url_rule("/api/schedules", "get_schedules", get_schedule_status, methods=["GET"])
 

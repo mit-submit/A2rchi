@@ -13,18 +13,17 @@ except ImportError:
 from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
 
-from src.archi.pipelines.agents.utils.prompt_utils import read_prompt
+from src.archi.pipelines.agents.utils.prompt_utils import get_role_context, read_prompt
 from src.archi.pipelines.agents.utils.history_utils import infer_speaker
 from src.archi.providers import get_model
 from src.archi.providers.base import ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
-from src.archi.pipelines.agents.utils.document_memory import DocumentMemory
+from src.archi.pipelines.agents.utils.run_memory import RunMemory
 from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
 from src.archi.pipelines.agents.tools import initialize_mcp_client
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
 
 class BaseReActAgent:
     """
@@ -53,9 +52,10 @@ class BaseReActAgent:
         self.selected_tool_names: List[str] = []
         if agent_spec is not None:
             self.selected_tool_names = list(getattr(agent_spec, "tools", []) or [])
-        self._active_memory: Optional[DocumentMemory] = None
+        self._active_memory: Optional[RunMemory] = None
         self._static_tools: Optional[List[Callable]] = None
         self._mcp_tools: Optional[List[Callable]] = None
+        self._mcp_skills_text: str = ""
         self._active_tools: List[Callable] = []
         self._static_middleware: Optional[List[Callable]] = None
         self._active_middleware: List[Callable] = []
@@ -76,18 +76,18 @@ class BaseReActAgent:
         if self.agent_prompt is None:
             self.agent_prompt = self.prompts.get("agent_prompt")
 
-    def create_document_memory(self) -> DocumentMemory:
-        """Instantiate a fresh document memory for an agent run."""
-        return DocumentMemory()
+    def create_run_memory(self) -> RunMemory:
+        """Instantiate a fresh run memory for an agent run."""
+        return RunMemory()
 
-    def start_run_memory(self) -> DocumentMemory:
+    def start_run_memory(self) -> RunMemory:
         """Create and store the active memory for the current run."""
-        memory = self.create_document_memory()
+        memory = self.create_run_memory()
         self._active_memory = memory
         return memory
 
     @property
-    def active_memory(self) -> Optional[DocumentMemory]:
+    def active_memory(self) -> Optional[RunMemory]:
         """Return the memory currently associated with the run, if any."""
         return self._active_memory
 
@@ -95,7 +95,7 @@ class BaseReActAgent:
         self,
         *,
         answer: str,
-        memory: Optional[DocumentMemory] = None,
+        memory: Optional[RunMemory] = None,
         messages: Optional[Sequence[BaseMessage]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         final: bool = True,
@@ -112,11 +112,19 @@ class BaseReActAgent:
                 resolved_messages = list(messages) if final else [messages[-1]]
             else:
                 resolved_messages = [messages]
+        resolved_metadata = dict(metadata or {})
+        if memory:
+            try:
+                tool_inputs_by_id = memory.tool_inputs_by_id()
+                if tool_inputs_by_id:
+                    resolved_metadata.setdefault("tool_inputs_by_id", tool_inputs_by_id)
+            except Exception as exc:
+                logger.debug("Failed to attach tool_inputs_by_id to metadata: %s", exc)
         return PipelineOutput(
             answer=answer,
             source_documents=documents,
             messages=resolved_messages,
-            metadata=metadata or {},
+            metadata=resolved_metadata,
             final=final,
         )
 
@@ -127,10 +135,14 @@ class BaseReActAgent:
         # Different providers use different keys
         usage = response_metadata.get("usage") or response_metadata.get("token_usage")
         if usage:
+            # OpenAI nests cache info under prompt_tokens_details.cached_tokens.
+            details = usage.get("prompt_tokens_details") or {}
+            cached_tokens = details.get("cached_tokens", 0) if isinstance(details, dict) else 0
             return {
                 "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens", 0),
                 "completion_tokens": usage.get("completion_tokens") or usage.get("output_tokens", 0),
                 "total_tokens": usage.get("total_tokens", 0),
+                "cached_tokens": int(cached_tokens or 0),
             }
         # Ollama format
         if "prompt_eval_count" in response_metadata or "eval_count" in response_metadata:
@@ -140,6 +152,7 @@ class BaseReActAgent:
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": prompt_tokens + completion_tokens,
+                "cached_tokens": 0,
             }
         return None
 
@@ -152,27 +165,27 @@ class BaseReActAgent:
     def _parse_thinking_content(self, text: str) -> Tuple[str, str]:
         """
         Parse text to separate thinking content from visible content.
-        
+
         Handles <think>...</think> tags used by models like Qwen3.
         Returns (visible_content, thinking_content).
         """
         if not text:
             return "", ""
-        
+
         # Extract all thinking blocks
         thinking_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
         thinking_matches = thinking_pattern.findall(text)
         thinking_content = "\n".join(thinking_matches)
-        
+
         # Remove thinking blocks from visible content
         visible_content = thinking_pattern.sub('', text).strip()
-        
+
         return visible_content, thinking_content
 
     def _extract_usage_from_messages(self, messages: List[BaseMessage]) -> Optional[Dict[str, int]]:
         """
         Sum token usage across ALL AI messages in the turn.
-        
+
         In a multi-step agent loop, the LLM is called multiple times
         (thinking, tool decisions, final answer). Each call reports its
         own prompt_tokens and completion_tokens. We sum them to show
@@ -180,27 +193,53 @@ class BaseReActAgent:
         """
         total_prompt = 0
         total_completion = 0
+        total_cached = 0
         found_any = False
-        
+
         for msg in messages:
             msg_type = str(getattr(msg, "type", "")).lower()
             if msg_type not in {"ai", "assistant"} and "ai" not in type(msg).__name__.lower():
                 continue
-            response_metadata = getattr(msg, "response_metadata", None)
-            usage = self._extract_usage_from_metadata(response_metadata)
+            usage = self._extract_usage_from_message(msg)
             if usage:
                 total_prompt += usage.get("prompt_tokens", 0)
                 total_completion += usage.get("completion_tokens", 0)
+                total_cached += usage.get("cached_tokens", 0)
                 found_any = True
-        
+
         if not found_any:
             return None
-        
+
         return {
             "prompt_tokens": total_prompt,
             "completion_tokens": total_completion,
             "total_tokens": total_prompt + total_completion,
+            "cached_tokens": total_cached,
         }
+
+    def _extract_usage_from_message(self, message: BaseMessage) -> Optional[Dict[str, int]]:
+        """Extract normalized usage from a single message or chunk."""
+        usage_metadata = getattr(message, "usage_metadata", None)
+        if isinstance(usage_metadata, dict):
+            prompt_tokens = usage_metadata.get("input_tokens", 0)
+            completion_tokens = usage_metadata.get("output_tokens", 0)
+            total_tokens = usage_metadata.get("total_tokens", prompt_tokens + completion_tokens)
+            # LangChain standardizes cache hit info under input_token_details.cache_read.
+            # OpenAI maps prompt_tokens_details.cached_tokens → cache_read here.
+            input_details = usage_metadata.get("input_token_details") or {}
+            cached_tokens = (
+                input_details.get("cache_read", 0) if isinstance(input_details, dict) else 0
+            )
+            if prompt_tokens or completion_tokens or total_tokens:
+                return {
+                    "prompt_tokens": int(prompt_tokens or 0),
+                    "completion_tokens": int(completion_tokens or 0),
+                    "total_tokens": int(total_tokens or 0),
+                    "cached_tokens": int(cached_tokens or 0),
+                }
+
+        response_metadata = getattr(message, "response_metadata", None)
+        return self._extract_usage_from_metadata(response_metadata)
 
     def _extract_model_from_messages(self, messages: List[BaseMessage]) -> Optional[str]:
         """Extract model name from the last AI message with response_metadata."""
@@ -265,17 +304,18 @@ class BaseReActAgent:
         recursion_limit = self._recursion_limit()
 
         all_messages: List[BaseMessage] = []  # Accumulated full messages
+        usage_messages: List[BaseMessage] = []  # Includes chunks with usage metadata
         latest_messages: List[BaseMessage] = []
         accumulated_content = ""  # Accumulated raw content from streaming
         emitted_tool_starts: Set[str] = set()
-        
+
         # Thinking state tracking
         thinking_step_id: Optional[str] = None
         thinking_start_time: Optional[float] = None
         accumulated_thinking = ""  # Captured thinking content from <think> tags
         last_visible_content = ""  # Last visible content emitted (without thinking)
         last_response_metadata: Optional[Dict[str, Any]] = None
-        
+
         try:
             for event in self.agent.stream(
                 agent_inputs,
@@ -292,10 +332,19 @@ class BaseReActAgent:
                 msg_type = str(getattr(message, "type", "")).lower()
                 msg_class = type(message).__name__.lower()
 
+                if msg_type in {"ai", "assistant"} or "ai" in msg_class:
+                    usage_messages.append(message)
+
                 response_metadata = getattr(message, "response_metadata", None)
                 if response_metadata:
                     last_response_metadata = response_metadata
-                
+
+                if self.active_memory:
+                    try:
+                        self.active_memory.record_tool_calls_from_message(message)
+                    except Exception as exc:
+                        logger.debug("Failed to record tool calls from stream message: %s", exc)
+
                 # Track all non-chunk messages
                 if "chunk" not in msg_class:
                     all_messages.extend(messages)
@@ -328,7 +377,7 @@ class BaseReActAgent:
                             thinking_step_id = None
                             thinking_start_time = None
                             accumulated_thinking = ""
-                        
+
                         yield self.finalize_output(
                             answer="",
                             memory=self.active_memory,
@@ -357,6 +406,29 @@ class BaseReActAgent:
                         content = self._message_content(message)
                         additional_kwargs = getattr(message, "additional_kwargs", None) or {}
                         reasoning_content = additional_kwargs.get("reasoning_content", "")
+
+                        # Detect empty AI chunks as implicit thinking activity.
+                        # Some LLM integrations (e.g. langchain-ollama <1.1) drop
+                        # the thinking/reasoning payload, producing chunks where
+                        # both content and reasoning_content are empty while the
+                        # model is still in its thinking phase.  We treat these as
+                        # a signal to start (or continue) the thinking indicator
+                        # so the UI stays responsive.
+                        if not content and not reasoning_content:
+                            if thinking_step_id is None and "chunk" in msg_class:
+                                thinking_step_id = str(uuid.uuid4())
+                                thinking_start_time = time.time()
+                                yield self.finalize_output(
+                                    answer="",
+                                    memory=self.active_memory,
+                                    messages=[],
+                                    metadata={
+                                        "event_type": "thinking_start",
+                                        "step_id": thinking_step_id,
+                                    },
+                                    final=False,
+                                )
+
                         if content or reasoning_content:
                             # Start thinking phase if not already active
                             if thinking_step_id is None:
@@ -372,7 +444,7 @@ class BaseReActAgent:
                                     },
                                     final=False,
                                 )
-                            
+
                             if content:
                                 # For chunks, content is delta; for full messages, content is cumulative
                                 if "chunk" in msg_class:
@@ -390,7 +462,7 @@ class BaseReActAgent:
                                 visible_content, thinking_content = self._parse_thinking_content(accumulated_content)
                                 if not accumulated_thinking:
                                     accumulated_thinking = thinking_content
-                            
+
                             # Only emit if visible content changed
                             if visible_content != last_visible_content:
                                 last_visible_content = visible_content
@@ -430,11 +502,40 @@ class BaseReActAgent:
             )
             yield recursion_output
             return
-        
+        except Exception as exc:
+            if not self._is_context_overflow_error(exc):
+                raise
+            logger.warning(
+                "Context overflow during stream for %s: %s",
+                self.__class__.__name__,
+                exc,
+            )
+            if thinking_step_id is not None:
+                duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                yield self.finalize_output(
+                    answer="",
+                    memory=self.active_memory,
+                    messages=[],
+                    metadata={
+                        "event_type": "thinking_end",
+                        "step_id": thinking_step_id,
+                        "duration_ms": duration_ms,
+                        "thinking_content": accumulated_thinking,
+                    },
+                    final=False,
+                )
+            overflow_output = self._handle_context_overflow(
+                error=exc,
+                agent_inputs=agent_inputs,
+                latest_messages=all_messages or latest_messages,
+            )
+            yield overflow_output
+            return
+
         # Final output
-        logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d", 
+        logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d",
                  accumulated_content[:100] if accumulated_content else "", len(all_messages))
-        
+
         # End thinking phase if still active
         if thinking_step_id is not None:
             if not accumulated_thinking and all_messages:
@@ -452,7 +553,7 @@ class BaseReActAgent:
                 },
                 final=False,
             )
-        
+
         final_answer = ""
         if all_messages:
             # Find the last AI message with content
@@ -468,20 +569,29 @@ class BaseReActAgent:
         if not final_answer:
             # Strip thinking from accumulated content
             final_answer, _ = self._parse_thinking_content(accumulated_content)
-        
+
         # Extract usage and model info for final event
-        usage = self._extract_usage_from_messages(all_messages)
+        usage = self._extract_usage_from_messages(usage_messages or all_messages)
         model = self._extract_model_from_messages(all_messages)
         if usage is None:
             usage = self._extract_usage_from_metadata(last_response_metadata)
         if model is None:
             model = self._extract_model_from_metadata(last_response_metadata)
+        if usage:
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            cached = usage.get("cached_tokens", 0)
+            hit = (cached / pt * 100.0) if pt else 0.0
+            logger.info(
+                "Usage: prompt=%d (cached=%d, %.1f%% hit) completion=%d total=%d",
+                pt, cached, hit, ct, usage.get("total_tokens", pt + ct),
+            )
         final_metadata = {
             "event_type": "final",
             "usage": usage,
             "model": model,
         }
-        
+
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
@@ -506,17 +616,18 @@ class BaseReActAgent:
         recursion_limit = self._recursion_limit()
 
         all_messages: List[BaseMessage] = []
+        usage_messages: List[BaseMessage] = []
         latest_messages: List[BaseMessage] = []
         accumulated_content = ""
         emitted_tool_starts: Set[str] = set()
-        
+
         # Thinking state tracking
         thinking_step_id: Optional[str] = None
         thinking_start_time: Optional[float] = None
         accumulated_thinking = ""  # Captured thinking content from <think> tags
         last_visible_content = ""  # Last visible content emitted (without thinking)
         last_response_metadata: Optional[Dict[str, Any]] = None
-        
+
         try:
             async for event in self.agent.astream(
                 agent_inputs,
@@ -531,11 +642,20 @@ class BaseReActAgent:
                 message = messages[-1]
                 msg_type = str(getattr(message, "type", "")).lower()
                 msg_class = type(message).__name__.lower()
-                
+
+                if msg_type in {"ai", "assistant"} or "ai" in msg_class:
+                    usage_messages.append(message)
+
                 response_metadata = getattr(message, "response_metadata", None)
                 if response_metadata:
                     last_response_metadata = response_metadata
-                
+
+                if self.active_memory:
+                    try:
+                        self.active_memory.record_tool_calls_from_message(message)
+                    except Exception as exc:
+                        logger.debug("Failed to record tool calls from async stream message: %s", exc)
+
                 # Track all non-chunk messages
                 if "chunk" not in msg_class:
                     all_messages.extend(messages)
@@ -567,7 +687,7 @@ class BaseReActAgent:
                             thinking_step_id = None
                             thinking_start_time = None
                             accumulated_thinking = ""
-                        
+
                         yield self.finalize_output(
                             answer="",
                             messages=[message],
@@ -593,6 +713,23 @@ class BaseReActAgent:
                         content = self._message_content(message)
                         additional_kwargs = getattr(message, "additional_kwargs", None) or {}
                         reasoning_content = additional_kwargs.get("reasoning_content", "")
+
+                        # Detect empty AI chunks as implicit thinking activity.
+                        if not content and not reasoning_content:
+                            if thinking_step_id is None and "chunk" in msg_class:
+                                thinking_step_id = str(uuid.uuid4())
+                                thinking_start_time = time.time()
+                                yield self.finalize_output(
+                                    answer="",
+                                    memory=self.active_memory,
+                                    messages=[],
+                                    metadata={
+                                        "event_type": "thinking_start",
+                                        "step_id": thinking_step_id,
+                                    },
+                                    final=False,
+                                )
+
                         if content or reasoning_content:
                             # Start thinking phase if not already active
                             if thinking_step_id is None:
@@ -608,7 +745,7 @@ class BaseReActAgent:
                                     },
                                     final=False,
                                 )
-                            
+
                             if content:
                                 if "chunk" in msg_class:
                                     accumulated_content += content
@@ -624,7 +761,7 @@ class BaseReActAgent:
                                 visible_content, thinking_content = self._parse_thinking_content(accumulated_content)
                                 if not accumulated_thinking:
                                     accumulated_thinking = thinking_content
-                            
+
                             # Only emit if visible content changed
                             if visible_content != last_visible_content:
                                 last_visible_content = visible_content
@@ -663,11 +800,40 @@ class BaseReActAgent:
             )
             yield recursion_output
             return
-        
+        except Exception as exc:
+            if not self._is_context_overflow_error(exc):
+                raise
+            logger.warning(
+                "Context overflow during async stream for %s: %s",
+                self.__class__.__name__,
+                exc,
+            )
+            if thinking_step_id is not None:
+                duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
+                yield self.finalize_output(
+                    answer="",
+                    memory=self.active_memory,
+                    messages=[],
+                    metadata={
+                        "event_type": "thinking_end",
+                        "step_id": thinking_step_id,
+                        "duration_ms": duration_ms,
+                        "thinking_content": accumulated_thinking,
+                    },
+                    final=False,
+                )
+            overflow_output = self._handle_context_overflow(
+                error=exc,
+                agent_inputs=agent_inputs,
+                latest_messages=all_messages or latest_messages,
+            )
+            yield overflow_output
+            return
+
         # Final output
-        logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d", 
+        logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d",
                  accumulated_content[:100] if accumulated_content else "", len(all_messages))
-        
+
         # End thinking phase if still active
         if thinking_step_id is not None:
             if not accumulated_thinking and all_messages:
@@ -685,7 +851,7 @@ class BaseReActAgent:
                 },
                 final=False,
             )
-        
+
         final_answer = ""
         if all_messages:
             for msg in reversed(all_messages):
@@ -700,20 +866,29 @@ class BaseReActAgent:
         if not final_answer:
             # Strip thinking from accumulated content
             final_answer, _ = self._parse_thinking_content(accumulated_content)
-        
+
         # Extract usage and model info for final event
-        usage = self._extract_usage_from_messages(all_messages)
+        usage = self._extract_usage_from_messages(usage_messages or all_messages)
         model = self._extract_model_from_messages(all_messages)
         if usage is None:
             usage = self._extract_usage_from_metadata(last_response_metadata)
         if model is None:
             model = self._extract_model_from_metadata(last_response_metadata)
+        if usage:
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            cached = usage.get("cached_tokens", 0)
+            hit = (cached / pt * 100.0) if pt else 0.0
+            logger.info(
+                "Usage: prompt=%d (cached=%d, %.1f%% hit) completion=%d total=%d",
+                pt, cached, hit, ct, usage.get("total_tokens", pt + ct),
+            )
         final_metadata = {
             "event_type": "final",
             "usage": usage,
             "model": model,
         }
-        
+
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
@@ -943,8 +1118,22 @@ class BaseReActAgent:
             self._active_middleware = list(middleware)
         return self.agent
 
+    def _build_system_prompt(self) -> str:
+        """
+        Build the full system prompt, appending role context and MCP server skills.
+
+        Role context is appended when SSO auth with auth_roles is configured
+        and pass_descriptions_to_agent is set to true. MCP server skills are
+        appended once here rather than per-tool so long skills don't multiply
+        by the number of tools in the catalog.
+        """
+        base_prompt = self.agent_prompt or ""
+        role_context = get_role_context()
+        return base_prompt + role_context + (self._mcp_skills_text or "")
+
     def _create_agent(self, tools: Sequence[Callable], middleware: Sequence[Callable]) -> CompiledStateGraph:
         """Create the LangGraph agent with the specified LLM, tools, and system prompt."""
+        system_prompt = self._build_system_prompt()
         logger.debug("Creating agent %s with:", self.__class__.__name__)
         logger.debug("%d tools", len(tools))
         logger.debug("%d middleware components", len(middleware))
@@ -952,7 +1141,7 @@ class BaseReActAgent:
             model=self.agent_llm,
             tools=tools,
             middleware=middleware,
-            system_prompt=self.agent_prompt,
+            system_prompt=system_prompt,
         )
 
     def _build_static_tools(self) -> List[Callable]:
@@ -983,13 +1172,16 @@ class BaseReActAgent:
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools = self._async_runner.run(initialize_mcp_client(mcp_servers=mcp_servers))
+            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client())
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None
             self.mcp_client = client
+            self._mcp_skills_text = skills_text or ""
 
             # Create synchronous wrappers that use the SAME loop
+            store_tool_input = self._store_tool_input
+
             def make_synchronous(async_tool):
                 """
                 Wrap an async tool for synchronous execution.
@@ -1001,10 +1193,24 @@ class BaseReActAgent:
                 """
                 # Capture the runner in closure
                 runner = self._async_runner
+                tool_name = async_tool.name
 
                 def sync_wrapper(*args, **kwargs):
                     if runner.in_loop_thread():
                         raise RuntimeError("sync_wrapper called from MCP loop thread; would deadlock")
+                    # Streamed tool_call chunks arrive without args; record here so the UI can resolve them by tool_call_id.
+                    try:
+                        recorded = {
+                            k: v
+                            for k, v in kwargs.items()
+                            if k not in {"config", "run_manager", "callbacks"}
+                        }
+                        if recorded:
+                            store_tool_input(tool_name, recorded)
+                    except Exception as exc:
+                        logger.debug(
+                            "Failed to record MCP tool input for %s: %s", tool_name, exc
+                        )
                     # Run on the background loop - NOT a new loop!
                     return runner.run(async_tool.coroutine(*args, **kwargs))
 
@@ -1038,6 +1244,16 @@ class BaseReActAgent:
             # fallback to explicit record + note
             memory.record(stage, docs)
             memory.note(f"{stage} returned {len(list(docs))} document(s).")
+
+    def _store_tool_input(self, tool_name: str, tool_input: Any) -> None:
+        """Store runtime tool input so streamed tool ids can be backfilled with arguments."""
+        memory = self.active_memory
+        if not memory:
+            return
+        try:
+            memory.record_tool_input(tool_name, tool_input)
+        except Exception as exc:
+            logger.debug("Failed to record tool input for %s: %s", tool_name, exc)
 
     def _prepare_inputs(self, history: Any, **kwargs) -> Dict[str, Any]:
         """Create list of messages using LangChain's formatting."""
@@ -1147,10 +1363,19 @@ class BaseReActAgent:
             return list(payload)
         if isinstance(payload, tuple) and payload and isinstance(payload[0], message_types):
             return [payload[0]]
+        if isinstance(payload, tuple) and len(payload) > 1 and isinstance(payload[1], message_types):
+            return [payload[1]]
+        if (
+            isinstance(payload, tuple)
+            and len(payload) > 1
+            and isinstance(payload[1], list)
+            and all(isinstance(msg, message_types) for msg in payload[1])
+        ):
+            return list(payload[1])
         def _messages_from_container(container: Any) -> List[BaseMessage]:
             if isinstance(container, dict):
                 messages = container.get("messages")
-                if isinstance(messages, list) and all(isinstance(msg, BaseMessage) for msg in messages):
+                if isinstance(messages, list) and all(isinstance(msg, message_types) for msg in messages):
                     return messages
             return []
 
@@ -1333,6 +1558,84 @@ class BaseReActAgent:
         if last_node:
             metadata["last_node"] = last_node
         return metadata
+
+    @staticmethod
+    def _is_context_overflow_error(exc: Exception) -> bool:
+        """Return True if *exc* is a context-window / token-limit overflow error."""
+        exc_type = type(exc).__name__
+        exc_str = str(exc)
+        return (
+            "ContextOverflow" in exc_type
+            or "context_length_exceeded" in exc_str
+            or "Input tokens exceed" in exc_str
+            or "maximum context length" in exc_str.lower()
+        )
+
+    def _handle_context_overflow(
+        self,
+        *,
+        error: Exception,
+        agent_inputs: Optional[Dict[str, Any]] = None,
+        latest_messages: Optional[Sequence[BaseMessage]] = None,
+    ) -> "PipelineOutput":
+        """Build a graceful response after a context-window overflow.
+
+        Attempts a single retry with the last user message only; falls back to
+        a plain error message if the retry also fails or is not possible.
+        """
+        # Try a lightweight retry with just the last human message
+        if agent_inputs and "messages" in agent_inputs:
+            original_messages: List[BaseMessage] = list(agent_inputs.get("messages") or [])
+            # Keep only the last human message to stay well within context
+            trimmed: List[BaseMessage] = [m for m in original_messages[-1:] if True]
+            if trimmed:
+                try:
+                    trimmed_inputs = {**agent_inputs, "messages": trimmed}
+                    answer_output = self.agent.invoke(
+                        trimmed_inputs, {"recursion_limit": 10}
+                    )
+                    messages_out: List[BaseMessage] = list(
+                        answer_output.get("messages", []) if isinstance(answer_output, dict) else []
+                    )
+                    answer_text = ""
+                    for msg in reversed(messages_out):
+                        msg_type = str(getattr(msg, "type", "")).lower()
+                        if msg_type in {"ai", "assistant"} or "ai" in type(msg).__name__.lower():
+                            answer_text = self._message_content(msg)
+                            if answer_text:
+                                break
+                    if answer_text:
+                        logger.info(
+                            "Context overflow retry succeeded for %s.",
+                            self.__class__.__name__,
+                        )
+                        return self.finalize_output(
+                            answer=answer_text,
+                            memory=self.active_memory,
+                            messages=messages_out,
+                            metadata={"event_type": "final", "context_overflow_retry": True},
+                            final=True,
+                        )
+                except Exception as retry_exc:
+                    logger.warning(
+                        "Context overflow retry also failed for %s: %s",
+                        self.__class__.__name__,
+                        retry_exc,
+                    )
+
+        fallback_msg = AIMessage(
+            content=(
+                "I'm sorry, but the conversation history has grown too large for me to process. "
+                "Please start a new conversation to continue."
+            )
+        )
+        return self.finalize_output(
+            answer=self._message_content(fallback_msg),
+            memory=self.active_memory,
+            messages=list(latest_messages or []) + [fallback_msg],
+            metadata={"event_type": "error", "error_type": "context_overflow"},
+            final=True,
+        )
 
     def _handle_recursion_limit_error(
         self,

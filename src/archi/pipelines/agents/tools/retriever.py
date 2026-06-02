@@ -7,6 +7,7 @@ from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
 from src.utils.logging import get_logger
+from src.archi.pipelines.agents.tools.base import require_tool_permission
 
 logger = get_logger(__name__)
 
@@ -66,6 +67,8 @@ def create_retriever_tool(
     max_documents: int = 4,
     max_chars: int = 800,
     store_docs: Optional[Callable[[str, Sequence[Document]], None]] = None,
+    required_permission: Optional[str] = None,
+    store_tool_input: Optional[Callable[[str, object], None]] = None,
 ) -> Callable[[str], str]:
     """
     Wrap a `BaseRetriever` instance in a LangChain tool.
@@ -74,6 +77,16 @@ def create_retriever_tool(
     so the calling agent can ground its responses in the vector store content.
     If ``store_docs`` is provided, it will be invoked with the tool name and
     the list of retrieved ``Document`` objects before formatting the response.
+    
+    Args:
+        retriever: The LangChain retriever instance to wrap.
+        name: The name of the tool.
+        description: Human-readable description of the tool.
+        max_documents: Maximum number of documents to return.
+        max_chars: Maximum characters per document snippet.
+        store_docs: Optional callback to store retrieved documents.
+        required_permission: Optional RBAC permission required to use this tool.
+            If None, no permission check is performed (allow all).
     """
 
     tool_description = (
@@ -87,7 +100,16 @@ def create_retriever_tool(
     )
 
     @tool(name, description=tool_description)
+    @require_tool_permission(required_permission)
     def _retriever_tool(query: str) -> str:
+        logger.debug("Retriever tool '%s' called with query=%r", name, query)
+        if store_tool_input:
+            try:
+                store_tool_input(name, {"query": query})
+            except Exception:
+                logger.debug("Failed to store runtime input for tool '%s'", name, exc_info=True)
+        if query is None or not str(query).strip():
+            logger.warning("Retriever tool '%s' received empty query", name)
         results = retriever.invoke(query)
         docs = _normalize_results(results or [])
         if store_docs:

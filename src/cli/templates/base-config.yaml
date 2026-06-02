@@ -10,8 +10,46 @@ global:
   LOGGING:
     input_output_filename: "{{ global.LOGGING.input_output_filename | default('chain_input_output.log', true) }}"
 
+mcp_servers:
+  {%- for server_name, server_config in (mcp_servers | default({}, true)).items() %}
+  {{ server_name }}:
+    transport: {{ server_config.transport | default('streamable_http', true) }}
+    {%- if server_config.url is defined %}
+    url: {{ server_config.url }}
+    {%- endif %}
+    {%- if server_config.command is defined %}
+    command: {{ server_config.command }}
+    {%- endif %}
+    {%- if server_config.args is defined %}
+    args: {{ server_config.args | tojson }}
+    {%- endif %}
+    {%- if server_config.env is defined %}
+    env: {{ server_config.env | tojson }}
+    {%- endif %}
+    {%- if server_config.env_from_secrets is defined %}
+    env_from_secrets: {{ server_config.env_from_secrets | tojson }}
+    {%- endif %}
+    {%- if server_config.host_file_mounts is defined %}
+    host_file_mounts: {{ server_config.host_file_mounts | tojson }}
+    {%- endif %}
+    {%- if server_config.build_context is defined %}
+    build_context: {{ server_config.build_context }}
+    {%- endif %}
+    {%- if server_config.image is defined %}
+    image: {{ server_config.image }}
+    {%- endif %}
+    {%- if server_config.skill is defined %}
+    skill: {{ server_config.skill }}
+    {%- endif %}
+  {%- endfor %}
+
 services:
   benchmarking:
+    agent_class: {{ services.benchmarking.agent_class | default("", true) }}
+    agent_md_file: "{{ services.benchmarking.agent_md_file | default("", true) }}"
+    provider: {{ services.benchmarking.provider | default("", true) }}
+    model: {{ services.benchmarking.model | default("", true) }}
+    ollama_url: {{ services.benchmarking.ollama_url | default("", true) }}
     out_dir: {{ services.benchmarking.out_dir | default(".", true) }}
     queries_path: {{ services.benchmarking.queries_path | default("queries", true) }}
     modes:
@@ -26,21 +64,6 @@ services:
           {%- for metric in services.benchmarking.ragas_settings.enabled_metrics | default(["answer_relevancy", "faithfulness", "context_precision", "context_recall"]) %}
           - {{ metric }}
           {%- endfor %}
-        provider: {{ services.benchmarking.mode_settings.ragas_settings.provider | default("OpenAI", True)}} # supports OpenAI, Ollama, HuggingFace, and Anthropic
-        evaluation_model_settings:
-          {%- set provider = services.benchmarking.mode_settings.ragas_settings.provider | default("OpenAI") %}
-          {%- set default_models = {
-              "OpenAI": "gpt-4",
-              "Ollama": "gemma3",
-              "HuggingFace": "Qwen/Qwen2.5-7B-Instruct-1M",
-              "Anthropic": "claude-3-sonnet-20240229"
-          } %}
-          {%- if services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.model_name %}
-          model_name: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.model_name }}
-          {%- else %}
-          model_name: {{ default_models.get(provider, "gpt-4") }}
-          {%- endif %}
-          base_url: {{ services.benchmarking.mode_settings.ragas_settings.evaluation_model_settings.base_url | default("", True) }} # for Ollama support
         embedding_model: {{ services.benchmarking.mode_settings.ragas_settings.embedding_model | default("OpenAI", true) }}
         timeout: {{ services.benchmarking.mode_settings.ragas_settings.timeout | default(180, true) }}
         batch_size: {{ services.benchmarking.mode_settings.ragas_settings.batch_size | default(false, true) }}
@@ -63,8 +86,11 @@ services:
     project: {{ services.redmine_mailbox.project | default('', true) }}
     redmine_update_time: {{ services.redmine_mailbox.redmine_update_time | default(10, true) }}
     answer_tag: {{ services.redmine_mailbox.answer_tag | default('-- archi -- Resolving email was sent', true) }}
-    imap4_port: {{ services.redmine_mailbox.imap4_port | default(143, true) }}
+    imap4_port: {{ services.redmine_mailbox.imap4_port | default(993, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
+    default_provider: {{ services.redmine_mailbox.default_provider | default('local', true) }}
+    default_model: {{ services.redmine_mailbox.default_model | default('qwen3:32b', true) }}
+    providers: {{ services.redmine_mailbox.providers | default({"local": {"enabled": true, "base_url": "http://localhost:11434", "mode": "ollama", "default_model": "llama3.2", "models": ["llama3.2"]}}) | tojson }}
   postgres:
     port: {{ services.postgres.port | default(5432, true) }}
     user: {{ services.postgres.user | default('archi', true) }}
@@ -74,21 +100,13 @@ services:
     agent_class: {{ services.chat_app.agent_class | default("CMSCompOpsAgent", true) }}
     agents_dir: "{{ services.chat_app.agents_dir | default('', true) }}"
     recursion_limit: {{ services.chat_app.recursion_limit | default(50, true) }}
+    client_timeout_seconds: {{ services.chat_app.client_timeout_seconds | default(600, true) }}
     default_provider: {{ services.chat_app.default_provider | default("local", true) }}
     default_model: {{ services.chat_app.default_model | default("llama3.2", true) }}
     skills_dir: "{{ services.chat_app.skills_dir | default('', true) }}"
     tools: {{ services.chat_app.tools | default({}, true) | tojson }}
     prompts: {{ services.chat_app.prompts | default({}, true) }}
-    providers:
-      local:
-        enabled: {{ services.chat_app.providers.local.enabled | default(true, true) }}
-        base_url: {{ services.chat_app.providers.local.base_url | default("http://localhost:11434", true) }}
-        mode: {{ services.chat_app.providers.local.mode | default("ollama", true) }}
-        default_model: {{ services.chat_app.providers.local.default_model | default("llama3.2", true) }}
-        models:
-          {%- for m in services.chat_app.providers.local.models | default(["llama3.2"]) %}
-          - {{ m }}
-          {%- endfor %}
+    providers: {{ services.chat_app.providers | default({"local": {"enabled": true, "base_url": "http://localhost:11434", "mode": "ollama", "default_model": "llama3.2", "models": ["llama3.2"]}}) | tojson }}
     trained_on: {{ services.chat_app.trained_on | default("No description provided.", true) }} # leaving for now for backwards compatibility can remove later
     port: {{ services.chat_app.port | default(7861, true) }}
     external_port: {{ services.chat_app.external_port | default(7861, true) }}
@@ -109,6 +127,59 @@ services:
           scope: {{ services.chat_app.auth.sso.client_kwargs.scope | default("openid profile email", true) }}
       basic:
         enabled: {{ services.chat_app.auth.basic.enabled | default(false, true) }}
+    {% if services.chat_app.auth.auth_roles is defined %}
+      auth_roles: {{ services.chat_app.auth.auth_roles | tojson }}
+    {% endif %}
+    alerts:
+      managers:
+        {%- for manager in services.chat_app.alerts.managers | default([], true) %}
+        - {{ manager }}
+        {%- endfor %}
+    {%- if services.chat_app.ab_testing is defined and services.chat_app.ab_testing.enabled | default(false) %}
+    ab_testing:
+      enabled: {{ services.chat_app.ab_testing.enabled | default(false, true) }}
+      {%- if services.chat_app.ab_testing.ab_agents_dir is defined %}
+      ab_agents_dir: "{{ services.chat_app.ab_testing.ab_agents_dir }}"
+      {%- endif %}
+      {%- if services.chat_app.ab_testing.force_yaml_override is defined %}
+      force_yaml_override: {{ services.chat_app.ab_testing.force_yaml_override | default(false, true) }}
+      {%- endif %}
+      comparison_rate: {{ services.chat_app.ab_testing.comparison_rate | default(services.chat_app.ab_testing.sample_rate | default(0.0)) }}
+      variant_label_mode: {{ services.chat_app.ab_testing.variant_label_mode | default(services.chat_app.ab_testing.disclosure_mode | default("post_vote_reveal", true), true) }}
+      activity_panel_default_state: {{ services.chat_app.ab_testing.activity_panel_default_state | default(services.chat_app.ab_testing.default_trace_mode | default("hidden", true), true) }}
+      max_pending_comparisons_per_conversation: {{ services.chat_app.ab_testing.max_pending_comparisons_per_conversation | default(services.chat_app.ab_testing.max_pending_per_conversation | default(1, true), true) }}
+      {%- if services.chat_app.ab_testing.eligible_roles is defined or services.chat_app.ab_testing.target_roles is defined %}
+      eligible_roles: {{ services.chat_app.ab_testing.eligible_roles | default(services.chat_app.ab_testing.target_roles, true) | tojson }}
+      {%- endif %}
+      {%- if services.chat_app.ab_testing.eligible_permissions is defined or services.chat_app.ab_testing.target_permissions is defined %}
+      eligible_permissions: {{ services.chat_app.ab_testing.eligible_permissions | default(services.chat_app.ab_testing.target_permissions, true) | tojson }}
+      {%- endif %}
+      {%- if services.chat_app.ab_testing.pool is defined %}
+      pool:
+        {%- if services.chat_app.ab_testing.pool.champion is defined or services.chat_app.ab_testing.pool.control is defined %}
+        champion: {{ services.chat_app.ab_testing.pool.champion | default(services.chat_app.ab_testing.pool.control, true) }}
+        {%- endif %}
+        {%- if services.chat_app.ab_testing.pool.variants is defined %}
+        variants:
+          {%- for v in services.chat_app.ab_testing.pool.variants %}
+          - label: {{ v.label }}
+            agent_spec: "{{ v.agent_spec }}"
+            {%- if v.provider is defined %}
+            provider: {{ v.provider }}
+            {%- endif %}
+            {%- if v.model is defined %}
+            model: "{{ v.model }}"
+            {%- endif %}
+            {%- if v.num_documents_to_retrieve is defined %}
+            num_documents_to_retrieve: {{ v.num_documents_to_retrieve }}
+            {%- endif %}
+            {%- if v.recursion_limit is defined %}
+            recursion_limit: {{ v.recursion_limit }}
+            {%- endif %}
+          {%- endfor %}
+        {%- endif %}
+      {%- endif %}
+    {%- endif %}
   data_manager:
     auth:
       enabled: {{ services.data_manager.auth.enabled | default(false) }}
@@ -207,18 +278,16 @@ data_manager:
         verify_urls: {{ data_manager.sources.links.html_scraper.verify_urls | default(false, true) }}
         enable_warnings: {{ data_manager.sources.links.html_scraper.enable_warnings | default(false, true) }}
       selenium_scraper:
-        enabled: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.enabled | default(false, True) }}
+        enabled: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.enabled | default(false, true) }}
         visible: {{ data_manager.sources.links.selenium_scraper.selenium_scraper.visible | default(false, true) }}
         use_for_scraping: {{ data_manager.sources.links.selenium_scraper.use_for_scraping | default(false, true) }}
         selenium_class: {{  data_manager.sources.links.selenium_scraper.selenium_class | default('CERNSSOScraper', true)  }}
+        selenium_url: {{  data_manager.sources.links.selenium_scraper.selenium_url | default('null', true)  }}
         selenium_class_map:
           CERNSSOScraper:
             class: {{ data_manager.sources.links.selenium_scraper.selenium_class_map.CERNSSOScraper.class | default('CERNSSOScraper', true) }}
             kwargs:
               headless:  {{ data_manager.sources.links.selenium_scraper.selenium_class_map.CERNSSOScraper.kwargs.headless | default(true, true) }}
-    ticket:
-      enabled: {{ data_manager.sources.ticket.enabled | default(true, true) }}
-      visible: {{ data_manager.sources.ticket.visible | default(true, true) }}
     git:
       enabled: {{ data_manager.sources.git.enabled | default(true, true) }}
       visible: {{ data_manager.sources.git.visible | default(true, true) }}

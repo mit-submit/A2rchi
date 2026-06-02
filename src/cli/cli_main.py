@@ -9,7 +9,7 @@ from jinja2 import (ChainableUndefined, Environment, PackageLoader,
                     select_autoescape)
 
 from src.cli.managers.config_manager import ConfigurationManager
-from src.cli.managers.deployment_manager import DeploymentManager
+from src.cli.managers.deployment_manager import DeploymentError, DeploymentManager
 from src.cli.managers.secrets_manager import SecretsManager
 from src.cli.managers.templates_manager import TemplateManager
 from src.cli.managers.volume_manager import VolumeManager
@@ -56,7 +56,7 @@ def cli():
 @click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
 def create(name: str, config_files: list, config_dir: str, env_file: str, services: list,
            force: bool, dry: bool, verbosity: int, **other_flags):
-    """Create an ARCHI deployment with selected services and data sources."""
+    """Create an Archi deployment with selected services and data sources."""
 
     if not (bool(config_files) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
@@ -66,7 +66,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
     if len(config_files) != 1:
         raise click.ClickException("Exactly one config file is supported; please provide a single -c file.")
 
-    print("Starting ARCHI deployment process...")
+    click.echo("Starting Archi deployment process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
 
@@ -183,7 +183,7 @@ def create(name: str, config_files: list, config_dir: str, env_file: str, servic
 @click.option('--podman', '-p', is_flag=True, default=False, help="specify if podman is being used")
 def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: bool, verbosity: int, podman: bool):
     """
-    Delete an ARCHI deployment with the specified name.
+    Delete an Archi deployment with the specified name.
     
     This command stops containers and optionally removes images, volumes, and files.
     
@@ -266,7 +266,7 @@ def delete(name: str, rmi: bool, rmv: bool, keep_files: bool, list_deployments: 
 @click.option('--service', '-s', type=str, default="chatbot", help="Service to restart (default: chatbot)")
 @click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml archi configuration")
 @click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
-@click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with secrets")
+@click.option('--env-file', '-e', type=str, required=True, help="Path to .env file with secrets")
 @click.option('--no-build', is_flag=True, help="Restart without rebuilding the image")
 @click.option('--with-deps', is_flag=True, help="Also restart dependent services")
 @click.option('--podman', '-p', is_flag=True, default=False, help="specify if podman is being used")
@@ -276,7 +276,7 @@ def restart(
     service: str,
     config_files: tuple,
     config_dir: Optional[str],
-    env_file: Optional[str],
+    env_file: str,
     no_build: bool,
     with_deps: bool,
     podman: bool,
@@ -284,6 +284,7 @@ def restart(
 ):
     """Restart a specific service in an existing deployment while reusing its configured ports."""
     setup_cli_logging(verbosity=verbosity)
+    logger = get_logger(__name__)
 
     if not podman and not check_docker_available():
         raise click.ClickException(
@@ -390,6 +391,29 @@ def restart(
         )
 
     deployment_manager = DeploymentManager(use_podman=podman)
+
+    if config_files or config_dir:
+        try:
+            if deployment_manager.has_service(deployment_dir, "config-seed"):
+                deployment_manager.run_service_once(
+                    deployment_dir=deployment_dir,
+                    service_name="config-seed",
+                    build=not no_build,
+                    no_deps=True,
+                )
+        except DeploymentError as e:
+            raise click.ClickException(str(e))
+
+    if not no_build and not (config_files or config_dir):
+        template_manager = TemplateManager(env, verbosity)
+        try:
+            template_manager.copy_source_code(deployment_dir)
+        except Exception as e:
+            logger.warning(f"Warning: could not update source code before rebuild: {e}", err=True)
+
+    if service == "config-seed":
+        return
+
     deployment_manager.restart_service(
         deployment_dir=deployment_dir,
         service_name=service,
@@ -402,7 +426,7 @@ def restart(
 def list_services():
     """List all available services"""
     
-    click.echo("Available ARCHI services:\n")
+    click.echo("Available Archi services:\n")
     
     # Application services
     app_services = service_registry.get_application_services()
@@ -472,9 +496,8 @@ def list_deployments():
 @click.option('--force', '-f', is_flag=True, help="Force deployment creation, overwriting existing deployment")
 @click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
 @click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
-def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_mode: bool,
-             force: bool, verbosity: int, **other_flags):
-    """Create an ARCHI deployment with selected services and data sources."""
+def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force: bool, verbosity: int, **other_flags):
+    """Create an Archi deployment with selected services and data sources."""
     if not (bool(config_file) ^ bool(config_dir)): 
         raise click.ClickException(f"Must specify only one of config files or config dir")
     if config_dir: 
@@ -483,7 +506,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
     else: 
         config_files = [item for item in config_file.split(",")]
 
-    print("Starting ARCHI benchmarking process...")
+    click.echo("Starting Archi benchmarking process...")
     setup_cli_logging(verbosity=verbosity)
     logger = get_logger(__name__)
 
@@ -537,7 +560,7 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, host_m
         other_flags['benchmarking'] = True
         other_flags['query_file'] = benchmarking_configs.get('queries_path', ".")
         other_flags['benchmarking_dest'] = os.path.abspath(benchmarking_configs.get('out_dir', '.'))
-        other_flags['host_mode'] = host_mode
+        other_flags['host_mode'] = other_flags.get('host_mode', False)
 
         compose_config = ServiceBuilder.build_compose_config(
                 name=name, verbosity=verbosity, base_dir=base_dir, 

@@ -76,16 +76,6 @@ class DataViewer {
       refreshBtn.addEventListener('click', () => this.refresh());
     }
     
-    // Expand/collapse all
-    const expandAllBtn = document.getElementById('expand-all-btn');
-    if (expandAllBtn) {
-      expandAllBtn.addEventListener('click', () => this.expandAll());
-    }
-    
-    const collapseAllBtn = document.getElementById('collapse-all-btn');
-    if (collapseAllBtn) {
-      collapseAllBtn.addEventListener('click', () => this.collapseAll());
-    }
   }
 
   /**
@@ -517,7 +507,7 @@ class DataViewer {
     const fields = {
       'preview-source': sourceNames[doc.source_type] || doc.source_type,
       'preview-size': this.formatSize(doc.size_bytes),
-      'preview-date': doc.ingested_at ? new Date(doc.ingested_at).toLocaleString() : 'Never',
+      'preview-date': this.formatIngestedDate(doc),
     };
     
     for (const [id, value] of Object.entries(fields)) {
@@ -552,6 +542,21 @@ class DataViewer {
     if (typeEl) {
       typeEl.innerHTML = `${typeInfo.icon} ${typeInfo.type}${typeInfo.language ? ` (${typeInfo.language})` : ''}`;
     }
+  }
+
+  formatIngestedDate(doc) {
+    const candidates = [
+      { value: doc.ingested_at, label: '' },
+      { value: doc.indexed_at, label: ' (indexed)' },
+      { value: doc.created_at, label: ' (created)' },
+    ];
+    for (const candidate of candidates) {
+      if (!candidate.value) continue;
+      const date = new Date(candidate.value);
+      if (isNaN(date.getTime())) continue;
+      return `${date.toLocaleString()}${candidate.label}`;
+    }
+    return 'Never';
   }
 
   /**

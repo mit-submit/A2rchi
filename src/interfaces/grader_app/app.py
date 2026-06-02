@@ -677,7 +677,7 @@ class FlaskAppWrapper(object):
         # WHAT IS THIS FILE, WHERE DOES IT COME FROM, AND DOES IT GET PASSED INITIAILLY OR NOT ***(DATA_PATH OR NOT)***
         comment_file = "comments.csv"
 
-        timestamp = datetime.datetime.now().isoformat()
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         with open(comment_file, 'a', newline='') as f:
             writer = csv.writer(f)

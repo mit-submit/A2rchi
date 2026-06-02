@@ -33,7 +33,7 @@ LIMIT 1;
 """
 
 SQL_QUERY_CONVO = """
-SELECT sender, content
+SELECT sender, content, message_id
 FROM conversations
 WHERE conversation_id = %s
 ORDER BY message_id ASC;
@@ -44,7 +44,8 @@ SELECT c.sender,
        c.content,
        c.message_id,
        lf.feedback,
-       COALESCE(cf.comment_count, 0) AS comment_count
+       COALESCE(cf.comment_count, 0) AS comment_count,
+       c.model_used
 FROM conversations c
 LEFT JOIN (
     SELECT DISTINCT ON (mid)
@@ -90,9 +91,9 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
 
 SQL_CREATE_CONVERSATION = """
 INSERT INTO conversation_metadata (
-    title, created_at, last_message_at, client_id, archi_version
+    title, created_at, last_message_at, client_id, archi_version, user_id
 )
-VALUES (%s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s)
 RETURNING conversation_id;
 """
 
@@ -130,6 +131,34 @@ DELETE FROM conversation_metadata
 WHERE conversation_id = %s AND client_id = %s;
 """
 
+# User-ID-based variants (used when the user is authenticated)
+# Each query also falls back to client_id so that conversations created before
+# user_id was populated remain accessible.
+SQL_LIST_CONVERSATIONS_BY_USER = """
+SELECT conversation_id, title, created_at, last_message_at
+FROM conversation_metadata
+WHERE user_id = %s OR client_id = %s
+ORDER BY last_message_at DESC
+LIMIT %s;
+"""
+
+SQL_GET_CONVERSATION_METADATA_BY_USER = """
+SELECT conversation_id, title, created_at, last_message_at
+FROM conversation_metadata
+WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
+"""
+
+SQL_DELETE_CONVERSATION_BY_USER = """
+DELETE FROM conversation_metadata
+WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
+"""
+
+SQL_UPDATE_CONVERSATION_TIMESTAMP_BY_USER = """
+UPDATE conversation_metadata
+SET last_message_at = %s
+WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
+"""
+
 # =============================================================================
 # Tool Calls Queries
 # =============================================================================
@@ -155,9 +184,11 @@ ORDER BY step_number ASC;
 SQL_INSERT_AB_COMPARISON = """
 INSERT INTO ab_comparisons (
     conversation_id, user_prompt_mid, response_a_mid, response_b_mid, 
-    model_a, pipeline_a, model_b, pipeline_b, is_config_a_first
+    model_a, pipeline_a, model_b, pipeline_b,
+    variant_a_name, variant_b_name, variant_a_meta, variant_b_meta,
+    is_config_a_first
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 RETURNING comparison_id;
 """
 
@@ -170,19 +201,47 @@ WHERE comparison_id = %s;
 SQL_GET_AB_COMPARISON = """
 SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
        model_a, pipeline_a, model_b, pipeline_b, 
+       variant_a_name, variant_b_name, variant_a_meta, variant_b_meta,
        is_config_a_first, preference, preference_ts, created_at
 FROM ab_comparisons
 WHERE comparison_id = %s;
 """
 
+SQL_GET_AB_COMPARISON_FOR_UPDATE = """
+SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
+       model_a, pipeline_a, model_b, pipeline_b,
+       variant_a_name, variant_b_name, variant_a_meta, variant_b_meta,
+       is_config_a_first, preference, preference_ts, created_at
+FROM ab_comparisons
+WHERE comparison_id = %s
+FOR UPDATE;
+"""
+
 SQL_GET_PENDING_AB_COMPARISON = """
 SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
        model_a, pipeline_a, model_b, pipeline_b,
+       variant_a_name, variant_b_name, variant_a_meta, variant_b_meta,
        is_config_a_first, preference, preference_ts, created_at
 FROM ab_comparisons
 WHERE conversation_id = %s AND preference IS NULL
 ORDER BY created_at DESC
 LIMIT 1;
+"""
+
+SQL_GET_PENDING_AB_COMPARISONS = """
+SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
+       model_a, pipeline_a, model_b, pipeline_b,
+       variant_a_name, variant_b_name, variant_a_meta, variant_b_meta,
+       is_config_a_first, preference, preference_ts, created_at
+FROM ab_comparisons
+WHERE conversation_id = %s AND preference IS NULL
+ORDER BY created_at ASC, comparison_id ASC;
+"""
+
+SQL_COUNT_PENDING_AB_COMPARISONS = """
+SELECT COUNT(*)
+FROM ab_comparisons
+WHERE conversation_id = %s AND preference IS NULL;
 """
 
 SQL_DELETE_AB_COMPARISON = """
@@ -193,11 +252,34 @@ WHERE comparison_id = %s;
 SQL_GET_AB_COMPARISONS_BY_CONVERSATION = """
 SELECT comparison_id, conversation_id, user_prompt_mid, response_a_mid, response_b_mid,
        model_a, pipeline_a, model_b, pipeline_b,
+       variant_a_name, variant_b_name, variant_a_meta, variant_b_meta,
        is_config_a_first, preference, preference_ts, created_at
 FROM ab_comparisons
 WHERE conversation_id = %s
 ORDER BY created_at ASC;
 """
+
+# =============================================================================
+# A/B Variant Metrics Queries
+# =============================================================================
+
+SQL_UPSERT_VARIANT_METRIC = """
+INSERT INTO ab_variant_metrics (variant_name, wins, losses, ties, total_comparisons, last_updated)
+VALUES (%s, %s, %s, %s, %s, NOW())
+ON CONFLICT (variant_name) DO UPDATE
+SET wins = ab_variant_metrics.wins + EXCLUDED.wins,
+    losses = ab_variant_metrics.losses + EXCLUDED.losses,
+    ties = ab_variant_metrics.ties + EXCLUDED.ties,
+    total_comparisons = ab_variant_metrics.total_comparisons + EXCLUDED.total_comparisons,
+    last_updated = NOW();
+"""
+
+SQL_GET_ALL_VARIANT_METRICS = """
+SELECT variant_name, wins, losses, ties, total_comparisons, last_updated
+FROM ab_variant_metrics
+ORDER BY total_comparisons DESC;
+"""
+
 
 # =============================================================================
 # Agent Trace Queries
@@ -258,4 +340,44 @@ SET status = 'cancelled',
     cancelled_by = %s,
     cancellation_reason = %s
 WHERE conversation_id = %s AND status = 'running';
+"""
+
+# =============================================================================
+# Service Alert Queries
+# =============================================================================
+
+SQL_INSERT_ALERT = """
+INSERT INTO service_alerts (severity, message, description, created_by)
+VALUES (%s, %s, %s, %s)
+RETURNING id, severity, message, description, created_by, created_at, expires_at, active;
+"""
+
+SQL_SET_ALERT_EXPIRY = """
+UPDATE service_alerts
+SET expires_at = %s
+WHERE id = %s;
+"""
+
+SQL_LIST_ALERTS = """
+SELECT id, severity, message, description, created_by, created_at, expires_at, active
+FROM service_alerts
+ORDER BY created_at DESC;
+"""
+
+SQL_LIST_ACTIVE_BANNER_ALERTS = """
+SELECT id, severity, message, description, created_by, created_at, expires_at
+FROM (
+    SELECT id, severity, message, description, created_by, created_at, expires_at
+    FROM service_alerts
+    WHERE active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
+    ORDER BY created_at DESC
+    LIMIT 5
+) latest
+ORDER BY
+    CASE severity WHEN 'alarm' THEN 0 WHEN 'warning' THEN 1 WHEN 'info' THEN 2 WHEN 'news' THEN 3 ELSE 4 END,
+    created_at DESC;
+"""
+
+SQL_DELETE_ALERT = """
+DELETE FROM service_alerts WHERE id = %s;
 """

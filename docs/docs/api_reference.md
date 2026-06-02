@@ -46,7 +46,60 @@ Retrieve the full trace of a previous request.
 
 ### `POST /api/ab/create`
 
-Create an A/B comparison between two model responses.
+Create an A/B comparison between two model responses (legacy manual mode).
+
+### `GET /api/ab/pool`
+
+Get the server-side A/B testing pool configuration. The response shape depends on RBAC:
+
+- `ab:view` or `ab:manage`: full read-only experiment configuration
+- `ab:participate`: participant-focused payload including the effective per-user sample rate and participant eligibility diagnostics
+- otherwise: `enabled: false`
+
+**Response (pool active):**
+```json
+{
+  "success": true,
+  "enabled": true,
+  "can_view": true,
+  "can_manage": false,
+  "champion": "default",
+  "variants": ["default", "creative", "concise"],
+  "comparison_rate": 0.25,
+  "default_comparison_rate": 0.25,
+  "participant_eligible": true,
+  "participant_reason": "eligible"
+}
+```
+
+Participant payloads can also report `participant_reason: "not_targeted"` when the deployment has an active experiment but the current user's roles or permissions are not included in that experiment's target filters.
+
+### `POST /api/ab/compare`
+
+Stream a pool-based champion-vs-variant A/B comparison. The server randomly pairs the champion against another variant from the pool and streams interleaved NDJSON events tagged with `arm: "a"` or `arm: "b"`. A final `ab_meta` event carries the `comparison_id` and variant mapping.
+
+**Request body:** Same as `/api/get_chat_response_stream`.
+
+### `GET /api/ab/metrics`
+
+Get per-variant aggregate metrics (wins, losses, ties, total comparisons).
+
+**Response:**
+```json
+{
+  "success": true,
+  "metrics": [
+    {
+      "variant_name": "creative",
+      "wins": 12,
+      "losses": 5,
+      "ties": 3,
+      "total_comparisons": 20,
+      "last_updated": "2025-01-15T10:30:00"
+    }
+  ]
+}
+```
 
 ---
 
@@ -92,14 +145,15 @@ Get or create the current user.
 
 ### `PATCH /api/users/me/preferences`
 
-Update user preferences (model, temperature, prompts, theme).
+Update user preferences (model, temperature, prompts, theme, and A/B participation override).
 
 **Request:**
 ```json
 {
   "theme": "light",
   "preferred_model": "claude-3-opus",
-  "preferred_temperature": 0.5
+  "preferred_temperature": 0.5,
+  "ab_participation_rate": 0.75
 }
 ```
 
@@ -229,6 +283,39 @@ Set the active agent for the current session.
 ```json
 {
   "agent_name": "CMS Comp Ops"
+}
+```
+
+### `GET /api/ab/agents/list`
+
+List the Postgres-backed A/B agent catalog for the A/B admin page. Requires A/B page access.
+
+### `GET /api/ab/agents/template`
+
+Get the A/B admin template payload with structured tool metadata. Requires `ab:manage`.
+
+**Response:**
+```json
+{
+  "name": "New A/B Agent",
+  "prompt": "Write your system prompt here.",
+  "tools": [
+    {"name": "search_vectorstore_hybrid", "description": "Search indexed documents."}
+  ],
+  "scope": "ab"
+}
+```
+
+### `POST /api/ab/agents`
+
+Create a new Postgres-backed A/B agent spec from structured fields. Requires `ab:manage`.
+
+**Request:**
+```json
+{
+  "name": "A/B Candidate",
+  "tools": ["search_vectorstore_hybrid"],
+  "prompt": "You are a helpful A/B experiment agent."
 }
 ```
 
