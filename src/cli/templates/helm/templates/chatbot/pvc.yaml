@@ -8,5 +8,4 @@ spec:
   accessModes:
     - ReadWriteOnce
   resources:
-    requests:
-      storage: 500Mi
+    {{ "{{- toYaml .Values.chat.pvc.resources | nindent 12 }}" }}

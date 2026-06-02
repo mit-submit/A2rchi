@@ -274,7 +274,7 @@ class TemplateManager:
         chart_dir = context.base_dir / "chart"  
         tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
         helm_config = tmpl.render(skills=skills_data, archi_name=context.plan.name) 
-        file_path = chart_dir / "templates/chatbot-agents-configmap.yaml"
+        file_path = chart_dir / "templates/chatbot-skills-configmap.yaml"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path,"w") as f:
             f.write(helm_config)

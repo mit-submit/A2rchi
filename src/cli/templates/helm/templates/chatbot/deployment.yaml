@@ -36,6 +36,8 @@ spec:
             - name: VERBOSITY
               value: "{{ "{{ .Values.verbosity }}" }}"
           image: {{ "{{ .Values.chat.image }}" }}
+          resources:
+            {{ "{{- toYaml .Values.chat.resources | nindent 12 }}" }}
           imagePullPolicy: Always
           livenessProbe:
             httpGet:
@@ -50,7 +52,7 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 5
           ports:
-          - containerPort: {{ "{{ .Values.chat.port }}" }}
+          - containerPort: {{ "{{ .Values.chat.externalPort }}" }}
             protocol: TCP
           volumeMounts:
             - mountPath: /root/data
@@ -65,6 +67,8 @@ spec:
               mountPath: /root/archi/src/archi/pipelines/extra_agents
             - name: {{ name }}-chat-tools
               mountPath: /root/archi/src/archi/pipelines/agents/tools/extra_tools
+            - name: {{ name }}-chat-skills
+              mountPath: /root/archi/skills
             - mountPath: /root/.accounts
               name: root-accounts
             - mountPath: /.cache
@@ -84,12 +88,16 @@ spec:
         - name: {{ name }}-chat-prompts
           configMap:
             name: {{ name }}-chat-prompts
+          optional: true
         - configMap:
             name: {{ name }}-chat-agents
           name: {{ name }}-chat-agents
+          optional: true
         - configMap:
             name: {{ name }}-chat-skills
           name: {{ name }}-chat-skills
+          optional: true
         - configMap:
             name: {{ name }}-chat-tools
           name: {{ name }}-chat-tools
+          optional: true

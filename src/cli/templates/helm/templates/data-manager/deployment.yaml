@@ -36,6 +36,8 @@ spec:
             - name: VERBOSITY
               value: "{{ "{{ .Values.verbosity }}" }}"
           image: {{ "{{ .Values.data_manager.image }}" }}
+          resources:
+            {{ "{{- toYaml .Values.chat.resources | nindent 12 }}" }}
           ports:
           - containerPort: {{ "{{ .Values.data_manager.port }}" }}
             protocol: TCP

@@ -8,5 +8,4 @@ spec:
   accessModes:
     - ReadWriteOnce
   resources:
-    requests:
-      storage: 500Mi
+    {{ "{{- toYaml .Values.postgres.pvc.resources | nindent 12 }}" }}

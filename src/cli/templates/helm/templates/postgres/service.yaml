@@ -5,6 +5,7 @@ metadata:
   labels:
     app: {{ name }}-postgres
 spec:
+  type: {{ "{{ .Values.service_type }}" }}  
   selector:
     app: {{ name }}-postgres
   ports:

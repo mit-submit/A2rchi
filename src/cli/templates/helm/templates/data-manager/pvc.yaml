@@ -8,7 +8,6 @@ metadata:
   name:  {{ name }}-data-manager-pvc
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
-    requests:
-      storage: 100Mi
+    {{ "{{- toYaml .Values.data_manager.pvc.resources | nindent 12 }}" }}
