@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     git \
     ca-certificates \
+    openssh-client \
     --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

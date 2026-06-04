@@ -12,9 +12,15 @@ from src.archi.pipelines.agents.utils.skill_utils import load_skill
 
 logger = get_logger(__name__)
 
-async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[BaseTool], str]:
+async def initialize_mcp_client(servers: dict | None = None) -> Tuple[Optional[MultiServerMCPClient], List[BaseTool], str]:
     """
     Initializes the MCP client and fetches tool definitions.
+
+    Args:
+        servers: MCP server config dict. If provided, used directly instead of
+            reading from the deployment config. Callers should pass the result of
+            agent.get_mcp_servers_config() so class-level and builtin servers are
+            included alongside any deployment-config servers.
     Returns:
         client: The active client instance (must be kept alive by the caller).
         tools: The list of LangChain-compatible tools.
@@ -25,7 +31,7 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
             the content doesn't multiply by tool count.
     """
 
-    mcp_servers = get_mcp_servers_config()
+    mcp_servers = servers if servers is not None else get_mcp_servers_config()
 
     # Strip archi-only fields that langchain-mcp-adapters doesn't understand.
     # These are consumed by the compose template (sidecars), the legacy stdio

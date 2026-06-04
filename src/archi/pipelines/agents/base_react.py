@@ -1172,7 +1172,7 @@ class BaseReActAgent:
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client())
+            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client(servers=mcp_servers))
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None

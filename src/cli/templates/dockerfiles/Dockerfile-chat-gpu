@@ -20,6 +20,7 @@ RUN apt-get update && \
         wget \
         git \
         ca-certificates \
+        openssh-client \
         libgtk-3-0 \
         libdbus-glib-1-2 \
         libasound2 \

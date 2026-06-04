@@ -177,6 +177,7 @@ services:
       {%- for host_path in (host_file_mounts | default([])) %}
       - {{ host_path }}:{{ host_path }}:ro
       {%- endfor %}
+      - ${HOME}/.ssh:/root/.ssh:ro
     {#- Build the MCP auto-install command for stdio packages with a path #}
     {%- set mcp_installs = [] %}
     {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}

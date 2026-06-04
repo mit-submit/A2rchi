@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any, Callable, Dict, List
 
 from src.utils.logging import get_logger
@@ -27,16 +28,12 @@ logger = get_logger(__name__)
 class CMSCompOpsAgent(BaseReActAgent):
     """Agent designed for CMS CompOps operations."""
 
-    #input MCP Servers
-
-    MCP_SERVERS = {
-        "test": {
-            "url": "http://submit76.mit.edu:7760/sse",
-            "transport": "sse",
-        },
-        "monitor": {
-            "url": "http://submit76.mit.edu:7761/sse",
-            "transport": "sse",
+    # Spawned as a local subprocess on agent init; always merged into the server config.
+    BUILTIN_MCP_SERVERS = {
+        "submit_status": {
+            "transport": "stdio",
+            "command": sys.executable,
+            "args": ["-m", "src.archi.mcp_servers.submit_status"],
         },
     }
 
@@ -73,28 +70,30 @@ class CMSCompOpsAgent(BaseReActAgent):
         """
         Return MCP server config for this agent.
 
-        Priority:
-        1) Class-level MCP_SERVERS (recommended for agent templates)
-        2) services.chat_app.tools.mcp_servers (deployment override)
-        3) archi.mcp_servers (legacy fallback)
+        Checks three locations in the config (first non-empty wins):
+        1) services.chat_app.tools.mcp_servers
+        2) archi.mcp_servers (legacy)
+        3) top-level mcp_servers: in the YAML
+
+        BUILTIN_MCP_SERVERS are always merged in as the base so they are
+        present regardless of which config location supplies the rest.
         """
-        class_servers = getattr(self.__class__, "MCP_SERVERS", {}) or {}
-        if isinstance(class_servers, dict) and class_servers:
-            return class_servers
+        builtin = self.BUILTIN_MCP_SERVERS
 
-        config = getattr(self, "config", {}) or {}
-        services_cfg = config.get("services", {}) if isinstance(config, dict) else {}
-        chat_cfg = services_cfg.get("chat_app", {}) if isinstance(services_cfg, dict) else {}
-        tools_cfg = chat_cfg.get("tools", {}) if isinstance(chat_cfg, dict) else {}
+        tools_cfg = self._chat_app_config.get("tools", {})
         chat_servers = tools_cfg.get("mcp_servers", {}) if isinstance(tools_cfg, dict) else {}
-        if isinstance(chat_servers, dict) and chat_servers:
-            return chat_servers
+        if chat_servers:
+            return {**builtin, **chat_servers}
 
-        archi_cfg = getattr(self, "archi_config", {}) or {}
-        legacy_servers = archi_cfg.get("mcp_servers", {}) if isinstance(archi_cfg, dict) else {}
-        if isinstance(legacy_servers, dict):
-            return legacy_servers
-        return {}
+        archi_servers = self.archi_config.get("mcp_servers", {})
+        if archi_servers:
+            return {**builtin, **archi_servers}
+
+        top_level_servers = self.config.get("mcp_servers", {})
+        if top_level_servers:
+            return {**builtin, **top_level_servers}
+
+        return dict(builtin)
 
     def _init_monit(self) -> None:
         """Initialize MONIT OpenSearch clients if credentials and config are available.

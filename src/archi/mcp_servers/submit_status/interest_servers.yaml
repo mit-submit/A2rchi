@@ -1,0 +1,3 @@
+submit00:
+  - condor.service
+  - crond.service
