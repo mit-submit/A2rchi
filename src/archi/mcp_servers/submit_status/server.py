@@ -11,7 +11,11 @@ logger = get_logger(__name__)
 
 mcp = FastMCP("submit-status")
 
-SUBMIT_MACHINES: list[str] = ["submit00", "submit06", "submit82"]
+LOGIN_NODES = ["submit00", "submit01", "submit02", "submit03", "submit04", "submit05", "submit06", "submit07", "submit08"]
+CEPH_NODES = ["submit50", "submit51", "submit52", "submit53", "submit54", "submit55", "submit56", "submit57", "submit58", "submit59"]
+SCRATCH_NODE = ["submit30"]
+ALL_NODES = LOGIN_NODES + SCRATCH_NODE + CEPH_NODES
+
 SERVERS_FILE = Path("src/archi/mcp_servers/submit_status/interest_servers.yaml")
 
 # SSH user to connect as. The container runs as root but the submit nodes only
@@ -61,22 +65,9 @@ async def _ssh(host: str, command: str) -> str:
 
 
 @mcp.tool()
-async def check_node_status(machines: str = "") -> str:
-    """
-    Check reachability and system load for submit machines by running 'uptime' over SSH.
-    Returns one line per machine: '<hostname>: <uptime output or error>'.
-    machines: comma-separated hostnames (e.g. "submit00,submit06"). Leave empty to check all known machines.
-    """
-    targets = [m.strip() for m in machines.split(",") if m.strip()] if machines.strip() else SUBMIT_MACHINES
-    if not targets:
-        return "No machines specified and SUBMIT_MACHINES list is empty"
-    results = await asyncio.gather(*[_ssh(h, "uptime") for h in targets])
-    return "\n".join(f"{host}: {result}" for host, result in zip(targets, results))
-
-
-@mcp.tool()
 async def check_disk_usage(machine: str) -> str:
     """
+    Use ALL_NODES
     Check disk usage on a submit machine by running 'df -h'.
     Returns the full df output or an SSH error.
     """
@@ -87,6 +78,7 @@ async def check_disk_usage(machine: str) -> str:
 @mcp.tool()
 async def list_services(machine: str) -> str:
     """
+    Use LOGIN_NODES
     List all systemd services on a submit machine and their current state.
     Returns a table of unit name, load state, active state, sub-state, and description.
     Call this first to discover available service names before calling check_service_status.
@@ -110,7 +102,7 @@ async def check_service_status(machine: str, service: str) -> str:
 @mcp.tool()
 async def check_interesting_services() -> str:
     """
-    Contains all of the servers of interest to us on each machine. 
+    Contains all of the servers of interest to us on each machine.
     Check the configured services of interest on each submit machine.
 
     Reads configs/submit_servers.yaml, where each machine maps to a list
