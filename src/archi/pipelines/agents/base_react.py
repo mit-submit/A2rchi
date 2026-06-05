@@ -12,6 +12,7 @@ except ImportError:
     BaseMessageChunk = None
 from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
+from langfuse.langchain import CallbackHandler
 
 from src.archi.pipelines.agents.utils.prompt_utils import get_role_context, read_prompt
 from src.archi.pipelines.agents.utils.history_utils import infer_speaker
@@ -64,6 +65,8 @@ class BaseReActAgent:
         self.agent_prompt: Optional[str] = None
 
         self.mcp_client = None
+
+        self.langfuse_handler = CallbackHandler()
 
 
         self._init_llms()
@@ -320,7 +323,8 @@ class BaseReActAgent:
             for event in self.agent.stream(
                 agent_inputs,
                 stream_mode="messages",
-                config={"recursion_limit": recursion_limit},
+                config={"recursion_limit": recursion_limit,
+                        "callbacks":[self.langfuse_handler]},
             ):
 
                 messages = self._extract_messages(event)

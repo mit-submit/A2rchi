@@ -12,6 +12,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from pathlib import Path
 from urllib.parse import urlparse
 from functools import wraps
+from langfuse import get_client
 
 import requests
 
@@ -329,6 +330,7 @@ class ChatWrapper:
 
         self.conn = None
         self.cursor = None
+        self.langfuse = get_client()
 
         # initialize agent spec
         chat_cfg = self.services_config.get("chat_app", {})
@@ -858,6 +860,18 @@ class ChatWrapper:
         self.cursor.close()
         self.conn.close()
         self.cursor, self.conn = None, None
+
+        with self.langfuse.start_as_current_observation(as_type="span", name="langgraph-request") as span:
+            # ... LangGraph execution ...
+        
+            # Score using current context
+            self.langfuse.score_current_trace(
+                name="user-feedback",
+                value=1 if feedback['feedback']=='like' else 0,
+                data_type="NUMERIC",
+                comment=feedback['feedback_msg']
+            )
+        
 
     def delete_reaction_feedback(self, message_id: int):
         """
