@@ -20,8 +20,6 @@ CPU_NODES: list[str] = []  # e.g. ["submitcpu01", "submitcpu02"]
 ALL_NODES = LOGIN_NODES + SCRATCH_NODES + CEPH_NODES + GPU_NODES + CPU_NODES
 
 _ALL_NODES_SET   = set(ALL_NODES)
-_LOGIN_NODES_SET = set(LOGIN_NODES)
-_CEPH_NODES_SET  = set(CEPH_NODES)
 
 
 SERVERS_FILE = Path(__file__).parent / "interest_servers.yaml"
@@ -59,7 +57,7 @@ def load_servers_of_interest() -> dict[str, list[str]]:
         return yaml.safe_load(f) or {}
 
 
-async def _ssh(host: str, command: str) -> str:
+async def _ssh(host: str, command: str, timeout: int = _SSH_TIMEOUT) -> str:
     fqdn = host if "." in host else f"{host}.mit.edu"
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -67,7 +65,7 @@ async def _ssh(host: str, command: str) -> str:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_SSH_TIMEOUT)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         if proc.returncode == 0:
             logger.info("ssh %s: command succeeded: %s", host, command)
             return stdout.decode().strip()
@@ -75,8 +73,8 @@ async def _ssh(host: str, command: str) -> str:
         logger.warning("ssh %s: command failed (rc=%d): %s", host, proc.returncode, error)
         return error
     except asyncio.TimeoutError:
-        logger.warning("ssh %s: timed out after %ds running: %s", host, _SSH_TIMEOUT, command)
-        return f"SSH to {host} timed out after {_SSH_TIMEOUT}s"
+        logger.warning("ssh %s: timed out after %ds running: %s", host, timeout, command)
+        return f"SSH to {host} timed out after {timeout}s"
     except Exception as exc:
         logger.error("ssh %s: unexpected error running '%s': %s", host, command, exc)
         return f"SSH error connecting to {host}: {exc}"
@@ -88,136 +86,80 @@ async def _ssh_multi(hosts: list[str], command: str) -> str:
     return "\n\n".join(f"### {host}\n{out}" for host, out in zip(hosts, outputs))
 
 
-# ---------------------------------------------------------------------------
-# Login node tools (submit00-08)
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def list_services(machine: str) -> str:
-    """
-    List all systemd services on a submit login node and their current state.
-    Valid machines: login nodes only (submit00-08).
-    Returns unit name, load/active/sub state, and description for every service.
-    Call this first to discover service names before calling check_service_status.
-    """
-    if err := _validate_machine(machine, _LOGIN_NODES_SET):
-        return err
-    return await _ssh(machine, "systemctl list-units --type=service --all --no-pager --no-legend --plain")
-
-
-@mcp.tool()
-async def check_service_status(machine: str, service: str) -> str:
-    """
-    Check the detailed status of a specific systemd service on a submit login node.
-    Valid machines: login nodes only (submit00-08).
-    Use list_services first to find the exact unit name (e.g. 'condor.service').
-    Returns active state, PID, memory usage, and recent journal lines.
-    """
-    if err := _validate_machine(machine, _LOGIN_NODES_SET):
-        return err
-    return await _ssh(machine, f"systemctl status {shlex.quote(service)} --no-pager")
-
-
-@mcp.tool()
-async def check_interesting_services() -> str:
-    """
-    Check the configured services of interest across submit machines.
-    Reads interest_servers.yaml (machine -> list of service unit names).
-    Returns status output for each configured service, grouped by machine.
-    """
-    servers = load_servers_of_interest()
-    results = []
-    for machine, services in servers.items():
-        results.append(f"## {machine}")
-        for service in services:
-            results.append(f"### {service}")
-            results.append(await _ssh(machine, f"systemctl status {shlex.quote(service)} --no-pager"))
-    return "\n\n".join(results)
 
 
 # ---------------------------------------------------------------------------
-# Ceph node tools (submit50-59)
+# General MCP Tools
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
-async def ceph_status(machine: str) -> str:
-    """
-    Get a snapshot of the Ceph cluster status from a ceph node.
-    Valid machines: ceph nodes only (submit50-59).
-    Returns cluster health, MON quorum, OSD map, data usage, and I/O stats.
-    """
-    if err := _validate_machine(machine, _CEPH_NODES_SET):
-        return err
-    return await _ssh(machine, "ceph -s")
+_ALLOWED_COMMANDS: dict[str, set[str] | None] = {
+    "df":          None,
+    "free":        None,
+    "uptime":      None,
+    "mount":       None,
+    "w":           None,
+    "uname":       None,
+    "condor_q":    None,
+    "condor_status": None,
+    "condor_history": None,
+    "ceph":        {"-s", "status", "health", "df", "osd", "mon"},
+    "rados":       {"df", "lspools"},
+    "systemctl":   {"status", "list-units", "show", "is-active", "is-enabled"},
+    "journalctl":  None,
+}
+
+
+def _validate_command(command: str, args: list[str]) -> str | None:
+    allowed_first_args = _ALLOWED_COMMANDS.get(command)
+    if allowed_first_args is None and command not in _ALLOWED_COMMANDS:
+        return f"Command '{command}' is not whitelisted. Allowed: {sorted(_ALLOWED_COMMANDS)}"
+    if allowed_first_args is not None and args and args[0] not in allowed_first_args:
+        return (
+            f"Argument '{args[0]}' is not allowed as the first argument to '{command}'. "
+            f"Allowed: {sorted(allowed_first_args)}"
+        )
+    return None
 
 
 @mcp.tool()
-async def ceph_health_detail(machine: str) -> str:
+async def run_command(machine: str, command: str, args: list[str] | None = None) -> str:
     """
-    Get detailed Ceph health warnings and errors from a ceph node.
-    Valid machines: ceph nodes only (submit50-59).
-    Use this when ceph_status shows HEALTH_WARN or HEALTH_ERR for the full breakdown.
-    """
-    if err := _validate_machine(machine, _CEPH_NODES_SET):
-        return err
-    return await _ssh(machine, "ceph health detail")
-
-
-# ---------------------------------------------------------------------------
-# Scratch node tools (submit30)
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def check_scratch_disk() -> str:
-    """
-    Check disk usage of the /scratch filesystem on submit30.
-    Returns df -h output for /scratch only.
-    """
-    return await _ssh("submit30", "df -h /scratch")
-
-
-# ---------------------------------------------------------------------------
-# Generic / all-node tools
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def check_disk_usage(machine: str) -> str:
-    """
-    Check full disk usage on a single submit node (df -h).
+    Run a read-only diagnostic command on a submit node, choosing both the
+    command and its arguments yourself from a fixed whitelist of safe binaries.
     Valid machines: all nodes (submit00-08, submit30, submit50-59).
+
+    Whitelisted commands: df, free, uptime, mount, w, uname, condor_q, condor_status,
+    condor_history, ceph (status/health/df/osd/mon subcommands only),
+    rados (df/lspools only), systemctl (status/list-units/show/is-active/is-enabled only),
+    journalctl.
+
+    Each argument is passed as a separate, independently-quoted token — you
+    cannot chain commands, pipe, redirect, or use shell substitution. Use this
+    for one-off diagnostic queries not covered by a more specific tool.
+
+    Examples: command="df", args=["-h", "/scratch"]
+              command="systemctl", args=["status", "condor.service"]
+              command="journalctl", args=["-u", "condor.service", "-n", "50", "--no-pager"]
     """
     if err := _validate_machine(machine, _ALL_NODES_SET):
         return err
-    return await _ssh(machine, "df -h")
+    args = args or []
+    if err := _validate_command(command, args):
+        return err
+    full_command = " ".join(shlex.quote(tok) for tok in [command, *args])
+    return await _ssh(machine, full_command)
 
 
 @mcp.tool()
-async def check_all_disk_usage() -> str:
+async def run_command_all(command: str, args: list[str] | None = None) -> str:
     """
-    Check disk usage across all submit nodes in parallel (login, scratch, ceph).
-    Returns df -h output from every node grouped by hostname.
-    Use this for a cluster-wide storage overview.
+    Run a whitelisted read-only diagnostic command on all submit nodes in parallel.
+    Same whitelist and argument rules as run_command — see its description for
+    the allowed commands and examples. Returns output from every node grouped by hostname.
+    Useful for cluster-wide checks like uptime, free, or df on a specific mount.
     """
-    return await _ssh_multi(ALL_NODES, "df -h")
-
-
-# @mcp.tool()
-# async def run_command(machine: str, command: str) -> str:
-#     """
-#     Run an arbitrary read-only command on any submit node via SSH.
-#     Valid machines: all nodes (submit00-08, submit30, submit50-59).
-#     Use for one-off checks not covered by other tools (e.g. 'uptime', 'free -h', 'mount').
-#     """
-#     if err := _validate_machine(machine, _ALL_NODES_SET):
-#         return err
-#     return await _ssh(machine, command)
-
-
-# @mcp.tool()
-# async def run_command_all(command: str) -> str:
-#     """
-#     Run an arbitrary read-only command on all submit nodes in parallel.
-#     Returns output from every node grouped by hostname.
-#     Useful for cluster-wide checks like 'uptime', 'free -h', or 'df -h /some/mount'.
-#     """
-#     return await _ssh_multi(ALL_NODES, command)
+    args = args or []
+    if err := _validate_command(command, args):
+        return err
+    full_command = " ".join(shlex.quote(tok) for tok in [command, *args])
+    return await _ssh_multi(ALL_NODES, full_command)
