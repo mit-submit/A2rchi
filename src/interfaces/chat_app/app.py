@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import random
@@ -291,7 +290,7 @@ class ChatWrapper:
         # Threading lock for database operations
         self.lock = Lock()
         self._agent_refresh_lock = Lock()
-
+        
         # load configs
         self.config = get_full_config()
         self.global_config = self.config["global"]
@@ -580,7 +579,7 @@ class ChatWrapper:
             )
 
         model_name = self._extract_model_name(config_payload)
-
+        
         self.current_config_name = target_config_name
         self.archi.update(pipeline=agent_class, config_name=target_config_name)
 
@@ -903,13 +902,13 @@ class ChatWrapper:
     ) -> str:
         """
         Create a new agent trace record for tracking execution.
-
+        
         Returns:
             The trace_id (UUID string) of the newly created trace
         """
         trace_id = str(uuid.uuid4())
         started_at = datetime.now(timezone.utc)
-
+        
         conn = psycopg2.connect(**self.pg_config)
         cursor = conn.cursor()
         try:
@@ -940,7 +939,7 @@ class ChatWrapper:
         Update an agent trace with new events and/or status.
         """
         completed_at = datetime.now(timezone.utc) if status in ('completed', 'cancelled', 'error') else None
-
+        
         conn = psycopg2.connect(**self.pg_config)
         cursor = conn.cursor()
         try:
@@ -959,7 +958,7 @@ class ChatWrapper:
     def get_agent_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
         """
         Get an agent trace by ID.
-
+        
         Returns:
             Dict with trace data or None if not found
         """
@@ -1015,7 +1014,7 @@ class ChatWrapper:
     ) -> int:
         """
         Cancel all running traces for a conversation.
-
+        
         Returns:
             Number of traces cancelled
         """
@@ -1084,7 +1083,7 @@ class ChatWrapper:
         service = "Chatbot"
         title = first_message[:20] + ("..." if len(first_message) > 20 else "")
         now = datetime.now(timezone.utc)
-
+        
         version = os.getenv("APP_VERSION", "unknown")
 
         # title, created_at, last_message_at, client_id, version, user_id
@@ -1280,7 +1279,7 @@ class ChatWrapper:
                 tool_result,
                 ts,
             ))
-
+        
         logger.debug("Inserting %d tool calls for message %d", len(insert_tups), message_id)
 
         conn = psycopg2.connect(**self.pg_config)
@@ -1303,12 +1302,12 @@ class ChatWrapper:
     def _create_provider_llm(self, provider: str, model: str, api_key: str = None):
         """
         Create a LangChain chat model using the provider abstraction layer.
-
+        
         Args:
             provider: Provider type (openai, anthropic, gemini, openrouter, local)
             model: Model ID/name to use
             api_key: Optional API key (overrides environment variable)
-
+        
         Returns:
             A LangChain BaseChatModel instance, or None if creation fails
         """
@@ -1528,7 +1527,7 @@ class ChatWrapper:
     @staticmethod
     def _trace_from_row(row) -> Dict[str, Any]:
         """Convert a positional agent trace DB row to a dict.
-
+        
         Handles both full rows (16 fields) and subset rows (9 fields from get_active_trace).
         """
         result = {
@@ -2029,7 +2028,7 @@ class ChatWrapper:
         documents = result.get("source_documents", [])
         scores = result.get("metadata", {}).get("retriever_scores", [])
         top_sources = self.get_top_sources(documents, scores)
-
+        
         output = self.append_source_section(
             output,
             top_sources,
@@ -2188,10 +2187,10 @@ class ChatWrapper:
             if error_code is not None:
                 yield self._error_event(error_code)
                 return
-
+            
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
-
+            
             # If provider and model are specified in the context, override the pipeline's LLM
             provider = context.provider_used
             model = context.model_used
@@ -2212,7 +2211,7 @@ class ChatWrapper:
                 except Exception as e:
                     logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
                     yield {"type": "warning", "message": f"Using default model: {e}"}
-
+            
             # Create trace for this streaming request
             trace_id = self.create_agent_trace(
                 conversation_id=context.conversation_id,
@@ -2236,7 +2235,7 @@ class ChatWrapper:
                     yield self._error_event(408)
                     return
                 last_output = output
-
+                
                 # Use shared event formatter for structured event types
                 event_type = output.metadata.get("event_type", "text") if output.metadata else "text"
                 timestamp = datetime.now(timezone.utc).isoformat()
@@ -2309,7 +2308,7 @@ class ChatWrapper:
                     )
                 yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
                 return
-
+                
             # keep track of total number of queries and log this amount
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
@@ -2329,17 +2328,17 @@ class ChatWrapper:
 
             if message_ids:
                 self.insert_timing(message_ids[-1], timestamps)
-
+                
             # Calculate total duration
             total_duration_ms = int((time.time() - stream_start_time) * 1000)
-
+            
             # Extract usage and model from final output metadata
             usage = None
             model = None
             if last_output and last_output.metadata:
                 usage = last_output.metadata.get("usage")
                 model = last_output.metadata.get("model")
-
+            
             # Append usage summary to trace events so it's available in historical views
             if usage:
                 trace_events.append({
@@ -2440,14 +2439,14 @@ class FlaskAppWrapper(object):
             import secrets
             secret_key = secrets.token_hex(32)
         self.app.secret_key = secret_key
-
+        
         # Session cookie security settings (BYOK security hardening)
         self.app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
         self.app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
         # SESSION_COOKIE_SECURE should be True in production (HTTPS only)
         # Leave it False for local development to work over HTTP
         self.app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB upload limit
-
+        
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
 
@@ -2485,9 +2484,9 @@ class FlaskAppWrapper(object):
         self.auth_enabled = auth_config.get('enabled', False)
         self.sso_enabled = auth_config.get('sso', {}).get('enabled', False)
         self.basic_auth_enabled = auth_config.get('basic', {}).get('enabled', False)
-
+        
         logger.info(f"Auth enabled: {self.auth_enabled}, SSO: {self.sso_enabled}, Basic: {self.basic_auth_enabled}")
-
+        
         if self.sso_enabled:
             self._setup_sso()
 
@@ -2513,7 +2512,7 @@ class FlaskAppWrapper(object):
         # Public endpoints (no auth required)
         self.add_endpoint('/', 'landing', self.landing)
         self.add_endpoint('/api/health', 'health', self.health, methods=["GET"])
-
+        
         # Protected endpoints (require auth when enabled)
         self.add_endpoint('/chat', 'index', self.require_auth(self.index))
         self.add_endpoint('/api/get_chat_response', 'get_chat_response', self.require_auth(self.get_chat_response), methods=["POST"])
@@ -2630,7 +2629,7 @@ class FlaskAppWrapper(object):
             self.add_endpoint('/api/permissions', 'get_permissions', self.get_permissions, methods=['GET'])
             self.add_endpoint('/api/permissions/check', 'check_permission', self.check_permission_endpoint, methods=['POST'])
 
-
+            
             if self.sso_enabled:
                 self.add_endpoint('/redirect', 'sso_callback', self.sso_callback)
 
@@ -2660,24 +2659,24 @@ class FlaskAppWrapper(object):
         """Initialize OAuth client for SSO using OpenID Connect"""
         auth_config = self.chat_app_config.get('auth', {})
         sso_config = auth_config.get('sso', {})
-
+        
         # Read client credentials from environment
         client_id = read_secret('SSO_CLIENT_ID')
         client_secret = read_secret('SSO_CLIENT_SECRET')
-
+        
         if not client_id or not client_secret:
             logger.error("SSO is enabled but SSO_CLIENT_ID or SSO_CLIENT_SECRET environment variables are not set")
             self.sso_enabled = False
             return
-
+        
         # Initialize OAuth
         self.oauth = OAuth(self.app)
-
+        
         # Get server metadata URL and client kwargs from config
         server_metadata_url = sso_config.get('server_metadata_url', '')
         authorize_url = sso_config.get('authorize_url', None)
         client_kwargs = sso_config.get('client_kwargs', {'scope': 'openid profile email'})
-
+        
         # Register the OAuth provider
         self.oauth.register(
             name='sso',
@@ -2687,7 +2686,7 @@ class FlaskAppWrapper(object):
             authorize_url=authorize_url,
             client_kwargs=client_kwargs
         )
-
+        
         logger.info(f"SSO configured with server: {server_metadata_url}")
 
     def login(self):
@@ -2695,7 +2694,7 @@ class FlaskAppWrapper(object):
         # If user is already logged in, redirect to index
         if session.get('logged_in'):
             return redirect(url_for('index'))
-
+        
         # Handle SSO login initiation
         if request.args.get('method') == 'sso' and self.sso_enabled:
             if not self.oauth:
@@ -2703,12 +2702,12 @@ class FlaskAppWrapper(object):
             redirect_uri = url_for('sso_callback', _external=True)
             logger.info(f"Initiating SSO login with redirect URI: {redirect_uri}")
             return self.oauth.sso.authorize_redirect(redirect_uri)
-
+        
         # Handle basic auth login form submission
         if request.method == 'POST' and self.basic_auth_enabled:
             username = request.form.get('username')
             password = request.form.get('password')
-
+            
             if check_credentials(username, password, self.salt, self.app.config['ACCOUNTS_FOLDER']):
                 self._set_user_session(
                     email=username,
@@ -2721,10 +2720,10 @@ class FlaskAppWrapper(object):
                 return redirect(url_for('index'))
             else:
                 flash('Invalid credentials')
-
+        
         # Render login page with available auth methods
-        return render_template('login.html',
-                             sso_enabled=self.sso_enabled,
+        return render_template('login.html', 
+                             sso_enabled=self.sso_enabled, 
                              basic_auth_enabled=self.basic_auth_enabled)
 
     def logout(self):
@@ -2732,13 +2731,13 @@ class FlaskAppWrapper(object):
         auth_method = session.get('auth_method', 'unknown')
         user_email = self._get_session_user_email() or 'unknown'
         user_roles = session.get('roles', [])
-
+        
         # Clear all session data including roles
         session.pop('user', None)
         session.pop('logged_in', None)
         session.pop('auth_method', None)
         session.pop('roles', None)
-
+        
         # Log logout event
         log_authentication_event(
             user=user_email,
@@ -2747,7 +2746,7 @@ class FlaskAppWrapper(object):
             method=auth_method,
             details=f"Previous roles: {user_roles}"
         )
-
+        
         logger.info(f"User {user_email} logged out (method: {auth_method})")
         flash('You have been logged out successfully')
         return redirect(url_for('landing'))
@@ -2756,23 +2755,23 @@ class FlaskAppWrapper(object):
         """Handle OAuth callback from SSO provider with RBAC role extraction"""
         if not self.sso_enabled or not self.oauth:
             return jsonify({'error': 'SSO not enabled'}), 400
-
+        
         try:
             # Get the token from the callback
             token = self.oauth.sso.authorize_access_token()
-
+            
             # Parse the user info from the token
             user_info = token.get('userinfo')
             if not user_info:
                 # If userinfo is not in token, fetch it
                 user_info = self.oauth.sso.userinfo(token=token)
-
+            
             user_email = user_info.get('email', user_info.get('preferred_username', 'unknown'))
-
+            
             # Extract roles from JWT token using RBAC module
             # This handles role validation and default role assignment
             user_roles = get_user_roles(token, user_email)
-
+            
             # Upsert the SSO user into the users table so that conversation_metadata
             # can reference user_id via the FK constraint.
             sso_user_id = user_info.get('sub', '')
@@ -2797,7 +2796,7 @@ class FlaskAppWrapper(object):
                 auth_method='sso',
                 roles=user_roles
             )
-
+            
             # Log successful authentication
             log_authentication_event(
                 user=user_email,
@@ -2806,12 +2805,12 @@ class FlaskAppWrapper(object):
                 method='sso',
                 details=f"Roles: {user_roles}"
             )
-
+            
             logger.info(f"SSO login successful for user: {user_email} with roles: {user_roles}")
-
+            
             # Redirect to main page
             return redirect(url_for('index'))
-
+            
         except Exception as e:
             logger.error(f"SSO callback error: {str(e)}")
             log_authentication_event(
@@ -2829,10 +2828,10 @@ class FlaskAppWrapper(object):
         if session.get('logged_in'):
             user = session.get('user', {})
             roles = session.get('roles', [])
-
+            
             # Get permission context for the frontend
             permissions = get_permission_context()
-
+            
             return jsonify({
                 'logged_in': True,
                 'email': user.get('email', ''),
@@ -2851,7 +2850,7 @@ class FlaskAppWrapper(object):
 
     def require_auth(self, f):
         """Decorator to require authentication for routes.
-
+        
         When SSO is enabled and anonymous access is blocked (sso.allow_anonymous: false),
         unauthenticated users are redirected to SSO login instead of getting a 401 error.
         """
@@ -2860,7 +2859,7 @@ class FlaskAppWrapper(object):
             if not self.auth_enabled:
                 # If auth is not enabled, allow access
                 return f(*args, **kwargs)
-
+            
             if not session.get('logged_in'):
                 # Check if SSO is enabled and anonymous access is blocked
                 if self.sso_enabled:
@@ -2876,24 +2875,24 @@ class FlaskAppWrapper(object):
                         )
                         # Redirect to login page which will trigger SSO
                         return redirect(url_for('login'))
-
+                
                 if request.path.startswith('/api/'):
                     return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
                 return redirect(url_for('login'))
-
+            
             return f(*args, **kwargs)
         return decorated_function
 
     def require_perm(self, permission: str):
         """
         Decorator to require authentication AND a specific permission for routes.
-
+        
         This combines require_auth with permission checking. Use for routes
         that need specific RBAC permissions (e.g., document uploads, config changes).
-
+        
         Args:
             permission: The permission string required (e.g., 'upload:documents')
-
+            
         Returns:
             Decorator function
         """
@@ -2903,14 +2902,14 @@ class FlaskAppWrapper(object):
                 # First check authentication
                 if not self.auth_enabled:
                     return f(*args, **kwargs)
-
+                
                 if not session.get('logged_in'):
                     if self.sso_enabled:
                         registry = get_registry()
                         if not registry.allow_anonymous:
                             return redirect(url_for('login'))
                     return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-
+                
                 # Now check permission
                 roles = session.get('roles', [])
                 if not has_permission(permission, roles):
@@ -2929,7 +2928,7 @@ class FlaskAppWrapper(object):
                         'message': f'Permission denied: requires {permission}',
                         'required_permission': permission
                     }), 403
-
+                
                 return f(*args, **kwargs)
             return decorated_function
         return decorator
@@ -2944,14 +2943,14 @@ class FlaskAppWrapper(object):
                 'logged_in': False,
                 'permissions': get_permission_context()
             })
-
+        
         permissions = get_permission_context()
         return jsonify({
             'logged_in': True,
             'roles': session.get('roles', []),
             'permissions': permissions
         })
-
+    
     def check_permission_endpoint(self):
         """API endpoint to check if user has a specific permission"""
         if not session.get('logged_in'):
@@ -2959,22 +2958,22 @@ class FlaskAppWrapper(object):
                 'error': 'Authentication required',
                 'has_permission': False
             }), 401
-
+        
         data = request.get_json()
         if not data or 'permission' not in data:
             return jsonify({
                 'error': 'Permission name required',
                 'has_permission': False
             }), 400
-
+        
         permission = data['permission']
         roles = session.get('roles', [])
         result = has_permission(permission, roles)
-
+        
         # Get which roles would grant this permission
         registry = get_registry()
         roles_with_permission = registry.get_roles_with_permission(permission)
-
+        
         return jsonify({
             'permission': permission,
             'has_permission': result,
@@ -3048,7 +3047,7 @@ class FlaskAppWrapper(object):
     def get_providers(self):
         """
         Get list of all enabled providers and their available models.
-
+        
         Returns:
             JSON with providers list, each containing:
             - type: Provider type (openai, anthropic, etc.)
@@ -3477,70 +3476,6 @@ class FlaskAppWrapper(object):
         except Exception as exc:
             logger.warning("Failed to read tool registry for %s: %s", agent_class, exc)
             return []
-
-    def _get_agent_mcp_servers(self, agent_class: Optional[str]) -> Dict[str, Any]:
-        """Read MCP servers from the selected agent class if available."""
-        if not agent_class:
-            return {}
-        try:
-            from src.archi import pipelines
-        except Exception as exc:
-            logger.warning("Failed to import pipelines module: %s", exc)
-            return {}
-
-        agent_cls = getattr(pipelines, agent_class, None)
-        if not agent_cls:
-            return {}
-
-        try:
-            dummy = agent_cls.__new__(agent_cls)
-            getter = getattr(agent_cls, "get_mcp_servers_config", None)
-            if not callable(getter):
-                return {}
-            servers = getter(dummy) or {}
-            return servers if isinstance(servers, dict) else {}
-        except Exception as exc:
-            logger.warning("Failed to read MCP server config for %s: %s", agent_class, exc)
-            return {}
-
-    def _get_mcp_tools(self, mcp_servers: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
-        """Return available MCP tool definitions (name + description)."""
-        try:
-            from src.archi.pipelines.agents.tools import initialize_mcp_client
-        except Exception as exc:
-            logger.warning("Failed to import MCP tooling: %s", exc)
-            return []
-
-        client = None
-        try:
-            client, mcp_tools = asyncio.run(initialize_mcp_client(mcp_servers=mcp_servers))
-            tools: List[Dict[str, str]] = []
-            for tool in mcp_tools or []:
-                name = getattr(tool, "name", "")
-                if not isinstance(name, str) or not name.strip():
-                    continue
-                description = getattr(tool, "description", "") or ""
-                tools.append({
-                    "name": name.strip(),
-                    "description": str(description).strip(),
-                })
-            tools.sort(key=lambda item: item["name"])
-            return tools
-        except Exception as exc:
-            logger.warning("Failed to read MCP tools: %s", exc)
-            return []
-        finally:
-            if client is not None:
-                try:
-                    aclose = getattr(client, "aclose", None)
-                    if callable(aclose):
-                        asyncio.run(aclose())
-                    else:
-                        close = getattr(client, "close", None)
-                        if callable(close):
-                            close()
-                except Exception:
-                    pass
 
     def _build_agent_template(self, name: str, tools: List[str]) -> str:
         tools_block = "\n".join(f"  - {tool}" for tool in tools) if tools else "  - <tool_name>"
@@ -3998,24 +3933,24 @@ class FlaskAppWrapper(object):
     def get_provider_models(self):
         """
         Get models for a specific provider.
-
+        
         Query params:
             provider: Provider type (openai, anthropic, gemini, openrouter, local)
-
+        
         Returns:
             JSON with models list
         """
         provider_type = request.args.get('provider')
         if not provider_type:
             return jsonify({'error': 'provider parameter required'}), 400
-
+        
         try:
             from src.archi.providers import get_provider
 
             cfg = _build_provider_config_from_payload(self.config, ProviderType(provider_type))
             provider = get_provider(provider_type, config=cfg) if cfg else get_provider(provider_type)
             models = provider.list_models()
-
+            
             return jsonify({
                 'provider': provider_type,
                 'display_name': provider.display_name,
@@ -4046,25 +3981,25 @@ class FlaskAppWrapper(object):
     def validate_provider(self):
         """
         Validate a provider connection.
-
+        
         Request body:
             provider: Provider type (openai, anthropic, etc.)
-
+        
         Returns:
             JSON with validation result
         """
         payload = request.get_json(silent=True) or {}
         provider_type = payload.get('provider')
-
+        
         if not provider_type:
             return jsonify({'error': 'provider field required'}), 400
-
+        
         try:
             from src.archi.providers import get_provider
-
+            
             provider = get_provider(provider_type)
             is_valid = provider.validate_connection()
-
+            
             return jsonify({
                 'provider': provider_type,
                 'display_name': provider.display_name,
@@ -4082,47 +4017,47 @@ class FlaskAppWrapper(object):
     def set_provider_api_key(self):
         """
         Set an API key for a specific provider.
-
+        
         The API key is stored in the user's session, not in environment variables
         or persistent storage. This provides security (keys are not logged or stored)
         while allowing runtime configuration.
-
+        
         Request body:
             provider: Provider type (openai, anthropic, gemini, openrouter)
             api_key: The API key to set
-
+        
         Returns:
             JSON with success status and provider validation result
         """
         payload = request.get_json(silent=True) or {}
         provider_type = payload.get('provider')
         api_key = payload.get('api_key')
-
+        
         if not provider_type:
             return jsonify({'error': 'provider field required'}), 400
         if not api_key:
             return jsonify({'error': 'api_key field required'}), 400
-
+        
         # Validate the provider type
         try:
             from src.archi.providers import ProviderType
             ptype = ProviderType(provider_type.lower())
         except ValueError:
             return jsonify({'error': f'Unknown provider type: {provider_type}'}), 400
-
+        
         # Store the API key in session
         if 'provider_api_keys' not in session:
             session['provider_api_keys'] = {}
         session['provider_api_keys'][provider_type.lower()] = api_key
         session.modified = True
-
+        
         # Validate the API key by testing the provider
         try:
             from src.archi.providers import get_provider_with_api_key
-
+            
             provider = get_provider_with_api_key(provider_type, api_key)
             is_valid = provider.validate_connection()
-
+            
             return jsonify({
                 'success': True,
                 'provider': provider_type,
@@ -4143,15 +4078,15 @@ class FlaskAppWrapper(object):
     def get_provider_api_keys(self):
         """
         Get a list of which providers have API keys configured.
-
+        
         For security, this does NOT return the actual API keys, only which
         providers have keys set and whether they are valid.
-
+        
         Returns:
             JSON with list of configured providers
         """
         session_keys = session.get('provider_api_keys', {})
-
+        
         try:
             from src.archi.providers import (
                 list_provider_types,
@@ -4159,25 +4094,25 @@ class FlaskAppWrapper(object):
                 get_provider_with_api_key,
                 ProviderType,
             )
-
+            
             providers_status = []
             for provider_type in list_provider_types():
                 # Skip local provider - no API key needed
                 if provider_type == ProviderType.LOCAL:
                     continue
-
+                    
                 ptype_str = provider_type.value
                 has_session_key = ptype_str in session_keys
                 has_env_key = False
                 is_valid = False
                 display_name = ptype_str.title()  # fallback
-
+                
                 try:
                     # Check if there's an env-based key
                     env_provider = get_provider(provider_type)
                     has_env_key = env_provider.is_configured
                     display_name = env_provider.display_name  # use proper display name
-
+                    
                     # If we have a session key, test that one
                     if has_session_key:
                         test_provider = get_provider_with_api_key(
@@ -4189,7 +4124,7 @@ class FlaskAppWrapper(object):
                         is_valid = has_env_key
                 except Exception as e:
                     logger.debug(f"Error checking provider {ptype_str}: {e}")
-
+                
                 providers_status.append({
                     'provider': ptype_str,
                     'display_name': display_name,
@@ -4199,7 +4134,7 @@ class FlaskAppWrapper(object):
                     'valid': is_valid,
                     'masked_key': ('*' * 8 + session_keys[ptype_str][-4:]) if has_session_key else None,
                 })
-
+            
             return jsonify({
                 'providers': providers_status,
             }), 200
@@ -4213,21 +4148,21 @@ class FlaskAppWrapper(object):
     def clear_provider_api_key(self):
         """
         Clear the API key for a specific provider from the session.
-
+        
         Request body:
             provider: Provider type to clear
-
+        
         Returns:
             JSON with success status
         """
         payload = request.get_json(silent=True) or {}
         provider_type = payload.get('provider')
-
+        
         if not provider_type:
             return jsonify({'error': 'provider field required'}), 400
-
+        
         ptype_str = provider_type.lower()
-
+        
         if 'provider_api_keys' in session:
             if ptype_str in session['provider_api_keys']:
                 del session['provider_api_keys'][ptype_str]
@@ -4236,7 +4171,7 @@ class FlaskAppWrapper(object):
                     'success': True,
                     'message': f'API key for {provider_type} cleared from session',
                 }), 200
-
+        
         return jsonify({
             'success': True,
             'message': f'No API key found for {provider_type}',
@@ -4245,38 +4180,38 @@ class FlaskAppWrapper(object):
     def validate_provider_api_key(self):
         """
         Validate an API key for a provider without storing it.
-
+        
         This endpoint allows testing a key before committing to save it.
         The key is NOT stored in the session.
-
+        
         Request body:
             provider: Provider type (openai, anthropic, gemini, openrouter)
             api_key: The API key to validate
-
+        
         Returns:
             JSON with validation result and available models
         """
         payload = request.get_json(silent=True) or {}
         provider_type = payload.get('provider')
         api_key = payload.get('api_key')
-
+        
         if not provider_type:
             return jsonify({'error': 'provider field required'}), 400
         if not api_key:
             return jsonify({'error': 'api_key field required'}), 400
-
+        
         # Validate the provider type
         try:
             from src.archi.providers import ProviderType, get_provider_with_api_key
             ptype = ProviderType(provider_type.lower())
         except ValueError:
             return jsonify({'error': f'Unknown provider type: {provider_type}'}), 400
-
+        
         try:
             # Create provider with the test key (not cached, not stored)
             provider = get_provider_with_api_key(provider_type, api_key)
             is_valid = provider.validate_connection()
-
+            
             # If valid, also get available models
             models = []
             if is_valid:
@@ -4284,7 +4219,7 @@ class FlaskAppWrapper(object):
                     models = [m.to_dict() for m in provider.list_models()]
                 except Exception:
                     pass  # Models list is optional
-
+            
             return jsonify({
                 'valid': is_valid,
                 'provider': provider_type,
@@ -4641,7 +4576,7 @@ class FlaskAppWrapper(object):
         # If user is already logged in, redirect to chat
         if session.get('logged_in'):
             return redirect(url_for('index'))
-
+        
         # Render landing page with auth method information
         return render_template('landing.html',
                              sso_enabled=self.sso_enabled,
@@ -4832,7 +4767,7 @@ class FlaskAppWrapper(object):
 
             # Build messages list with trace data for assistant messages
             messages = []
-
+            
             # Batch-fetch trace data for all assistant messages to avoid N+1 queries
             assistant_mids = [row[2] for row in history_rows if row[0] == ARCHI_SENDER and row[2]]
             trace_map = {}
@@ -4848,7 +4783,7 @@ class FlaskAppWrapper(object):
                 """, tuple(assistant_mids))
                 for trace_row in cursor.fetchall():
                     trace_map[trace_row[2]] = trace_row
-
+            
             for row in history_rows:
                 msg = {
                     'sender': row[0],
@@ -4858,7 +4793,7 @@ class FlaskAppWrapper(object):
                     'comment_count': row[4] if len(row) > 4 else 0,
                     'model_used': row[5] if len(row) > 5 else None,
                 }
-
+                
                 # Attach trace data if present
                 if row[0] == ARCHI_SENDER and row[2] and row[2] in trace_map:
                     trace_row = trace_map[row[2]]
@@ -4869,7 +4804,7 @@ class FlaskAppWrapper(object):
                         'total_tool_calls': trace_row[10],
                         'total_duration_ms': trace_row[12],
                     }
-
+                
                 messages.append(msg)
 
             pending_comparisons = [c for c in comparisons if c.preference is None]
@@ -5996,7 +5931,7 @@ class FlaskAppWrapper(object):
         try:
             if request.method == 'DELETE':
                 return self._delete_git_repo()
-
+            
             data = request.json or {}
             repo_url = data.get("repo_url", "").strip()
 
@@ -6089,10 +6024,10 @@ class FlaskAppWrapper(object):
         try:
             data = request.json or {}
             repo_name = data.get("repo_name", "").strip()
-
+            
             if not repo_name:
                 return jsonify({"error": "missing_repo_name"}), 400
-
+            
             return self._delete_source_documents(
                 source_type='git',
                 where_clause='(url LIKE %s OR url LIKE %s)',
@@ -6114,21 +6049,21 @@ class FlaskAppWrapper(object):
                 data = request.json
             except Exception:
                 return jsonify({"error": "invalid_json"}), 400
-
+            
             if data is None:
                 return jsonify({"error": "invalid_json"}), 400
-
+            
             repo_name = data.get("repo_name")
-
+            
             # Type validation: repo_name must be a string
             if repo_name is None or not isinstance(repo_name, str):
                 return jsonify({"error": "invalid_repo_name_type"}), 400
-
+            
             repo_name = repo_name.strip()
 
             if not repo_name:
                 return jsonify({"error": "missing_repo_name"}), 400
-
+            
             # Input validation: reject overly long inputs (max 500 chars for repo names/URLs)
             if len(repo_name) > 500:
                 return jsonify({"error": "repo_name_too_long"}), 400
@@ -6147,16 +6082,16 @@ class FlaskAppWrapper(object):
                 try:
                     with conn.cursor() as cursor:
                         cursor.execute("""
-                            SELECT DISTINCT
-                                CASE
+                            SELECT DISTINCT 
+                                CASE 
                                     WHEN url LIKE 'https://github.com/%' THEN
                                         regexp_replace(url, '^(https://github.com/[^/]+/[^/]+).*', '\\1')
                                     WHEN url LIKE 'https://gitlab.com/%' THEN
                                         regexp_replace(url, '^(https://gitlab.com/[^/]+/[^/]+).*', '\\1')
                                     ELSE url
                                 END as repo_url
-                            FROM documents
-                            WHERE source_type = 'git'
+                            FROM documents 
+                            WHERE source_type = 'git' 
                               AND NOT is_deleted
                               AND url LIKE %s
                             LIMIT 1
@@ -6341,7 +6276,7 @@ class FlaskAppWrapper(object):
             embedded = status_counts.get("embedded", 0)
             failed = status_counts.get("failed", 0)
             total = pending + embedding + embedded + failed
-
+            
             return jsonify({
                 "documents_in_catalog": total,
                 "documents_embedded": embedded,
@@ -6369,18 +6304,18 @@ class FlaskAppWrapper(object):
             search: Search by display name
             limit: Max results (default 50)
             offset: Pagination offset (default 0)
-
+        
         Returns:
             JSON with documents, total, status_counts
         """
         try:
             from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
-
+            
             catalog = PostgresCatalogService(
                 data_path=self.chat.data_path,
                 pg_config=self.chat.pg_config,
             )
-
+            
             result = catalog.list_documents_with_status(
                 status_filter=request.args.get("status"),
                 source_type=request.args.get("source_type"),
@@ -6399,18 +6334,18 @@ class FlaskAppWrapper(object):
 
         Args:
             document_hash: The resource_hash of the document to retry
-
+        
         Returns:
             JSON with success status
         """
         try:
             from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
-
+            
             catalog = PostgresCatalogService(
                 data_path=self.chat.data_path,
                 pg_config=self.chat.pg_config,
             )
-
+            
             reset = catalog.reset_failed_document(document_hash)
             if reset:
                 return jsonify({"success": True, "message": "Document reset to pending"}), 200
@@ -6483,8 +6418,8 @@ class FlaskAppWrapper(object):
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                     # Get unique git repos by extracting the repo URL from document URLs
                     cursor.execute("""
-                        SELECT DISTINCT
-                            CASE
+                        SELECT DISTINCT 
+                            CASE 
                                 WHEN url LIKE 'https://github.com/%' THEN
                                     regexp_replace(url, '^(https://github.com/[^/]+/[^/]+).*', '\\1')
                                 WHEN url LIKE 'https://gitlab.com/%' THEN
@@ -6493,8 +6428,8 @@ class FlaskAppWrapper(object):
                             END as repo_url,
                             COUNT(*) as file_count,
                             MAX(indexed_at) as last_updated
-                        FROM documents
-                        WHERE source_type = 'git'
+                        FROM documents 
+                        WHERE source_type = 'git' 
                           AND NOT is_deleted
                           AND url IS NOT NULL
                         GROUP BY 1
@@ -6533,7 +6468,7 @@ class FlaskAppWrapper(object):
         try:
             if request.method == 'DELETE':
                 return self._delete_jira_project()
-
+                
             sources = []
             seen_projects = set()
 
@@ -6556,15 +6491,15 @@ class FlaskAppWrapper(object):
 
             for project in sources:
                 project_key = project['key']
-
+                
                 ticket_count = sum(1 for doc in result.get('documents', []) if doc.get('display_name', '').startswith(project_key + '-'))
                 project['ticket_count'] = ticket_count if ticket_count else 0
-
+                
                 last_sync = max((doc.get('ingested_at')
                                 for doc in result.get('documents', [])
                                 if project_key in doc.get('display_name', '') and doc.get('ingested_at') is not None),
                                 default=None)
-
+                
                 project['last_sync'] = last_sync if last_sync else None
 
             return jsonify({"sources": sources}), 200
@@ -6581,10 +6516,10 @@ class FlaskAppWrapper(object):
         try:
             data = request.json or {}
             project_key = data.get("project_key", "").strip()
-
+            
             if not project_key:
                 return jsonify({"error": "missing_project_key"}), 400
-
+            
             return self._delete_source_documents(
                 source_type='jira',
                 where_clause='display_name LIKE %s',
@@ -6629,7 +6564,7 @@ class FlaskAppWrapper(object):
                     }
             except requests.exceptions.RequestException as e:
                 logger.warning(f"Could not fetch scheduler runtime status from data-manager: {e}")
-
+            
             # Convert cron expressions to UI-friendly values
             schedule_display = {}
             cron_to_ui = {
@@ -6638,7 +6573,7 @@ class FlaskAppWrapper(object):
                 '0 */6 * * *': 'every_6h',
                 '0 0 * * *': 'daily',
             }
-
+            
             for source, cron in schedules.items():
                 runtime = jobs_by_source.get(source, {})
                 schedule_display[source] = {
@@ -6647,7 +6582,7 @@ class FlaskAppWrapper(object):
                     'next_run': runtime.get('next_run'),
                     'last_run': runtime.get('last_run'),
                 }
-
+            
             return jsonify({"schedules": schedule_display}), 200
 
         except Exception as e:
@@ -6672,7 +6607,7 @@ class FlaskAppWrapper(object):
 
             if not source:
                 return jsonify({"error": "missing_source"}), 400
-
+            
             valid_sources = ['jira', 'git', 'links', 'local_files', 'redmine', 'sso']
             if source not in valid_sources:
                 return jsonify({"error": f"invalid_source, must be one of {valid_sources}"}), 400
@@ -6682,9 +6617,9 @@ class FlaskAppWrapper(object):
             if session.get('logged_in'):
                 user = session.get('user', {})
                 user_id = user.get('username') or user.get('email') or 'anonymous'
-
+            
             schedules = self.config_service.update_source_schedule(
-                source,
+                source, 
                 schedule,
                 updated_by=user_id
             )
@@ -6748,7 +6683,7 @@ class FlaskAppWrapper(object):
             # Get list of tables with row counts
             # Note: pg_stat_user_tables uses 'relname' not 'tablename' in some PostgreSQL versions
             cursor.execute("""
-                SELECT
+                SELECT 
                     schemaname,
                     relname as tablename,
                     n_live_tup as row_count

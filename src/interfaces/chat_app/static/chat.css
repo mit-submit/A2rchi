@@ -3733,20 +3733,6 @@ body {
   gap: 10px;
 }
 
-.agent-spec-tool-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.agent-spec-tool-section-title {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
 .agent-spec-tool {
   display: flex;
   align-items: flex-start;

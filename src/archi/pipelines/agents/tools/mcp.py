@@ -17,10 +17,8 @@ async def initialize_mcp_client(servers: dict | None = None) -> Tuple[Optional[M
     Initializes the MCP client and fetches tool definitions.
 
     Args:
-        servers: MCP server config dict. If provided, used directly instead of
-            reading from the deployment config. Callers should pass the result of
-            agent.get_mcp_servers_config() so class-level and builtin servers are
-            included alongside any deployment-config servers.
+        servers: If provided, use these server definitions directly instead of
+            reading from the deployment config.
     Returns:
         client: The active client instance (must be kept alive by the caller).
         tools: The list of LangChain-compatible tools.
@@ -83,8 +81,7 @@ async def initialize_mcp_client(servers: dict | None = None) -> Tuple[Optional[M
             failed_servers[name] = str(e)
 
     logger.info(f"Active MCP servers: {[n for n in client_configs if n not in failed_servers]}")
-    if failed_servers:
-        logger.warning(f"Failed MCP servers: {list(failed_servers.keys())}")
+    logger.warning(f"Failed MCP servers: {list(failed_servers.keys())}")
 
     # Build a single combined skills block keyed by server name — this is appended
     # to the agent's system prompt once, rather than duplicated across every tool.

@@ -165,21 +165,21 @@ class BaseReActAgent:
     def _parse_thinking_content(self, text: str) -> Tuple[str, str]:
         """
         Parse text to separate thinking content from visible content.
-
+        
         Handles <think>...</think> tags used by models like Qwen3.
         Returns (visible_content, thinking_content).
         """
         if not text:
             return "", ""
-
+        
         # Extract all thinking blocks
         thinking_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
         thinking_matches = thinking_pattern.findall(text)
         thinking_content = "\n".join(thinking_matches)
-
+        
         # Remove thinking blocks from visible content
         visible_content = thinking_pattern.sub('', text).strip()
-
+        
         return visible_content, thinking_content
 
     def _extract_usage_from_messages(self, messages: List[BaseMessage]) -> Optional[Dict[str, int]]:
@@ -308,14 +308,14 @@ class BaseReActAgent:
         latest_messages: List[BaseMessage] = []
         accumulated_content = ""  # Accumulated raw content from streaming
         emitted_tool_starts: Set[str] = set()
-
+        
         # Thinking state tracking
         thinking_step_id: Optional[str] = None
         thinking_start_time: Optional[float] = None
         accumulated_thinking = ""  # Captured thinking content from <think> tags
         last_visible_content = ""  # Last visible content emitted (without thinking)
         last_response_metadata: Optional[Dict[str, Any]] = None
-
+        
         try:
             for event in self.agent.stream(
                 agent_inputs,
@@ -344,7 +344,7 @@ class BaseReActAgent:
                         self.active_memory.record_tool_calls_from_message(message)
                     except Exception as exc:
                         logger.debug("Failed to record tool calls from stream message: %s", exc)
-
+                
                 # Track all non-chunk messages
                 if "chunk" not in msg_class:
                     all_messages.extend(messages)
@@ -377,7 +377,7 @@ class BaseReActAgent:
                             thinking_step_id = None
                             thinking_start_time = None
                             accumulated_thinking = ""
-
+                        
                         yield self.finalize_output(
                             answer="",
                             memory=self.active_memory,
@@ -444,7 +444,7 @@ class BaseReActAgent:
                                     },
                                     final=False,
                                 )
-
+                            
                             if content:
                                 # For chunks, content is delta; for full messages, content is cumulative
                                 if "chunk" in msg_class:
@@ -462,7 +462,7 @@ class BaseReActAgent:
                                 visible_content, thinking_content = self._parse_thinking_content(accumulated_content)
                                 if not accumulated_thinking:
                                     accumulated_thinking = thinking_content
-
+                            
                             # Only emit if visible content changed
                             if visible_content != last_visible_content:
                                 last_visible_content = visible_content
@@ -535,7 +535,7 @@ class BaseReActAgent:
         # Final output
         logger.debug("Stream finished. accumulated_content='%s', all_messages count=%d",
                  accumulated_content[:100] if accumulated_content else "", len(all_messages))
-
+        
         # End thinking phase if still active
         if thinking_step_id is not None:
             if not accumulated_thinking and all_messages:
@@ -553,7 +553,7 @@ class BaseReActAgent:
                 },
                 final=False,
             )
-
+        
         final_answer = ""
         if all_messages:
             # Find the last AI message with content
@@ -569,7 +569,7 @@ class BaseReActAgent:
         if not final_answer:
             # Strip thinking from accumulated content
             final_answer, _ = self._parse_thinking_content(accumulated_content)
-
+        
         # Extract usage and model info for final event
         usage = self._extract_usage_from_messages(usage_messages or all_messages)
         model = self._extract_model_from_messages(all_messages)
@@ -620,14 +620,14 @@ class BaseReActAgent:
         latest_messages: List[BaseMessage] = []
         accumulated_content = ""
         emitted_tool_starts: Set[str] = set()
-
+        
         # Thinking state tracking
         thinking_step_id: Optional[str] = None
         thinking_start_time: Optional[float] = None
         accumulated_thinking = ""  # Captured thinking content from <think> tags
         last_visible_content = ""  # Last visible content emitted (without thinking)
         last_response_metadata: Optional[Dict[str, Any]] = None
-
+        
         try:
             async for event in self.agent.astream(
                 agent_inputs,
@@ -645,7 +645,7 @@ class BaseReActAgent:
 
                 if msg_type in {"ai", "assistant"} or "ai" in msg_class:
                     usage_messages.append(message)
-
+                
                 response_metadata = getattr(message, "response_metadata", None)
                 if response_metadata:
                     last_response_metadata = response_metadata
@@ -655,7 +655,7 @@ class BaseReActAgent:
                         self.active_memory.record_tool_calls_from_message(message)
                     except Exception as exc:
                         logger.debug("Failed to record tool calls from async stream message: %s", exc)
-
+                
                 # Track all non-chunk messages
                 if "chunk" not in msg_class:
                     all_messages.extend(messages)
@@ -687,7 +687,7 @@ class BaseReActAgent:
                             thinking_step_id = None
                             thinking_start_time = None
                             accumulated_thinking = ""
-
+                        
                         yield self.finalize_output(
                             answer="",
                             messages=[message],
@@ -745,7 +745,7 @@ class BaseReActAgent:
                                     },
                                     final=False,
                                 )
-
+                            
                             if content:
                                 if "chunk" in msg_class:
                                     accumulated_content += content
@@ -761,7 +761,7 @@ class BaseReActAgent:
                                 visible_content, thinking_content = self._parse_thinking_content(accumulated_content)
                                 if not accumulated_thinking:
                                     accumulated_thinking = thinking_content
-
+                            
                             # Only emit if visible content changed
                             if visible_content != last_visible_content:
                                 last_visible_content = visible_content
@@ -833,7 +833,7 @@ class BaseReActAgent:
         # Final output
         logger.debug("Async stream finished. accumulated_content='%s', all_messages count=%d",
                  accumulated_content[:100] if accumulated_content else "", len(all_messages))
-
+        
         # End thinking phase if still active
         if thinking_step_id is not None:
             if not accumulated_thinking and all_messages:
@@ -851,7 +851,7 @@ class BaseReActAgent:
                 },
                 final=False,
             )
-
+        
         final_answer = ""
         if all_messages:
             for msg in reversed(all_messages):
@@ -866,7 +866,7 @@ class BaseReActAgent:
         if not final_answer:
             # Strip thinking from accumulated content
             final_answer, _ = self._parse_thinking_content(accumulated_content)
-
+        
         # Extract usage and model info for final event
         usage = self._extract_usage_from_messages(usage_messages or all_messages)
         model = self._extract_model_from_messages(all_messages)
@@ -1077,28 +1077,11 @@ class BaseReActAgent:
         base_tools = list(static_tools) if static_tools is not None else self.tools
         toolset: List[Callable] = list(base_tools)
 
-        selected_mcp_tool_names = {
-            name.split("mcp:", 1)[1].strip()
-            for name in (self.selected_tool_names or [])
-            if isinstance(name, str) and name.startswith("mcp:") and name.split("mcp:", 1)[1].strip()
-        }
-        include_all_mcp = "mcp" in (self.selected_tool_names or [])
-
-        if include_all_mcp or selected_mcp_tool_names:
+        if "mcp" in self.selected_tool_names:
             if self._mcp_tools is None:
                 built = self._build_mcp_tools()
                 self._mcp_tools = list(built or [])
-            selected_mcp_tools = list(self._mcp_tools or [])
-            if selected_mcp_tool_names and not include_all_mcp:
-                selected_mcp_tools = [
-                    tool for tool in selected_mcp_tools
-                    if getattr(tool, "name", "") in selected_mcp_tool_names
-                ]
-                loaded_names = {getattr(tool, "name", "") for tool in self._mcp_tools or []}
-                missing = sorted([name for name in selected_mcp_tool_names if name not in loaded_names])
-                if missing:
-                    logger.warning("Requested MCP tools were not available: %s", ", ".join(missing))
-            toolset.extend(selected_mcp_tools)
+            toolset.extend(self._mcp_tools)
 
         if extra_tools:
             toolset.extend(extra_tools)
@@ -1147,32 +1130,18 @@ class BaseReActAgent:
     def _build_static_tools(self) -> List[Callable]:
         """Build and returns static tools defined in the config."""
         selected = list(self.selected_tool_names or [])
-        static_names = [name for name in selected if name != "mcp" and not str(name).startswith("mcp:")]
+        static_names = [name for name in selected if name != "mcp"]
         return self._select_tools_from_registry(static_names)
-
-    def get_mcp_servers_config(self) -> Dict[str, Any]:
-        """
-        Return MCP server config for this agent.
-
-        Override in concrete agents to define MCP servers at the class level.
-        """
-        if not isinstance(self.archi_config, dict):
-            return {}
-        servers = self.archi_config.get("mcp_servers") or {}
-        return servers if isinstance(servers, dict) else {}
 
     def _build_mcp_tools(self) -> List[Callable]:
         """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
         try:
-            mcp_servers = self.get_mcp_servers_config()
-            if not mcp_servers:
-                logger.info("No MCP servers configured for %s.", self.__class__.__name__)
-                return None
             self._async_runner = AsyncLoopThread.get_instance()
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client(servers=mcp_servers))
+            builtin_servers = getattr(self, "BUILTIN_MCP_SERVERS", None)
+            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client(servers=builtin_servers))
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None

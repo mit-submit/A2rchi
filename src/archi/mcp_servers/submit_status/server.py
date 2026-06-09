@@ -1,7 +1,6 @@
 import asyncio
 import os
 import shlex
-import yaml
 
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
@@ -22,7 +21,7 @@ ALL_NODES = LOGIN_NODES + SCRATCH_NODES + CEPH_NODES + GPU_NODES + CPU_NODES
 _ALL_NODES_SET   = set(ALL_NODES)
 
 
-SERVERS_FILE = Path(__file__).parent / "interest_servers.yaml"
+
 
 # SSH user and key to connect as. The container runs as root but the submit nodes only
 # authorize the cluster user's key. Set SUBMIT_SSH_USER and SUBMIT_SSH_KEY in the
@@ -50,11 +49,6 @@ def _validate_machine(machine: str, allowed: set[str]) -> str | None:
     if machine not in allowed:
         return f"Unknown machine '{machine}'. Allowed: {sorted(allowed)}"
     return None
-
-
-def load_servers_of_interest() -> dict[str, list[str]]:
-    with open(SERVERS_FILE, "r") as f:
-        return yaml.safe_load(f) or {}
 
 
 async def _ssh(host: str, command: str, timeout: int = _SSH_TIMEOUT) -> str:
@@ -122,7 +116,7 @@ def _validate_command(command: str, args: list[str]) -> str | None:
 
 
 @mcp.tool()
-async def run_command(machine: str, command: str, args: list[str] | None = None) -> str:
+async def run_diagnostic(machine: str, command: str, args: list[str] | None = None) -> str:
     """
     Run a read-only diagnostic command on a submit node, choosing both the
     command and its arguments yourself from a fixed whitelist of safe binaries.
@@ -136,6 +130,12 @@ async def run_command(machine: str, command: str, args: list[str] | None = None)
     Each argument is passed as a separate, independently-quoted token — you
     cannot chain commands, pipe, redirect, or use shell substitution. Use this
     for one-off diagnostic queries not covered by a more specific tool.
+
+    Services of interest:
+    submit00:
+        - condor.service
+        - crond.service
+
 
     Examples: command="df", args=["-h", "/scratch"]
               command="systemctl", args=["status", "condor.service"]
@@ -151,10 +151,10 @@ async def run_command(machine: str, command: str, args: list[str] | None = None)
 
 
 @mcp.tool()
-async def run_command_all(command: str, args: list[str] | None = None) -> str:
+async def run_diagnostic_all(command: str, args: list[str] | None = None) -> str:
     """
     Run a whitelisted read-only diagnostic command on all submit nodes in parallel.
-    Same whitelist and argument rules as run_command — see its description for
+    Same whitelist and argument rules as run_diagnostic — see its description for
     the allowed commands and examples. Returns output from every node grouped by hostname.
     Useful for cluster-wide checks like uptime, free, or df on a specific mount.
     """

@@ -14,7 +14,7 @@ from src.archi.pipelines.agents.tools import (
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
-    # initialize_mcp_client,
+    initialize_mcp_client,
     RemoteCatalogClient,
     MONITOpenSearchClient,
     create_monit_opensearch_search_tool,
@@ -28,7 +28,6 @@ logger = get_logger(__name__)
 class CMSCompOpsAgent(BaseReActAgent):
     """Agent designed for CMS CompOps operations."""
 
-    # Spawned as a local subprocess on agent init; always merged into the server config.
     BUILTIN_MCP_SERVERS = {
         "submit_status": {
             "transport": "stdio",
@@ -36,6 +35,11 @@ class CMSCompOpsAgent(BaseReActAgent):
             "args": ["-m", "src.archi.mcp_servers.submit_status"],
         },
     }
+
+    def get_mcp_servers_config(self) -> Dict[str, Any]:
+        """Merge BUILTIN_MCP_SERVERS with any servers from the deployment config."""
+        from src.utils.config_access import get_mcp_servers_config
+        return {**self.BUILTIN_MCP_SERVERS, **get_mcp_servers_config()}
 
     def __init__(
         self,
@@ -65,35 +69,6 @@ class CMSCompOpsAgent(BaseReActAgent):
     def _chat_app_config(self) -> Dict[str, Any]:
         """Return the services.chat_app config section."""
         return self.config.get("services", {}).get("chat_app", {})
-
-    def get_mcp_servers_config(self) -> Dict[str, Any]:
-        """
-        Return MCP server config for this agent.
-
-        Checks three locations in the config (first non-empty wins):
-        1) services.chat_app.tools.mcp_servers
-        2) archi.mcp_servers (legacy)
-        3) top-level mcp_servers: in the YAML
-
-        BUILTIN_MCP_SERVERS are always merged in as the base so they are
-        present regardless of which config location supplies the rest.
-        """
-        builtin = self.BUILTIN_MCP_SERVERS
-
-        tools_cfg = self._chat_app_config.get("tools", {})
-        chat_servers = tools_cfg.get("mcp_servers", {}) if isinstance(tools_cfg, dict) else {}
-        if chat_servers:
-            return {**builtin, **chat_servers}
-
-        archi_servers = self.archi_config.get("mcp_servers", {})
-        if archi_servers:
-            return {**builtin, **archi_servers}
-
-        top_level_servers = self.config.get("mcp_servers", {})
-        if top_level_servers:
-            return {**builtin, **top_level_servers}
-
-        return dict(builtin)
 
     def _init_monit(self) -> None:
         """Initialize MONIT OpenSearch clients if credentials and config are available.
