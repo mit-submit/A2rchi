@@ -3,6 +3,7 @@ archi:
   name: {{ archi_name }}
 
 service_type: ClusterIP
+hostMode: {{ 'true' if host_mode else 'false' }}
 
 postgres:
   image: juanpablosalasg/archi-postgres:latest
@@ -27,11 +28,11 @@ chat:
   externalPort: {{ chatbot_port_container }}
   resources:
     requests:
-      cpu: "250m"
-      memory: "256Mi"
-    limits:
       cpu: "500m"
-      memory: "512Mi"
+      memory: "500Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
   pvc:
     resources:
       requests:
@@ -46,14 +47,26 @@ data_manager:
   externalPort: {{ data_manager_port_container }}
   resources:
     requests:
-      cpu: "250m"
-      memory: "256Mi"
-    limits:
       cpu: "500m"
-      memory: "512Mi"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
   pvc:
     resources:
       requests:
         storage: "100Mi"
       limits:
         storage: "250Mi"
+
+{% if grafana.enabled %}
+grafana:
+  port: {{ grafana.port_host }}
+  externalPort: {{ grafana.port_container }}
+{% endif %}
+
+{% if grader.enabled %}
+grader:
+  port: {{ grader.port_host }}
+  externalPort: {{ grader.port_container }}
+{% endif %}

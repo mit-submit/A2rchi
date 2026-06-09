@@ -10,4 +10,4 @@ spec:
   ports:
     - name: chat-port
       port: {{ "{{ .Values.chat.port }}" }}  
-      targetPort: {{ "{{ .Values.chat.port }}" }}  
+      targetPort: {{ "{{ .Values.chat.externalPort }}" }}  

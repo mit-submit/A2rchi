@@ -42,13 +42,13 @@ spec:
           livenessProbe:
             httpGet:
               path: /api/health 
-              port: {{ "{{ .Values.chat.port }}" }}
+              port: {{ "{{ .Values.chat.externalPort }}" }}
             initialDelaySeconds: 900
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /api/health 
-              port: {{ "{{ .Values.chat.port }}" }}
+              port: {{ "{{ .Values.chat.externalPort }}" }}
             initialDelaySeconds: 60
             periodSeconds: 5
           ports:
@@ -88,16 +88,17 @@ spec:
         - name: {{ name }}-chat-prompts
           configMap:
             name: {{ name }}-chat-prompts
-          optional: true
+            optional: true
         - configMap:
             name: {{ name }}-chat-agents
+            optional: true
           name: {{ name }}-chat-agents
-          optional: true
         - configMap:
             name: {{ name }}-chat-skills
+            optional: true
           name: {{ name }}-chat-skills
-          optional: true
         - configMap:
             name: {{ name }}-chat-tools
+            optional: true
           name: {{ name }}-chat-tools
-          optional: true
+          

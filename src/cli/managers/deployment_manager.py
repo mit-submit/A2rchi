@@ -225,11 +225,11 @@ class DeploymentManager:
         else:
             logger.info(f"Deployment directory does not exist: {deployment_dir}. Cannot take down deployment.")
 
-    def create_deployment_templates(self, base_dir: Path|str, services, env, name):
+    def create_deployment_templates(self, base_dir, services, env, name, use_selenium):
         for service in services:
             chart_dir = Path(base_dir) / "chart" / "templates" / f"{service}-deployment.yaml"
             tmpl = env.get_template(str(HELM_PREFIX / service / "deployment.yaml"))  
-            helm_config = tmpl.render(name=name, selenium_scraper=True) 
+            helm_config = tmpl.render(name=name, selenium_scraper=use_selenium) 
             with open(chart_dir,"w") as f:
                 f.write(helm_config)
 
@@ -242,11 +242,10 @@ class DeploymentManager:
 
         check_existing_command = f"helm status {name} -o json"
         stdout, stderr, exit_code = CommandRunner.run_simple(check_existing_command)
-        deployment_exists = not 'not found' in stderr
+        deployment_exists = exit_code == 0
 
         if deployment_exists and force_reinstall:
-            status_data = json.loads(stdout)
-            status = status_data.get("info", {}).get("status")
+            status_data = json.loads(stdout or "{}")
 
             helm_uninstall_command = f"helm uninstall {name} --wait"
             logger.info(f"Uninstalling existing {name} deployment")

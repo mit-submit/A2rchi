@@ -59,7 +59,7 @@ if tools_dir.exists():
             module = import_module(module_path)
             logger.debug(f"Successfully imported module {module_path}")
         except Exception as e:
-            logger.error(f"Failed to dynamically import module {module}: {e}")
+            logger.error(f"Failed to dynamically import module {module_path}: {e}")
             continue
 
         # Inspect the module for top-level members

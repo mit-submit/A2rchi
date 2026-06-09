@@ -38,7 +38,7 @@ spec:
               value: "{{ "{{ .Values.verbosity }}" }}"
           image: {{ "{{ .Values.postgres.image }}" }}
           resources:
-            {{ "{{- toYaml .Values.chat.resources | nindent 12 }}" }}
+            {{ "{{- toYaml .Values.postgres.resources | nindent 12 }}" }}
           livenessProbe:
             tcpSocket:
               port: {{ "{{ .Values.postgres.port }}" }}               # simple TCP connect test

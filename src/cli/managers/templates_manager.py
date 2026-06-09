@@ -472,7 +472,7 @@ class TemplateManager:
                 for prompt_file in src_dir.glob("*.prompt"):
                     with open(prompt_file, 'r') as f:
                         file_name = os.path.basename(prompt_file)
-                        dict_prompts[file_name] = f.read()
+                        dict_prompts[f"{prompt_type}/{file_name}"] = f.read()
 
         chart_dir = context.base_dir / "chart"  
         tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  

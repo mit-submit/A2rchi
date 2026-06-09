@@ -102,7 +102,10 @@ class DeploymentPlan:
                     volumes.add(state.volume_name)
 
         if self.gpu_ids:
-            volumes.add("archi-models")
+            if helm:
+                volumes.add(("chatbot","archi-models"))
+            else:
+                volumes.add("archi-models")
         return sorted(volumes)
 
     def get_required_secrets(self) -> List[str]:

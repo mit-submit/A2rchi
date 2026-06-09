@@ -320,6 +320,8 @@ class ConfigurationManager:
                         enabled.add(name)
                 elif isinstance(entry, bool) and entry:
                     enabled.add(name)
+                if name=="links":
+                    self.use_selenium = entry.get("selenium_scraper",{}).get("enabled",False)
 
         return sorted(enabled)
 

@@ -10,4 +10,4 @@ spec:
   ports:
     - name: data-manager-port
       port: {{ "{{ .Values.data_manager.port }}" }}  
-      targetPort: {{ "{{ .Values.data_manager.port }}" }}  
+      targetPort: {{ "{{ .Values.data_manager.externalPort }}" }}  

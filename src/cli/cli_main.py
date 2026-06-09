@@ -699,7 +699,8 @@ def install(name: str, config_files: list, config_dir: str, templates_dir: str, 
     # Host-side seeding removed; container config-seed handles schema + ingestion before services start.
     
     deployment_manager = DeploymentManager(helm=True)
-    deployment_manager.create_deployment_templates(base_dir, services=service_only_resolved, env=env, name=helm_name)
+    use_selenium = config_manager.use_selenium
+    deployment_manager.create_deployment_templates(base_dir, services=service_only_resolved, env=env, name=helm_name, use_selenium=use_selenium)
     
     if not dry:
         deployment_manager.helm_install(name, templates_dir, force_reinstall)
