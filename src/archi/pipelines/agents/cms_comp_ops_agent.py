@@ -14,7 +14,6 @@ from src.archi.pipelines.agents.tools import (
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
-    initialize_mcp_client,
     RemoteCatalogClient,
     MONITOpenSearchClient,
     create_monit_opensearch_search_tool,
@@ -35,11 +34,6 @@ class CMSCompOpsAgent(BaseReActAgent):
             "args": ["-m", "src.archi.mcp_servers.submit_status"],
         },
     }
-
-    def get_mcp_servers_config(self) -> Dict[str, Any]:
-        """Merge BUILTIN_MCP_SERVERS with any servers from the deployment config."""
-        from src.utils.config_access import get_mcp_servers_config
-        return {**self.BUILTIN_MCP_SERVERS, **get_mcp_servers_config()}
 
     def __init__(
         self,

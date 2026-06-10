@@ -21,6 +21,7 @@ from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.run_memory import RunMemory
 from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
 from src.archi.pipelines.agents.tools import initialize_mcp_client
+from src.utils.config_access import get_mcp_servers_config
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -1133,15 +1134,26 @@ class BaseReActAgent:
         static_names = [name for name in selected if name != "mcp"]
         return self._select_tools_from_registry(static_names)
 
+    def get_mcp_servers_config(self) -> Dict[str, Any]:
+        """
+        Return MCP server config for this agent: any BUILTIN_MCP_SERVERS defined
+        by a concrete agent subclass, merged with servers from the deployment config.
+        """
+        builtin_servers = getattr(self, "BUILTIN_MCP_SERVERS", {})
+        return {**builtin_servers, **get_mcp_servers_config()}
+
     def _build_mcp_tools(self) -> List[Callable]:
         """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
         try:
+            mcp_servers = self.get_mcp_servers_config()
+            if not mcp_servers:
+                logger.info("No MCP servers configured for %s.", self.__class__.__name__)
+                return None
             self._async_runner = AsyncLoopThread.get_instance()
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            builtin_servers = getattr(self, "BUILTIN_MCP_SERVERS", None)
-            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client(servers=builtin_servers))
+            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client(servers=mcp_servers))
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None
