@@ -12,7 +12,9 @@ from typing import Any, Dict, Iterator, List, Optional
 from pathlib import Path
 from urllib.parse import urlparse
 from functools import wraps
-from langfuse import get_client
+
+from langfuse import get_client as get_langfuse_client
+from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 
 import requests
 
@@ -330,7 +332,7 @@ class ChatWrapper:
 
         self.conn = None
         self.cursor = None
-        self.langfuse = get_client()
+        self.langfuse = self._init_langfuse_client()
 
         # initialize agent spec
         chat_cfg = self.services_config.get("chat_app", {})
@@ -584,6 +586,147 @@ class ChatWrapper:
         
         self.current_config_name = target_config_name
         self.archi.update(pipeline=agent_class, config_name=target_config_name)
+
+    def _init_langfuse_client(self):
+        if get_langfuse_client is None:
+            logger.info("Langfuse SDK is not installed; chat observability is disabled")
+            return None
+        try:
+            return get_langfuse_client()
+        except Exception as exc:
+            logger.warning("Failed to initialise Langfuse client: %s", exc)
+            return None
+
+    @staticmethod
+    def _langfuse_session_id(conversation_id: Optional[int]) -> Optional[str]:
+        if conversation_id is None:
+            return None
+        return str(conversation_id)
+
+    @staticmethod
+    def _langfuse_user_id(user_id: Optional[str], client_id: Optional[str]) -> Optional[str]:
+        if user_id:
+            return str(user_id)
+        return None
+
+    @staticmethod
+    def _without_none(data: Dict[str, Any]) -> Dict[str, Any]:
+        return {key: value for key, value in data.items() if value is not None}
+
+    def _create_langfuse_callback(
+        self,
+        *,
+        conversation_id: Optional[int],
+        client_id: Optional[str],
+        user_id: Optional[str],
+        trace_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        if LangfuseCallbackHandler is None:
+            return None
+        
+        if metadata:
+            pipeline = metadata.get("pipeline",{})
+            metadata["pipeline"] = pipeline.__class__.__name__
+
+        session_id = self._langfuse_session_id(conversation_id)
+        resolved_user_id = self._langfuse_user_id(user_id, client_id)
+        trace_metadata = self._without_none({
+            "conversation_id": session_id,
+            "client_id": client_id,
+            **(metadata or {}),
+        })
+        langfuse_kwargs =  self._without_none({
+                "langfuse_session_id": session_id,
+                "langfuse_user_id": resolved_user_id,
+                "langfuse_trace_id": trace_id,
+                "langfuse_trace_name": "chat-turn",
+                "langfuse_tags": ["chat_app"],
+                "langfuse_metadata": trace_metadata or None,
+            })
+        callback_kwargs = self._without_none({
+            "trace_id": trace_id,
+            "trace_name": "chat-turn",
+            "user_id": resolved_user_id,
+            "session_id": session_id,
+            "metadata": trace_metadata or None,
+            "tags": ["chat_app"],
+        })
+
+        candidate_kwargs = [
+            langfuse_kwargs,
+            #callback_kwargs,
+            #self._without_none({
+            #    "trace_id": trace_id,
+            #    "user_id": resolved_user_id,
+            #    "session_id": session_id,
+            #    "metadata": trace_metadata or None,
+            #}),
+            #self._without_none({
+            #    "user_id": resolved_user_id,
+            #    "session_id": session_id,
+            #    "metadata": trace_metadata or None,
+            #}),
+            #self._without_none({
+            #    "user_id": resolved_user_id,
+            #    "session_id": session_id,
+            #}),
+        ]
+        last_type_error = None
+        for kwargs in candidate_kwargs:
+            try:   
+                logger.info(f"Creating LangfuseCallbackHandler with {kwargs}")
+                return LangfuseCallbackHandler(), kwargs
+            except TypeError as exc:
+                last_type_error = exc
+                continue
+            except Exception as exc:
+                logger.warning("Failed to create Langfuse callback: %s", exc)
+                return None, None
+        logger.warning("Failed to create Langfuse callback: %s", last_type_error)
+        return None, None
+
+    def _langfuse_config(
+        self,
+        *,
+        conversation_id: Optional[int],
+        client_id: Optional[str],
+        user_id: Optional[str],
+        trace_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        callback,langfuse_metadata = self._create_langfuse_callback(
+            conversation_id=conversation_id,
+            client_id=client_id,
+            user_id=user_id,
+            trace_id=trace_id,
+            metadata=metadata,
+        )
+        return {"callbacks": [callback], "metadata": langfuse_metadata} if callback is not None else {}
+
+
+    @staticmethod
+    def _pipeline_method_accepts_config(pipeline: Any, method_name: str) -> bool:
+        method = getattr(pipeline, method_name, None)
+        if method is None:
+            return False
+        try:
+            import inspect
+            params = inspect.signature(method).parameters
+        except Exception:
+            return True
+        return (
+            "config" in params
+            or any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values())
+        )
+
+    def _flush_langfuse(self) -> None:
+        if self.langfuse is None:
+            return
+        try:
+            self.langfuse.flush()
+        except Exception as exc:
+            logger.debug("Failed to flush Langfuse client: %s", exc)
 
     def _extract_model_name(self, config_payload):
         """Extract the primary model name from config for the chat service."""
@@ -861,16 +1004,16 @@ class ChatWrapper:
         self.conn.close()
         self.cursor, self.conn = None, None
 
-        with self.langfuse.start_as_current_observation(as_type="span", name="langgraph-request") as span:
-            # ... LangGraph execution ...
-        
-            # Score using current context
-            self.langfuse.score_current_trace(
-                name="user-feedback",
-                value=1 if feedback['feedback']=='like' else 0,
-                data_type="NUMERIC",
-                comment=feedback['feedback_msg']
-            )
+        if self.langfuse is not None:
+            try:
+                self.langfuse.score_current_trace(
+                    name="user-feedback",
+                    value=1 if feedback['feedback'] == 'like' else 0,
+                    data_type="NUMERIC",
+                    comment=feedback['feedback_msg'],
+                )
+            except Exception as exc:
+                logger.debug("Failed to send feedback score to Langfuse: %s", exc)
         
 
     def delete_reaction_feedback(self, message_id: int):
@@ -932,6 +1075,7 @@ class ChatWrapper:
                  config_id, pipeline_name, json.dumps([]), started_at, 'running')
             )
             conn.commit()
+
             logger.info(f"Created agent trace {trace_id} for conversation {conversation_id}")
             return trace_id
         finally:
@@ -964,6 +1108,7 @@ class ChatWrapper:
                  trace_id)
             )
             conn.commit()
+            self._flush_langfuse()
             logger.debug(f"Updated agent trace {trace_id}: status={status}")
         finally:
             cursor.close()
@@ -1710,10 +1855,30 @@ class ChatWrapper:
                     "A/B arm '%s' vectorstore ready (t+%.1fs)",
                     arm_label, _time.monotonic() - t0,
                 )
-                for output in arm_archi.pipeline.stream(
-                    history=context.history,
+                variant = arm_a_variant if arm_label == "a" else arm_b_variant
+                langfuse_config = self._langfuse_config(
                     conversation_id=context.conversation_id,
-                    vectorstore=vs,
+                    client_id=client_id,
+                    user_id=user_id,
+                    metadata={
+                        "config_name": requested_config,
+                        "streaming": True,
+                        "ab_test": True,
+                        "ab_arm": arm_label,
+                        "variant_name": variant.name,
+                        "variant_label": variant.label,
+                        "model": arm_model_used[arm_label],
+                    },
+                )
+                stream_kwargs = {
+                    "history": context.history,
+                    "conversation_id": context.conversation_id,
+                    "vectorstore": vs,
+                }
+                if langfuse_config and self._pipeline_method_accepts_config(arm_archi.pipeline, "stream"):
+                    stream_kwargs["config"] = langfuse_config
+                for output in arm_archi.pipeline.stream(
+                    **stream_kwargs,
                 ):
                     output_meta = output.metadata or {}
                     for event in formatter.process(output):
@@ -2119,7 +2284,25 @@ class ChatWrapper:
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
 
-            result = self.archi(history=context.history, conversation_id=context.conversation_id)
+            langfuse_config = self._langfuse_config(
+                conversation_id=context.conversation_id,
+                client_id=client_id,
+                user_id=user_id,
+                metadata={
+                    "config_name": requested_config,
+                    "model": context.model_used,
+                    "provider": context.provider_used,
+                    "pipeline": context.pipeline_used,
+                    "streaming": False,
+                },
+            )
+            archi_kwargs = {
+                "history": context.history,
+                "conversation_id": context.conversation_id,
+            }
+            if langfuse_config and self._pipeline_method_accepts_config(self.archi.pipeline, "invoke"):
+                archi_kwargs["config"] = langfuse_config
+            result = self.archi(**archi_kwargs)
             timestamps["chain_finished_ts"] = datetime.now(timezone.utc)
 
             # keep track of total number of queries and log this amount
@@ -2234,7 +2417,29 @@ class ChatWrapper:
                 pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
 
-            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id,model=context.model_used):
+            langfuse_config = self._langfuse_config(
+                conversation_id=context.conversation_id,
+                client_id=client_id,
+                user_id=user_id,
+                trace_id=trace_id,
+                metadata={
+                    "config_name": requested_config,
+                    "model": context.model_used,
+                    "provider": context.provider_used,
+                    "pipeline": context.pipeline_used,
+                    "streaming": True,
+                },
+            )
+            
+            stream_kwargs = {
+                "history": context.history,
+                "conversation_id": context.conversation_id,
+                "model": context.model_used,
+            }
+            if langfuse_config and self._pipeline_method_accepts_config(self.archi.pipeline, "stream"):
+                stream_kwargs["config"] = langfuse_config
+
+            for output in self.archi.stream(**stream_kwargs):
                 if client_timeout and time.time() - stream_start_time > client_timeout:
                     if trace_id:
                         total_duration_ms = int((time.time() - stream_start_time) * 1000)

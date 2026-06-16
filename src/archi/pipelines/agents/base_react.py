@@ -12,7 +12,10 @@ except ImportError:
     BaseMessageChunk = None
 from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
-from langfuse.langchain import CallbackHandler
+try:
+    from langfuse.langchain import CallbackHandler
+except ImportError:
+    CallbackHandler = None
 
 from src.archi.pipelines.agents.utils.prompt_utils import get_role_context, read_prompt
 from src.archi.pipelines.agents.utils.history_utils import infer_speaker
@@ -66,7 +69,7 @@ class BaseReActAgent:
 
         self.mcp_client = None
 
-        self.langfuse_handler = CallbackHandler()
+        self.langfuse_handler = CallbackHandler() if CallbackHandler is not None else None
 
 
         self._init_llms()
@@ -268,6 +271,17 @@ class BaseReActAgent:
                 return str(reasoning_content)
         return ""
 
+    def _agent_run_config(self, kwargs: Dict[str, Any], recursion_limit: int) -> Dict[str, Any]:
+        """Merge caller-provided LangGraph config with agent defaults."""
+        run_config = dict(kwargs.get("config") or {})
+        callbacks = list(run_config.get("callbacks") or [])
+        if not callbacks and self.langfuse_handler is not None:
+            callbacks = [self.langfuse_handler]
+        if callbacks:
+            run_config["callbacks"] = callbacks
+        run_config["recursion_limit"] = recursion_limit
+        return run_config
+
     def invoke(self, **kwargs) -> PipelineOutput:
         """Synchronously invoke the agent graph and return the final output."""
         logger.debug("Invoking %s", self.__class__.__name__)
@@ -277,7 +291,10 @@ class BaseReActAgent:
         logger.debug("Agent refreshed, invoking now")
         recursion_limit = self._recursion_limit()
         try:
-            answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": recursion_limit})
+            answer_output = self.agent.invoke(
+                agent_inputs,
+                self._agent_run_config(kwargs, recursion_limit),
+            )
             logger.debug("Agent invocation completed")
             logger.debug(answer_output)
             messages = self._extract_messages(answer_output)
@@ -323,8 +340,7 @@ class BaseReActAgent:
             for event in self.agent.stream(
                 agent_inputs,
                 stream_mode="messages",
-                config={"recursion_limit": recursion_limit,
-                        "callbacks":[self.langfuse_handler]},
+                config=self._agent_run_config(kwargs, recursion_limit),
             ):
 
                 messages = self._extract_messages(event)
@@ -636,7 +652,7 @@ class BaseReActAgent:
             async for event in self.agent.astream(
                 agent_inputs,
                 stream_mode="messages",
-                config={"recursion_limit": recursion_limit},
+                config=self._agent_run_config(kwargs, recursion_limit),
             ):
                 messages = self._extract_messages(event)
                 if not messages:
