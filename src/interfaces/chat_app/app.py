@@ -50,7 +50,8 @@ from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config, get_dynamic_config
 from src.utils.config_service import ConfigService, StaticConfig
 from src.utils.sql import (
-    SQL_INSERT_CONVO, SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
+    SQL_INSERT_CONVO, SQL_UPDATE_MESSAGE_CONTENT, SQL_FINALIZE_MESSAGE,
+    SQL_INSERT_FEEDBACK, SQL_INSERT_TIMING, SQL_QUERY_CONVO,
     SQL_CREATE_CONVERSATION, SQL_UPDATE_CONVERSATION_TIMESTAMP,
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_LIST_CONVERSATIONS_BY_USER, SQL_GET_CONVERSATION_METADATA_BY_USER,
@@ -1194,6 +1195,69 @@ class ChatWrapper:
 
         return message_ids
 
+    @staticmethod
+    def _sanitize_text(text):
+        return text.replace("\x00", "") if isinstance(text, str) else text
+
+    def insert_pending_exchange(self, conversation_id, user_message, context, is_refresh=False) -> tuple:
+        """
+        Persist the user's message plus an empty assistant placeholder at the START of a streamed
+        response, so the exchange is durable and visible (on switch/reload) before the answer
+        finishes. The placeholder is filled in by update_message_content/finalize_streamed_message.
+
+        On a refresh/regenerate the user message already exists, so only the assistant placeholder
+        is inserted.
+
+        Returns: (user_message_id_or_None, archi_message_id).
+        """
+        service = "Chatbot"
+        user_sender, user_content, user_msg_ts = user_message
+        model_provider = f"{context.provider_used}/{context.model_used}"
+        pipeline_used = type(context.pipeline_used).__name__
+        now = datetime.now(timezone.utc)
+        insert_tups = []
+        if not is_refresh:
+            insert_tups.append(
+                (service, conversation_id, user_sender, self._sanitize_text(user_content), '', '', user_msg_ts, model_provider, pipeline_used)
+            )
+        insert_tups.append(
+            (service, conversation_id, ARCHI_SENDER, '', '', '', now, model_provider, pipeline_used)
+        )
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
+        conn.commit()
+        ids = list(map(lambda tup: tup[0], cursor.fetchall()))
+        cursor.close()
+        conn.close()
+        if is_refresh:
+            return None, ids[0]
+        return ids[0], ids[1]
+
+    def update_message_content(self, message_id, content) -> None:
+        """Overwrite a (placeholder) message's content with the latest streamed text."""
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        cursor.execute(SQL_UPDATE_MESSAGE_CONTENT, (self._sanitize_text(content), message_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    def finalize_streamed_message(self, message_id, content, link, archi_context, context, ts) -> None:
+        """Write the final assistant content + RAG metadata onto the pre-inserted placeholder row."""
+        model_provider = f"{context.provider_used}/{context.model_used}"
+        pipeline_used = type(context.pipeline_used).__name__
+        conn = psycopg2.connect(**self.pg_config)
+        cursor = conn.cursor()
+        cursor.execute(
+            SQL_FINALIZE_MESSAGE,
+            (self._sanitize_text(content), self._sanitize_text(link), self._sanitize_text(archi_context),
+             model_provider, pipeline_used, ts, message_id),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
     def insert_timing(self, message_id, timestamps):
         """
         Store timing info to understand response profile.
@@ -2077,6 +2141,37 @@ class ChatWrapper:
 
         return output, message_ids
 
+    def _finalize_streamed_result(self, result, *, context, archi_message_id, timestamps):
+        """
+        Streaming variant of _finalize_result: the user + assistant rows already exist (inserted at
+        stream start), so this UPDATEs the assistant placeholder with the final content instead of
+        inserting. Keeps the non-streaming _finalize_result path untouched.
+        """
+        output = result["answer"]
+        documents = result.get("source_documents", [])
+        scores = result.get("metadata", {}).get("retriever_scores", [])
+        top_sources = self.get_top_sources(documents, scores)
+        output = self.append_source_section(output, top_sources, render_markdown=False)
+
+        timestamps["archi_message_ts"] = datetime.now(timezone.utc)
+        context_data = self.prepare_context_for_storage(documents, scores)
+
+        best_reference = "Link unavailable"
+        if top_sources:
+            primary_source = top_sources[0]
+            best_reference = primary_source["link"] or primary_source["display"]
+
+        self.finalize_streamed_message(
+            archi_message_id, output, best_reference, context_data, context, timestamps["archi_message_ts"],
+        )
+        timestamps["insert_convo_ts"] = datetime.now(timezone.utc)
+        context.history.append((ARCHI_SENDER, result["answer"]))
+
+        if getattr(result, "messages", []) :
+            self.insert_tool_calls_from_output(context.conversation_id, archi_message_id, result)
+
+        return output
+
     def __call__(self, message: List[str], conversation_id: int|None, client_id: str, is_refresh: bool, server_received_msg_ts: datetime,  client_sent_msg_ts: float, client_timeout: float, config_name: str, user_id: Optional[str] = None):
         """
         Execute the chat functionality.
@@ -2164,6 +2259,10 @@ class ChatWrapper:
             max_step_chars=max_step_chars,
         )
         last_streamed_text = ""
+        last_persisted_text = ""
+        last_persist_ts = time.time()
+        user_message_id = None
+        archi_message_id = None
         trace_id = None
         trace_events: List[Dict[str, Any]] = []
         stream_start_time = time.time()
@@ -2187,7 +2286,7 @@ class ChatWrapper:
             if error_code is not None:
                 yield self._error_event(error_code)
                 return
-            
+
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
             
@@ -2212,13 +2311,34 @@ class ChatWrapper:
                     logger.warning(f"Failed to create provider LLM {provider}/{model}: {e}")
                     yield {"type": "warning", "message": f"Using default model: {e}"}
             
-            # Create trace for this streaming request
+            # Persist the question + an empty assistant placeholder up front so the exchange is
+            # durable and visible (after a switch or reload) before the answer finishes.
+            user_message_id, archi_message_id = self.insert_pending_exchange(
+                context.conversation_id,
+                (context.sender, context.content, server_received_msg_ts),
+                context,
+                is_refresh=is_refresh,
+            )
+
+            # Create trace for this streaming request, linked to the placeholder so load_conversation
+            # can tell the message is still generating (status='running').
             trace_id = self.create_agent_trace(
                 conversation_id=context.conversation_id,
-                user_message_id=None,  # Will be updated at finalization
+                user_message_id=user_message_id,
                 config_id=None,  # Legacy field, no longer used
                 pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
+            if trace_id:
+                self.update_agent_trace(trace_id, trace_events, status='running', message_id=archi_message_id)
+
+            # Tell the client its conversation id and the real message ids up front, so a brand-new
+            # chat becomes switchable mid-stream and switch-back/reload renders the same rows.
+            yield {
+                "type": "init",
+                "conversation_id": context.conversation_id,
+                "user_message_id": user_message_id,
+                "message_id": archi_message_id,
+            }
 
             for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id,model=context.model_used):
                 if client_timeout and time.time() - stream_start_time > client_timeout:
@@ -2295,6 +2415,17 @@ class ChatWrapper:
                             if include_tool_steps:
                                 yield event
 
+                # Throttle DB writes: persist the latest partial answer so a switch-away/reload
+                # shows it, without writing on every token.
+                if (archi_message_id and last_streamed_text != last_persisted_text
+                        and time.time() - last_persist_ts > 0.4):
+                    try:
+                        self.update_message_content(archi_message_id, last_streamed_text)
+                        last_persisted_text = last_streamed_text
+                        last_persist_ts = time.time()
+                    except Exception as persist_exc:
+                        logger.warning(f"Failed to persist partial streamed content: {persist_exc}")
+
             timestamps["chain_finished_ts"] = datetime.now(timezone.utc)
 
             if last_output is None:
@@ -2313,12 +2444,12 @@ class ChatWrapper:
             self.number_of_queries += 1
             logger.info(f"Number of queries is: {self.number_of_queries}")
 
-            output, message_ids = self._finalize_result(
+            # UPDATE the placeholder rows inserted at stream start (instead of inserting new ones).
+            output = self._finalize_streamed_result(
                 last_output,
                 context=context,
-                server_received_msg_ts=server_received_msg_ts,
+                archi_message_id=archi_message_id,
                 timestamps=timestamps,
-                render_markdown=False,  # Client renders with marked.js
             )
 
             timestamps["finish_call_ts"] = datetime.now(timezone.utc)
@@ -2326,9 +2457,9 @@ class ChatWrapper:
             timestamps["client_sent_msg_ts"] = datetime.fromtimestamp(client_sent_msg_ts, tz=timezone.utc)
             timestamps["server_response_msg_ts"] = datetime.now(timezone.utc)
 
-            if message_ids:
-                self.insert_timing(message_ids[-1], timestamps)
-                
+            if archi_message_id:
+                self.insert_timing(archi_message_id, timestamps)
+
             # Calculate total duration
             total_duration_ms = int((time.time() - stream_start_time) * 1000)
             
@@ -2352,12 +2483,11 @@ class ChatWrapper:
 
             # Update trace with final state
             if trace_id:
-                user_message_id = message_ids[0] if message_ids and len(message_ids) > 1 else None
                 self.update_agent_trace(
                     trace_id=trace_id,
                     events=trace_events,
                     status='completed',
-                    message_id=message_ids[-1] if message_ids else None,
+                    message_id=archi_message_id,
                     total_tool_calls=formatter.tool_call_count,
                     total_duration_ms=total_duration_ms,
                 )
@@ -2366,9 +2496,9 @@ class ChatWrapper:
                 "type": "final",
                 "response": output,
                 "conversation_id": context.conversation_id,
-                "archi_msg_id": message_ids[-1] if message_ids else None,
-                "message_id": message_ids[-1] if message_ids else None,
-                "user_message_id": message_ids[0] if message_ids and len(message_ids) > 1 else None,
+                "archi_msg_id": archi_message_id,
+                "message_id": archi_message_id,
+                "user_message_id": user_message_id,
                 "trace_id": trace_id,
                 "server_response_msg_ts": timestamps["server_response_msg_ts"].timestamp(),
                 "final_response_msg_ts": datetime.now(timezone.utc).timestamp(),
@@ -2379,13 +2509,20 @@ class ChatWrapper:
             }
 
         except GeneratorExit:
-            # User cancelled the stream
+            # User cancelled / disconnected (e.g. page reload). Save whatever was generated so the
+            # partial answer survives instead of being discarded.
+            if archi_message_id and last_streamed_text and last_streamed_text != last_persisted_text:
+                try:
+                    self.update_message_content(archi_message_id, last_streamed_text)
+                except Exception as persist_exc:
+                    logger.warning(f"Failed to persist partial on cancel: {persist_exc}")
             if trace_id:
                 total_duration_ms = int((time.time() - stream_start_time) * 1000)
                 self.update_agent_trace(
                     trace_id=trace_id,
                     events=trace_events,
                     status='cancelled',
+                    message_id=archi_message_id,
                     total_tool_calls=formatter.tool_call_count,
                     total_duration_ms=total_duration_ms,
                     cancelled_by='user',
@@ -2507,6 +2644,15 @@ class FlaskAppWrapper(object):
                 active_banner_alerts=alerts,
                 is_alert_manager=is_alert_manager(),
             )
+
+        @self.app.context_processor
+        def _inject_asset_version():
+            # Bust the browser cache whenever the static assets change so code edits actually load.
+            try:
+                version = int(os.path.getmtime(os.path.join(self.app.static_folder, 'chat.js')))
+            except OSError:
+                version = 0
+            return dict(asset_version=version)
 
         # add endpoints for flask app
         # Public endpoints (no auth required)
@@ -4800,6 +4946,7 @@ class FlaskAppWrapper(object):
                     msg['trace'] = {
                         'trace_id': trace_row[0],
                         'events': trace_row[6],  # events JSON
+                        'started_at': trace_row[7].isoformat() if trace_row[7] else None,
                         'status': trace_row[9],
                         'total_tool_calls': trace_row[10],
                         'total_duration_ms': trace_row[12],
