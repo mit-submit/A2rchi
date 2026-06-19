@@ -7,7 +7,7 @@ Evaluates configs with frontier LLM judges using a reference-free rubric:
   - source_faithfulness (1-5, conditional on pipeline having sources)
 
 Usage:
-    export OPENROUTER_API_KEY='sk-or-...'
+    export OPENROUTER_API_KEY='<OPENROUTER_API_KEY>'
 
     # Evaluate all files in bench_out/results/ with GLM 5.1:
     python scripts/run_evaluation.py --input-dir bench_out/results/
@@ -59,7 +59,7 @@ OUTPUT_DIR = "bench_out/judged"
 DEFAULT_JUDGE_MODEL = "z-ai/glm-5.1"
 DEFAULT_RUN_ID = "run1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-MAX_WORKERS = 20       # concurrent API calls for LLM Judge
+MAX_WORKERS = int(os.environ.get("LLM_JUDGE_MAX_WORKERS", "20"))
 
 # ── Cost per 1M tokens (input_rate, output_rate) in USD ──────────
 COST_PER_M_TOKENS = {
@@ -78,6 +78,49 @@ def estimate_cost(model: str, usage: Dict[str, int]) -> float:
     prompt = usage.get("prompt_tokens", 0)
     completion = usage.get("completion_tokens", 0)
     return (prompt / 1_000_000) * input_rate + (completion / 1_000_000) * output_rate
+
+
+def config_display_name(cfg: Dict[str, Any], fallback: str = "config") -> str:
+    """Return a stable display name for benchmark result files."""
+    if cfg.get("eval_name"):
+        return str(cfg["eval_name"])
+    if cfg.get("configuration_file"):
+        return os.path.basename(str(cfg["configuration_file"])).replace(".yaml", "")
+    if cfg.get("configuration"):
+        return os.path.basename(str(cfg["configuration"])).replace(".yaml", "")
+    return fallback
+
+
+def validate_result_tiers(data: Dict[str, Any], *, expected_tier: str = None,
+                          allow_missing_tier: bool = False,
+                          allow_mixed_tiers: bool = False) -> None:
+    """Fail fast if judge inputs mix benchmark tiers unexpectedly."""
+    top_manifest = data.get("run_manifest") or {}
+    top_tier = top_manifest.get("tier") or data.get("tier")
+    tiers = []
+    for cfg in data.get("benchmarking_results", []):
+        manifest = cfg.get("run_manifest") or {}
+        tiers.append(manifest.get("tier") or cfg.get("tier") or top_tier)
+
+    missing = [idx for idx, tier in enumerate(tiers) if not tier]
+    present = {tier for tier in tiers if tier}
+    if missing and not allow_missing_tier and (expected_tier or present):
+        raise ValueError(
+            f"judge input has {len(missing)} config(s) without a run_manifest tier; "
+            "pass --allow-missing-tier only for intentional legacy judging"
+        )
+    if len(present) > 1 and not allow_mixed_tiers:
+        raise ValueError(
+            f"judge input mixes benchmark tiers {sorted(present)}; "
+            "pass --allow-mixed-tiers only for intentional cross-tier diagnostics"
+        )
+    if expected_tier:
+        bad = [tier for tier in tiers if tier != expected_tier]
+        if bad:
+            raise ValueError(
+                f"judge input tier mismatch: expected {expected_tier!r}, "
+                f"found {sorted(set(bad))}"
+            )
 
 # ── LLM Judge Rubrics (v4 — reference-free, uniform dimensions) ──
 #
@@ -163,7 +206,8 @@ def get_dimensions(has_sources: bool) -> list:
 
 
 def build_judge_prompt(question: str, generated_answer: str,
-                       has_sources: bool = False) -> str:
+                       source_context: str = "") -> str:
+    has_sources = bool(source_context.strip())
     dims = get_dimensions(has_sources)
 
     rubric_map = {
@@ -176,6 +220,12 @@ def build_judge_prompt(question: str, generated_answer: str,
     rubric_parts = [rubric_map[d] for d in dims]
     rubric_text = "\n\n".join(rubric_parts)
     dim_keys = ", ".join(f'"{d}"' for d in dims)
+
+    source_section = ""
+    if source_context:
+        source_section = (
+            f"Retrieved/tool source context used by the answer:\n{source_context}\n\n"
+        )
 
     return (
         "You are an expert evaluator for a CMS Computing Operations AI assistant. "
@@ -191,6 +241,7 @@ def build_judge_prompt(question: str, generated_answer: str,
         "Score based on information quality, not quantity.\n\n"
         f"{rubric_text}\n\n"
         f"Question:\n{question}\n\n"
+        f"{source_section}"
         f"Generated Answer:\n{generated_answer}\n\n"
         "Evaluate each dimension individually BEFORE assigning any scores. "
         "Think step-by-step about what the question asks, what the answer provides, "
@@ -201,11 +252,41 @@ def build_judge_prompt(question: str, generated_answer: str,
     )
 
 
+def parse_judge_json(content: str) -> Dict[str, Any]:
+    """Parse judge JSON, accepting common fenced-code responses from providers."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as original_error:
+        stripped = (content or "").strip()
+        if stripped.startswith("```"):
+            lines = stripped.splitlines()
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip().startswith("```"):
+                lines = lines[:-1]
+            candidate = "\n".join(lines).strip()
+            if candidate:
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if 0 <= start < end:
+            try:
+                return json.loads(stripped[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+        raise original_error
+
+
 def call_llm_judge(client: openai.OpenAI, question: str,
-                    generated_answer: str, has_sources: bool = False,
+                    generated_answer: str, source_context: str = "",
                     model: str = DEFAULT_JUDGE_MODEL,
                     max_retries: int = 3) -> Dict[str, Any]:
-    prompt = build_judge_prompt(question, generated_answer, has_sources)
+    prompt = build_judge_prompt(question, generated_answer, source_context)
+    expected_dims = get_dimensions(bool(source_context.strip()))
     last_err = None
     for attempt in range(max_retries):
         try:
@@ -221,13 +302,27 @@ def call_llm_judge(client: openai.OpenAI, question: str,
             if not content:
                 raise ValueError(f"Empty response (finish_reason={response.choices[0].finish_reason})")
             usage = getattr(response, 'usage', None)
-            result = json.loads(content)
+            result = parse_judge_json(content)
             if usage:
                 result["_usage"] = {
                     "prompt_tokens": usage.prompt_tokens,
                     "completion_tokens": usage.completion_tokens,
                     "total_tokens": usage.total_tokens,
                 }
+            missing = [dim for dim in expected_dims if result.get(dim) is None]
+            if missing:
+                raise ValueError(f"Judge response missing score(s): {missing}")
+            invalid = []
+            for dim in expected_dims:
+                try:
+                    score = int(result[dim])
+                except (TypeError, ValueError):
+                    invalid.append((dim, result.get(dim)))
+                    continue
+                if score < 1 or score > 5:
+                    invalid.append((dim, result.get(dim)))
+            if invalid:
+                raise ValueError(f"Judge response has invalid score(s): {invalid}")
             return result
         except (json.JSONDecodeError, openai.APIStatusError) as e:
             last_err = e
@@ -243,9 +338,46 @@ def call_llm_judge(client: openai.OpenAI, question: str,
     raise last_err
 
 
+def extract_source_context(q_data: Dict[str, Any], max_chars: int = 12000) -> str:
+    """Extract judge-visible evidence from legacy and corrected result schemas."""
+    blocks = []
+    legacy = q_data.get("sources_trunc_content")
+    if legacy:
+        blocks.append(str(legacy))
+
+    for i, item in enumerate(q_data.get("sources_metadata") or []):
+        if not isinstance(item, dict):
+            continue
+        text = item.get("content_preview") or item.get("snippet") or item.get("text")
+        if not text:
+            continue
+        label = item.get("path") or item.get("resource_hash") or item.get("display_name") or f"source_{i+1}"
+        blocks.append(f"[source {i+1}] {label}\n{text}")
+
+    for event in q_data.get("trace_events") or []:
+        if not isinstance(event, dict) or event.get("type") != "tool_output":
+            continue
+        preview = event.get("output_preview")
+        if not preview:
+            continue
+        tool = event.get("tool_name") or "tool"
+        blocks.append(f"[tool {tool}]\n{preview}")
+
+    out = "\n\n".join(blocks)
+    return out[:max_chars]
+
+
+def source_context_for(q_data: Dict[str, Any], source_mode: str) -> str:
+    """Return judge-visible source context according to the requested protocol."""
+    if source_mode == "source-free":
+        return ""
+    return extract_source_context(q_data)
+
+
 def run_llm_judge(config_idx: int, config_name: str, sqr: Dict[str, Dict],
                   model: str = DEFAULT_JUDGE_MODEL,
-                  retry_errors: bool = False) -> Dict[str, int]:
+                  retry_errors: bool = False,
+                  source_mode: str = "auto") -> Dict[str, int]:
     """Run LLM Judge on all questions in a config, updating sqr in-place.
 
     Args:
@@ -260,20 +392,40 @@ def run_llm_judge(config_idx: int, config_name: str, sqr: Dict[str, Dict],
     )
 
     # Detect if this config has retrieval/tools (for groundedness)
-    config_has_sources = any(v.get("sources_trunc_content") for v in sqr.values())
+    source_contexts = {k: source_context_for(v, source_mode) for k, v in sqr.items()}
+    config_has_sources = any(source_contexts.values())
+
+    # Empty benchmark answers are non-responses under the rubric. Score them
+    # deterministically instead of skipping them, so "with errors" aggregates
+    # remain defined for every question.
+    for q_key, v in sqr.items():
+        if (v.get("answer") or "").strip():
+            continue
+        dims = get_dimensions(bool(source_contexts.get(q_key, "")))
+        for dim in dims:
+            if v.get(f"llm_judge_{dim}") is None:
+                v[f"llm_judge_{dim}"] = 1
+        if not v.get("llm_judge_reasoning"):
+            err = v.get("error")
+            suffix = f" Benchmark error: {err}" if err else ""
+            v["llm_judge_reasoning"] = (
+                "Deterministic rubric score: empty answer/non-response."
+                f"{suffix}"
+            )
 
     # Filter to questions needing judging AND having an answer
-    def needs_judging(v):
+    def needs_judging(q_key, v):
         if not v.get("answer"):
             return False
-        if "llm_judge_relevance" not in v:
-            return True  # never scored
+        dims = get_dimensions(bool(source_contexts.get(q_key, "")))
+        if any(v.get(f"llm_judge_{dim}") is None for dim in dims):
+            return True  # never scored, partially scored, or malformed judge JSON
         if retry_errors and isinstance(v.get("llm_judge_reasoning", ""), str) \
                 and v.get("llm_judge_reasoning", "").startswith("ERROR:"):
             return True  # previously failed, retry requested
         return False
 
-    to_judge = {k: v for k, v in sqr.items() if needs_judging(v)}
+    to_judge = {k: v for k, v in sqr.items() if needs_judging(k, v)}
 
     if not to_judge:
         print(f"  [Judge] Config {config_idx} ({config_name}): all questions already scored, skipping")
@@ -283,19 +435,20 @@ def run_llm_judge(config_idx: int, config_name: str, sqr: Dict[str, Dict],
 
     print(f"  [Judge] Config {config_idx} ({config_name}): scoring {total} questions "
           f"(sources={'yes' if config_has_sources else 'no'}) "
-          f"with {MAX_WORKERS} workers, model={model}...")
+          f"with {MAX_WORKERS} workers, model={model}, source_mode={source_mode}...")
 
     completed = 0
     failed = 0
 
     def judge_one(q_key: str, q_data: Dict) -> tuple:
-        has_sources = bool(q_data.get("sources_trunc_content")) if config_has_sources else False
+        source_context = source_contexts.get(q_key, "") if config_has_sources else ""
+        has_sources = bool(source_context)
         try:
             scores = call_llm_judge(
                 client,
                 q_data["question"],
                 q_data["answer"],
-                has_sources=has_sources,
+                source_context=source_context,
                 model=model,
             )
             dims = get_dimensions(has_sources)
@@ -352,7 +505,8 @@ def run_llm_judge(config_idx: int, config_name: str, sqr: Dict[str, Dict],
 
 # ── Reliability Check ──────────────────────────────────────────────
 
-def run_reliability_check(data: Dict, n_samples: int, model: str = DEFAULT_JUDGE_MODEL) -> None:
+def run_reliability_check(data: Dict, n_samples: int, model: str = DEFAULT_JUDGE_MODEL,
+                          source_mode: str = "auto") -> None:
     """Re-judge a random subset and report agreement with existing scores."""
     import random
 
@@ -365,7 +519,7 @@ def run_reliability_check(data: Dict, n_samples: int, model: str = DEFAULT_JUDGE
     # Use the first config for reliability check
     cfg = data["benchmarking_results"][0]
     sqr = cfg["single_question_results"]
-    name = cfg["configuration_file"].split("/")[-1].replace(".yaml", "")
+    name = config_display_name(cfg, "config_0")
 
     # Find questions that have existing judge scores
     scored = {k: v for k, v in sqr.items()
@@ -378,7 +532,8 @@ def run_reliability_check(data: Dict, n_samples: int, model: str = DEFAULT_JUDGE
 
     n = min(n_samples, len(scored))
     sample_keys = random.sample(list(scored.keys()), n)
-    config_has_sources = any(v.get("sources_trunc_content") for v in sqr.values())
+    source_contexts = {k: source_context_for(v, source_mode) for k, v in sqr.items()}
+    config_has_sources = any(source_contexts.values())
 
     print(f"\n{'=' * 60}")
     print(f"RELIABILITY CHECK: re-judging {n} questions from {name}")
@@ -387,13 +542,14 @@ def run_reliability_check(data: Dict, n_samples: int, model: str = DEFAULT_JUDGE
     deviations = {}  # dim -> list of |original - rejudge|
     for i, qk in enumerate(sample_keys):
         qd = scored[qk]
-        has_sources = bool(qd.get("sources_trunc_content")) if config_has_sources else False
+        source_context = source_contexts.get(qk, "") if config_has_sources else ""
+        has_sources = bool(source_context)
         dims = get_dimensions(has_sources)
 
         try:
             re_scores = call_llm_judge(
                 client, qd["question"],
-                qd["answer"], has_sources=has_sources, model=model,
+                qd["answer"], source_context=source_context, model=model,
             )
             for dim in dims:
                 orig = qd.get(f"llm_judge_{dim}")
@@ -487,7 +643,7 @@ def print_summary(data: Dict) -> None:
 
     for i, cfg in enumerate(data["benchmarking_results"]):
         sqr = cfg["single_question_results"]
-        name = cfg.get("eval_name", cfg["configuration_file"].split("/")[-1].replace(".yaml", ""))
+        name = config_display_name(cfg, f"config_{i}")
         n = len(sqr)
 
         errors = sum(1 for v in sqr.values()
@@ -604,26 +760,28 @@ def clear_judge_scores(data: Dict) -> None:
 
 
 def evaluate_data(data: Dict, args, output_path: str = None, checkpoint_path: str = None,
-                  model: str = DEFAULT_JUDGE_MODEL, retry_errors: bool = False) -> Dict:
+                  model: str = DEFAULT_JUDGE_MODEL, retry_errors: bool = False,
+                  source_mode: str = "auto") -> Dict:
     """Run judge evaluation on a loaded data structure. Returns the scored data."""
     configs = data["benchmarking_results"]
 
     # Show current status
     for i, cfg in enumerate(configs):
         sqr = cfg["single_question_results"]
-        name = cfg.get("eval_name", cfg["configuration_file"].split("/")[-1].replace(".yaml", ""))
+        name = config_display_name(cfg, f"config_{i}")
         n = len(sqr)
         has_judge = sum(1 for v in sqr.values() if "llm_judge_relevance" in v)
         has_errors = sum(1 for v in sqr.values()
                         if isinstance(v.get("llm_judge_reasoning", ""), str)
                         and v.get("llm_judge_reasoning", "").startswith("ERROR:"))
-        has_src = sum(1 for v in sqr.values() if v.get("sources_trunc_content"))
+        has_src = sum(1 for v in sqr.values() if source_context_for(v, source_mode))
         status = "DONE" if has_judge == n and has_errors == 0 else "NEEDS EVAL"
         if has_errors:
             status = f"HAS {has_errors} ERRORS"
         print(f"  Config {i}: {name:<40} judge={has_judge}/{n}  errors={has_errors}  sources={has_src}/{n}  [{status}]")
 
     print(f"\nModel (Judge): {model}")
+    print(f"Source mode: {source_mode}")
     print(f"LLM Judge parallelism: {MAX_WORKERS} workers\n")
 
     total_start = time.time()
@@ -631,14 +789,17 @@ def evaluate_data(data: Dict, args, output_path: str = None, checkpoint_path: st
 
     for i, cfg in enumerate(configs):
         sqr = cfg["single_question_results"]
-        name = cfg.get("eval_name", cfg["configuration_file"].split("/")[-1].replace(".yaml", ""))
+        name = config_display_name(cfg, f"config_{i}")
 
         print(f"\n{'=' * 60}")
         print(f"CONFIG {i}: {name}")
         print(f"{'=' * 60}")
 
         t0 = time.time()
-        usage = run_llm_judge(i, name, sqr, model=model, retry_errors=retry_errors)
+        usage = run_llm_judge(
+            i, name, sqr, model=model, retry_errors=retry_errors,
+            source_mode=source_mode,
+        )
         elapsed = time.time() - t0
         print(f"  Config {i} complete in {elapsed:.1f}s")
 
@@ -686,12 +847,22 @@ def main():
                         help="Clear existing judge scores and re-evaluate all questions")
     parser.add_argument("--retry-errors", action="store_true",
                         help="Re-judge only questions that previously failed (ERROR status)")
+    parser.add_argument("--source-mode", choices=["auto", "source-free", "source-context"],
+                        default="auto",
+                        help=("Judge evidence protocol. 'source-free' suppresses retrieved/tool "
+                              "context and scores only the four core dimensions."))
     parser.add_argument("--limit", type=int, default=0, metavar="N",
                         help="Process only the first N files (for testing)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show what would be processed without making API calls")
     parser.add_argument("--reliability-check", type=int, default=0, metavar="N",
                         help="Re-judge N random questions from config 0 and report agreement")
+    parser.add_argument("--expected-tier", type=str, default=None,
+                        help="Require every input config to declare this benchmark tier")
+    parser.add_argument("--allow-missing-tier", action="store_true",
+                        help="Allow legacy inputs without run_manifest tier metadata")
+    parser.add_argument("--allow-mixed-tiers", action="store_true",
+                        help="Allow intentional cross-tier diagnostic judge inputs")
     args = parser.parse_args()
 
     if not os.environ.get("OPENROUTER_API_KEY") and not args.dry_run:
@@ -762,6 +933,17 @@ def main():
             with open(fpath) as f:
                 data = json.load(f)
 
+        try:
+            validate_result_tiers(
+                data,
+                expected_tier=args.expected_tier,
+                allow_missing_tier=args.allow_missing_tier,
+                allow_mixed_tiers=args.allow_mixed_tiers,
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            sys.exit(1)
+
         # Tag each config with eval_name from filename
         eval_name = fname.replace(".json", "")
         for cfg in data["benchmarking_results"]:
@@ -793,7 +975,8 @@ def main():
 
         data, usage = evaluate_data(data, args, output_path=None,
                                     checkpoint_path=checkpoint_path, model=args.model,
-                                    retry_errors=args.retry_errors)
+                                    retry_errors=args.retry_errors,
+                                    source_mode=args.source_mode)
 
         # Store judge + usage metadata and write once
         file_cost = estimate_cost(args.model, usage)
@@ -801,6 +984,7 @@ def main():
             "model": args.model,
             "run_id": args.run_id,
             "api": "openrouter",
+            "source_mode": args.source_mode,
             "tokens": usage,
             "estimated_cost_usd": round(file_cost, 6),
         }
@@ -860,7 +1044,10 @@ def main():
 
     # Reliability check (optional)
     if args.reliability_check > 0:
-        run_reliability_check(combined, args.reliability_check, model=args.model)
+        run_reliability_check(
+            combined, args.reliability_check, model=args.model,
+            source_mode=args.source_mode,
+        )
 
 
 if __name__ == "__main__":
