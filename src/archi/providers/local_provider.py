@@ -143,13 +143,6 @@ class LocalProvider(BaseProvider):
             return self.config.models
         return []
     
-    # Known vision-capable model families that can't be detected from names alone.
-    # Names containing "vision", "vl", or any of these substrings are treated as vision-capable.
-    _VISION_NAME_HINTS = frozenset({
-        "llava", "bakllava", "moondream", "gemma3", "gemma4",
-        "minicpm-v", "qwen2-vl", "internvl", "phi3.5-vision",
-    })
-
     @staticmethod
     def _ollama_base(url: str) -> str:
         """Return the Ollama native API root, stripping any trailing /v1 path."""
@@ -164,7 +157,7 @@ class LocalProvider(BaseProvider):
         import urllib.request
 
         lower = model_name.lower()
-        if "vision" in lower or "vl" in lower or any(h in lower for h in self._VISION_NAME_HINTS):
+        if "vision" in lower:
             return True
 
         try:
