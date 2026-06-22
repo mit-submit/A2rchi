@@ -11,11 +11,16 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 DEFAULT_CAPTION_PROMPT = (
-    "You are an expert scientific figure analyst. Describe this image in detail. "
-    "Focus on: data presented, axis labels and units, trends and patterns, key "
-    "numerical values, legends, annotations, and any visible text. "
-    "Be precise and quantitative where possible. If this is a plot or chart, "
-    "describe the type of plot and what it shows."
+    "You are an expert scientific figure analyst. Describe this image in detail, covering the following where applicable:\n"
+    "- Title: state the exact title of the figure or plot if one is visible.\n"
+    "- Plot type: identify the kind of visualization (e.g. line plot, scatter plot, bar chart, heatmap, histogram, image, diagram, table).\n"
+    "- Axes: state the exact axis labels and units for each axis. If tick values are visible, note the range.\n"
+    "- Legend: if a legend is present, list every entry and what it represents.\n"
+    "- Colorbar or heatmap scale: if present, describe the quantity shown, the range, and the units.\n"
+    "- Key values and trends: report notable numerical values, peaks, minima, thresholds, or patterns visible in the data.\n"
+    "- Conclusions: describe any qualitative or quantitative conclusions that can be drawn from the figure, "
+    "given the context provided by surrounding text. Note any anomalies, comparisons, or takeaways a reader would extract.\n"
+    "Be precise. Prefer exact values over vague descriptions where they are legible."
 )
 
 
