@@ -1,4 +1,11 @@
-name: archi-vision
+# Submit76 deployment config
+# Deploy with:
+#   ./configs/submit76/deploy-submit76.sh --live
+#
+# Target: mohoney@submit76.mit.edu
+# Ollama must be running on submit76 at localhost:7870 with gpt-oss:120b pulled.
+
+name: my_archi
 
 services:
   chat_app:
@@ -15,28 +22,41 @@ services:
         models:
           - "gpt-oss:120b"
           - "qwen3:32b"
-    port: 7867
-    external_port: 7867
+    port: 7865
+    external_port: 7865
+    ab_testing:
+      enabled: true
+      pool:
+        champion: default
+        variants:
+          - name: default
+            provider: local
+            model: "qwen3:32b"
+          - name: gpt-oss-120b
+            provider: local
+            model: "gpt-oss:120b"
   postgres:
     port: 5435
   data_manager:
     port: 7878
     external_port: 7878
     auth:
-      enabled: false
+      enabled: true
 
 data_manager:
   sources:
+    jira:
+      enabled: true
+      max_tickets: 10
+      url: https://its.cern.ch/jira/
+      projects:
+        - "CMSPROD"
     links:
-      enabled: false
-      input_lists: []
+      input_lists:
+        - /home/submit/pmlugato/random_configs/lists/sso_git.list
     redmine:
-      enabled: false
+      url: https://cleo.mit.edu
+      project: emails-to-ticket
+      projects:
+        - emails-to-ticket
   embedding_name: HuggingFaceEmbeddings
-  captioning:
-    enabled: true
-    provider: local
-    model: gemma4:latest
-    caption_mode: gated
-    min_text_chars: 200
-    dpi: 150
