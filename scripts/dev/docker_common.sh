@@ -9,6 +9,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 declare -Ag IMAGE_DIRS=(
   ["a2rchi/a2rchi-python-base"]="$ROOT_DIR/src/cli/templates/dockerfiles/base-python-image"
   ["a2rchi/a2rchi-pytorch-base"]="$ROOT_DIR/src/cli/templates/dockerfiles/base-pytorch-image"
+  ["a2rchi/archi-chat"]="$ROOT_DIR"
+  ["a2rchi/archi-data-manager"]="$ROOT_DIR"
+  ["a2rchi/archi-postgres"]="$ROOT_DIR"
+  ["a2rchi/archi-grafana"]="$ROOT_DIR"
+)
+
+declare -Ag IMAGE_DOCKERFILES=(
+  ["a2rchi/archi-chat"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-chat-universal"
+  ["a2rchi/archi-data-manager"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-data-manager-universal"
+  ["a2rchi/archi-postgres"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-postgres-universal"
+  ["a2rchi/archi-grafana"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-grafana-universal"
 )
 
 resolve_tag() {

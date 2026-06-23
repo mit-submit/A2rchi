@@ -80,4 +80,6 @@ spec:
           name: {{ name }}-chat-config
         - configMap:
             name: {{ name }}-data-manager-weblists
+            optional: true
           name: {{ name }}-data-manager-weblists
+          

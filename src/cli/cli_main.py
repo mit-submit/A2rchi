@@ -700,15 +700,17 @@ def install(name: str, config_files: list, config_dir: str, templates_dir: str, 
     
     deployment_manager = DeploymentManager(helm=True)
     use_selenium = config_manager.use_selenium
-    deployment_manager.create_deployment_templates(base_dir, services=service_only_resolved, env=env, name=helm_name, use_selenium=use_selenium)
+    deployment_manager.create_deployment_templates(
+        base_dir,
+        services=service_only_resolved,
+        env=env,
+        name=helm_name,
+        use_selenium=use_selenium,
+        template_vars=helm_config.to_template_vars(),
+    )
     
     if not dry:
         deployment_manager.helm_install(name, templates_dir, force_reinstall)
-
-    # Log success
-    service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
-                            if s in service_registry.get_all_services()]
-    log_deployment_success(helm_name, service_only_resolved, services, config_manager, host_mode = host_mode)
 
 def main():
     """

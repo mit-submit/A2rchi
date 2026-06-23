@@ -64,7 +64,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: buildx-publish-${{ runner.os }}-${{ hashFiles('requirements/**', 'src/cli/templates/dockerfiles/**/Dockerfile') }}
+          key: buildx-publish-${{ runner.os }}-${{ hashFiles('requirements/**', 'src/cli/templates/dockerfiles/**/Dockerfile*') }}
           restore-keys: buildx-publish-${{ runner.os }}-
 
       - name: Install archi CLI

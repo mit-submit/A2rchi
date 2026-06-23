@@ -115,12 +115,27 @@ class DeploymentPlan:
                 secrets.update(state.required_secrets)
         return sorted(secrets)
 
+    def get_gpu_devices(self) -> Optional[str]:
+        if self.gpu_ids == "all":
+            return "all"
+        if isinstance(self.gpu_ids, list):
+            return ",".join(str(gpu_id) for gpu_id in self.gpu_ids)
+        return None
+
+    def get_gpu_count(self) -> Optional[int]:
+        if isinstance(self.gpu_ids, list):
+            return len(self.gpu_ids)
+        return None
+
     def to_template_vars(self) -> Dict[str, object]:
         data: Dict[str, object] = {
             "name": self.name,
             "tag": self.tag,
             "use_podman": self.use_podman,
             "gpu_ids": self.gpu_ids,
+            "gpu_enabled": bool(self.gpu_ids),
+            "gpu_devices": self.get_gpu_devices(),
+            "gpu_count": self.get_gpu_count(),
             "host_mode": self.host_mode,
             "verbosity": self.verbosity,
             "use_redmine": self.use_redmine,

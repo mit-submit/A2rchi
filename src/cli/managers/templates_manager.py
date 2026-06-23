@@ -32,6 +32,7 @@ DEPLOYMENT_AGENTS_DIR = "/root/archi/agents"
 HELM_CHAT_CONFIGMAP = "helm/templates/chatbot/configmap.yaml"
 HELM_DM_CONFIGMAP = "helm/templates/data-manager/configmap.yaml"
 HELM_POSTGRES_CONFIGMAP = "helm/templates/postgres/configmap.yaml"
+HELM_GRAFANA_CONFIGMAP = "helm/templates/grafana/configmap.yaml"
 HELM_CONFIG_SEED = "helm/templates/config-seed.yaml"
 HELM_CHART_YAML_TEMPLATE = "helm/Chart.yaml"
 HELM_VALUES_YAML_TEMPLATE = "helm/values.yaml"
@@ -464,7 +465,11 @@ class TemplateManager:
         repo_root = Path(__file__).parent.parent.parent.parent
         defaults_prompts_dir = repo_root / "examples" / "defaults" / "prompts"
 
-        dict_prompts = {}
+        dict_prompts = {
+            "condense": {},
+            "chat": {},
+            "system": {}
+        }
         for prompt_type in ["condense", "chat", "system"]:
             src_dir = defaults_prompts_dir / prompt_type
             
@@ -472,11 +477,14 @@ class TemplateManager:
                 for prompt_file in src_dir.glob("*.prompt"):
                     with open(prompt_file, 'r') as f:
                         file_name = os.path.basename(prompt_file)
-                        dict_prompts[f"{prompt_type}/{file_name}"] = f.read()
+                        dict_prompts[prompt_type][file_name] = f.read()
 
         chart_dir = context.base_dir / "chart"  
         tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
-        helm_config = tmpl.render(prompts=dict_prompts, archi_name=context.plan.name) 
+        helm_config = tmpl.render(condense_prompts=dict_prompts["condense"],
+                                  chat_prompts=dict_prompts["chat"],
+                                  system_prompts=dict_prompts["system"],
+                                  archi_name=context.plan.name) 
         file_path = chart_dir / "templates/chatbot-prompts-configmap.yaml"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path,"w") as f:
@@ -644,13 +652,8 @@ class TemplateManager:
             host_mode=context.plan.host_mode,
             postgres_port=postgres_port,
         )
-        with open(grafana_dir / "datasources.yaml", "w") as f:
-            f.write(datasources)
-
         dashboards_template = self.env.get_template(BASE_GRAFANA_DASHBOARDS_TEMPLATE)
         dashboards = dashboards_template.render()
-        with open(grafana_dir / "dashboards.yaml", "w") as f:
-            f.write(dashboards)
 
         configs = context.config_manager.get_configs()
         palette = assign_feedback_palette(configs)
@@ -659,13 +662,33 @@ class TemplateManager:
         dashboard = dashboard_template.render(
             feedback_palette=palette,
         )
-        with open(grafana_dir / "archi-default-dashboard.json", "w") as f:
-            f.write(dashboard)
-
         config_template = self.env.get_template(BASE_GRAFANA_CONFIG_TEMPLATE)
         grafana_config = config_template.render()
-        with open(grafana_dir / "grafana.ini", "w") as f:
-            f.write(grafana_config)
+
+        if context.helm:
+            grafana_dict = {}
+            grafana_dict["datasources.yaml"] = datasources
+            grafana_dict["dashboards.yaml"] = dashboards
+            grafana_dict["archi-default-dashboard.json"] = dashboard
+            grafana_dict["grafana.ini"] = grafana_config
+
+            chart_dir = context.base_dir / "chart"  
+            tmpl = self.env.get_template(HELM_GRAFANA_CONFIGMAP)  
+            helm_config = tmpl.render(grafana_dict=grafana_dict, archi_name=context.plan.name) 
+            file_path = chart_dir / "templates/grafana-configmap.yaml"
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path,"w") as f:
+                f.write(helm_config)
+        
+        else:
+            with open(grafana_dir / "datasources.yaml", "w") as f:
+                f.write(datasources)
+            with open(grafana_dir / "dashboards.yaml", "w") as f:
+                f.write(dashboards)
+            with open(grafana_dir / "archi-default-dashboard.json", "w") as f:
+                f.write(dashboard)
+            with open(grafana_dir / "grafana.ini", "w") as f:
+                f.write(grafana_config)
 
     def _copy_grader_assets(self, context: TemplateContext) -> None:
         archi_config = context.config_manager.get_configs()[0]

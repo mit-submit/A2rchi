@@ -37,10 +37,23 @@ metadata:
     use-subpath: "true"
   name: {{ archi_name }}-chat-skills
 {% endif %}
-{% if prompts %}
+{% if condense_prompts %}
 apiVersion: v1
 data:
-  {%- for prompt_filename, content in prompts.items() %}
+  {%- for prompt_filename, content in condense_prompts.items() %}
+  {{ prompt_filename }}: |
+    {{ content | indent(4) }}
+  {%- endfor %}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  name: {{ archi_name }}-condense-prompts
+{% endif %}
+{% if chat_prompts %}
+apiVersion: v1
+data:
+  {%- for prompt_filename, content in chat_prompts.items() %}
   {{ prompt_filename }}: |
     {{ content | indent(4) }}
   {%- endfor %}
@@ -49,6 +62,19 @@ metadata:
   annotations:
     use-subpath: "true"
   name: {{ archi_name }}-chat-prompts
+{% endif %}
+{% if system_prompts %}
+apiVersion: v1
+data:
+  {%- for prompt_filename, content in system_prompts.items() %}
+  {{ prompt_filename }}: |
+    {{ content | indent(4) }}
+  {%- endfor %}
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  name: {{ archi_name }}-system-prompts
 {% endif %}
 {% if tools %}
 apiVersion: v1

@@ -35,6 +35,10 @@ spec:
               value: archi
             - name: VERBOSITY
               value: "{{ "{{ .Values.verbosity }}" }}"
+{% if gpu_enabled %}
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "{{ "{{ .Values.gpu.devices }}" }}"
+{% endif %}
           image: {{ "{{ .Values.chat.image }}" }}
           resources:
             {{ "{{- toYaml .Values.chat.resources | nindent 12 }}" }}
@@ -59,8 +63,12 @@ spec:
               name: {{ name }}-chatbot-pvc
             - mountPath: /root/archi/configs
               name: {{ name }}-chat-config
-            - mountPath: /root/archi/data/prompts
+            - mountPath: /root/archi/data/prompts/chat
               name: {{ name }}-chat-prompts
+            - mountPath: /root/archi/data/prompts/condense
+              name: {{ name }}-condense-prompts
+            - mountPath: /root/archi/data/prompts/system
+              name: {{ name }}-system-prompts
             - name: {{ name }}-chat-agents
               mountPath: /root/archi/agents
             - name: {{ name }}-chat-agents
@@ -73,6 +81,10 @@ spec:
               name: root-accounts
             - mountPath: /.cache
               name: hf-cache
+{% if gpu_enabled %}
+            - mountPath: /root/models
+              name: {{ name }}-models
+{% endif %}
       restartPolicy: Always
       volumes:
         - emptyDir: {}
@@ -82,12 +94,25 @@ spec:
         - name: {{ name }}-chatbot-pvc
           persistentVolumeClaim:
             claimName: {{ name }}-chatbot-pvc
+{% if gpu_enabled %}
+        - name: {{ name }}-models
+          persistentVolumeClaim:
+            claimName: {{ name }}-models-pvc
+{% endif %}
         - configMap:
             name: {{ name }}-chat-config
           name: {{ name }}-chat-config
+        - name: {{ name }}-condense-prompts
+          configMap:
+            name: {{ name }}-condense-prompts
+            optional: true
         - name: {{ name }}-chat-prompts
           configMap:
             name: {{ name }}-chat-prompts
+            optional: true
+        - name: {{ name }}-system-prompts
+          configMap:
+            name: {{ name }}-system-prompts
             optional: true
         - configMap:
             name: {{ name }}-chat-agents

@@ -42,7 +42,12 @@ _seen_names = set(__all__)
 
 tools_dir = Path("/root/archi/src/archi/pipelines/agents/tools/extra_tools")
 
-if tools_dir.exists():
+try:
+    exists = tools_dir.is_dir()
+except PermissionError:
+    exists = False
+
+if exists:
     extra_tools_dir = str(tools_dir.resolve())
     if extra_tools_dir not in sys.path:
         sys.path.insert(0, extra_tools_dir)

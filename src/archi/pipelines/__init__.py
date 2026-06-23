@@ -22,7 +22,12 @@ _PIPELINE_EXPORTS = {
 # Locate the pipelines/agents/ directory
 agents_dir = Path("/root/archi/src/archi/pipelines/extra_agents")
 
-if agents_dir.exists() and agents_dir.is_dir():
+try:
+    exists = agents_dir.is_dir()
+except PermissionError:
+    exists = False
+
+if exists:
     # Add the exact folder to sys.path
     extra_agents_path = str(agents_dir.resolve())
     if extra_agents_path not in sys.path:

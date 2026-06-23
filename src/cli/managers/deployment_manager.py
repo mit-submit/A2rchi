@@ -225,11 +225,12 @@ class DeploymentManager:
         else:
             logger.info(f"Deployment directory does not exist: {deployment_dir}. Cannot take down deployment.")
 
-    def create_deployment_templates(self, base_dir, services, env, name, use_selenium):
+    def create_deployment_templates(self, base_dir, services, env, name, use_selenium, template_vars=None):
+        template_vars = template_vars or {}
         for service in services:
             chart_dir = Path(base_dir) / "chart" / "templates" / f"{service}-deployment.yaml"
             tmpl = env.get_template(str(HELM_PREFIX / service / "deployment.yaml"))  
-            helm_config = tmpl.render(name=name, selenium_scraper=use_selenium) 
+            helm_config = tmpl.render(name=name, selenium_scraper=use_selenium, **template_vars) 
             with open(chart_dir,"w") as f:
                 f.write(helm_config)
 
