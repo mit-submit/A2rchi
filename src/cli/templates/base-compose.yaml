@@ -726,7 +726,7 @@ services:
     logging:
       options:
         max-size: 10m
-    restart: on-failure
+    restart: always
     {%- if host_mode %}
     network_mode: host
     {%- endif %}
