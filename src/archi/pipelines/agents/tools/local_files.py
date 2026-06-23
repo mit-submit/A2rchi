@@ -18,6 +18,11 @@ from src.archi.pipelines.agents.tools.base import require_tool_permission
 
 logger = get_logger(__name__)
 
+# Hard limits to prevent context window overflow (matches monit_opensearch pattern)
+MAX_OUTPUT_CHARS = 50_000
+MAX_RESULTS_HARD_LIMIT = 20
+MAX_DOCUMENT_CHARS = 8_000
+
 
 class RemoteCatalogClient:
     """HTTP client for the data-manager catalog API."""
@@ -273,7 +278,7 @@ def create_file_search_tool(
 
         hits: List[Dict[str, object]] = []
         docs: List[Document] = []
-        limit = max_results_override or max_results
+        limit = min(max_results_override or max_results, MAX_RESULTS_HARD_LIMIT)
 
         try:
             results = catalog.search(
@@ -298,7 +303,7 @@ def create_file_search_tool(
             for item in hits:
                 try:
                     resource_hash = item.get("hash")
-                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
+                    doc_payload = catalog.get_document(resource_hash, max_chars=2000) or {}
                     text = doc_payload.get("text") or ""
                     doc_meta = doc_payload.get("metadata") or item.get("metadata") or {}
                     docs.append(Document(page_content=text, metadata=doc_meta))
@@ -308,7 +313,10 @@ def create_file_search_tool(
         if store_docs:
             store_docs(f"{name}: {query}", docs)
 
-        return _format_grep_hits(hits)
+        output = _format_grep_hits(hits)
+        if len(output) > MAX_OUTPUT_CHARS:
+            output = output[:MAX_OUTPUT_CHARS] + "\n\n... [OUTPUT TRUNCATED]"
+        return output
 
     return _search_local_files
 
@@ -402,7 +410,10 @@ def create_metadata_search_tool(
         if store_docs:
             store_docs(f"{name}: {query}", docs)
 
-        return _format_files_for_llm(hits)
+        output = _format_files_for_llm(hits)
+        if len(output) > MAX_OUTPUT_CHARS:
+            output = output[:MAX_OUTPUT_CHARS] + "\n\n... [OUTPUT TRUNCATED]"
+        return output
 
     return _search_metadata
 
@@ -487,6 +498,7 @@ def create_document_fetch_tool(
     def _fetch_document(resource_hash: str, max_chars: int = default_max_chars) -> str:
         if not resource_hash.strip():
             return "Please provide a non-empty resource hash."
+        max_chars = min(max_chars, MAX_DOCUMENT_CHARS)
         if store_tool_input:
             try:
                 store_tool_input(name, {"resource_hash": resource_hash, "max_chars": max_chars})
@@ -507,11 +519,14 @@ def create_document_fetch_tool(
         text = doc_payload.get("text") or ""
         meta_preview = _render_metadata_preview(metadata)
 
-        return (
+        result = (
             f"Path: {path}\n"
             f"Metadata:\n{meta_preview}\n\n"
             f"Content:\n{text}"
         )
+        if len(result) > MAX_OUTPUT_CHARS:
+            result = result[:MAX_OUTPUT_CHARS] + "\n\n... [OUTPUT TRUNCATED]"
+        return result
 
     return _fetch_document
 
