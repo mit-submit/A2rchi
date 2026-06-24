@@ -117,6 +117,7 @@ services:
     num_responses_until_feedback: {{ services.chat_app.num_responses_until_feedback | default(3, true) }}
     include_copy_button: {{ services.chat_app.include_copy_button | default(false, true) }}
     flask_debug_mode: {{ services.chat_app.flask_debug_mode | default(true, false) }}
+    enable_ui_uploads: {{ services.chat_app.enable_ui_uploads | default(true, false) }}
     auth:
       enabled: {{ services.chat_app.auth.enabled | default(false, true) }}
       sso:
@@ -191,6 +192,7 @@ services:
     template_folder: "{{ services.data_manager.template_folder | default('/root/archi/src/interfaces/chat_app/templates', true) }}"
     static_folder: "{{ services.data_manager.static_folder | default('/root/archi/src/interfaces/chat_app/static', true) }}"
     flask_debug_mode: {{ services.data_manager.flask_debug_mode | default(false, true) }}
+    enable_ui_uploads: {{ services.data_manager.enable_ui_uploads | default(true, false) }}
   grader_app:
     provider: {{ services.grader_app.provider }}
     model: {{ services.grader_app.model }}
