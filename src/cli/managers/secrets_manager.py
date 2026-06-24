@@ -166,7 +166,7 @@ class SecretsManager:
                 raise ValueError(f"Secret '{secret_name}' is required but not found in .env file")
         template = jinja_env.get_template(HELM_SECRETS)  
         rendered_secrets = template.render(encoded_secrets=encoded_secrets, name=name)
-        file_path = Path(templates_dir) / "chart/templates/secrets.yaml"
+        file_path = Path(templates_dir) / "templates/secrets.yaml"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path,"w") as f:
             f.write(rendered_secrets)

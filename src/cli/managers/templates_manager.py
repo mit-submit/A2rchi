@@ -236,7 +236,8 @@ class TemplateManager:
                 required=True,
             )
 
-        ab_dst_dir.mkdir(parents=True, exist_ok=True)
+        if not context.helm:
+            ab_dst_dir.mkdir(parents=True, exist_ok=True)
         ab_cfg = ((services_cfg.get("chat_app") or {}).get("ab_testing") or {})
         ab_agents_dir = ab_cfg.get("ab_agents_dir")
         if not ab_agents_dir:
@@ -263,7 +264,7 @@ class TemplateManager:
 
         
     def _helm_render_agents(self, context: TemplateContext, agents_data: dict) -> None:
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
         helm_config = tmpl.render(agents=agents_data, archi_name=context.plan.name) 
         file_path = chart_dir / "templates/chatbot-agents-configmap.yaml"
@@ -272,7 +273,7 @@ class TemplateManager:
             f.write(helm_config)
 
     def _helm_render_skills(self, context: TemplateContext, skills_data: dict) -> None:
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
         helm_config = tmpl.render(skills=skills_data, archi_name=context.plan.name) 
         file_path = chart_dir / "templates/chatbot-skills-configmap.yaml"
@@ -281,7 +282,7 @@ class TemplateManager:
             f.write(helm_config)
 
     def _stage_chart(self, context: TemplateContext) -> None:
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_CHART_YAML_TEMPLATE)  
         rendered = tmpl.render(  
             name=context.plan.name,  
@@ -314,7 +315,7 @@ class TemplateManager:
         mcp_servers = context.config_manager.config.get("mcp_servers", {}) or {}
         template_vars["mcp_servers"] = mcp_servers
 
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_VALUES_YAML_TEMPLATE)  
 
         rendered = tmpl.render(archi_name=context.plan.name,**template_vars)
@@ -323,7 +324,7 @@ class TemplateManager:
 
     def _stage_config_seed(self, context: TemplateContext) -> None:
 
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_CONFIG_SEED)  
 
         rendered = tmpl.render(name=context.plan.name)
@@ -427,7 +428,7 @@ class TemplateManager:
         else:
             logger.warning("No tool python files found in %s", src_dir)
 
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
         helm_config = tmpl.render(tools=tools_data, archi_name=context.plan.name) 
         file_path = chart_dir / "templates/chatbot-tools-configmap.yaml"
@@ -479,7 +480,7 @@ class TemplateManager:
                         file_name = os.path.basename(prompt_file)
                         dict_prompts[prompt_type][file_name] = f.read()
 
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
         helm_config = tmpl.render(condense_prompts=dict_prompts["condense"],
                                   chat_prompts=dict_prompts["chat"],
@@ -499,7 +500,7 @@ class TemplateManager:
         if helm:
             enabled_services = context.plan.get_enabled_services()
             for service in enabled_services:
-                chart_dir = context.base_dir / "chart" / "templates" / f"{service}-service.yaml"
+                chart_dir = context.base_dir / "templates" / f"{service}-service.yaml"
                 tmpl = self.env.get_template(str(HELM_PREFIX / service / "service.yaml"))  
                 helm_config = tmpl.render(name=context.plan.name) 
                 with open(chart_dir,"w") as f:
@@ -584,9 +585,10 @@ class TemplateManager:
     # config rendering
     def _render_config_files(self, context: TemplateContext) -> None:
         configs_path = context.base_dir / "configs"
-        configs_path.mkdir(parents=True, exist_ok=True)
         benchmarking_enabled = bool(getattr(context, "benchmarking", False))
         helm = bool(getattr(context, "helm", False))
+        if not helm:
+            configs_path.mkdir(parents=True, exist_ok=True)
 
         archi_configs = context.config_manager.get_configs()
         single_mode = len(archi_configs) == 1
@@ -624,12 +626,13 @@ class TemplateManager:
 
             target_name = "config.yaml" if single_mode else f"{name}.yaml"
             config_data[target_name] = config_rendered
-            with open(configs_path / target_name, "w") as f:
-                f.write(config_rendered)
-            logger.info(f"Rendered  configuration file {configs_path / target_name}")
+            if not helm:
+                with open(configs_path / target_name, "w") as f:
+                    f.write(config_rendered)
+                logger.info(f"Rendered  configuration file {configs_path / target_name}")
 
         if helm:
-            chart_dir = context.base_dir / "chart"  
+            chart_dir = context.base_dir
             tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
             helm_config = tmpl.render(configs=config_data, archi_name=context.plan.name) 
             file_path = chart_dir / "templates/chatbot-configmap.yaml"
@@ -672,7 +675,7 @@ class TemplateManager:
             grafana_dict["archi-default-dashboard.json"] = dashboard
             grafana_dict["grafana.ini"] = grafana_config
 
-            chart_dir = context.base_dir / "chart"  
+            chart_dir = context.base_dir
             tmpl = self.env.get_template(HELM_GRAFANA_CONFIGMAP)  
             helm_config = tmpl.render(grafana_dict=grafana_dict, archi_name=context.plan.name) 
             file_path = chart_dir / "templates/grafana-configmap.yaml"
@@ -752,12 +755,13 @@ class TemplateManager:
         )
         dest = context.base_dir / "init.sql"
 
-        with open(dest, "w") as f:
-            f.write(init_sql)
-        logger.debug(f"Wrote PostgreSQL init script to {dest}")
+        if not helm:
+            with open(dest, "w") as f:
+                f.write(init_sql)
+            logger.debug(f"Wrote PostgreSQL init script to {dest}")
 
         if helm:
-            chart_dir = context.base_dir / "chart"  
+            chart_dir = context.base_dir
             tmpl = self.env.get_template(HELM_POSTGRES_CONFIGMAP)  
             helm_config = tmpl.render(init_sql=init_sql,archi_name=context.plan.name) 
             with open(chart_dir / "templates/postgres-init-configmap.yaml","w") as f:
@@ -980,7 +984,7 @@ class TemplateManager:
                 file_name = os.path.basename(input_list)
                 dict_input_lists[file_name] = f.read()
 
-        chart_dir = context.base_dir / "chart"  
+        chart_dir = context.base_dir
         tmpl = self.env.get_template(HELM_DM_CONFIGMAP)  
         helm_config = tmpl.render(input_lists=dict_input_lists, archi_name=context.plan.name) 
         file_path = chart_dir / "templates/data-manager-configmap.yaml"

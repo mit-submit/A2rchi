@@ -29,7 +29,7 @@ class VolumeManager:
     def create_volume_templates(self, base_dir, compose_config, env, name):
         required_volumes = compose_config.get_required_volumes(helm=True)
         for volume in required_volumes:
-            chart_dir = Path(base_dir) / "chart" / "templates" / f"{volume[1]}-pvc.yaml"
+            chart_dir = Path(base_dir) / "templates" / f"{volume[1]}-pvc.yaml"
             service = volume[0]
             tmpl = env.get_template(str(HELM_PREFIX / service / "pvc.yaml"))
             helm_config = tmpl.render(name=name, volume_name=volume[1]) 
