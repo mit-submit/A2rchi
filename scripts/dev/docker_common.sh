@@ -16,10 +16,10 @@ declare -Ag IMAGE_DIRS=(
 )
 
 declare -Ag IMAGE_DOCKERFILES=(
-  ["a2rchi/archi-chat"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-chat-universal"
-  ["a2rchi/archi-data-manager"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-data-manager-universal"
-  ["a2rchi/archi-postgres"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-postgres-universal"
-  ["a2rchi/archi-grafana"]="$ROOT_DIR/src/cli/templates/dockerfiles/helm-base-images/Dockerfile-grafana-universal"
+  ["a2rchi/archi-chat"]="$ROOT_DIR/src/cli/templates/dockerfiles/base-helm-images/Dockerfile-chat-universal"
+  ["a2rchi/archi-data-manager"]="$ROOT_DIR/src/cli/templates/dockerfiles/base-helm-images/Dockerfile-data-manager-universal"
+  ["a2rchi/archi-postgres"]="$ROOT_DIR/src/cli/templates/dockerfiles/base-helm-images/Dockerfile-postgres-universal"
+  ["a2rchi/archi-grafana"]="$ROOT_DIR/src/cli/templates/dockerfiles/base-helm-images/Dockerfile-grafana-universal"
 )
 
 resolve_tag() {

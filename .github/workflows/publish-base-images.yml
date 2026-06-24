@@ -36,7 +36,7 @@ jobs:
           else
             FILES="$(git ls-tree --full-tree -r HEAD --name-only)"
           fi
-          PATTERN='^(requirements/(?:cpu|gpu)-requirementsHEADER\.txt|requirements/requirements-base\.txt|src/cli/templates/dockerfiles/base-[^/]+/Dockerfile)'
+          PATTERN='^(requirements/(?:cpu|gpu)-requirementsHEADER\.txt|requirements/requirements-base\.txt|src/cli/templates/dockerfiles/base-[^/]+/Dockerfile[^/]+)'
           if [[ -z "$FILES" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
