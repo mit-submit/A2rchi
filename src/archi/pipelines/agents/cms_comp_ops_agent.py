@@ -226,6 +226,7 @@ class CMSCompOpsAgent(BaseReActAgent):
         return create_document_fetch_tool(
             self.catalog_service,
             description=description,
+            store_docs=self._store_documents,
             store_tool_input=getattr(self, "_store_tool_input", None),
         )
 

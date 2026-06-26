@@ -296,14 +296,12 @@ def create_file_search_tool(
 
         if store_docs and hits:
             for item in hits:
-                try:
-                    resource_hash = item.get("hash")
-                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
-                    text = doc_payload.get("text") or ""
-                    doc_meta = doc_payload.get("metadata") or item.get("metadata") or {}
-                    docs.append(Document(page_content=text, metadata=doc_meta))
-                except Exception:
-                    continue
+                doc_meta = dict(item.get("metadata") or {})
+                resource_hash = item.get("hash") or ""
+                if resource_hash:
+                    doc_meta.setdefault("resource_hash", resource_hash)
+                snippet = item.get("snippet") or ""
+                docs.append(Document(page_content=snippet, metadata=doc_meta))
 
         if store_docs:
             store_docs(f"{name}: {query}", docs)
@@ -390,14 +388,13 @@ def create_metadata_search_tool(
                 break
 
         if store_docs and hits:
-            for resource_hash, path, metadata, _ in hits:
-                try:
-                    doc_payload = catalog.get_document(resource_hash, max_chars=4000) or {}
-                    text = doc_payload.get("text") or ""
-                    doc_meta = doc_payload.get("metadata") or metadata or {}
-                    docs.append(Document(page_content=text, metadata=doc_meta))
-                except Exception:
-                    continue
+            for resource_hash, path, metadata, snippet in hits:
+                doc_meta = dict(metadata or {})
+                if resource_hash:
+                    doc_meta.setdefault("resource_hash", resource_hash)
+                if path:
+                    doc_meta.setdefault("file_path", str(path))
+                docs.append(Document(page_content=snippet or "", metadata=doc_meta))
 
         if store_docs:
             store_docs(f"{name}: {query}", docs)
@@ -459,6 +456,7 @@ def create_document_fetch_tool(
     description: Optional[str] = None,
     default_max_chars: int = 4000,
     required_permission: Optional[str] = None,
+    store_docs: Optional[Callable[[str, Sequence[Document]], None]] = None,
     store_tool_input: Optional[Callable[[str, object], None]] = None,
 ) -> Callable[..., str]:
     """Create a LangChain tool to fetch a full document by resource hash.
@@ -506,6 +504,13 @@ def create_document_fetch_tool(
         metadata = doc_payload.get("metadata") if isinstance(doc_payload.get("metadata"), dict) else {}
         text = doc_payload.get("text") or ""
         meta_preview = _render_metadata_preview(metadata)
+
+        if store_docs:
+            doc_meta = dict(metadata)
+            doc_meta.setdefault("resource_hash", resource_hash.strip())
+            if path:
+                doc_meta.setdefault("file_path", path)
+            store_docs(f"{name}: {resource_hash}", [Document(page_content=text, metadata=doc_meta)])
 
         return (
             f"Path: {path}\n"
