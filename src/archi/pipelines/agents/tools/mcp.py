@@ -12,6 +12,37 @@ from src.archi.pipelines.agents.utils.skill_utils import load_skill
 
 logger = get_logger(__name__)
 
+
+def _patch_langchain_mcp_dict_schema_recursion() -> None:
+    """Work around a langchain-core / langchain-mcp-adapters incompatibility.
+
+    langchain-mcp-adapters sets each tool's ``args_schema`` to the MCP server's raw
+    JSON-schema *dict* rather than a pydantic model. langchain-core's
+    ``_filter_injected_args`` then calls ``get_all_basemodel_annotations(args_schema)``;
+    for a non-pydantic input that helper recurses on ``get_origin(cls)``, which for a dict
+    (then ``None``) never terminates -> ``RecursionError`` on every MCP tool call. It is
+    caught and logged at DEBUG, so it is non-fatal, but it burns ~1000 stack frames per
+    call and floods the logs. We add the missing base case: a non-type with no generic
+    origin yields no annotations instead of recursing. Real pydantic ``args_schema`` models
+    are unaffected. Idempotent; safe to call on every init.
+    """
+    from typing import get_origin
+    from langchain_core.tools import base as _lc_tools_base
+
+    if getattr(_lc_tools_base, "_archi_dict_schema_guard", False):
+        return
+    _orig = _lc_tools_base.get_all_basemodel_annotations
+
+    def _guarded(cls, *args, **kwargs):
+        if not isinstance(cls, type) and get_origin(cls) is None:
+            return {}
+        return _orig(cls, *args, **kwargs)
+
+    _lc_tools_base.get_all_basemodel_annotations = _guarded
+    _lc_tools_base._archi_dict_schema_guard = True
+    logger.info("Applied langchain-core args_schema recursion guard for MCP dict schemas.")
+
+
 async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[BaseTool], str]:
     """
     Initializes the MCP client and fetches tool definitions.
@@ -24,6 +55,8 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
             here only once per agent rather than into each tool description, so
             the content doesn't multiply by tool count.
     """
+
+    _patch_langchain_mcp_dict_schema_recursion()
 
     mcp_servers = get_mcp_servers_config()
 
