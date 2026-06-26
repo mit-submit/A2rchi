@@ -73,16 +73,18 @@ def load_images_from_file(file_path: Path | str) -> List[ImageDocument]:
 def load_images_from_pdf(
     file_path: Path | str,
     caption_mode: str = "gated",
-    min_text_chars: int = 200,
+    min_drawings: int = 5,
     render_dpi: int = 150,
 ) -> List[ImageDocument]:
     """Render PDF pages to images for captioning.
 
     Args:
         file_path: Path to the PDF file.
-        caption_mode: "all" (every page), "gated" (sparse-text pages only),
+        caption_mode: "all" (every page), "gated" (visual-content pages only),
                       or "none" (disabled).
-        min_text_chars: Text-density threshold for gated mode.
+        min_drawings: Vector-drawing count threshold for gated mode. Pages with
+                      at least this many drawings (or any embedded raster images)
+                      are considered visual and will be captioned.
         render_dpi: DPI for page rendering.
 
     Returns:
@@ -102,24 +104,20 @@ def load_images_from_pdf(
     try:
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
-            page_text = page.get_text("text") or ""
-            text_chars = len(page_text.strip())
             has_embedded_images = bool(page.get_images(full=True))
+            drawing_count = len(page.get_drawings())
 
-            if (
-                caption_mode == "gated"
-                and text_chars >= min_text_chars
-                and not has_embedded_images
-            ):
+            if caption_mode == "gated" and not has_embedded_images and drawing_count < min_drawings:
                 logger.debug(
-                    "Skipping page %d of %s: %d chars >= threshold %d and no embedded images",
+                    "Skipping page %d of %s: no embedded images and only %d drawings (threshold %d)",
                     page_num + 1,
                     path.name,
-                    text_chars,
-                    min_text_chars,
+                    drawing_count,
+                    min_drawings,
                 )
                 continue
 
+            page_text = page.get_text("text") or ""
             zoom = render_dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
@@ -132,7 +130,6 @@ def load_images_from_pdf(
                     metadata={
                         "source_file": path.name,
                         "page_number": str(page_num + 1),
-                        "page_text_chars": str(text_chars),
                     },
                     surrounding_text=page_text.strip(),
                 )
@@ -141,10 +138,10 @@ def load_images_from_pdf(
         doc.close()
 
     logger.info(
-        "Extracted %d page images from %s (mode=%s, threshold=%d)",
+        "Extracted %d page images from %s (mode=%s, min_drawings=%d)",
         len(results),
         path.name,
         caption_mode,
-        min_text_chars,
+        min_drawings,
     )
     return results

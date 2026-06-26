@@ -132,14 +132,14 @@ class VectorStoreManager:
     def _get_pdf_caption_settings(self) -> tuple[str, int, int]:
         """Return PDF captioning settings from flat config keys."""
         caption_mode = self._captioning_config.get("caption_mode", "gated")
-        min_text_chars = int(self._captioning_config.get("min_text_chars", 200))
+        min_drawings = int(self._captioning_config.get("min_drawings", 5))
         render_dpi = int(
             self._captioning_config.get(
                 "render_dpi",
                 self._captioning_config.get("dpi", 150),
             )
         )
-        return caption_mode, min_text_chars, render_dpi
+        return caption_mode, min_drawings, render_dpi
 
     def _generate_caption_chunks(
         self, file_path: str, filehash: str, file_level_metadata: Dict
@@ -156,7 +156,7 @@ class VectorStoreManager:
         path = Path(file_path)
         filename = path.name
         ext = path.suffix.lower()
-        caption_mode, min_text_chars, render_dpi = self._get_pdf_caption_settings()
+        caption_mode, min_drawings, render_dpi = self._get_pdf_caption_settings()
 
         image_docs = []
         if is_image_file(file_path):
@@ -170,7 +170,7 @@ class VectorStoreManager:
                 image_docs = load_images_from_pdf(
                     path,
                     caption_mode=caption_mode,
-                    min_text_chars=min_text_chars,
+                    min_drawings=min_drawings,
                     render_dpi=render_dpi,
                 )
             except Exception as exc:
