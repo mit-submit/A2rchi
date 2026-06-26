@@ -120,9 +120,11 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#mattermost-interface">Mattermost Interface</a>
+    <li class="toctree-l2"><a class="reference internal" href="#jira-ticket-responder-service">Jira Ticket Responder Service</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#configuration_4">Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#behavior">Behavior</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#secrets_2">Secrets</a>
     </li>
@@ -130,7 +132,7 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#grafana-monitoring">Grafana Monitoring</a>
+    <li class="toctree-l2"><a class="reference internal" href="#mattermost-interface">Mattermost Interface</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#configuration_5">Configuration</a>
     </li>
@@ -140,15 +142,25 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#grader-interface">Grader Interface</a>
+    <li class="toctree-l2"><a class="reference internal" href="#grafana-monitoring">Grafana Monitoring</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#requirements">Requirements</a>
-    </li>
     <li class="toctree-l3"><a class="reference internal" href="#configuration_6">Configuration</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#secrets_4">Secrets</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#running_5">Running</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#grader-interface">Grader Interface</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#requirements">Requirements</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_7">Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#secrets_5">Secrets</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#running_6">Running</a>
     </li>
         </ul>
     </li>
@@ -489,20 +501,56 @@ SENDER_PW=...
 <pre><code class="language-bash">archi create [...] --services chatbot,redmine-mailer
 </code></pre>
 <hr />
+<h2 id="jira-ticket-responder-service">Jira Ticket Responder Service</h2>
+<p>Polls configured Jira projects for recently updated tickets in the configured eligible statuses, answers tickets that do not already contain a comment from the Jira ticket responder account, and posts the answer as a role-restricted Jira comment for operators to approve.</p>
+<h3 id="configuration_4">Configuration</h3>
+<pre><code class="language-yaml">services:
+  jira_ticket_responder:
+    url: https://its.cern.ch/jira/
+    projects:
+      - CMSTZ
+      - CMSDM
+    visible_to_role: Developers
+    poll_interval_minutes: 1  # Optional; defaults to 1.
+    lookback_days: 7          # Optional; defaults to 7.
+    eligible_statuses:        # Optional; defaults to [&quot;Open&quot;, &quot;In Progress&quot;].
+      - Open
+      - In Progress
+</code></pre>
+<p>The <code>jira_ticket_responder</code> service uses <code>services.jira_ticket_responder</code> only. Do not add <code>enabled</code>; process enablement is controlled by <code>--services jira_ticket_responder</code>.</p>
+<h3 id="behavior">Behavior</h3>
+<ul>
+<li>Each poll searches configured projects and <code>eligible_statuses</code> with a rolling Jira JQL window of <code>updated &gt;= "-&lt;lookback_days&gt;d"</code>, so tickets updated while the service was down are still considered while they remain in the configured lookback window.</li>
+<li>The service checks Jira comments newest-first by author identity and skips the ticket as soon as it finds a comment from the ticket responder account. Existing comments are not included in the Archi prompt at the moment.</li>
+<li>There is no per-poll answer cap. This MVP is intended for low-volume projects; Jira, Archi, or provider rate failures are logged per ticket and retried only by a later poll while the ticket remains in the configured lookback window and has no comment from the ticket responder account.</li>
+<li>Jira comments include the Archi answer and, when Archi returns them, capped Jira wiki-rendered <code>{panel}</code> sections for reasoning trace and tool calls. The service uses standard Jira wiki panels and <code>{noformat}</code> blocks, not collapsible expand macros.</li>
+<li>The Jira comment is posted before conversation persistence. If posting fails, nothing is persisted; if persistence fails after posting, the Jira comment remains.</li>
+</ul>
+<h3 id="secrets_2">Secrets</h3>
+<pre><code class="language-bash">JIRA_TICKET_RESPONDER_PAT=...
+PG_PASSWORD=...
+# Add the API key required by the resolved Archi provider, such as OPENAI_API_KEY.
+</code></pre>
+<p><code>JIRA_PAT</code> is used by the Jira data source for read-only ingestion. <code>JIRA_TICKET_RESPONDER_PAT</code> is used by the ticket responder service to browse issues and add restricted comments. Use distinct Jira accounts for least privilege, and keep the ticket responder token tied to a dedicated account because any comment from that account is treated as an existing responder answer.</p>
+<p>Include any provider key required by the resolved Archi provider in the <code>.env</code> passed to <code>archi create</code> so it is copied into the deployment. Provider key validation is handled by Archi during agent startup.</p>
+<h3 id="running_3">Running</h3>
+<pre><code class="language-bash">archi create [...] --services chatbot,jira_ticket_responder
+</code></pre>
+<hr />
 <h2 id="mattermost-interface">Mattermost Interface</h2>
 <p>Reads posts from a Mattermost forum and posts draft responses to a specified channel.</p>
-<h3 id="configuration_4">Configuration</h3>
+<h3 id="configuration_5">Configuration</h3>
 <pre><code class="language-yaml">services:
   mattermost:
     update_time: 60
 </code></pre>
-<h3 id="secrets_2">Secrets</h3>
+<h3 id="secrets_3">Secrets</h3>
 <pre><code class="language-bash">MATTERMOST_WEBHOOK=...
 MATTERMOST_PAK=...
 MATTERMOST_CHANNEL_ID_READ=...
 MATTERMOST_CHANNEL_ID_WRITE=...
 </code></pre>
-<h3 id="running_3">Running</h3>
+<h3 id="running_4">Running</h3>
 <pre><code class="language-bash">archi create [...] --services chatbot,mattermost
 </code></pre>
 <hr />
@@ -512,16 +560,16 @@ MATTERMOST_CHANNEL_ID_WRITE=...
 <blockquote>
 <p><strong>Note:</strong> If redeploying with an existing name (without removing volumes), the PostgreSQL Grafana user may not have been created. Deploy a fresh instance to avoid issues.</p>
 </blockquote>
-<h3 id="configuration_5">Configuration</h3>
+<h3 id="configuration_6">Configuration</h3>
 <pre><code class="language-yaml">services:
   grafana:
     external_port: 3000
 </code></pre>
-<h3 id="secrets_3">Secrets</h3>
+<h3 id="secrets_4">Secrets</h3>
 <pre><code class="language-bash">PG_PASSWORD=&lt;your_database_password&gt;
 GRAFANA_PG_PASSWORD=&lt;grafana_db_password&gt;
 </code></pre>
-<h3 id="running_4">Running</h3>
+<h3 id="running_5">Running</h3>
 <pre><code class="language-bash">archi create [...] --services chatbot,grafana
 </code></pre>
 <p>After deployment, access Grafana at <code>your-hostname:3000</code>. The default login is <code>admin</code>/<code>admin</code> — you'll be prompted to change the password on first login. Navigate to <strong>Menu → Dashboards → Archi → Archi Usage</strong> for the main dashboard.</p>
@@ -541,7 +589,7 @@ GRAFANA_PG_PASSWORD=&lt;grafana_db_password&gt;
 <li><strong><code>solution_with_rubric_*.txt</code></strong>: One file per problem, named with the problem number. Begins with the problem name and a line of dashes.</li>
 <li><strong><code>admin_password.txt</code></strong>: Admin code for resetting student attempts (passed as a secret).</li>
 </ul>
-<h3 id="configuration_6">Configuration</h3>
+<h3 id="configuration_7">Configuration</h3>
 <pre><code class="language-yaml">services:
   grader_app:
     provider: local
@@ -557,10 +605,10 @@ GRAFANA_PG_PASSWORD=&lt;grafana_db_password&gt;
   chat_app:
     trained_on: &quot;rubrics, class info, etc.&quot;
 </code></pre>
-<h3 id="secrets_4">Secrets</h3>
+<h3 id="secrets_5">Secrets</h3>
 <pre><code class="language-bash">ADMIN_PASSWORD=your_password
 </code></pre>
-<h3 id="running_5">Running</h3>
+<h3 id="running_6">Running</h3>
 <pre><code class="language-bash">archi create [...] --services grader
 </code></pre>
               

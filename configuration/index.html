@@ -611,6 +611,7 @@ services:
 </table>
 <h3 id="other-services">Other Services</h3>
 <ul>
+<li><strong><code>services.jira_ticket_responder</code></strong>: Requires <code>url</code>, <code>projects</code> (a non-empty list of Jira project keys using uppercase letters, digits, or underscores and starting with a letter), and <code>visible_to_role</code>. Optional fields are <code>poll_interval_minutes</code> (defaults to <code>1</code>), <code>lookback_days</code> (defaults to <code>7</code>), <code>eligible_statuses</code> (defaults to <code>["Open", "In Progress"]</code>), <code>agent_class</code>, <code>agents_dir</code>, <code>default_provider</code>, and <code>default_model</code>; <code>agent_class</code> defaults to <code>CMSCompOpsAgent</code>, while provider/model default from <code>services.chat_app</code>. Do not add <code>enabled</code>; run the process with <code>--services jira_ticket_responder</code>.</li>
 <li><strong><code>services.piazza</code></strong>: Requires <code>network_id</code>, <code>agent_class</code>, <code>provider</code>, <code>model</code></li>
 <li><strong><code>services.mattermost</code></strong>: Requires <code>update_time</code></li>
 <li><strong><code>services.redmine_mailbox</code></strong>: Requires <code>url</code>, <code>project</code>, <code>redmine_update_time</code>, <code>mailbox_update_time</code></li>
