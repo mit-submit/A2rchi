@@ -361,6 +361,12 @@ class ConfigurationManager:
                 raise ValueError(
                     f"Invalid field: 'services.jira_ticket_responder.{key}' must be a positive integer"
                 )
+        if "respond_to_mentions" in jira_cfg and not isinstance(
+            jira_cfg["respond_to_mentions"], bool
+        ):
+            raise ValueError(
+                "Invalid field: 'services.jira_ticket_responder.respond_to_mentions' must be a boolean"
+            )
 
     def _validate_source_fields(
         self, config: Dict[str, Any], sources: List[str]
