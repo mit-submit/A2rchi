@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set, Tuple
 import re
+import threading
 import time
 import uuid
 
@@ -55,6 +56,11 @@ class BaseReActAgent:
         self._active_memory: Optional[RunMemory] = None
         self._static_tools: Optional[List[Callable]] = None
         self._mcp_tools: Optional[List[Callable]] = None
+        # Serializes MCP tool calls: all MCP tools share one client/session on a
+        # single background loop, so concurrent calls (when the model emits
+        # parallel tool calls) corrupt response routing and leak server-side
+        # connections. Holding this lock makes parallel calls run one at a time.
+        self._mcp_call_lock = threading.Lock()
         self._mcp_skills_text: str = ""
         self._active_tools: List[Callable] = []
         self._static_middleware: Optional[List[Callable]] = None
@@ -1159,8 +1165,9 @@ class BaseReActAgent:
                 - Runs on the SAME loop where the client was initialized
                 - Session streams remain valid
                 """
-                # Capture the runner in closure
+                # Capture the runner + the shared MCP call lock in closure
                 runner = self._async_runner
+                mcp_call_lock = self._mcp_call_lock
                 tool_name = async_tool.name
 
                 def sync_wrapper(*args, **kwargs):
@@ -1179,8 +1186,11 @@ class BaseReActAgent:
                         logger.debug(
                             "Failed to record MCP tool input for %s: %s", tool_name, exc
                         )
-                    # Run on the background loop - NOT a new loop!
-                    return runner.run(async_tool.coroutine(*args, **kwargs))
+                    # Run on the background loop - NOT a new loop! Serialize via
+                    # the shared lock so parallel tool calls can't hit the single
+                    # MCP session concurrently (which deadlocks + leaks connections).
+                    with mcp_call_lock:
+                        return runner.run(async_tool.coroutine(*args, **kwargs))
 
                 # Assign the wrapper to the tool's 'func' attribute
                 async_tool.func = sync_wrapper
