@@ -152,6 +152,19 @@ class ServiceRegistry:
         ))
 
         self.register(ServiceDefinition(
+            name='jira_ticket_responder',
+            description='Jira integration service for responding to tickets',
+            category='integration',
+            depends_on=['postgres'],
+            required_secrets=['JIRA_TICKET_RESPONDER_PAT'],
+            required_config_fields=[
+                'services.jira_ticket_responder.url',
+                'services.jira_ticket_responder.projects',
+                'services.jira_ticket_responder.visible_to_role',
+            ],
+        ))
+
+        self.register(ServiceDefinition(
             name='benchmarking',
             depends_on=['postgres'],
             requires_volume=True, 

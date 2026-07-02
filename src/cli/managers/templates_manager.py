@@ -390,7 +390,7 @@ class TemplateManager:
                 self._apply_host_mode_port_overrides(updated_config)
 
             services_cfg = updated_config.get("services", {})
-            for service_name in ("chat_app", "redmine_mailbox", "piazza"):
+            for service_name in ("chat_app", "redmine_mailbox", "piazza", "jira_ticket_responder"):
                 service_cfg = services_cfg.get(service_name)
                 if isinstance(service_cfg, dict):
                     service_cfg["agents_dir"] = DEPLOYMENT_AGENTS_DIR

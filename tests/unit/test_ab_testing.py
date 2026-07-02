@@ -422,7 +422,7 @@ def test_stream_ab_comparison_emits_per_arm_final_before_ab_meta():
     chat._get_last_user_message_id = Mock(return_value=100)
     chat.conv_service = Mock()
     chat.conv_service.create_ab_comparison.return_value = 42
-    chat.current_pipeline_used = "react"
+    chat.services_config = {"chat_app": {"agent_class": "react"}}
 
     events = list(
         chat.stream_ab_comparison(

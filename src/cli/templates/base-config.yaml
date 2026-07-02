@@ -88,6 +88,20 @@ services:
     answer_tag: {{ services.redmine_mailbox.answer_tag | default('-- archi -- Resolving email was sent', true) }}
     imap4_port: {{ services.redmine_mailbox.imap4_port | default(993, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
+    default_provider: {{ services.redmine_mailbox.default_provider | default('local', true) }}
+    default_model: {{ services.redmine_mailbox.default_model | default('qwen3:32b', true) }}
+    providers: {{ services.redmine_mailbox.providers | default({"local": {"enabled": true, "base_url": "http://localhost:11434", "mode": "ollama", "default_model": "llama3.2", "models": ["llama3.2"]}}) | tojson }}
+  jira_ticket_responder:
+    url: {{ services.jira_ticket_responder.url | default('', true) | tojson }}
+    projects: {{ services.jira_ticket_responder.projects | default([], true) | tojson }}
+    visible_to_role: {{ services.jira_ticket_responder.visible_to_role | default('', true) | tojson }}
+    poll_interval_minutes: {{ services.jira_ticket_responder.poll_interval_minutes | default(1, true) }}
+    lookback_days: {{ services.jira_ticket_responder.lookback_days | default(7, true) }}
+    eligible_statuses: {{ services.jira_ticket_responder.eligible_statuses | default(["Open", "In Progress"], true) | tojson }}
+    agent_class: {{ services.jira_ticket_responder.agent_class | default('CMSCompOpsAgent', true) }}
+    agents_dir: "{{ services.jira_ticket_responder.agents_dir | default('', true) }}"
+    default_provider: {{ services.jira_ticket_responder.default_provider | default(services.chat_app.default_provider | default('local', true), true) }}
+    default_model: {{ services.jira_ticket_responder.default_model | default(services.chat_app.default_model | default('llama3.2', true), true) }}
   postgres:
     port: {{ services.postgres.port | default(5432, true) }}
     user: {{ services.postgres.user | default('archi', true) }}
@@ -141,7 +155,7 @@ services:
       {%- if services.chat_app.ab_testing.force_yaml_override is defined %}
       force_yaml_override: {{ services.chat_app.ab_testing.force_yaml_override | default(false, true) }}
       {%- endif %}
-      comparison_rate: {{ services.chat_app.ab_testing.comparison_rate | default(services.chat_app.ab_testing.sample_rate | default(0.2, true), true) }}
+      comparison_rate: {{ services.chat_app.ab_testing.comparison_rate | default(services.chat_app.ab_testing.sample_rate | default(0.0)) }}
       variant_label_mode: {{ services.chat_app.ab_testing.variant_label_mode | default(services.chat_app.ab_testing.disclosure_mode | default("post_vote_reveal", true), true) }}
       activity_panel_default_state: {{ services.chat_app.ab_testing.activity_panel_default_state | default(services.chat_app.ab_testing.default_trace_mode | default("hidden", true), true) }}
       max_pending_comparisons_per_conversation: {{ services.chat_app.ab_testing.max_pending_comparisons_per_conversation | default(services.chat_app.ab_testing.max_pending_per_conversation | default(1, true), true) }}

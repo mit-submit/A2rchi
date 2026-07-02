@@ -470,6 +470,60 @@ services:
     {%- endif %}
   {%- endif %}
 
+  {% if jira_ticket_responder_enabled -%}
+  jira_ticket_responder:
+    image: {{ jira_ticket_responder_image }}:{{ jira_ticket_responder_tag }}
+    build:
+      context: .
+      dockerfile: archi_code/cli/templates/dockerfiles/Dockerfile-jira
+      args:
+        APP_VERSION: {{ app_version }}
+    container_name: {{ jira_ticket_responder_container_name }}
+    {% if postgres_enabled -%}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-seed:
+        condition: service_completed_successfully
+    {% endif -%}
+    environment:
+      PGHOST: {{ 'localhost' if host_mode else 'postgres' }}
+      PGPORT: {{ postgres_port }}
+      PGDATABASE: archi-db
+      PGUSER: archi
+      PG_PASSWORD: ${PG_PASSWORD}
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      {% for secret in required_secrets | default([]) -%}
+      {{ secret.upper() }}_FILE: /run/secrets/{{ secret.lower() }}
+      {% endfor %}
+      VERBOSITY: {{ verbosity }}
+    env_file:
+      - .env
+    secrets:
+      {% for secret in required_secrets | default([]) -%}
+      - {{ secret.lower() }}
+      {% endfor %}
+    volumes:
+      - {{ data_manager_volume_name }}:/root/data/
+      - ./configs:/root/archi/configs
+      - ./data/prompts:/root/archi/data/prompts:ro
+      - ./data/agents:/root/archi/agents:ro
+      - ./data/skills:/root/archi/skills:ro
+      {% for prompt_file in prompt_files | default([]) -%}
+      - ./{{ prompt_file }}:/root/archi/{{ prompt_file }}
+      {% endfor %}
+      {% if gpu_ids -%}
+      - archi-models:/root/models/
+      {%- endif %}
+    logging:
+      options:
+        max-size: 10m
+    restart: always
+    {% if host_mode -%}
+    network_mode: host
+    {% endif %}
+  {%- endif %}
+
   {% if redmine_mailer_enabled -%}
   redmine:
     image: {{ redmine_mailer_image }}-redmine:{{ redmine_mailer_tag }}
@@ -714,7 +768,7 @@ services:
     logging:
       options:
         max-size: 10m
-    restart: on-failure
+    restart: always
     {%- if host_mode %}
     network_mode: host
     {%- endif %}
