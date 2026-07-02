@@ -222,9 +222,56 @@ mcp_servers:
 
 Each server entry follows the format expected by the `langchain-mcp-adapters` library:
 
-- **`transport`**: Communication method — `"stdio"` (subprocess) or `"sse"` (HTTP Server-Sent Events)
+- **`transport`**: Communication method — `"stdio"` (subprocess), `"streamable_http"` (HTTP), or `"sse"` (HTTP Server-Sent Events)
 - **`command`** / **`args`**: For `stdio` transport, the command to launch the server
-- **`url`**: For `sse` transport, the server endpoint
+- **`url`** / **`headers`**: For HTTP-based transports, the server endpoint and optional request headers
+
+### `.mcp.json` (Claude-compatible)
+
+Instead of (or in addition to) the YAML block, servers can be declared in a
+`.mcp.json` file placed **next to the deployment config** — the same
+project-scoped file format used by Claude Code and other MCP clients, so one
+file can serve both:
+
+```json
+{
+  "mcpServers": {
+    "local-tools": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-example"]
+    },
+    "remote-api": {
+      "type": "http",
+      "url": "https://example.org/mcp",
+      "headers": {"Authorization": "Bearer ${MCP_API_TOKEN}"}
+    }
+  }
+}
+```
+
+Details:
+
+- **Discovery**: `archi create` looks for `.mcp.json` in the same directory as
+  each `--config` file. To use a different file, set `mcp_servers_file:
+  path/to/servers.json` in the YAML config (relative paths resolve against the
+  config file).
+- **Field mapping**: Claude's `type` values map onto transports — `"stdio"` →
+  `stdio`, `"http"` → `streamable_http`, `"sse"` → `sse`. When `type` is
+  omitted it is inferred: entries with `command` are stdio, entries with `url`
+  are HTTP. Archi-only fields (`path`, `host_file_mounts`, `env_from_secrets`,
+  `build_context`, `image`, `skill`) are allowed in entries and behave exactly
+  as in the YAML block; MCP clients like Claude Code ignore fields they don't
+  know, so the file stays shareable.
+- **Precedence**: if a server name appears in both `.mcp.json` and the YAML
+  `mcp_servers:` block, the YAML definition wins (a warning is logged).
+- **Environment variable expansion**: string values may reference `${VAR}` or
+  `${VAR:-default}` (Claude Code's syntax). Expansion happens **at connect
+  time inside the service container**, against the container's environment —
+  so secrets like the bearer token above come from the deployment's env/secret
+  wiring and are never baked into rendered config files. A reference to an
+  unset variable with no default disables that server with a clear error in
+  the logs. (Expansion applies to YAML-defined servers too.)
 
 ### Agent Spec Example
 

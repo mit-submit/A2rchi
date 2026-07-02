@@ -8,6 +8,7 @@ from langchain.tools import BaseTool
 
 from src.utils.config_access import get_mcp_servers_config, get_full_config
 from src.utils.logging import get_logger
+from src.utils.mcp_json import expand_env_placeholders
 from src.archi.pipelines.agents.utils.skill_utils import load_skill
 
 logger = get_logger(__name__)
@@ -70,6 +71,7 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
     }
     client_configs: dict[str, dict] = {}
     server_skills: dict[str, str] = {}
+    failed_servers: dict[str, str] = {}
     full_config = get_full_config()
     for name, server_cfg in mcp_servers.items():
         # Load any declared skill so we can append it to this server's tool descriptions.
@@ -80,6 +82,17 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
                 server_skills[name] = skill_content
 
         cfg = {k: v for k, v in server_cfg.items() if k not in _archi_only_fields}
+        # Expand ${VAR} / ${VAR:-default} placeholders (the Claude .mcp.json syntax)
+        # against this process's env at connect time — so secrets referenced from
+        # url/headers/env come from the container environment instead of being
+        # baked into rendered configs. Must run BEFORE the stdio os.environ merge
+        # below: only declared values get expanded, never the inherited host env.
+        try:
+            cfg = expand_env_placeholders(cfg, os.environ)
+        except ValueError as e:
+            logger.error(f"Skipping MCP server '{name}': {e}")
+            failed_servers[name] = str(e)
+            continue
         transport = cfg.get("transport")
         if transport == "stdio":
             # stdio subprocesses inherit nothing by default (mcp.client.stdio uses
@@ -96,7 +109,6 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
     client = MultiServerMCPClient(client_configs)
 
     all_tools: List[BaseTool] = []
-    failed_servers: dict[str, str] = {}
 
     for name in client_configs.keys():
         try:

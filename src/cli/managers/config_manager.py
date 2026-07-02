@@ -10,6 +10,7 @@ from src.cli.source_registry import source_registry
 from src.utils.ab_testing import ABPool, ABPoolError, load_ab_pool_state
 from src.utils.jira import parse_jira_project_keys
 from src.utils.logging import get_logger
+from src.utils.mcp_json import MCP_JSON_FILENAME, load_mcp_json
 
 logger = get_logger(__name__)
 
@@ -55,7 +56,41 @@ class ConfigurationManager:
         # Track origin for relative-path resolution (e.g., prompts).
         config["_config_path"] = str(config_filepath)
 
+        self._merge_mcp_json(config, config_filepath)
+
         return config
+
+    @staticmethod
+    def _merge_mcp_json(config: Dict[str, Any], config_filepath: Path) -> None:
+        """Merge MCP servers from a Claude-style .mcp.json into config['mcp_servers'].
+
+        The file is the one named by the config's optional `mcp_servers_file` key
+        (resolved relative to the config file), else a `.mcp.json` sitting next to
+        the config file. On a name collision the YAML `mcp_servers` entry wins, so
+        a deployment config can override individual servers from the shared file.
+        """
+        explicit = config.get("mcp_servers_file")
+        if explicit:
+            candidate = Path(str(explicit)).expanduser()
+            mcp_json_path = candidate if candidate.is_absolute() else config_filepath.parent / candidate
+            if not mcp_json_path.exists():
+                raise FileNotFoundError(
+                    f"mcp_servers_file '{explicit}' (from {config_filepath}) not found at {mcp_json_path}"
+                )
+        else:
+            mcp_json_path = config_filepath.parent / MCP_JSON_FILENAME
+            if not mcp_json_path.exists():
+                return
+
+        file_servers = load_mcp_json(mcp_json_path)
+        yaml_servers = config.get("mcp_servers") or {}
+        overlap = sorted(file_servers.keys() & yaml_servers.keys())
+        if overlap:
+            logger.warning(
+                f"MCP servers defined in both {mcp_json_path} and the YAML config: "
+                f"{overlap}; keeping the YAML definitions"
+            )
+        config["mcp_servers"] = {**file_servers, **yaml_servers}
 
     def _append(self, config):
         """Appends configuration to the config list if the static portions are equivalent to the previous one."""
