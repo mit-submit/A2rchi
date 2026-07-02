@@ -18,8 +18,8 @@ logger = get_logger(__name__)
 def mcp_http_client_factory(**kwargs) -> httpx.AsyncClient:
     if "verify" in kwargs:
         kwargs.setdefault("verify", kwargs["verify"])
-    user = read_secret("OS_USERNAME") or None
-    password = read_secret("OS_PASSWORD") or None
+    user = read_secret("MCP_HTTP_USERNAME") or None
+    password = read_secret("MCP_HTTP_PASSWORD") or None
     if user and password:
         auth_bytes = f"{user}:{password}".encode("utf-8")
         auth_b64 = base64.b64encode(auth_bytes).decode("utf-8")
