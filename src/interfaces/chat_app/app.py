@@ -2654,12 +2654,15 @@ class FlaskAppWrapper(object):
                 auth_enabled=_mcp_auth_required,
                 public_url=_mcp_public_url or None,
             )
-            self.add_endpoint('/.well-known/oauth-authorization-server', 'oauth_metadata', self.oauth_metadata, methods=['GET'])
-            self.add_endpoint('/.well-known/oauth-protected-resource', 'oauth_protected_resource', self.oauth_protected_resource, methods=['GET'])
-            self.add_endpoint('/mcp/oauth/register', 'oauth_register', self.oauth_register, methods=['POST'])
-            self.add_endpoint('/mcp/oauth/authorize', 'oauth_authorize', self.oauth_authorize, methods=['GET'])
-            self.add_endpoint('/mcp/oauth/token', 'oauth_token', self.oauth_token, methods=['POST'])
-            if self.auth_enabled:
+            # The OAuth surface only exists when bearer auth is enforced —
+            # with an open endpoint there is no user identity to bind tokens
+            # to, and /mcp/oauth/authorize would dead-end without a login page.
+            if _mcp_auth_required:
+                self.add_endpoint('/.well-known/oauth-authorization-server', 'oauth_metadata', self.oauth_metadata, methods=['GET'])
+                self.add_endpoint('/.well-known/oauth-protected-resource', 'oauth_protected_resource', self.oauth_protected_resource, methods=['GET'])
+                self.add_endpoint('/mcp/oauth/register', 'oauth_register', self.oauth_register, methods=['POST'])
+                self.add_endpoint('/mcp/oauth/authorize', 'oauth_authorize', self.oauth_authorize, methods=['GET'])
+                self.add_endpoint('/mcp/oauth/token', 'oauth_token', self.oauth_token, methods=['POST'])
                 self.add_endpoint('/mcp/auth', 'mcp_auth', self.mcp_auth, methods=['GET'])
                 self.add_endpoint('/mcp/auth/regenerate', 'mcp_auth_regenerate', self.mcp_auth_regenerate, methods=['POST'])
         else:
