@@ -173,8 +173,9 @@
           <div class="danger-zone">
             <h2>Rotate token</h2>
             <p style="font-size:0.85rem;color:#555;margin:0 0 12px">
-              Regenerate a new token. Your current token will stop working immediately.
-              OAuth sessions are unaffected.
+              Regenerate a new token. All existing tokens for your account —
+              including ones issued to MCP clients via OAuth — stop working
+              immediately, and connected clients must re-authenticate.
             </p>
             <form class="regen-form" method="POST" action="/mcp/auth/regenerate"
                   onsubmit="return confirm('Regenerate your MCP token? The current token will be invalidated.')">

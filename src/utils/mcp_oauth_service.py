@@ -40,12 +40,20 @@ class MCPOAuthService:
     def __init__(self, pg_config: dict = None, app_base_url: str = ""):
         self.pg_config = pg_config or {}
         self.app_base_url = app_base_url.rstrip("/")
-        self._encryption_key = (
-            read_secret("BYOK_ENCRYPTION_KEY")
-            or read_secret("PG_ENCRYPTION_KEY")
-            or read_secret("UPLOADER_SALT")
-            or read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
-        )
+        self._encryption_key = read_secret("BYOK_ENCRYPTION_KEY")
+        if not self._encryption_key:
+            fallback = (
+                read_secret("PG_ENCRYPTION_KEY")
+                or read_secret("UPLOADER_SALT")
+                or read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
+            )
+            if fallback:
+                logger.warning(
+                    "MCPOAuthService: BYOK_ENCRYPTION_KEY not set — falling back to another "
+                    "configured secret for token encryption. Set BYOK_ENCRYPTION_KEY explicitly; "
+                    "changing the effective key later makes previously stored tokens undecryptable."
+                )
+            self._encryption_key = fallback
         if not self._encryption_key:
             logger.warning("MCPOAuthService: no encryption key found — tokens will not be persisted")
 
@@ -241,9 +249,12 @@ class MCPOAuthService:
 
         new_access = token_data.get("access_token")
         new_refresh = token_data.get("refresh_token") or refresh_token
-        expires_in = int(token_data.get("expires_in", 3600))
+        expires_in = int(token_data.get("expires_in") or 3600)
         if new_access:
-            self.store_user_token(user_id, server_name, new_access, new_refresh, expires_in)
+            # renew_session=False: a silent refresh must not extend the hard
+            # session window — only a full re-authorization does.
+            self.store_user_token(user_id, server_name, new_access, new_refresh,
+                                  expires_in, renew_session=False)
         return new_access
 
     # ------------------------------------------------------------------
@@ -251,9 +262,18 @@ class MCPOAuthService:
     # ------------------------------------------------------------------
 
     def store_user_token(self, user_id: str, server_name: str, access_token: str,
-                          refresh_token: Optional[str], expires_in: int = 3600) -> None:
+                          refresh_token: Optional[str], expires_in: int = 3600,
+                          renew_session: bool = True) -> bool:
+        """Persist a user's token for an MCP server.
+
+        Returns True on success. Returns False when no encryption key is
+        configured or the write fails (e.g. FK violation) — callers must not
+        assume the token is retrievable afterwards.
+        """
         if not self._encryption_key:
-            return
+            logger.warning(f"Cannot store MCP token for user={user_id!r}, server={server_name!r}: "
+                           "no encryption key configured")
+            return False
 
         now = datetime.now(timezone.utc)
         access_expires_at = now + timedelta(seconds=expires_in)
@@ -275,7 +295,8 @@ class MCPOAuthService:
                             access_token            = EXCLUDED.access_token,
                             refresh_token           = EXCLUDED.refresh_token,
                             access_token_expires_at = EXCLUDED.access_token_expires_at,
-                            session_expires_at      = EXCLUDED.session_expires_at,
+                            session_expires_at      = CASE WHEN %s THEN EXCLUDED.session_expires_at
+                                                           ELSE mcp_oauth_tokens.session_expires_at END,
                             updated_at              = NOW()
                         """,
                         (
@@ -283,13 +304,16 @@ class MCPOAuthService:
                             access_token, self._encryption_key,
                             refresh_token or "", self._encryption_key,
                             access_expires_at, session_expires_at,
+                            renew_session,
                         ),
                     )
                 conn.commit()
             logger.info(f"Stored MCP token for user={user_id!r}, server={server_name!r}, "
                         f"expires={access_expires_at.isoformat()}")
+            return True
         except Exception as e:
             logger.error(f"Failed to store MCP token for user={user_id!r}, server={server_name!r}: {e}")
+            return False
 
     def get_access_token(self, user_id: str, server_name: str) -> Optional[str]:
         """Return a valid access token, silently refreshing if expired."""

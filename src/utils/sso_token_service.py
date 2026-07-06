@@ -38,12 +38,20 @@ class SSOTokenService:
         self.pg_config = pg_config or {}
         self.token_endpoint = token_endpoint
         self.session_lifetime_days = session_lifetime_days
-        self._encryption_key = (
-            read_secret("BYOK_ENCRYPTION_KEY")
-            or read_secret("PG_ENCRYPTION_KEY")
-            or read_secret("UPLOADER_SALT")
-            or read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
-        )
+        self._encryption_key = read_secret("BYOK_ENCRYPTION_KEY")
+        if not self._encryption_key:
+            fallback = (
+                read_secret("PG_ENCRYPTION_KEY")
+                or read_secret("UPLOADER_SALT")
+                or read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
+            )
+            if fallback:
+                logger.warning(
+                    "SSOTokenService: BYOK_ENCRYPTION_KEY not set — falling back to another "
+                    "configured secret for token encryption. Set BYOK_ENCRYPTION_KEY explicitly; "
+                    "changing the effective key later makes previously stored tokens undecryptable."
+                )
+            self._encryption_key = fallback
         if not self._encryption_key:
             logger.warning(
                 "SSOTokenService: no encryption key found "
@@ -61,8 +69,13 @@ class SSOTokenService:
         access_token: str,
         refresh_token: Optional[str],
         expires_in: int = 300,
+        renew_session: bool = True,
     ) -> None:
-        """Persist access + refresh tokens after a successful SSO login."""
+        """Persist access + refresh tokens after a successful SSO login.
+
+        renew_session=False (used by silent refresh) keeps the existing hard
+        session window instead of sliding it forward.
+        """
         if not self._encryption_key:
             return
 
@@ -86,7 +99,8 @@ class SSOTokenService:
                             access_token            = EXCLUDED.access_token,
                             refresh_token           = EXCLUDED.refresh_token,
                             access_token_expires_at = EXCLUDED.access_token_expires_at,
-                            session_expires_at      = EXCLUDED.session_expires_at,
+                            session_expires_at      = CASE WHEN %s THEN EXCLUDED.session_expires_at
+                                                           ELSE sso_tokens.session_expires_at END,
                             updated_at              = NOW()
                         """,
                         (
@@ -94,6 +108,7 @@ class SSOTokenService:
                             access_token, self._encryption_key,
                             refresh_token or "", self._encryption_key,
                             access_expires_at, session_expires_at,
+                            renew_session,
                         ),
                     )
                 conn.commit()
@@ -209,9 +224,10 @@ class SSOTokenService:
 
         new_access = new_token.get("access_token")
         new_refresh = new_token.get("refresh_token") or refresh_token
-        expires_in = int(new_token.get("expires_in", 300))
+        expires_in = int(new_token.get("expires_in") or 300)
 
         if new_access:
-            self.store_token(user_id, new_access, new_refresh, expires_in)
+            self.store_token(user_id, new_access, new_refresh, expires_in,
+                             renew_session=False)
 
         return new_access

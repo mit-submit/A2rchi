@@ -182,8 +182,7 @@ _TOOLS = [
                 },
                 "client_timeout": {
                     "type": "number",
-                    "description": "Optional. Request timeout in milliseconds (default 18000000 = 5 hours).",
-                    "default": 18000000,
+                    "description": "Optional. Request timeout in milliseconds. When omitted, the server-side default applies.",
                 },
             },
             "required": ["question"],
@@ -1391,8 +1390,8 @@ def register_mcp_sse(
         with _sessions_lock:
             session_entry = _sessions.get(session_id)
         if session_entry is None:
-            logger.warning("MCP /mcp/messages: unknown session_id=%r (active sessions: %s)",
-                           session_id, list(_sessions.keys()))
+            logger.warning("MCP /mcp/messages: unknown session_id=%r (%d active sessions)",
+                           session_id, len(_sessions))
             return {"error": "unknown or expired session_id"}, 404
 
         q = session_entry["queue"]

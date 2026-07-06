@@ -2644,7 +2644,9 @@ class FlaskAppWrapper(object):
         if self.mcp_enabled:
             logger.info("MCP server enabled – registering /mcp/* endpoints")
             from src.interfaces.chat_app.mcp_sse import register_mcp_sse
-            _mcp_auth_required = self.auth_enabled and self.sso_enabled
+            # Bearer tokens are required whenever the chat app itself requires
+            # auth — regardless of which auth method (SSO, basic) is enabled.
+            _mcp_auth_required = self.auth_enabled
             _mcp_public_url = self.services_config.get('mcp_server', {}).get('url', '').rstrip('/')
             register_mcp_sse(
                 self.app, self,
@@ -2657,7 +2659,7 @@ class FlaskAppWrapper(object):
             self.add_endpoint('/mcp/oauth/register', 'oauth_register', self.oauth_register, methods=['POST'])
             self.add_endpoint('/mcp/oauth/authorize', 'oauth_authorize', self.oauth_authorize, methods=['GET'])
             self.add_endpoint('/mcp/oauth/token', 'oauth_token', self.oauth_token, methods=['POST'])
-            if self.auth_enabled and self.sso_enabled:
+            if self.auth_enabled:
                 self.add_endpoint('/mcp/auth', 'mcp_auth', self.mcp_auth, methods=['GET'])
                 self.add_endpoint('/mcp/auth/regenerate', 'mcp_auth_regenerate', self.mcp_auth_regenerate, methods=['POST'])
         else:
@@ -2756,6 +2758,31 @@ class FlaskAppWrapper(object):
             return jsonify({"error": "invalid_request",
                             "error_description": "response_type=code, code_challenge, and redirect_uri are required"}), 400
 
+        # Validate client_id and redirect_uri against the registered client
+        # (RFC 6749 §4.1.2.1). Without this, an attacker-crafted authorize URL
+        # could exfiltrate a victim's authorization code to an arbitrary
+        # redirect_uri — PKCE does not protect against that, because the
+        # attacker also controls the code_challenge.
+        if not client_id:
+            return jsonify({"error": "invalid_request",
+                            "error_description": "client_id is required"}), 400
+        conn = psycopg2.connect(**self.pg_config)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT redirect_uris FROM mcp_registered_clients WHERE client_id = %s",
+                    (client_id,),
+                )
+                client_row = cur.fetchone()
+        finally:
+            conn.close()
+        if not client_row:
+            return jsonify({"error": "invalid_client",
+                            "error_description": "Unknown client_id — register via /mcp/oauth/register first"}), 400
+        if redirect_uri not in (client_row[0] or []):
+            return jsonify({"error": "invalid_request",
+                            "error_description": "redirect_uri is not registered for this client"}), 400
+
         if not session.get('logged_in'):
             # Preserve all OAuth params so we return here after SSO login.
             session['sso_next'] = request.url
@@ -2825,6 +2852,10 @@ class FlaskAppWrapper(object):
                 if not row:
                     return jsonify({"error": "invalid_grant",
                                     "error_description": "Authorization code is invalid, expired, or already used"}), 400
+
+                # Commit used=TRUE immediately so the code is consumed even if
+                # the PKCE / redirect_uri checks below fail (one-shot semantics).
+                conn.commit()
 
                 user_id, stored_challenge, stored_redirect = row
 
@@ -2987,12 +3018,22 @@ class FlaskAppWrapper(object):
         auth_method = session.get('auth_method', 'unknown')
         user_email = self._get_session_user_email() or 'unknown'
         user_roles = session.get('roles', [])
-        
+
+        # Invalidate the persisted chat-app SSO tokens so a logged-out user's
+        # stored access/refresh tokens cannot keep authenticating MCP servers.
+        _user_id = session.get('user', {}).get('id')
+        if _user_id and hasattr(self, 'sso_token_service'):
+            try:
+                self.sso_token_service.invalidate(_user_id)
+            except Exception as te:
+                logger.warning(f"Failed to invalidate SSO tokens on logout: {te}")
+
         # Clear all session data including roles
         session.pop('user', None)
         session.pop('logged_in', None)
         session.pop('auth_method', None)
         session.pop('roles', None)
+        session.pop('mcp_auth_attempted', None)
         
         # Log logout event
         log_authentication_event(
@@ -3061,7 +3102,7 @@ class FlaskAppWrapper(object):
                         user_id=sso_user_id,
                         access_token=token['access_token'],
                         refresh_token=token.get('refresh_token'),
-                        expires_in=int(token.get('expires_in', 300)),
+                        expires_in=int(token.get('expires_in') or 300),
                     )
                 except Exception as te:
                     logger.warning(f"Failed to persist SSO token for MCP auth: {te}")
@@ -3077,27 +3118,31 @@ class FlaskAppWrapper(object):
             
             logger.info(f"SSO login successful for user: {user_email} with roles: {user_roles}")
 
+            # Resolve any pending post-login redirect (e.g. /mcp/auth or an
+            # in-flight /mcp/oauth/authorize) BEFORE the MCP auth chain so it
+            # is not lost, and thread it through as the chain's final target.
+            next_url = session.pop('sso_next', None) or url_for('index')
+
             # After login, authorize any MCP servers that need it.
-            # Use preferred_username as the token key: it is stable across
-            # sessions and shared by other Archi entry points.
-            mcp_user_id = user_info.get('preferred_username', '') or sso_user_id
+            # Key tokens by the SSO subject id — the same identifier used to
+            # upsert the users row and passed as user_id on chat requests.
+            mcp_user_id = sso_user_id
             if hasattr(self, 'mcp_oauth_service') and mcp_user_id:
                 try:
                     from src.utils.config_access import get_mcp_servers_config as _get_mcp
                     mcp_servers = _get_mcp()
                     needing = self.mcp_oauth_service.get_servers_needing_auth(mcp_user_id, mcp_servers)
+                    # Skip servers already attempted this session — a failing
+                    # store must not trap the user in a login redirect loop.
+                    attempted = set(session.get('mcp_auth_attempted', []))
+                    needing = [s for s in needing if s not in attempted]
                     if needing:
                         logger.info(f"Redirecting user {mcp_user_id!r} to authorize MCP server(s): {needing}")
-                        return redirect(url_for('mcp_authorize', server=needing[0], next=url_for('index')))
+                        return redirect(url_for('mcp_authorize', server=needing[0], next=next_url))
                 except Exception as me:
                     logger.warning(f"MCP auth check failed after login: {me}")
-            # Honour any pending post-login redirect (e.g. /mcp/auth)
-            next_url = session.pop('sso_next', None)
-            if next_url:
-                return redirect(next_url)
 
-            # Redirect to main page
-            return redirect(url_for('index'))
+            return redirect(next_url)
             
         except Exception as e:
             logger.error(f"SSO callback error: {str(e)}")
@@ -3111,13 +3156,20 @@ class FlaskAppWrapper(object):
             flash(f"Authentication failed: {str(e)}")
             return redirect(url_for('login'))
 
+    @staticmethod
+    def _safe_next_url(candidate: str) -> str:
+        """Only allow same-app relative paths as post-auth redirect targets."""
+        if candidate and candidate.startswith('/') and not candidate.startswith('//'):
+            return candidate
+        return url_for('index')
+
     def mcp_authorize(self):
         """Redirect user to an MCP server's OAuth2 authorization endpoint."""
         if not session.get('logged_in'):
             return redirect(url_for('login'))
 
         server_name = request.args.get('server', '')
-        next_url = request.args.get('next', url_for('index'))
+        next_url = self._safe_next_url(request.args.get('next', ''))
 
         from src.utils.config_access import get_mcp_servers_config as _get_mcp
         mcp_servers = _get_mcp()
@@ -3138,6 +3190,11 @@ class FlaskAppWrapper(object):
         session[f'mcp_verifier_{server_name}'] = code_verifier
         session['mcp_pending_server'] = server_name
         session['mcp_next_url'] = next_url
+        # Record the attempt so a persistently failing server cannot trap the
+        # user in an endless login → authorize → callback redirect loop.
+        attempted = set(session.get('mcp_auth_attempted', []))
+        attempted.add(server_name)
+        session['mcp_auth_attempted'] = list(attempted)
         logger.info(f"Redirecting user to MCP OAuth for server '{server_name}'")
         return redirect(auth_url)
 
@@ -3151,7 +3208,7 @@ class FlaskAppWrapper(object):
         error = request.args.get('error', '')
 
         server_name = session.pop('mcp_pending_server', '')
-        next_url = session.pop('mcp_next_url', url_for('index'))
+        next_url = self._safe_next_url(session.pop('mcp_next_url', ''))
 
         if error or not code or not server_name:
             logger.warning(f"MCP callback error for '{server_name}': error={error!r}, code present={bool(code)}")
@@ -3172,25 +3229,33 @@ class FlaskAppWrapper(object):
             flash(f"MCP authorization failed for '{server_name}': token exchange error.")
             return redirect(next_url)
 
-        # Use preferred_username as the MCP token key so lookups from any
-        # entry point (which pass the SSO preferred_username) find the token.
-        # Fall back to SSO sub UUID only if username is absent.
-        user_id = session.get('user', {}).get('username', '') or session.get('user', {}).get('id', '')
-        self.mcp_oauth_service.store_user_token(
+        # Key tokens by the SSO subject id — the same identifier used to
+        # upsert the users row (FK target) and passed as user_id on chat
+        # requests, so chat-time lookups find the token.
+        user_id = session.get('user', {}).get('id', '')
+        stored = self.mcp_oauth_service.store_user_token(
             user_id=user_id,
             server_name=server_name,
             access_token=token_data['access_token'],
             refresh_token=token_data.get('refresh_token'),
-            expires_in=int(token_data.get('expires_in', 3600)),
+            expires_in=int(token_data.get('expires_in') or 3600),
         )
+        if not stored:
+            logger.error(f"MCP token for user={user_id!r}, server='{server_name}' could not be persisted")
+            flash(f"Authorization with '{server_name}' succeeded but the token could not be stored — "
+                  "check BYOK_ENCRYPTION_KEY and server logs.")
+            return redirect(next_url)
         logger.info(f"MCP OAuth complete for user={user_id!r}, server='{server_name}'")
 
-        # If more servers need auth, chain to next one
+        # If more servers need auth, chain to the next one — but never to a
+        # server already attempted this session (prevents redirect loops).
         if hasattr(self, 'mcp_oauth_service') and user_id:
             try:
                 from src.utils.config_access import get_mcp_servers_config as _get_mcp
                 mcp_servers = _get_mcp()
                 needing = self.mcp_oauth_service.get_servers_needing_auth(user_id, mcp_servers)
+                attempted = set(session.get('mcp_auth_attempted', []))
+                needing = [s for s in needing if s not in attempted]
                 if needing:
                     return redirect(url_for('mcp_authorize', server=needing[0], next=next_url))
             except Exception as me:
