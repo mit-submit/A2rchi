@@ -1071,6 +1071,71 @@ const UI = {
       targetSection.classList.add('active');
       targetSection.hidden = false;
     }
+
+    if (sectionId === 'mcp') {
+      this.loadMcpStatus();
+    }
+  },
+
+  async loadMcpStatus() {
+    const container = document.getElementById('mcp-status-list');
+    if (!container) return;
+    container.innerHTML = '<p class="settings-description">Loading MCP servers…</p>';
+    try {
+      const response = await fetch('/api/mcp/status');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      this.renderMcpStatus(container, data.servers || []);
+    } catch (err) {
+      container.innerHTML = '<p class="settings-description">Failed to load MCP server status.</p>';
+    }
+  },
+
+  renderMcpStatus(container, servers) {
+    if (!servers.length) {
+      container.innerHTML = '<p class="settings-description">No MCP servers are configured for this deployment.</p>';
+      return;
+    }
+    const stateMeta = {
+      active:        { label: 'Active',              cls: 'mcp-state-active' },
+      needs_auth:    { label: 'Needs authorization', cls: 'mcp-state-needs-auth' },
+      headless_only: { label: 'Headless only',       cls: 'mcp-state-muted' },
+      no_secret:     { label: 'No service token',    cls: 'mcp-state-muted' },
+      failed:        { label: 'Failed',              cls: 'mcp-state-failed' },
+    };
+    const authLabels = { sso: 'per-user SSO', service: 'service account', none: 'no auth' };
+    container.innerHTML = servers.map(srv => {
+      const meta = stateMeta[srv.state] || { label: srv.state, cls: 'mcp-state-muted' };
+      const tools = srv.tools || [];
+      const toolsHtml = tools.length
+        ? `<details class="mcp-server-tools">
+             <summary>${tools.length} tool${tools.length === 1 ? '' : 's'}</summary>
+             <ul>${tools.map(t => `
+               <li><code>${Utils.escapeHtml(t.name)}</code>
+                   <span class="mcp-tool-desc">${Utils.escapeHtml((t.description || '').split('\n')[0])}</span></li>`).join('')}
+             </ul>
+           </details>`
+        : '';
+      const authorizeHtml = srv.state === 'needs_auth'
+        ? `<a class="mcp-authorize-btn" href="/mcp/authorize?server=${encodeURIComponent(srv.name)}&next=/chat">Authorize</a>`
+        : '';
+      const detailHtml = srv.detail && srv.state !== 'active'
+        ? `<p class="settings-description mcp-server-detail">${Utils.escapeHtml(srv.detail)}</p>`
+        : '';
+      return `
+        <div class="settings-group settings-group-bordered mcp-server-card">
+          <div class="settings-group-header">
+            <span class="settings-label">${Utils.escapeHtml(srv.name)}</span>
+            <span class="mcp-state-chip ${meta.cls}">${meta.label}</span>
+          </div>
+          <p class="settings-description mcp-server-meta">
+            ${Utils.escapeHtml(srv.url || '')} · ${Utils.escapeHtml(srv.transport || '')} · ${authLabels[srv.auth] || srv.auth}
+          </p>
+          ${detailHtml}
+          ${toolsHtml}
+          ${authorizeHtml}
+        </div>`;
+    }).join('');
   },
 
   closeSettings() {

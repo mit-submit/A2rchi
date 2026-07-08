@@ -1,6 +1,6 @@
 from __future__ import annotations
 import os
-from typing import List, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -34,20 +34,21 @@ def _make_httpx_factory(ca_bundle: str):
     return factory
 
 
-async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional[MultiServerMCPClient], List[BaseTool], str]:
+def _prepare_server_configs(
+    user_id: Optional[str] = None,
+) -> Tuple[Dict[str, dict], Dict[str, str], Dict[str, Dict[str, Any]]]:
     """
-    Initializes the MCP client and fetches tool definitions.
-    Args:
-        user_id: SSO user ID used to look up a valid MCP OAuth token from the DB
-                 for servers configured with sso_auth: true.
+    Shared auth gating + client-config prep for all configured MCP servers.
+
     Returns:
-        client: The active client instance (must be kept alive by the caller).
-        tools: The list of LangChain-compatible tools.
-        skills_text: Concatenated skill content from all MCP servers that declare
-            a `skill`. Empty string if no server has a skill. The caller is
-            responsible for appending this to the agent's system prompt — we inject
-            here only once per agent rather than into each tool description, so
-            the content doesn't multiply by tool count.
+        client_configs: server name -> MultiServerMCPClient connection config,
+            only for servers that passed their auth gate.
+        server_skills: server name -> loaded skill content (gated servers excluded).
+        statuses: server name -> {url, transport, auth, state, detail} for ALL
+            configured servers, including gated ones. States at this stage:
+            'configured' (in client_configs), 'needs_auth' (sso_auth without a
+            token), 'headless_only' (service_auth on a user-scoped request),
+            'no_secret' (service_auth without its token secret).
     """
     from src.utils.mcp_oauth_service import MCPOAuthService
 
@@ -65,14 +66,13 @@ async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional
     _archi_only_fields = {
         "env_from_secrets", "host_file_mounts", "build_context", "image", "path", "skill",
     }
-    client_configs: dict[str, dict] = {}
-    server_skills: dict[str, str] = {}
+    client_configs: Dict[str, dict] = {}
+    server_skills: Dict[str, str] = {}
+    statuses: Dict[str, Dict[str, Any]] = {}
     full_config = get_full_config()
     for name, server_cfg in mcp_servers.items():
         cfg = {k: v for k, v in server_cfg.items() if k not in _archi_only_fields}
 
-        # Inject Bearer auth where sso_auth is enabled. Skip SSO-auth servers
-        # when no valid MCP OAuth token is available for this user.
         requires_sso = cfg.pop("sso_auth", False)
         service_auth = cfg.pop("service_auth", False)
         token_secret = cfg.pop("token_secret", None)
@@ -82,10 +82,27 @@ async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional
                 f"using per-user sso_auth and ignoring service_auth"
             )
             service_auth = False
+
+        status = {
+            "url": server_cfg.get("url", ""),
+            "transport": server_cfg.get("transport", ""),
+            "auth": "sso" if requires_sso else ("service" if service_auth else "none"),
+            "state": "configured",
+            "detail": "",
+        }
+        statuses[name] = status
+
+        # Inject Bearer auth where sso_auth is enabled. Skip SSO-auth servers
+        # when no valid MCP OAuth token is available for this user.
         if requires_sso:
             access_token = _mcp_oauth.get_access_token(user_id, name) if user_id else None
             if not access_token:
                 logger.info(f"Skipping MCP server '{name}': sso_auth=true but no valid token for user_id={user_id!r}")
+                status["state"] = "needs_auth"
+                status["detail"] = (
+                    "No valid token for this user - authorize the server to connect"
+                    if user_id else "Requires a per-user token - sign in and authorize"
+                )
                 continue
             cfg.setdefault("headers", {})["Authorization"] = f"Bearer {access_token}"
         elif service_auth:
@@ -99,16 +116,20 @@ async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional
                     f"Skipping MCP server '{name}': service_auth servers are "
                     f"headless-only (request has user identity)"
                 )
+                status["state"] = "headless_only"
+                status["detail"] = "Service-account server, available to headless interfaces only"
                 continue
             secret_name = token_secret or f"{name.upper()}_MCP_TOKEN"
             service_token = read_secret(secret_name)
             if not service_token:
                 logger.info(f"Skipping MCP server '{name}': service_auth=true but secret '{secret_name}' is not set")
+                status["state"] = "no_secret"
+                status["detail"] = f"Service token secret '{secret_name}' is not set"
                 continue
             cfg.setdefault("headers", {})["Authorization"] = f"Bearer {service_token}"
 
         # Load any declared skill so we can append it to this server's tool descriptions.
-        # Done after the sso_auth gate so skipped servers contribute no skill text.
+        # Done after the auth gates so skipped servers contribute no skill text.
         skill_name = server_cfg.get("skill")
         if skill_name:
             skill_content = load_skill(skill_name, full_config)
@@ -131,6 +152,26 @@ async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional
             cfg["httpx_client_factory"] = _make_httpx_factory(_CERN_CA_BUNDLE)
 
         client_configs[name] = cfg
+
+    return client_configs, server_skills, statuses
+
+
+async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional[MultiServerMCPClient], List[BaseTool], str]:
+    """
+    Initializes the MCP client and fetches tool definitions.
+    Args:
+        user_id: SSO user ID used to look up a valid MCP OAuth token from the DB
+                 for servers configured with sso_auth: true.
+    Returns:
+        client: The active client instance (must be kept alive by the caller).
+        tools: The list of LangChain-compatible tools.
+        skills_text: Concatenated skill content from all MCP servers that declare
+            a `skill`. Empty string if no server has a skill. The caller is
+            responsible for appending this to the agent's system prompt — we inject
+            here only once per agent rather than into each tool description, so
+            the content doesn't multiply by tool count.
+    """
+    client_configs, server_skills, _ = _prepare_server_configs(user_id)
 
     logger.info(f"Configuring MCP client with servers: {list(client_configs.keys())}")
     client = MultiServerMCPClient(client_configs)
@@ -164,3 +205,32 @@ async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional
     skills_text = "".join(skills_parts)
 
     return client, all_tools, skills_text
+
+
+async def get_mcp_server_status(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Per-server status snapshot for the UI: auth mode, availability and, for
+    reachable servers, the tool list. Unlike initialize_mcp_client this keeps
+    no client alive — sessions are opened per server just to list tools.
+
+    States: 'active' (connected, tools listed), 'needs_auth', 'headless_only',
+    'no_secret', 'failed' (auth gate passed but the server errored).
+    """
+    client_configs, _, statuses = _prepare_server_configs(user_id)
+
+    client = MultiServerMCPClient(client_configs) if client_configs else None
+    for name in client_configs.keys():
+        status = statuses[name]
+        try:
+            tools = await client.get_tools(server_name=name)
+            status["state"] = "active"
+            status["tools"] = [
+                {"name": t.name, "description": (t.description or "").strip()}
+                for t in tools
+            ]
+        except Exception as e:
+            logger.error(f"MCP status: failed to fetch tools from '{name}': {e}")
+            status["state"] = "failed"
+            status["detail"] = str(e)[:300]
+
+    return [{"name": name, **status} for name, status in statuses.items()]

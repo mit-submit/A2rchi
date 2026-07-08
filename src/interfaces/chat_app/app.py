@@ -2537,6 +2537,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/load_conversation', 'load_conversation', self.require_auth(self.load_conversation), methods=["POST"])
         self.add_endpoint('/api/new_conversation', 'new_conversation', self.require_auth(self.new_conversation), methods=["POST"])
         self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.require_auth(self.delete_conversation), methods=["POST"])
+        self.add_endpoint('/api/mcp/status', 'mcp_client_status', self.require_auth(self.mcp_client_status), methods=["GET"])
 
         # A/B testing endpoints
         logger.info("Adding A/B testing API endpoints")
@@ -3268,6 +3269,21 @@ class FlaskAppWrapper(object):
     # ------------------------------------------------------------------
     # MCP token helpers
     # ------------------------------------------------------------------
+
+    def mcp_client_status(self):
+        """Status of the configured external MCP servers for the current user
+        (GET /api/mcp/status): auth mode, availability, and tool list for
+        reachable servers. Backs the Settings > MCP Servers panel."""
+        import asyncio
+        from src.archi.pipelines.agents.tools.mcp import get_mcp_server_status
+
+        user_id = session.get('user', {}).get('id') or None
+        try:
+            servers = asyncio.run(get_mcp_server_status(user_id=user_id))
+        except Exception as e:
+            logger.error(f"MCP status check failed: {e}")
+            return jsonify({"error": "MCP status check failed"}), 500
+        return jsonify({"servers": servers, "user_scoped": bool(user_id)})
 
     def _get_mcp_token(self, user_id: str) -> Optional[str]:
         """Return the existing MCP token for a user, or None."""

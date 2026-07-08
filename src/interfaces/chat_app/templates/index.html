@@ -208,6 +208,14 @@
               </svg>
               <span>Display</span>
             </button>
+            <button class="settings-nav-item" data-section="mcp" aria-selected="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"></path>
+                <path d="M5 7h14v5a7 7 0 0 1-14 0V7z"></path>
+                <line x1="12" y1="19" x2="12" y2="22"></line>
+              </svg>
+              <span>MCP Servers</span>
+            </button>
           </nav>
           
           <!-- Settings Body -->
@@ -303,6 +311,15 @@
                   </label>
                 </div>
                 <p class="settings-description">Switch between light and dark themes.</p>
+              </div>
+            </section>
+
+            <!-- MCP Servers Section -->
+            <section class="settings-section" id="settings-mcp" aria-labelledby="mcp-heading" hidden>
+              <h4 class="settings-section-title" id="mcp-heading">MCP Servers</h4>
+              <p class="settings-description">External MCP servers configured for this deployment, their connection status, and the tools they expose to the agent.</p>
+              <div id="mcp-status-list" class="mcp-status-list">
+                <p class="settings-description">Loading MCP servers…</p>
               </div>
             </section>
           </div>
