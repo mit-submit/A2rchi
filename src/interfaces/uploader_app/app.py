@@ -94,6 +94,7 @@ class FlaskAppWrapper:
             protected(self.delete_source),
         )
         self.add_endpoint("/document_index/upload_url", "upload_url", protected(self.upload_url), methods=["POST"])
+        self.add_endpoint("/document_index/ingest_local_path", "ingest_local_path", protected(self.ingest_local_path), methods=["POST"])
         self.add_endpoint("/document_index/add_git_repo", "add_git_repo", protected(self.add_git_repo), methods=["POST"])
         self.add_endpoint("/document_index/remove_git_repo", "remove_git_repo", protected(self.remove_git_repo), methods=["POST"])
         self.add_endpoint("/document_index/add_jira_project", "add_jira_project", protected(self.add_jira_project), methods=["POST"])
@@ -267,6 +268,13 @@ class FlaskAppWrapper:
     def upload_url(self):
         """
         Use the ScraperManager to collect and persist a single URL provided via form data.
+
+        Optional form field ``allow_sso_fallback=true`` enables a retry via the
+        Selenium ``CERNSSOScraper`` when the anonymous LinkScraper hits a
+        Keycloak login page. The agent decides per-request whether to opt in
+        (gated by its ``services.chat_app.tools.ingest_url`` config). The
+        retry only fires if the SSO source is enabled in data-manager config
+        (``data_manager.sources.sso.enabled``) and the SSO_* secrets exist.
         """
         url = request.form.get("url")
         depth_raw = request.form.get("depth")
@@ -281,10 +289,74 @@ class FlaskAppWrapper:
             # LinkScraper currently uses max_depth >= 1 for the initial URL fetch.
             if depth == 0:
                 depth = 1
+        allow_sso_fallback = (request.form.get("allow_sso_fallback") or "").strip().lower() in {"1", "true", "yes"}
         if url:
-            logger.info("Uploading the following URL: %s", url)
+            logger.info("Uploading the following URL: %s (allow_sso_fallback=%s)", url, allow_sso_fallback)
+            scraper_used: Optional[str] = None
             try:
-                scraped_count = self.scraper_manager.collect_links(self.persistence, link_urls=[url], max_depth=depth)
+                if self.scraper_manager._is_indico_url(url):
+                    scraped_count = self.scraper_manager.collect_indico(self.persistence, indico_urls=[url])
+                    scraper_used = "indico"
+                else:
+                    scraped_count = self.scraper_manager.collect_links(self.persistence, link_urls=[url], max_depth=depth)
+                    scraper_used = "link"
+                # Guard: if LinkScraper followed an SSO redirect and ingested a Keycloak login
+                # page, the count above is misleading. Remove any just-ingested resources whose
+                # stored content matches the Keycloak login signature.
+                removed = self._purge_keycloak_login_pages_for_url(url)
+                if removed:
+                    scraped_count = max(0, scraped_count - removed)
+                    if scraped_count == 0 and allow_sso_fallback:
+                        # Retry through the Selenium CERNSSOScraper. The agent opted
+                        # in by setting allow_sso_fallback=true; the data-manager
+                        # still requires the SSO source to be enabled. Pass the
+                        # request's depth (defaults to 1) — the Selenium crawl is
+                        # otherwise governed by base_source_depth=5, which can
+                        # spider hundreds of pages from a single seed and blow
+                        # past the agent's client timeout.
+                        sso_count = self._sso_retry(url, max_depth=(depth or 1))
+                        if sso_count is not None and sso_count > 0:
+                            scraped_count = sso_count
+                            scraper_used = "sso"
+                            logger.info(
+                                "ingest_url SSO retry succeeded for %s (%d resource(s))",
+                                url, sso_count,
+                            )
+                        else:
+                            self._notify_update()
+                            return (
+                                jsonify(
+                                    {
+                                        "error": "auth_required",
+                                        "detail": (
+                                            "URL redirected to a CERN SSO login page; "
+                                            "anonymous LinkScraper cannot fetch it. SSO "
+                                            "fallback was attempted but did not yield "
+                                            "any resources (see data-manager logs)."
+                                        ),
+                                        "url": url,
+                                    }
+                                ),
+                                502,
+                            )
+                    elif scraped_count == 0:
+                        self._notify_update()
+                        return (
+                            jsonify(
+                                {
+                                    "error": "auth_required",
+                                    "detail": (
+                                        "URL redirected to a CERN SSO login page; "
+                                        "anonymous LinkScraper cannot fetch it. "
+                                        "Set allow_sso_fallback=true to retry via the "
+                                        "Selenium SSO scraper, or use a tool that "
+                                        "authenticates (e.g. ingest_indico_event)."
+                                    ),
+                                    "url": url,
+                                }
+                            ),
+                            502,
+                        )
                 self.persistence.flush_index()
                 self._update_source_status("web", state="idle", last_run=self._now_iso())
                 added_to_urls = True
@@ -294,13 +366,188 @@ class FlaskAppWrapper:
                 upload_error = str(exc)
 
             if added_to_urls:
-                logger.info("URL uploaded successfully")
+                logger.info("URL uploaded successfully (scraper=%s)", scraper_used)
                 self._notify_update()
-                return jsonify({"status": "ok", "resources_scraped": scraped_count})
+                return jsonify(
+                    {
+                        "status": "ok",
+                        "resources_scraped": scraped_count,
+                        "scraper": scraper_used,
+                    }
+                )
             else:
                 return jsonify({"error": "upload_failed", "detail": upload_error}), 500
         else:
             return jsonify({"error": "missing_url"}), 400
+
+    def _sso_retry(self, url: str, max_depth: int = 1) -> Optional[int]:
+        """Run the configured CERNSSOScraper against *url* and return the number
+        of new resources persisted. ``None`` if SSO is not enabled or the retry
+        could not run (the caller treats that as failure).
+
+        ``max_depth`` defaults to 1 (just the seed URL). For one-shot agent
+        ingests, anything higher means crawling every internal link and
+        typically blowing past the client timeout.
+        """
+        if not getattr(self.scraper_manager, "sso_enabled", False):
+            logger.info(
+                "ingest_url SSO retry requested for %s but data_manager.sources.sso.enabled=false",
+                url,
+            )
+            return None
+        before = set(self.persistence.catalog.get_resource_hashes_by_metadata_filter("url", url))
+        logger.info("SSO retry starting for %s (max_depth=%d)", url, max_depth)
+        try:
+            self.scraper_manager.collect_sso(self.persistence, sso_urls=[url], max_depth=max_depth)
+        except Exception as exc:
+            logger.exception("SSO retry raised for %s: %s", url, exc)
+            return None
+        after = set(self.persistence.catalog.get_resource_hashes_by_metadata_filter("url", url))
+        new_hashes = after - before
+        logger.info("SSO retry done for %s: %d new resource(s)", url, len(new_hashes))
+        return len(new_hashes)
+
+    def ingest_local_path(self):
+        """Ingest every file under a directory living on a path the caller already
+        has access to (typically a shared volume populated by a sibling container
+        such as the Indico MCP server).
+
+        Form fields:
+          - path (str, required): absolute path to a directory whose contents
+            should be ingested. Must be under one of the configured allowed roots.
+          - source_type (str, default "local_files"): metadata.source_type tag.
+          - target_subdir (str, optional): subdirectory under DATA_PATH to write
+            persisted files into. Defaults to ``source_type``.
+          - any other form field: copied verbatim into each resource's metadata
+            (e.g. ``event_id``, ``url``, ``contribution_id``).
+        """
+        raw_path = (request.form.get("path") or "").strip()
+        if not raw_path:
+            return jsonify({"error": "missing_path"}), 400
+
+        # Reject `..` segments pre-resolution so traversal attempts can't even
+        # reach the symlink layer. Defense-in-depth against a misconfigured caller.
+        if ".." in Path(raw_path).parts:
+            return jsonify({"error": "invalid_path", "detail": "path contains '..'"}), 400
+
+        try:
+            requested = Path(raw_path).resolve(strict=False)
+        except Exception:
+            return jsonify({"error": "invalid_path"}), 400
+
+        allowed_roots = self._allowed_ingest_roots()
+        # commonpath is symlink-resilient: if a symlink under the root points
+        # outside, the resolved path won't share commonpath with the root and
+        # we'll reject. `requested.parents` membership wouldn't catch that.
+        def _under_root(p: Path, root: Path) -> bool:
+            try:
+                return os.path.commonpath([str(p), str(root)]) == str(root)
+            except ValueError:
+                # Different drives on Windows (irrelevant here, but be safe).
+                return False
+
+        if not any(_under_root(requested, root) for root in allowed_roots):
+            return (
+                jsonify(
+                    {
+                        "error": "path_not_allowed",
+                        "detail": f"Path must be under one of: {[str(r) for r in allowed_roots]}",
+                        "path": str(requested),
+                    }
+                ),
+                403,
+            )
+
+        if not requested.exists() or not requested.is_dir():
+            return jsonify({"error": "path_not_found", "path": str(requested)}), 404
+
+        source_type = (request.form.get("source_type") or "local_files").strip()
+        target_subdir = (request.form.get("target_subdir") or "").strip() or None
+
+        reserved = {"path", "source_type", "target_subdir"}
+        extra_metadata = {
+            k: v for k, v in request.form.items() if k not in reserved and v not in (None, "")
+        }
+
+        try:
+            records = self.localfile_manager.ingest_directory(
+                requested,
+                self.persistence,
+                source_type=source_type,
+                extra_metadata=extra_metadata,
+                target_subdir=target_subdir,
+            )
+        except ValueError as exc:
+            return jsonify({"error": "invalid_request", "detail": str(exc)}), 400
+        except Exception as exc:
+            logger.exception("ingest_local_path failed for %s: %s", requested, exc)
+            return jsonify({"error": "ingest_failed", "detail": str(exc)}), 500
+
+        self.persistence.flush_index()
+        self._notify_update()
+        return jsonify(
+            {
+                "status": "ok",
+                "resources_ingested": len(records),
+                "resources": records,
+            }
+        )
+
+    def _allowed_ingest_roots(self) -> List[Path]:
+        """Roots under which ``ingest_local_path`` is allowed to read.
+
+        Read from the env var ``INGEST_ALLOWED_ROOTS`` (colon-separated paths) or
+        fall back to ``/shared/indico-downloads`` — the canonical cross-container
+        share for Indico MCP downloads.
+        """
+        env_roots = os.environ.get("INGEST_ALLOWED_ROOTS", "")
+        candidates = [p for p in env_roots.split(":") if p.strip()] or ["/shared/indico-downloads"]
+        resolved: List[Path] = []
+        for c in candidates:
+            try:
+                resolved.append(Path(c).resolve())
+            except Exception:
+                continue
+        return resolved
+
+    def _purge_keycloak_login_pages_for_url(self, url: str) -> int:
+        """Delete any resource that was just ingested for *url* but whose stored
+        content is a Keycloak login page. Returns the number of rows removed.
+
+        The LinkScraper happily follows the CERN SSO redirect and stores the
+        login HTML under the original URL — a false positive that previously
+        looped the agent. This walks the catalog by ``url:<url>`` and removes
+        rows whose persisted file matches the Keycloak signature.
+        """
+        try:
+            matches = self.persistence.catalog.get_resource_hashes_by_metadata_filter("url", url)
+        except Exception as exc:
+            logger.debug("Could not query catalog for url=%s: %s", url, exc)
+            return 0
+
+        removed = 0
+        for resource_hash in matches:
+            try:
+                stored_file = self.persistence.catalog.file_index.get(resource_hash)
+                if not stored_file:
+                    continue
+                file_path = Path(stored_file)
+                if not file_path.is_absolute():
+                    file_path = (Path(self.data_path) / file_path).resolve()
+                if not file_path.exists():
+                    continue
+                head = file_path.read_bytes()[:2048].decode("utf-8", errors="ignore")
+                if (
+                    "login-pf" in head
+                    or 'id="kc-header"' in head
+                    or 'class="login-pf"' in head
+                ):
+                    self.persistence.delete_resource(resource_hash, flush=False)
+                    removed += 1
+                    logger.info("Purged Keycloak login page ingested under %s (hash=%s)", url, resource_hash)
+            except Exception as exc:
+                logger.debug("Failed to inspect/remove resource %s: %s", resource_hash, exc)
+        return removed
 
     def update_schedule(self):
         source = (request.form.get("source") or "").strip().lower()

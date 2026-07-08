@@ -113,6 +113,50 @@ Once enabled in config, deploy normally with `archi create --config <config.yaml
 
 ---
 
+## Indico
+
+Ingest events, contributions (talks) and slide materials from an [Indico](https://getindico.io/) instance. Slides in PDF/PPTX/PPT/ODP format are converted to Markdown via [MarkItDown](https://github.com/microsoft/markitdown).
+
+### Configuration
+
+```yaml
+data_manager:
+  sources:
+    indico:
+      enabled: true
+      base_url: https://indico.cern.ch
+      use_sso: false       # set true for SSO-protected events
+      slide_conversion:
+        enabled: true
+        formats: [pdf, pptx, ppt, odp]
+```
+
+Add event URLs to your link lists. URLs with `indico` in the hostname and `/event/` in the path are auto-detected. For Indico instances without `indico` in the hostname, use the explicit `indico-` prefix:
+
+```
+https://indico.cern.ch/event/1408515/
+https://indico.stfc.ac.uk/event/1825/
+indico-https://events.example.org/event/42/
+```
+
+For each event the scraper produces Markdown resources for the event metadata, each contribution (talk), and each slide deck. Multi-day events can be restricted with day-filtering options (`max_days`, `only_first_day`, `days`, `date_range`) — see `src/cli/templates/base-config.yaml` for the full set.
+
+For SSO-protected events, set `use_sso: true` and configure the Selenium-based collector as for [SSO-Protected Links](#sso-protected-links). The same `SSO_USERNAME` / `SSO_PASSWORD` secrets are used.
+
+Once enabled in config, deploy normally with `archi create --config <config.yaml> --services <...>`.
+
+### Alternative: the Indico MCP sidecar (on-demand, bearer-authenticated)
+
+The batch scraper above is offline-friendly but heavy: it walks a list of URLs ahead of time and uses Selenium-driven CERN SSO for auth. For most setups the preferred path is the **Indico MCP sidecar** ([`archi-physics/mcp-servers` → `indico/`](https://github.com/archi-physics/mcp-servers/tree/main/indico)), which:
+
+- Authenticates with a bearer token + API key/secret (no Selenium, no browser).
+- Lets the agent fetch event metadata, contributions, and attached files on demand at chat time.
+- Pairs with the agent-side `ingest_indico_event` tool to chunk + embed + index downloaded attachments via a shared docker volume, putting the same kind of resources into the catalog (`source_type=web`, `metadata.scraper=indico`, `metadata.event_id=<id>`) as the batch scraper would.
+
+The MCP path supplants the `use_sso: true` Selenium flow for new deployments; keep the batch IndicoScraper for offline ingest of large historical archives or when MCP isn't deployed. See [`indico/README.md`](https://github.com/archi-physics/mcp-servers/blob/main/indico/README.md) for configuration (one `shared_volume:` field in the `mcp_servers.indico` entry).
+
+---
+
 ## JIRA
 
 Fetch issues and comments from specified JIRA projects using the `JiraClient` class.

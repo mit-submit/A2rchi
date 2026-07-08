@@ -74,6 +74,13 @@ class SourceRegistry:
                 ],
             )
         )
+        self.register(
+            SourceDefinition(
+                name="indico",
+                description="Indico event and meeting scraping",
+                depends_on=["links"],
+            )
+        )
 
     def register(self, source_def: SourceDefinition) -> None:
         self._sources[source_def.name] = source_def
