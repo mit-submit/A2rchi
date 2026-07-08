@@ -26,6 +26,7 @@ langgraph==1.0.2
 langchain-mcp-adapters==0.1.11
 langchain==1.0.3
 langchain_ollama==1.0.0
+langfuse
 loguru==0.7.2
 lz4==4.3.2
 mistune==3.0.2

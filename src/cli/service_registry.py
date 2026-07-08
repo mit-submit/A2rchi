@@ -91,7 +91,7 @@ class ServiceRegistry:
             category='application',
             requires_volume=True,
             depends_on=['postgres'],
-            required_secrets=[],
+            required_secrets=['LANGFUSE_PUBLIC_KEY','LANGFUSE_SECRET_KEY','LANGFUSE_BASE_URL'],
             default_host_port=7861,
             default_container_port=7861,
             port_config_path='services.chat_app'

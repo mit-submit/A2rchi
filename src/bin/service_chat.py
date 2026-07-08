@@ -20,6 +20,9 @@ def main():
     os.environ['ANTHROPIC_API_KEY'] = read_secret("ANTHROPIC_API_KEY")
     os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
     os.environ['HUGGING_FACE_HUB_TOKEN'] = read_secret("HUGGING_FACE_HUB_TOKEN")
+    os.environ['LANGFUSE_PUBLIC_KEY'] = read_secret("LANGFUSE_PUBLIC_KEY")
+    os.environ['LANGFUSE_SECRET_KEY'] = read_secret("LANGFUSE_SECRET_KEY")
+    os.environ['LANGFUSE_BASE_URL'] = read_secret("LANGFUSE_BASE_URL")
 
     # Set up shared Postgres services (expects config already in DB)
     factory = PostgresServiceFactory.from_env(password_override=read_secret("PG_PASSWORD"))

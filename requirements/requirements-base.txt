@@ -18,10 +18,11 @@ httptools==0.6.1
 httpx==0.27.2
 humanfriendly==10.0
 croniter==2.0.5
-langgraph==1.0.2
+langgraph==1.1.6
 langchain-mcp-adapters==0.1.11
-langchain==1.0.3
+langchain==1.2.15
 langchain_ollama==1.0.0
+langfuse==4.7.1
 loguru==0.7.2
 lz4==4.3.2
 mistune==3.0.2
@@ -60,7 +61,7 @@ pulsar-client==3.5.0
 psycopg2-binary==2.9.10
 requests==2.32.5
 pyyaml==6.0.2
-protobuf==4.25.8
+protobuf==5.27
 jira==3.8.0
 spacy==3.8.7
 typer==0.15.4
