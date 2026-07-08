@@ -8,13 +8,14 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain.tools import BaseTool
 
 from src.utils.config_access import get_mcp_servers_config, get_full_config
-from src.utils.env import read_secret
+from src.utils.env import read_secret, ssl_verify
 from src.utils.logging import get_logger
 from src.archi.pipelines.agents.utils.skill_utils import load_skill
 
 logger = get_logger(__name__)
 
-_CERN_CA_BUNDLE = "/etc/ssl/certs/tls-ca-bundle.pem"
+# Marker remote archi deployments put on state-changing tool descriptions.
+_WRITE_MARKER = "[WRITE OPERATION]"
 
 
 def _make_httpx_factory(ca_bundle: str):
@@ -55,9 +56,10 @@ def _prepare_server_configs(
     mcp_servers = get_mcp_servers_config()
     _mcp_oauth = MCPOAuthService()
 
-    _use_cern_ca = os.path.exists(_CERN_CA_BUNDLE)
-    if _use_cern_ca:
-        logger.info(f"Using CERN CA bundle for MCP SSL verification: {_CERN_CA_BUNDLE}")
+    _verify = ssl_verify()
+    _use_ca_bundle = isinstance(_verify, str)
+    if _use_ca_bundle:
+        logger.info(f"Using CA bundle for MCP SSL verification: {_verify}")
 
     # Strip archi-only fields that langchain-mcp-adapters doesn't understand.
     # These are consumed by the compose template (sidecars), the legacy stdio
@@ -147,9 +149,9 @@ def _prepare_server_configs(
             # not the MCP client connection — drop it here.
             cfg.pop("env", None)
 
-        # Inject CERN CA bundle via httpx_client_factory (SSE/streamable_http transports)
-        if _use_cern_ca and transport in ("sse", "streamable_http"):
-            cfg["httpx_client_factory"] = _make_httpx_factory(_CERN_CA_BUNDLE)
+        # Inject the CA bundle via httpx_client_factory (SSE/streamable_http transports)
+        if _use_ca_bundle and transport in ("sse", "streamable_http"):
+            cfg["httpx_client_factory"] = _make_httpx_factory(_verify)
 
         client_configs[name] = cfg
 
@@ -207,6 +209,19 @@ async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional
     return client, all_tools, skills_text
 
 
+def has_user_scoped_servers() -> bool:
+    """
+    True when any configured MCP server's toolset depends on who is asking
+    (sso_auth or service_auth) — i.e. a per-user agent build can differ from
+    the shared anonymous one. Lets callers skip per-request rebuilds entirely
+    for deployments with only public MCP servers.
+    """
+    return any(
+        cfg.get("sso_auth") or cfg.get("service_auth")
+        for cfg in (get_mcp_servers_config() or {}).values()
+    )
+
+
 async def get_mcp_server_status(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Per-server status snapshot for the UI: auth mode, availability and, for
@@ -216,10 +231,11 @@ async def get_mcp_server_status(user_id: Optional[str] = None) -> List[Dict[str,
     States: 'active' (connected, tools listed), 'needs_auth', 'headless_only',
     'no_secret', 'failed' (auth gate passed but the server errored).
     """
+    import asyncio
+
     client_configs, _, statuses = _prepare_server_configs(user_id)
 
-    client = MultiServerMCPClient(client_configs) if client_configs else None
-    for name in client_configs.keys():
+    async def _list_tools(client: MultiServerMCPClient, name: str) -> None:
         status = statuses[name]
         try:
             tools = await client.get_tools(server_name=name)
@@ -227,10 +243,10 @@ async def get_mcp_server_status(user_id: Optional[str] = None) -> List[Dict[str,
             status["tools"] = [
                 {
                     "name": t.name,
-                    "description": (t.description or "").strip(),
-                    # Remote archi marks state-changing tools with this prefix;
-                    # surfaced so the UI can badge them.
-                    "write": "[WRITE OPERATION]" in (t.description or ""),
+                    # Strip the write marker here so the UI never needs to
+                    # know the convention — it just reads the `write` flag.
+                    "description": (t.description or "").replace(_WRITE_MARKER, "").strip(),
+                    "write": _WRITE_MARKER in (t.description or ""),
                 }
                 for t in tools
             ]
@@ -238,5 +254,10 @@ async def get_mcp_server_status(user_id: Optional[str] = None) -> List[Dict[str,
             logger.error(f"MCP status: failed to fetch tools from '{name}': {e}")
             status["state"] = "failed"
             status["detail"] = str(e)[:300]
+
+    if client_configs:
+        client = MultiServerMCPClient(client_configs)
+        # Concurrent: panel latency is the slowest server, not the sum of all.
+        await asyncio.gather(*(_list_tools(client, name) for name in client_configs))
 
     return [{"name": name, **status} for name, status in statuses.items()]

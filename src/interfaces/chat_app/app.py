@@ -13,7 +13,7 @@ from pathlib import Path
 import base64
 import hashlib
 import secrets
-from urllib.parse import urlparse, urlencode, urlunparse, parse_qs, urljoin
+from urllib.parse import urlparse, urlencode, urlunparse
 from functools import wraps
 
 import requests
@@ -2878,22 +2878,7 @@ class FlaskAppWrapper(object):
 
                 # Fetch or create the user's long-lived MCP token in the same
                 # connection to avoid opening extra DB connections.
-                cur.execute(
-                    """SELECT token FROM mcp_tokens
-                       WHERE user_id = %s
-                         AND (expires_at IS NULL OR expires_at > NOW())
-                       ORDER BY created_at DESC LIMIT 1""",
-                    (user_id,),
-                )
-                token_row = cur.fetchone()
-                if token_row:
-                    token = token_row[0]
-                else:
-                    token = secrets.token_hex(32)
-                    cur.execute(
-                        "INSERT INTO mcp_tokens (token, user_id) VALUES (%s, %s)",
-                        (token, user_id),
-                    )
+                token = self._get_or_create_mcp_token_cur(cur, user_id)
 
             conn.commit()
         finally:
@@ -2957,11 +2942,18 @@ class FlaskAppWrapper(object):
         
         logger.info(f"SSO configured with server: {server_metadata_url}")
 
-        # Derive token endpoint for silent refresh (Keycloak-style metadata URL)
+        # Token endpoint for silent refresh: prefer explicit config, then the
+        # provider's own OIDC discovery document (provider-agnostic), then the
+        # Keycloak URL shape as a last resort for older setups.
         token_endpoint = sso_config.get('token_endpoint', '')
         if not token_endpoint and server_metadata_url:
-            import re as _re
-            token_endpoint = _re.sub(r'/\.well-known/.*', '/protocol/openid-connect/token', server_metadata_url)
+            try:
+                metadata = self.oauth.sso.load_server_metadata()
+                token_endpoint = metadata.get('token_endpoint', '')
+            except Exception as exc:
+                logger.warning(f"Could not load OIDC metadata for token endpoint: {exc}")
+            if not token_endpoint:
+                token_endpoint = re.sub(r'/\.well-known/.*', '/protocol/openid-connect/token', server_metadata_url)
 
         session_lifetime_days = self.chat_app_config.get('auth', {}).get('session_lifetime_days', 30)
         self.sso_token_service = SSOTokenService(
@@ -2972,12 +2964,12 @@ class FlaskAppWrapper(object):
 
         # MCP OAuth2 service — handles per-server authorization code + PKCE flow
         from src.utils.mcp_oauth_service import MCPOAuthService
-        from src.utils.config_access import get_mcp_servers_config as _get_mcp_cfg
         mcp_server_cfg = self.config.get('services', {}).get('mcp_server', {})
         app_base_url = mcp_server_cfg.get('url', '') or f"http://localhost:{self.chat_app_config.get('port', 7861)}"
         self.mcp_oauth_service = MCPOAuthService(
             pg_config=self.pg_config,
             app_base_url=app_base_url,
+            session_lifetime_days=int(session_lifetime_days),
         )
 
     def login(self):
@@ -3130,21 +3122,10 @@ class FlaskAppWrapper(object):
             # After login, authorize any MCP servers that need it.
             # Key tokens by the SSO subject id — the same identifier used to
             # upsert the users row and passed as user_id on chat requests.
-            mcp_user_id = sso_user_id
-            if hasattr(self, 'mcp_oauth_service') and mcp_user_id:
-                try:
-                    from src.utils.config_access import get_mcp_servers_config as _get_mcp
-                    mcp_servers = _get_mcp()
-                    needing = self.mcp_oauth_service.get_servers_needing_auth(mcp_user_id, mcp_servers)
-                    # Skip servers already attempted this session — a failing
-                    # store must not trap the user in a login redirect loop.
-                    attempted = set(session.get('mcp_auth_attempted', []))
-                    needing = [s for s in needing if s not in attempted]
-                    if needing:
-                        logger.info(f"Redirecting user {mcp_user_id!r} to authorize MCP server(s): {needing}")
-                        return redirect(url_for('mcp_authorize', server=needing[0], next=next_url))
-                except Exception as me:
-                    logger.warning(f"MCP auth check failed after login: {me}")
+            if hasattr(self, 'mcp_oauth_service'):
+                chain = self._next_mcp_auth_redirect(sso_user_id, next_url)
+                if chain:
+                    return chain
 
             return redirect(next_url)
             
@@ -3166,6 +3147,28 @@ class FlaskAppWrapper(object):
         if candidate and candidate.startswith('/') and not candidate.startswith('//'):
             return candidate
         return url_for('index')
+
+    def _next_mcp_auth_redirect(self, user_id, next_url):
+        """
+        Redirect to the next MCP server the user still has to authorize, or
+        None when there is none. Skips servers already attempted this session
+        so a persistently failing server cannot trap the user in a redirect
+        loop — the single owner of that loop-guard semantic for both the
+        login callback and the MCP callback chain.
+        """
+        if not user_id:
+            return None
+        try:
+            from src.utils.config_access import get_mcp_servers_config as _get_mcp
+            needing = self.mcp_oauth_service.get_servers_needing_auth(user_id, _get_mcp())
+            attempted = set(session.get('mcp_auth_attempted', []))
+            needing = [s for s in needing if s not in attempted]
+            if needing:
+                logger.info(f"Redirecting user {user_id!r} to authorize MCP server(s): {needing}")
+                return redirect(url_for('mcp_authorize', server=needing[0], next=next_url))
+        except Exception as me:
+            logger.warning(f"MCP auth chain check failed: {me}")
+        return None
 
     def mcp_authorize(self):
         """Redirect user to an MCP server's OAuth2 authorization endpoint."""
@@ -3251,19 +3254,10 @@ class FlaskAppWrapper(object):
             return redirect(next_url)
         logger.info(f"MCP OAuth complete for user={user_id!r}, server='{server_name}'")
 
-        # If more servers need auth, chain to the next one — but never to a
-        # server already attempted this session (prevents redirect loops).
-        if hasattr(self, 'mcp_oauth_service') and user_id:
-            try:
-                from src.utils.config_access import get_mcp_servers_config as _get_mcp
-                mcp_servers = _get_mcp()
-                needing = self.mcp_oauth_service.get_servers_needing_auth(user_id, mcp_servers)
-                attempted = set(session.get('mcp_auth_attempted', []))
-                needing = [s for s in needing if s not in attempted]
-                if needing:
-                    return redirect(url_for('mcp_authorize', server=needing[0], next=next_url))
-            except Exception as me:
-                logger.warning(f"MCP chain auth check failed: {me}")
+        # If more servers need auth, chain to the next one.
+        chain = self._next_mcp_auth_redirect(user_id, next_url)
+        if chain:
+            return chain
 
         return redirect(next_url)
     # ------------------------------------------------------------------
@@ -3275,6 +3269,7 @@ class FlaskAppWrapper(object):
         (GET /api/mcp/status): auth mode, availability, and tool list for
         reachable servers. Backs the Settings > MCP Servers panel."""
         import asyncio
+        from src.archi.pipelines.agents.base_react import OPENAI_MAX_TOOLS
         from src.archi.pipelines.agents.tools.mcp import get_mcp_server_status
 
         user_id = session.get('user', {}).get('id') or None
@@ -3283,37 +3278,57 @@ class FlaskAppWrapper(object):
         except Exception as e:
             logger.error(f"MCP status check failed: {e}")
             return jsonify({"error": "MCP status check failed"}), 500
-        return jsonify({"servers": servers, "user_scoped": bool(user_id)})
+        return jsonify({
+            "servers": servers,
+            "user_scoped": bool(user_id),
+            # The per-request cap the agent actually enforces — lets the UI
+            # warn about overflow without hardcoding its own copy.
+            "tool_limit": OPENAI_MAX_TOOLS,
+        })
+
+    # Single owner of the mcp_tokens fetch/create SQL. Cursor-based so callers
+    # that already hold a connection (oauth_token) reuse it; the wrappers
+    # below open their own.
+
+    @staticmethod
+    def _fetch_mcp_token_cur(cur, user_id: str) -> Optional[str]:
+        cur.execute(
+            """SELECT token FROM mcp_tokens
+               WHERE user_id = %s
+                 AND (expires_at IS NULL OR expires_at > NOW())
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+    @staticmethod
+    def _insert_mcp_token_cur(cur, user_id: str) -> str:
+        token = secrets.token_hex(32)
+        cur.execute(
+            "INSERT INTO mcp_tokens (token, user_id) VALUES (%s, %s)",
+            (token, user_id),
+        )
+        return token
+
+    def _get_or_create_mcp_token_cur(self, cur, user_id: str) -> str:
+        return self._fetch_mcp_token_cur(cur, user_id) or self._insert_mcp_token_cur(cur, user_id)
 
     def _get_mcp_token(self, user_id: str) -> Optional[str]:
         """Return the existing MCP token for a user, or None."""
-        import secrets as _secrets
         conn = psycopg2.connect(**self.pg_config)
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT token FROM mcp_tokens
-                       WHERE user_id = %s
-                         AND (expires_at IS NULL OR expires_at > NOW())
-                       ORDER BY created_at DESC LIMIT 1""",
-                    (user_id,),
-                )
-                row = cur.fetchone()
-                return row[0] if row else None
+                return self._fetch_mcp_token_cur(cur, user_id)
         finally:
             conn.close()
 
     def _create_mcp_token(self, user_id: str) -> str:
         """Create and store a new MCP token for a user, returning the token string."""
-        import secrets as _secrets
-        token = _secrets.token_hex(32)
         conn = psycopg2.connect(**self.pg_config)
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO mcp_tokens (token, user_id) VALUES (%s, %s)",
-                    (token, user_id),
-                )
+                token = self._insert_mcp_token_cur(cur, user_id)
             conn.commit()
         finally:
             conn.close()
@@ -3321,16 +3336,11 @@ class FlaskAppWrapper(object):
 
     def _rotate_mcp_token(self, user_id: str) -> str:
         """Delete all existing MCP tokens for a user and create a fresh one."""
-        import secrets as _secrets
-        token = _secrets.token_hex(32)
         conn = psycopg2.connect(**self.pg_config)
         try:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM mcp_tokens WHERE user_id = %s", (user_id,))
-                cur.execute(
-                    "INSERT INTO mcp_tokens (token, user_id) VALUES (%s, %s)",
-                    (token, user_id),
-                )
+                token = self._insert_mcp_token_cur(cur, user_id)
             conn.commit()
         finally:
             conn.close()

@@ -168,7 +168,7 @@
           </p>
           <div class="token-row" style="margin-bottom:16px">
             <div class="token-box" id="token-display">{{ token }}</div>
-            <button class="copy-btn" onclick="copyToken()">Copy</button>
+            <button class="copy-btn" onclick="copySnippet('token-display')">Copy</button>
           </div>
           <div class="danger-zone">
             <h2>Rotate token</h2>
@@ -187,11 +187,6 @@
     </div>
 
     <script>
-      function copyToken() {
-        navigator.clipboard.writeText(document.getElementById('token-display').textContent.trim())
-          .then(() => alert('Token copied to clipboard.'));
-      }
-
       function copySnippet(id) {
         navigator.clipboard.writeText(document.getElementById(id).textContent.trim())
           .then(() => alert('Snippet copied to clipboard.'));

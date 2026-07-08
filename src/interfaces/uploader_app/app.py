@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import time
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
@@ -19,6 +18,11 @@ from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogSe
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.vectorstore.loader_utils import load_text_from_path
 from src.interfaces.chat_app.document_utils import check_credentials
+from src.utils.catalog_search import (
+    compile_query_pattern as _compile_query_pattern,
+    grep_text_lines as _grep_text_lines,
+    parse_metadata_query as _parse_metadata_query,
+)
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.data_manager.collectors.utils.catalog_postgres import _METADATA_COLUMN_MAP
@@ -656,46 +660,6 @@ def _flatten_metadata(data: Dict[str, object], prefix: str = "") -> Dict[str, st
     return flattened
 
 
-_METADATA_ALIAS_MAP = {
-    "resource_type": "source_type",
-    "resource_id": "ticket_id",
-}
-
-
-def _parse_metadata_query(query: str) -> Tuple[Dict[str, str] | List[Dict[str, str]], str]:
-    filters_groups: List[Dict[str, str]] = []
-    current_group: Dict[str, str] = {}
-    free_tokens = []
-    for token in shlex.split(query):
-        if token.upper() == "OR":
-            if current_group:
-                filters_groups.append(current_group)
-                current_group = {}
-            continue
-        if ":" in token:
-            key, value = token.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-            if key and value:
-                # Normalize legacy keys to canonical column names
-                key = _METADATA_ALIAS_MAP.get(key, key)
-                current_group[key] = value
-                continue
-        free_tokens.append(token)
-
-    if current_group:
-        filters_groups.append(current_group)
-
-    if not filters_groups:
-        filters: Dict[str, str] | List[Dict[str, str]] = {}
-    elif len(filters_groups) == 1:
-        filters = filters_groups[0]
-    else:
-        filters = filters_groups
-
-    return filters, " ".join(free_tokens)
-
-
 def _parse_bool(value: Optional[str], *, default: bool = False) -> bool:
     if value is None:
         return default
@@ -705,39 +669,6 @@ def _parse_bool(value: Optional[str], *, default: bool = False) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return default
-
-
-def _compile_query_pattern(query: str, *, regex: bool, case_sensitive: bool) -> re.Pattern[str]:
-    flags = 0 if case_sensitive else re.IGNORECASE
-    pattern = query if regex else re.escape(query)
-    return re.compile(pattern, flags)
-
-
-def _grep_text_lines(
-    text: str,
-    pattern: re.Pattern[str],
-    *,
-    before: int = 0,
-    after: int = 0,
-    max_matches: int = 3,
-) -> list[Dict[str, object]]:
-    if max_matches <= 0:
-        return []
-    lines = text.splitlines()
-    matches: list[Dict[str, object]] = []
-    for idx, line in enumerate(lines):
-        if not pattern.search(line):
-            continue
-        match = {
-            "line": idx + 1,
-            "text": line,
-            "before": lines[max(0, idx - before) : idx] if before else [],
-            "after": lines[idx + 1 : idx + 1 + after] if after else [],
-        }
-        matches.append(match)
-        if len(matches) >= max_matches:
-            break
-    return matches
 
 
 def _collect_snippet(text: str, start_idx: int, query_len: int, window: int = -1) -> str:

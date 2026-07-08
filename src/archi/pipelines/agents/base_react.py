@@ -21,10 +21,14 @@ from src.archi.providers.base import ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.run_memory import RunMemory
 from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
-from src.archi.pipelines.agents.tools import initialize_mcp_client
+from src.archi.pipelines.agents.tools import has_user_scoped_servers, initialize_mcp_client
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# OpenAI enforces a hard per-request tool limit; exposed to the UI via
+# /api/mcp/status so the warning there can't drift from what we enforce.
+OPENAI_MAX_TOOLS = 128
 
 class BaseReActAgent:
     """
@@ -1094,6 +1098,12 @@ class BaseReActAgent:
 
         mcp_tools: List[Callable] = []
         if "mcp" in self.selected_tool_names:
+            # A per-user rebuild only matters when some server's toolset
+            # depends on who is asking (sso_auth/service_auth). Otherwise the
+            # per-user toolset is identical to the shared one — skip the
+            # reconnect + recompile and use the cache.
+            if user_id and not has_user_scoped_servers():
+                user_id = None
             # When user_id is present, always rebuild so each request fetches a
             # fresh (possibly refreshed) token from the DB for SSO-auth servers.
             # Without a user_id (anonymous), cache the tools as before.
@@ -1107,15 +1117,13 @@ class BaseReActAgent:
 
         extra_list: List[Callable] = list(extra_tools) if extra_tools else []
 
-        # OpenAI enforces a hard 128-tool limit per request.
         # Keep all static/extra tools; trim only the MCP portion.
-        _OPENAI_MAX_TOOLS = 128
         n_static = len(base_tools) + len(extra_list)
-        if n_static + len(mcp_tools) > _OPENAI_MAX_TOOLS:
-            mcp_budget = max(0, _OPENAI_MAX_TOOLS - n_static)
+        if n_static + len(mcp_tools) > OPENAI_MAX_TOOLS:
+            mcp_budget = max(0, OPENAI_MAX_TOOLS - n_static)
             logger.warning(
                 f"Toolset has {n_static + len(mcp_tools)} tools, exceeding OpenAI max of "
-                f"{_OPENAI_MAX_TOOLS}. Truncating MCP tools to {mcp_budget}. "
+                f"{OPENAI_MAX_TOOLS}. Truncating MCP tools to {mcp_budget}. "
                 f"Static/extra tools ({n_static}) are preserved."
             )
             mcp_tools = mcp_tools[:mcp_budget]

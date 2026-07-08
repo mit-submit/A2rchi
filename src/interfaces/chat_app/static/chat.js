@@ -50,6 +50,7 @@ const CONFIG = {
     AGENTS_LIST: '/api/agents/list',
     AGENT_SPEC: '/api/agents/spec',
     AGENT_ACTIVE: '/api/agents/active',
+    MCP_STATUS: '/api/mcp/status',
     USER_ME: '/api/users/me',
     USER_PREFERENCES: '/api/users/me/preferences',
     LIKE: '/api/like',
@@ -1080,8 +1081,9 @@ const UI = {
     }
   },
 
-  // Total tools the model can be offered in one request (OpenAI hard cap).
-  // Mirrors _OPENAI_MAX_TOOLS in base_react.py — used only to warn in the UI.
+  // Per-request tool cap enforced by the agent; the authoritative value
+  // arrives in the /api/mcp/status payload (tool_limit) — this is only the
+  // fallback for older backends.
   MCP_TOOL_LIMIT: 128,
 
   MCP_STATE_META: {
@@ -1101,10 +1103,9 @@ const UI = {
     if (summary) summary.hidden = true;
     container.innerHTML = '<p class="settings-description mcp-loading">Loading MCP servers…</p>';
     try {
-      const response = await fetch('/api/mcp/status');
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      this.renderMcpStatus(container, summary, data.servers || []);
+      const data = await API.fetchJson(CONFIG.ENDPOINTS.MCP_STATUS);
+      if (!data) return; // 401 -> fetchJson already redirected to login
+      this.renderMcpStatus(container, summary, data.servers || [], data.tool_limit);
     } catch (err) {
       if (summary) summary.hidden = true;
       container.innerHTML = '<p class="settings-description mcp-empty">Failed to load MCP server status. Try refreshing.</p>';
@@ -1113,20 +1114,17 @@ const UI = {
     }
   },
 
+  // The server computes the write flag (and strips the marker from the
+  // description) — the marker convention lives in exactly one place.
   isWriteTool(tool) {
-    return /\[WRITE OPERATION\]/i.test(tool.description || '') || tool.write === true;
+    return tool.write === true;
   },
 
-  // Description sans the [WRITE OPERATION] marker (shown as a badge instead),
-  // first line only.
   mcpToolDesc(tool) {
-    return (tool.description || '')
-      .replace(/\[WRITE OPERATION\]/ig, '')
-      .split('\n')[0]
-      .trim();
+    return (tool.description || '').split('\n')[0].trim();
   },
 
-  renderMcpStatus(container, summary, servers) {
+  renderMcpStatus(container, summary, servers, toolLimit) {
     if (!servers.length) {
       if (summary) summary.hidden = true;
       container.innerHTML = '<p class="settings-description mcp-empty">No MCP servers are configured for this deployment.</p>';
@@ -1152,12 +1150,13 @@ const UI = {
       summary.hidden = false;
     }
 
-    // Truncation warning: the model is offered at most MCP_TOOL_LIMIT tools per
+    // Truncation warning: the model is offered at most `limit` tools per
     // request, so a large active surface means some tools silently won't reach it.
-    const noticeHtml = totalTools > this.MCP_TOOL_LIMIT
+    const limit = toolLimit || this.MCP_TOOL_LIMIT;
+    const noticeHtml = totalTools > limit
       ? `<div class="mcp-notice mcp-notice-warn">
-           <strong>${totalTools} tools exceed the ${this.MCP_TOOL_LIMIT}-tool request limit.</strong>
-           The agent is offered at most ${this.MCP_TOOL_LIMIT} tools per message, so some of these are
+           <strong>${totalTools} tools exceed the ${limit}-tool request limit.</strong>
+           The agent is offered at most ${limit} tools per message, so some of these are
            dropped from any given request. Consider narrowing the enabled servers.
          </div>`
       : '';

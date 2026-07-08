@@ -56,7 +56,6 @@ from __future__ import annotations
 import json
 import queue
 import re
-import shlex
 import textwrap
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -66,9 +65,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 import psycopg2
-import yaml
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
+from src.utils.catalog_search import (
+    compile_query_pattern as _compile_query_pattern,
+    grep_text_lines as _grep_text_lines,
+    metadata_filter_keys as _metadata_filter_keys,
+    parse_metadata_query as _parse_metadata_query,
+)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -487,30 +491,6 @@ def _text(text: str) -> Dict:
     return {"content": [{"type": "text", "text": str(text)}]}
 
 
-_METADATA_ALIAS_MAP = {
-    "resource_type": "source_type",
-    "resource_id": "ticket_id",
-}
-
-_METADATA_FILTER_KEYS = [
-    "path",
-    "file_path",
-    "display_name",
-    "source_type",
-    "url",
-    "ticket_id",
-    "suffix",
-    "size_bytes",
-    "original_path",
-    "base_path",
-    "relative_path",
-    "created_at",
-    "modified_at",
-    "file_modified_at",
-    "ingested_at",
-]
-
-
 def _clamp_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
     try:
         parsed = int(value)
@@ -526,80 +506,6 @@ def _truncate_text(value: Any, *, max_chars: int) -> str:
     return text[: max_chars - 3].rstrip() + "..."
 
 
-def _parse_metadata_query(query: str) -> tuple[Dict[str, str] | list[Dict[str, str]], str]:
-    filter_groups: list[Dict[str, str]] = []
-    current_group: Dict[str, str] = {}
-    free_tokens: list[str] = []
-
-    try:
-        tokens = shlex.split(query)
-    except ValueError as exc:
-        # Fall back to whitespace tokenization for malformed quoted input.
-        logger.warning("Invalid metadata query syntax; using fallback tokenization: %s", exc)
-        tokens = query.split()
-
-    for token in tokens:
-        if token.upper() == "OR":
-            if current_group:
-                filter_groups.append(current_group)
-                current_group = {}
-            continue
-        if ":" in token:
-            key, value = token.split(":", 1)
-            key = _METADATA_ALIAS_MAP.get(key.strip(), key.strip())
-            value = value.strip()
-            if key and value:
-                current_group[key] = value
-                continue
-        free_tokens.append(token)
-
-    if current_group:
-        filter_groups.append(current_group)
-
-    if not filter_groups:
-        filters: Dict[str, str] | list[Dict[str, str]] = {}
-    elif len(filter_groups) == 1:
-        filters = filter_groups[0]
-    else:
-        filters = filter_groups
-
-    return filters, " ".join(free_tokens)
-
-
-def _compile_query_pattern(query: str, *, regex: bool, case_sensitive: bool) -> re.Pattern[str]:
-    flags = 0 if case_sensitive else re.IGNORECASE
-    pattern = query if regex else re.escape(query)
-    return re.compile(pattern, flags)
-
-
-def _grep_text_lines(
-    text: str,
-    pattern: re.Pattern[str],
-    *,
-    before: int = 0,
-    after: int = 0,
-    max_matches: int = 3,
-) -> list[Dict[str, Any]]:
-    if max_matches <= 0:
-        return []
-    lines = text.splitlines()
-    matches: list[Dict[str, Any]] = []
-    for idx, line in enumerate(lines):
-        if not pattern.search(line):
-            continue
-        matches.append(
-            {
-                "line": idx + 1,
-                "text": line,
-                "before": lines[max(0, idx - before):idx] if before else [],
-                "after": lines[idx + 1: idx + 1 + after] if after else [],
-            }
-        )
-        if len(matches) >= max_matches:
-            break
-    return matches
-
-
 def _document_display_name(doc: Dict[str, Any]) -> str:
     return (
         doc.get("display_name")
@@ -611,70 +517,69 @@ def _document_display_name(doc: Dict[str, Any]) -> str:
     )
 
 
-def _parse_agent_frontmatter(path: Path) -> Optional[Dict[str, Any]]:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except Exception:
-        return None
-
-    lines = text.splitlines()
-    idx = 0
-    while idx < len(lines) and not lines[idx].strip():
-        idx += 1
-    if idx >= len(lines) or lines[idx].strip() != "---":
-        return None
-
-    idx += 1
-    frontmatter_lines: list[str] = []
-    while idx < len(lines):
-        if lines[idx].strip() == "---":
-            idx += 1
-            break
-        frontmatter_lines.append(lines[idx])
-        idx += 1
-    else:
-        return None
-
-    try:
-        frontmatter = yaml.safe_load("\n".join(frontmatter_lines)) or {}
-    except Exception:
-        return None
-
-    if not isinstance(frontmatter, dict):
-        return None
-
-    name = frontmatter.get("name")
-    tools = frontmatter.get("tools")
-    if not isinstance(name, str) or not name.strip():
-        return None
-    if not isinstance(tools, list) or not all(isinstance(tool, str) and tool.strip() for tool in tools):
-        return None
-
-    return {
-        "name": name.strip(),
-        "tools": [tool.strip() for tool in tools],
-        "path": path,
-        "content": text,
-    }
-
-
 def _list_agent_specs(agents_dir: Path) -> list[Dict[str, Any]]:
+    """
+    Agent specs as plain dicts, parsed by the canonical agent_spec loader —
+    the same parser the chat app uses for its own /api/agents listing, so the
+    two views cannot drift. Invalid spec files are skipped.
+    """
+    from src.archi.pipelines.agents.agent_spec import (
+        AgentSpecError,
+        list_agent_files,
+        load_agent_spec,
+    )
+
     if not agents_dir.exists() or not agents_dir.is_dir():
         return []
 
     specs: list[Dict[str, Any]] = []
-    for path in sorted(agents_dir.iterdir()):
-        if not path.is_file() or path.suffix.lower() != ".md":
+    for path in list_agent_files(agents_dir):
+        try:
+            spec = load_agent_spec(path)
+            content = path.read_text(encoding="utf-8")
+        except (AgentSpecError, OSError):
             continue
-        spec = _parse_agent_frontmatter(path)
-        if spec is not None:
-            specs.append(spec)
+        specs.append(
+            {
+                "name": spec.name,
+                "tools": list(spec.tools),
+                "path": path,
+                "content": content,
+            }
+        )
     return specs
 
 
 # ---------------------------------------------------------------------------
 # Tool handlers (run inside the Flask process – no HTTP round-trip)
 # ---------------------------------------------------------------------------
+
+
+# Tool name -> adapter with the uniform signature (args, wrapper, user_id,
+# notify). Adding a tool = one _TOOLS schema entry + one row here; the check
+# below keeps the two lists from drifting. Handlers are defined further down —
+# the lambdas resolve them at call time.
+_TOOL_HANDLERS: Dict[str, Any] = {
+    "archi_query": lambda args, wrapper, user_id, notify: _tool_query(args, wrapper, user_id, notify=notify),
+    "archi_list_documents": lambda args, wrapper, user_id, notify: _tool_list_documents(args, wrapper),
+    "archi_get_document_content": lambda args, wrapper, user_id, notify: _tool_get_document_content(args, wrapper),
+    "archi_search_document_metadata": lambda args, wrapper, user_id, notify: _tool_search_document_metadata(args, wrapper),
+    "archi_list_metadata_schema": lambda args, wrapper, user_id, notify: _tool_list_metadata_schema(wrapper),
+    "archi_search_document_content": lambda args, wrapper, user_id, notify: _tool_search_document_content(args, wrapper),
+    "archi_get_document_chunks": lambda args, wrapper, user_id, notify: _tool_get_document_chunks(args, wrapper),
+    "archi_get_data_stats": lambda args, wrapper, user_id, notify: _tool_get_data_stats(args, wrapper),
+    "archi_get_deployment_info": lambda args, wrapper, user_id, notify: _tool_deployment_info(wrapper),
+    "archi_list_agents": lambda args, wrapper, user_id, notify: _tool_list_agents(wrapper),
+    "archi_get_agent_spec": lambda args, wrapper, user_id, notify: _tool_get_agent_spec(args, wrapper),
+    "archi_health": lambda args, wrapper, user_id, notify: _text("status: OK\ndatabase: OK"),
+}
+
+_schema_names = {t["name"] for t in _TOOLS}
+if _schema_names != set(_TOOL_HANDLERS):
+    raise RuntimeError(
+        f"MCP tool schema/handler mismatch: only in _TOOLS {_schema_names - set(_TOOL_HANDLERS)}, "
+        f"only in _TOOL_HANDLERS {set(_TOOL_HANDLERS) - _schema_names}"
+    )
 
 
 def _call_tool(
@@ -691,33 +596,11 @@ def _call_tool(
     It is only provided when the client included ``_meta.progressToken`` in the
     tools/call request.
     """
+    handler = _TOOL_HANDLERS.get(name)
+    if handler is None:
+        return _text(f"ERROR: Unknown tool '{name}'.")
     try:
-        if name == "archi_query":
-            return _tool_query(arguments, wrapper, user_id, notify=notify)
-        elif name == "archi_list_documents":
-            return _tool_list_documents(arguments, wrapper)
-        elif name == "archi_get_document_content":
-            return _tool_get_document_content(arguments, wrapper)
-        elif name == "archi_search_document_metadata":
-            return _tool_search_document_metadata(arguments, wrapper)
-        elif name == "archi_list_metadata_schema":
-            return _tool_list_metadata_schema(wrapper)
-        elif name == "archi_search_document_content":
-            return _tool_search_document_content(arguments, wrapper)
-        elif name == "archi_get_document_chunks":
-            return _tool_get_document_chunks(arguments, wrapper)
-        elif name == "archi_get_data_stats":
-            return _tool_get_data_stats(arguments, wrapper)
-        elif name == "archi_get_deployment_info":
-            return _tool_deployment_info(wrapper)
-        elif name == "archi_list_agents":
-            return _tool_list_agents(wrapper)
-        elif name == "archi_get_agent_spec":
-            return _tool_get_agent_spec(arguments, wrapper)
-        elif name == "archi_health":
-            return _text("status: OK\ndatabase: OK")
-        else:
-            return _text(f"ERROR: Unknown tool '{name}'.")
+        return handler(arguments, wrapper, user_id, notify)
     except Exception as exc:
         logger.exception("MCP tool %s raised an exception", name)
         return _text(f"ERROR: {exc}")
@@ -744,11 +627,11 @@ def _tool_query(
     except Exception:
         pass
     # client_timeout is in milliseconds (matching UI convention); convert to seconds
-    client_timeout_ms = arguments.get("client_timeout", default_timeout_ms)
     try:
-        client_timeout = max(float(client_timeout_ms) / 1000.0, 1.0)
+        client_timeout_ms = float(arguments.get("client_timeout", default_timeout_ms))
     except (TypeError, ValueError):
-        client_timeout = max(float(default_timeout_ms) / 1000.0, 1.0)
+        client_timeout_ms = float(default_timeout_ms)
+    client_timeout = max(client_timeout_ms / 1000.0, 1.0)
     client_id = f"mcp-sse-{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
 
@@ -931,7 +814,7 @@ def _tool_search_document_metadata(arguments: Dict[str, Any], wrapper) -> Dict:
 def _tool_list_metadata_schema(wrapper) -> Dict:
     catalog = wrapper.chat.data_viewer.catalog
     distinct = catalog.get_distinct_metadata(["source_type", "suffix"])
-    keys = sorted(_METADATA_FILTER_KEYS)
+    keys = _metadata_filter_keys()
     source_types = distinct.get("source_type", [])
     suffixes = distinct.get("suffix", [])
 
@@ -1001,7 +884,6 @@ def _tool_search_document_content(arguments: Dict[str, Any], wrapper) -> Dict:
 
     hits: list[Dict[str, Any]] = []
     for resource_hash, path in iterable:
-        metadata = candidate_metadata.get(resource_hash) or catalog.get_metadata_for_hash(resource_hash) or {}
         text = load_text_from_path(path) or ""
         if not text:
             continue
@@ -1014,6 +896,9 @@ def _tool_search_document_content(arguments: Dict[str, Any], wrapper) -> Dict:
         )
         if not matches:
             continue
+        # Metadata costs a catalog query per file — fetch it only for hits
+        # (bounded by `limit`), not for every scanned document.
+        metadata = candidate_metadata.get(resource_hash) or catalog.get_metadata_for_hash(resource_hash) or {}
         hits.append(
             {
                 "hash": resource_hash,

@@ -503,10 +503,15 @@ class TemplateManager:
                 "dimensions", embedding_dimensions
             )
         
+        from src.utils.mcp_auth_schema import MCP_AUTH_TABLES_SQL
+
         init_sql = init_sql_template.render(
             use_grafana=grafana_enabled,
             grafana_pg_password=grafana_pg_password,
             embedding_dimensions=embedding_dimensions,
+            # Canonical MCP/SSO auth DDL, shared with ConfigService's
+            # upgrade path so the two schema sources cannot drift.
+            mcp_auth_tables_sql=MCP_AUTH_TABLES_SQL,
             # Vector index settings (optional overrides)
             vector_index_type=data_manager_config.get("vector_index_type", "hnsw"),
             vector_index_hnsw_m=data_manager_config.get("vector_index_hnsw_m", 16),

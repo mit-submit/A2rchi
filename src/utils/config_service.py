@@ -229,90 +229,11 @@ class ConfigService:
                     ADD COLUMN IF NOT EXISTS active_agent_name VARCHAR(200)
                     """
                 )
-                # SSO token table for MCP Bearer auth (added for sso_auth MCP support)
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS sso_tokens (
-                        user_id                 VARCHAR(200) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                        access_token            BYTEA,
-                        refresh_token           BYTEA,
-                        access_token_expires_at TIMESTAMPTZ,
-                        session_expires_at      TIMESTAMPTZ,
-                        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                    """
-                )
-                # MCP OAuth2 client registrations and per-user tokens
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
-                        server_name   VARCHAR(200) PRIMARY KEY,
-                        server_url    TEXT NOT NULL,
-                        client_id     TEXT NOT NULL,
-                        client_secret TEXT NOT NULL DEFAULT '',
-                        redirect_uri  TEXT NOT NULL,
-                        auth_meta     JSONB NOT NULL DEFAULT '{}'::jsonb,
-                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                    """
-                )
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
-                        user_id                 VARCHAR(200) REFERENCES users(id) ON DELETE CASCADE,
-                        server_name             VARCHAR(200) NOT NULL,
-                        access_token            BYTEA,
-                        refresh_token           BYTEA,
-                        access_token_expires_at TIMESTAMPTZ,
-                        session_expires_at      TIMESTAMPTZ,
-                        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        PRIMARY KEY (user_id, server_name)
-                    )
-                    """
-                )
-                # Server-side MCP tables (bearer tokens for /mcp/sse, OAuth2 PKCE
-                # codes, and RFC 7591 dynamic client registrations). Mirrors
-                # init.sql so pre-existing deployments get them on upgrade.
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS mcp_tokens (
-                        token        VARCHAR(64) PRIMARY KEY,
-                        user_id      VARCHAR(200) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        display_name TEXT,
-                        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        last_used_at TIMESTAMPTZ,
-                        expires_at   TIMESTAMPTZ
-                    )
-                    """
-                )
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS mcp_auth_codes (
-                        code                  VARCHAR(64) PRIMARY KEY,
-                        user_id               VARCHAR(200) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        code_challenge        VARCHAR(128) NOT NULL,
-                        code_challenge_method VARCHAR(10) NOT NULL DEFAULT 'S256',
-                        redirect_uri          TEXT NOT NULL,
-                        client_id             VARCHAR(100) NOT NULL,
-                        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        expires_at            TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '10 minutes',
-                        used                  BOOLEAN NOT NULL DEFAULT FALSE
-                    )
-                    """
-                )
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS mcp_registered_clients (
-                        client_id     VARCHAR(32) PRIMARY KEY,
-                        client_name   TEXT,
-                        redirect_uris TEXT[] NOT NULL,
-                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                    """
-                )
+                # MCP/SSO auth tables — canonical DDL shared with the CLI's
+                # init.sql template, so pre-existing deployments get exactly
+                # the schema (incl. indexes) a fresh deployment would have.
+                from src.utils.mcp_auth_schema import MCP_AUTH_TABLES_SQL
+                cursor.execute(MCP_AUTH_TABLES_SQL)
                 conn.commit()
         except psycopg2.Error as e:
             logger.debug("Could not ensure config tables/columns: %s", e)

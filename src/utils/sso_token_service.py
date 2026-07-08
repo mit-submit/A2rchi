@@ -13,7 +13,7 @@ import requests as http_requests
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from src.utils.env import read_secret
+from src.utils.env import get_token_encryption_key, read_secret
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -38,26 +38,7 @@ class SSOTokenService:
         self.pg_config = pg_config or {}
         self.token_endpoint = token_endpoint
         self.session_lifetime_days = session_lifetime_days
-        self._encryption_key = read_secret("BYOK_ENCRYPTION_KEY")
-        if not self._encryption_key:
-            fallback = (
-                read_secret("PG_ENCRYPTION_KEY")
-                or read_secret("UPLOADER_SALT")
-                or read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
-            )
-            if fallback:
-                logger.warning(
-                    "SSOTokenService: BYOK_ENCRYPTION_KEY not set — falling back to another "
-                    "configured secret for token encryption. Set BYOK_ENCRYPTION_KEY explicitly; "
-                    "changing the effective key later makes previously stored tokens undecryptable."
-                )
-            self._encryption_key = fallback
-        if not self._encryption_key:
-            logger.warning(
-                "SSOTokenService: no encryption key found "
-                "(BYOK_ENCRYPTION_KEY / PG_ENCRYPTION_KEY / UPLOADER_SALT). "
-                "SSO tokens will not be persisted — MCP sso_auth servers will be skipped."
-            )
+        self._encryption_key = get_token_encryption_key()
 
     # ------------------------------------------------------------------
     # Public API
@@ -174,7 +155,9 @@ class SSOTokenService:
         if factory:
             return factory.connection_pool
         from src.utils.connection_pool import ConnectionPool
-        return ConnectionPool(connection_params=self.pg_config)
+        # Singleton — a fresh pool per token operation would open (and leak)
+        # min_conn connections each call.
+        return ConnectionPool.get_instance(connection_params=self.pg_config)
 
     def _fetch_row(self, user_id: str):
         try:

@@ -14,7 +14,6 @@ Implements the full authorization code + PKCE flow with dynamic client registrat
 import base64
 import hashlib
 import json
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
@@ -22,13 +21,12 @@ from urllib.parse import urlencode, urlparse
 
 import requests as http_requests
 
-from src.utils.env import read_secret
+from src.utils.env import get_token_encryption_key, ssl_verify
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-_CA_BUNDLE = "/etc/ssl/certs/tls-ca-bundle.pem"
-_VERIFY = _CA_BUNDLE if os.path.exists(_CA_BUNDLE) else True
+_VERIFY = ssl_verify()
 
 
 class MCPOAuthService:
@@ -37,25 +35,12 @@ class MCPOAuthService:
     that implement their own authorization server (MCP 2025-11 spec).
     """
 
-    def __init__(self, pg_config: dict = None, app_base_url: str = ""):
+    def __init__(self, pg_config: dict = None, app_base_url: str = "",
+                 session_lifetime_days: int = 30):
         self.pg_config = pg_config or {}
         self.app_base_url = app_base_url.rstrip("/")
-        self._encryption_key = read_secret("BYOK_ENCRYPTION_KEY")
-        if not self._encryption_key:
-            fallback = (
-                read_secret("PG_ENCRYPTION_KEY")
-                or read_secret("UPLOADER_SALT")
-                or read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
-            )
-            if fallback:
-                logger.warning(
-                    "MCPOAuthService: BYOK_ENCRYPTION_KEY not set — falling back to another "
-                    "configured secret for token encryption. Set BYOK_ENCRYPTION_KEY explicitly; "
-                    "changing the effective key later makes previously stored tokens undecryptable."
-                )
-            self._encryption_key = fallback
-        if not self._encryption_key:
-            logger.warning("MCPOAuthService: no encryption key found — tokens will not be persisted")
+        self.session_lifetime_days = session_lifetime_days
+        self._encryption_key = get_token_encryption_key()
 
     # ------------------------------------------------------------------
     # Discovery & Registration
@@ -277,7 +262,7 @@ class MCPOAuthService:
 
         now = datetime.now(timezone.utc)
         access_expires_at = now + timedelta(seconds=expires_in)
-        session_expires_at = now + timedelta(days=30)
+        session_expires_at = now + timedelta(days=self.session_lifetime_days)
 
         try:
             with self._get_pool().get_connection() as conn:
@@ -440,4 +425,6 @@ class MCPOAuthService:
         if factory:
             return factory.connection_pool
         from src.utils.connection_pool import ConnectionPool
-        return ConnectionPool(connection_params=self.pg_config)
+        # Singleton — a fresh pool per token operation would open (and leak)
+        # min_conn connections each call.
+        return ConnectionPool.get_instance(connection_params=self.pg_config)
