@@ -4067,6 +4067,117 @@ body {
    MCP Servers settings section
    ============================================================ */
 
+.mcp-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mcp-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.mcp-refresh-btn:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.1));
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.mcp-refresh-btn.is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.mcp-refresh-btn.is-loading svg {
+  animation: mcp-spin 0.8s linear infinite;
+}
+
+@keyframes mcp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Summary bar */
+.mcp-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.mcp-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--border-color);
+}
+
+.mcp-summary-warn {
+  color: #92600a;
+  background: rgba(217, 160, 32, 0.16);
+}
+
+:root[data-theme="dark"] .mcp-summary-warn {
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.14);
+}
+
+.mcp-summary-fail {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.12);
+}
+
+:root[data-theme="dark"] .mcp-summary-fail {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.14);
+}
+
+/* Truncation / info notice */
+.mcp-notice {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.mcp-notice strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.mcp-notice-warn {
+  background: rgba(217, 160, 32, 0.1);
+  border: 1px solid rgba(217, 160, 32, 0.3);
+}
+
+:root[data-theme="dark"] .mcp-notice-warn {
+  background: rgba(250, 204, 21, 0.08);
+  border-color: rgba(250, 204, 21, 0.25);
+}
+
+.mcp-loading,
+.mcp-empty {
+  padding: 8px 0;
+}
+
+/* Status list */
 .mcp-status-list {
   display: flex;
   flex-direction: column;
@@ -4077,7 +4188,42 @@ body {
   padding-top: 16px;
 }
 
+/* Card header: dot + name + auth tag + state chip */
+.mcp-server-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mcp-server-name {
+  margin-bottom: 0;
+}
+
+.mcp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-secondary);
+}
+
+.mcp-dot-active { background: #10a35f; }
+.mcp-dot-needs-auth { background: #d9a020; }
+.mcp-dot-failed { background: #dc2626; }
+.mcp-dot-muted { background: var(--text-secondary); opacity: 0.5; }
+
+.mcp-auth-tag {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding: 1px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 .mcp-state-chip {
+  margin-left: auto;
   font-size: var(--text-xs);
   font-weight: 600;
   padding: 2px 10px;
@@ -4124,34 +4270,132 @@ body {
   word-break: break-all;
 }
 
-.mcp-server-tools summary {
-  cursor: pointer;
-  font-size: var(--text-sm);
-  color: var(--text-primary);
-  margin: 6px 0;
-}
-
-.mcp-server-tools ul {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0 0 0 8px;
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.mcp-server-tools li {
-  padding: 3px 0;
-  font-size: var(--text-sm);
-}
-
-.mcp-server-tools code {
+.mcp-server-meta code {
   font-family: var(--font-mono, monospace);
   font-size: var(--text-xs);
 }
 
+/* Tools disclosure */
+.mcp-server-tools summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  margin: 8px 0;
+  user-select: none;
+}
+
+.mcp-tools-summary-count {
+  font-weight: 600;
+}
+
+.mcp-write-count {
+  color: #b45309;
+}
+
+:root[data-theme="dark"] .mcp-write-count {
+  color: #fbbf24;
+}
+
+.mcp-tools-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 8px;
+  flex-wrap: wrap;
+}
+
+.mcp-tool-search {
+  flex: 1;
+  min-width: 140px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary, transparent);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+}
+
+.mcp-tool-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.mcp-write-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mcp-tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.mcp-tool-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--text-sm);
+  border-top: 1px solid var(--border-color);
+}
+
+.mcp-tool-row:first-child {
+  border-top: none;
+}
+
+.mcp-tool-row code {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
 .mcp-tool-desc {
   color: var(--text-secondary);
-  margin-left: 8px;
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-tool-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.mcp-tool-read {
+  color: var(--text-secondary);
+  background: var(--border-color);
+}
+
+.mcp-tool-write {
+  color: #b45309;
+  background: rgba(217, 160, 32, 0.18);
+}
+
+:root[data-theme="dark"] .mcp-tool-write {
+  color: #fbbf24;
+  background: rgba(250, 204, 21, 0.16);
+}
+
+.mcp-tools-empty {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding: 8px 0 2px;
 }
 
 .mcp-authorize-btn {

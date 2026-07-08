@@ -225,7 +225,13 @@ async def get_mcp_server_status(user_id: Optional[str] = None) -> List[Dict[str,
             tools = await client.get_tools(server_name=name)
             status["state"] = "active"
             status["tools"] = [
-                {"name": t.name, "description": (t.description or "").strip()}
+                {
+                    "name": t.name,
+                    "description": (t.description or "").strip(),
+                    # Remote archi marks state-changing tools with this prefix;
+                    # surfaced so the UI can badge them.
+                    "write": "[WRITE OPERATION]" in (t.description or ""),
+                }
                 for t in tools
             ]
         except Exception as e:

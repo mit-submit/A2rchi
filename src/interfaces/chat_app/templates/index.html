@@ -316,11 +316,19 @@
 
             <!-- MCP Servers Section -->
             <section class="settings-section" id="settings-mcp" aria-labelledby="mcp-heading" hidden>
-              <h4 class="settings-section-title" id="mcp-heading">MCP Servers</h4>
-              <p class="settings-description">External MCP servers configured for this deployment, their connection status, and the tools they expose to the agent.</p>
-              <div id="mcp-status-list" class="mcp-status-list">
-                <p class="settings-description">Loading MCP servers…</p>
+              <div class="mcp-section-header">
+                <h4 class="settings-section-title" id="mcp-heading">MCP Servers</h4>
+                <button type="button" id="mcp-refresh-btn" class="mcp-refresh-btn" title="Re-check all servers" aria-label="Refresh MCP server status">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                  </svg>
+                  <span>Refresh</span>
+                </button>
               </div>
+              <p class="settings-description">External MCP servers configured for this deployment, their connection status, and the tools they expose to the agent.</p>
+              <div id="mcp-status-summary" class="mcp-status-summary" hidden></div>
+              <div id="mcp-status-list" class="mcp-status-list"></div>
             </section>
           </div>
         </div>
