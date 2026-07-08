@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timezone
 from functools import wraps
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from flask import Blueprint, jsonify, request, g, current_app, session
 
@@ -41,7 +41,13 @@ def _get_agent_class_name_from_config() -> Optional[str]:
     return chat_cfg.get("agent_class") or chat_cfg.get("pipeline")
 
 
-def _get_agent_tool_registry(agent_class_name: Optional[str]) -> List[str]:
+def _get_agent_tool_registry(agent_class_name: Optional[str]) -> List[Dict[str, str]]:
+    """Return the agent's selectable tools as ``{"name", "description"}`` objects.
+
+    The chat_app front-end (renderAgentToolPalette) reads ``tool.name`` /
+    ``tool.description`` from each entry, so this must return objects — a bare
+    list of name strings renders as blank, unselectable checkboxes.
+    """
     if not agent_class_name:
         return []
     try:
@@ -55,25 +61,32 @@ def _get_agent_tool_registry(agent_class_name: Optional[str]) -> List[str]:
     try:
         dummy = agent_cls.__new__(agent_cls)
         registry = agent_cls.get_tool_registry(dummy) or {}
-        return sorted([name for name in registry.keys() if isinstance(name, str)])
+        descriptions = {}
+        if hasattr(agent_cls, "get_tool_descriptions"):
+            try:
+                descriptions = agent_cls.get_tool_descriptions(dummy) or {}
+            except Exception:
+                descriptions = {}
+        return [
+            {"name": name, "description": descriptions.get(name, "")}
+            for name in sorted(n for n in registry.keys() if isinstance(n, str))
+        ]
     except Exception as exc:
         logger.warning("Failed to read tool registry for %s: %s", agent_class_name, exc)
         return []
 
 
 def _build_agent_template(name: str, tools: List[str]) -> str:
-    tools_block = "\n".join(f"- {tool}" for tool in tools) if tools else "- <tool_name>"
-    tools_comment = "\n".join(f"- {tool}" for tool in tools) if tools else "- (no tools available)"
+    """Build the prefilled agent spec in the front-matter form the front-end
+    parser (parseAgentSpec) understands. ``tools`` is a list of tool names."""
+    tools_block = "\n".join(f"  - {tool}" for tool in tools) if tools else "  - <tool_name>"
     return (
-        f"# {name}\n\n"
-        "## Tools\n"
-        f"{tools_block}\n\n"
-        "## Prompt\n"
+        "---\n"
+        f"name: {name}\n"
+        "tools:\n"
+        f"{tools_block}\n"
+        "---\n\n"
         "Write your system prompt here.\n\n"
-        "<!--\n"
-        "Available tools (registry):\n"
-        f"{tools_comment}\n"
-        "-->\n"
     )
 
 
@@ -834,12 +847,13 @@ def get_agent_spec_template():
     try:
         agent_name = request.args.get("name") or "New Agent"
         agent_class = _get_agent_class_name_from_config()
-        tools = _get_agent_tool_registry(agent_class)
+        tool_items = _get_agent_tool_registry(agent_class)
+        tool_names = [t["name"] for t in tool_items]
         return jsonify({
             "name": agent_name,
             "agent_class": agent_class,
-            "tools": tools,
-            "template": _build_agent_template(agent_name, tools),
+            "tools": tool_items,
+            "template": _build_agent_template(agent_name, tool_names),
         }), 200
     except Exception as exc:
         logger.error(f"Error building agent template: {exc}")
