@@ -78,9 +78,17 @@
     </li>
         </ul>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#jira">JIRA</a>
+    <li class="toctree-l2"><a class="reference internal" href="#indico">Indico</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#configuration_2">Configuration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#alternative-the-indico-mcp-sidecar-on-demand-bearer-authenticated">Alternative: the Indico MCP sidecar (on-demand, bearer-authenticated)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#jira">JIRA</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_3">Configuration</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#anonymization">Anonymization</a>
     </li>
@@ -90,7 +98,7 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#redmine">Redmine</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#configuration_3">Configuration</a>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration_4">Configuration</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#secrets_2">Secrets</a>
     </li>
@@ -255,9 +263,39 @@ GIT_TOKEN=your_token
 </code></pre>
 <p>Once enabled in config, deploy normally with <code>archi create --config &lt;config.yaml&gt; --services &lt;...&gt;</code>.</p>
 <hr />
+<h2 id="indico">Indico</h2>
+<p>Ingest events, contributions (talks) and slide materials from an <a href="https://getindico.io/">Indico</a> instance. Slides in PDF/PPTX/PPT/ODP format are converted to Markdown via <a href="https://github.com/microsoft/markitdown">MarkItDown</a>.</p>
+<h3 id="configuration_2">Configuration</h3>
+<pre><code class="language-yaml">data_manager:
+  sources:
+    indico:
+      enabled: true
+      base_url: https://indico.cern.ch
+      use_sso: false       # set true for SSO-protected events
+      slide_conversion:
+        enabled: true
+        formats: [pdf, pptx, ppt, odp]
+</code></pre>
+<p>Add event URLs to your link lists. URLs with <code>indico</code> in the hostname and <code>/event/</code> in the path are auto-detected. For Indico instances without <code>indico</code> in the hostname, use the explicit <code>indico-</code> prefix:</p>
+<pre><code>https://indico.cern.ch/event/1408515/
+https://indico.stfc.ac.uk/event/1825/
+indico-https://events.example.org/event/42/
+</code></pre>
+<p>For each event the scraper produces Markdown resources for the event metadata, each contribution (talk), and each slide deck. Multi-day events can be restricted with day-filtering options (<code>max_days</code>, <code>only_first_day</code>, <code>days</code>, <code>date_range</code>) — see <code>src/cli/templates/base-config.yaml</code> for the full set.</p>
+<p>For SSO-protected events, set <code>use_sso: true</code> and configure the Selenium-based collector as for <a href="#sso-protected-links">SSO-Protected Links</a>. The same <code>SSO_USERNAME</code> / <code>SSO_PASSWORD</code> secrets are used.</p>
+<p>Once enabled in config, deploy normally with <code>archi create --config &lt;config.yaml&gt; --services &lt;...&gt;</code>.</p>
+<h3 id="alternative-the-indico-mcp-sidecar-on-demand-bearer-authenticated">Alternative: the Indico MCP sidecar (on-demand, bearer-authenticated)</h3>
+<p>The batch scraper above is offline-friendly but heavy: it walks a list of URLs ahead of time and uses Selenium-driven CERN SSO for auth. For most setups the preferred path is the <strong>Indico MCP sidecar</strong> (<a href="https://github.com/archi-physics/mcp-servers/tree/main/indico"><code>archi-physics/mcp-servers</code> → <code>indico/</code></a>), which:</p>
+<ul>
+<li>Authenticates with a bearer token + API key/secret (no Selenium, no browser).</li>
+<li>Lets the agent fetch event metadata, contributions, and attached files on demand at chat time.</li>
+<li>Pairs with the agent-side <code>ingest_indico_event</code> tool to chunk + embed + index downloaded attachments via a shared docker volume, putting the same kind of resources into the catalog (<code>source_type=web</code>, <code>metadata.scraper=indico</code>, <code>metadata.event_id=&lt;id&gt;</code>) as the batch scraper would.</li>
+</ul>
+<p>The MCP path supplants the <code>use_sso: true</code> Selenium flow for new deployments; keep the batch IndicoScraper for offline ingest of large historical archives or when MCP isn't deployed. See <a href="https://github.com/archi-physics/mcp-servers/blob/main/indico/README.md"><code>indico/README.md</code></a> for configuration (one <code>shared_volume:</code> field in the <code>mcp_servers.indico</code> entry).</p>
+<hr />
 <h2 id="jira">JIRA</h2>
 <p>Fetch issues and comments from specified JIRA projects using the <code>JiraClient</code> class.</p>
-<h3 id="configuration_2">Configuration</h3>
+<h3 id="configuration_3">Configuration</h3>
 <pre><code class="language-yaml">data_manager:
   sources:
     jira:
@@ -290,7 +328,7 @@ GIT_TOKEN=your_token
 <hr />
 <h2 id="redmine">Redmine</h2>
 <p>Ingest solved tickets (question/answer pairs) from Redmine into the vector store.</p>
-<h3 id="configuration_3">Configuration</h3>
+<h3 id="configuration_4">Configuration</h3>
 <pre><code class="language-yaml">data_manager:
   sources:
     redmine:
