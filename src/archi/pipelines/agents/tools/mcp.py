@@ -8,6 +8,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain.tools import BaseTool
 
 from src.utils.config_access import get_mcp_servers_config, get_full_config
+from src.utils.env import read_secret
 from src.utils.logging import get_logger
 from src.archi.pipelines.agents.utils.skill_utils import load_skill
 
@@ -73,12 +74,38 @@ async def initialize_mcp_client(user_id: Optional[str] = None) -> Tuple[Optional
         # Inject Bearer auth where sso_auth is enabled. Skip SSO-auth servers
         # when no valid MCP OAuth token is available for this user.
         requires_sso = cfg.pop("sso_auth", False)
+        service_auth = cfg.pop("service_auth", False)
+        token_secret = cfg.pop("token_secret", None)
+        if requires_sso and service_auth:
+            logger.warning(
+                f"MCP server '{name}': both sso_auth and service_auth set; "
+                f"using per-user sso_auth and ignoring service_auth"
+            )
+            service_auth = False
         if requires_sso:
             access_token = _mcp_oauth.get_access_token(user_id, name) if user_id else None
             if not access_token:
                 logger.info(f"Skipping MCP server '{name}': sso_auth=true but no valid token for user_id={user_id!r}")
                 continue
             cfg.setdefault("headers", {})["Authorization"] = f"Bearer {access_token}"
+        elif service_auth:
+            # Deployment-level static Bearer token, for contexts with no user
+            # identity (mattermost/benchmarking/cron and the startup registry).
+            # Deliberately NOT attached to per-user requests: actions would be
+            # attributed to the service account on the remote, and a per-user
+            # twin of the same server would collide on tool names.
+            if user_id:
+                logger.info(
+                    f"Skipping MCP server '{name}': service_auth servers are "
+                    f"headless-only (request has user identity)"
+                )
+                continue
+            secret_name = token_secret or f"{name.upper()}_MCP_TOKEN"
+            service_token = read_secret(secret_name)
+            if not service_token:
+                logger.info(f"Skipping MCP server '{name}': service_auth=true but secret '{secret_name}' is not set")
+                continue
+            cfg.setdefault("headers", {})["Authorization"] = f"Bearer {service_token}"
 
         # Load any declared skill so we can append it to this server's tool descriptions.
         # Done after the sso_auth gate so skipped servers contribute no skill text.

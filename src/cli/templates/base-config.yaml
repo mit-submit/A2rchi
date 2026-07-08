@@ -20,6 +20,12 @@ mcp_servers:
     {%- if server_config.sso_auth is defined %}
     sso_auth: {{ server_config.sso_auth }}
     {%- endif %}
+    {%- if server_config.service_auth is defined %}
+    service_auth: {{ server_config.service_auth }}
+    {%- endif %}
+    {%- if server_config.token_secret is defined %}
+    token_secret: {{ server_config.token_secret }}
+    {%- endif %}
     {%- if server_config.command is defined %}
     command: {{ server_config.command }}
     {%- endif %}
