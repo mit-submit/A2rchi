@@ -67,6 +67,7 @@ def _prepare_server_configs(
     # knows about transport-specific fields.
     _archi_only_fields = {
         "env_from_secrets", "host_file_mounts", "build_context", "image", "path", "skill",
+        "shared_volume",
     }
     client_configs: Dict[str, dict] = {}
     server_skills: Dict[str, str] = {}
