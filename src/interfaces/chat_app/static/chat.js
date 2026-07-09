@@ -1007,19 +1007,29 @@ const UI = {
       window.location.href = '/logout';
     });
 
-    // Close modal on Escape
+    // Close modal on Escape; with no modal open, Escape stops the current
+    // conversation's in-flight response (other conversations keep streaming).
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.elements.settingsModal?.style.display !== 'none') {
+      if (e.key !== 'Escape') return;
+      const modalOpen =
+        this.elements.settingsModal?.style.display !== 'none' ||
+        this.elements.agentSpecModal?.style.display !== 'none' ||
+        (this.elements.agentDropdownMenu && !this.elements.agentDropdownMenu.hidden) ||
+        this.elements.agentInfoModal?.style.display !== 'none';
+      if (this.elements.settingsModal?.style.display !== 'none') {
         this.closeSettings();
       }
-      if (e.key === 'Escape' && this.elements.agentSpecModal?.style.display !== 'none') {
+      if (this.elements.agentSpecModal?.style.display !== 'none') {
         this.closeAgentSpecEditor();
       }
-      if (e.key === 'Escape' && this.elements.agentDropdownMenu && !this.elements.agentDropdownMenu.hidden) {
+      if (this.elements.agentDropdownMenu && !this.elements.agentDropdownMenu.hidden) {
         this.closeAgentDropdown();
       }
-      if (e.key === 'Escape' && this.elements.agentInfoModal?.style.display !== 'none') {
+      if (this.elements.agentInfoModal?.style.display !== 'none') {
         this.closeAgentInfo();
+      }
+      if (!modalOpen && (Chat.currentStream() || Chat.state.isStreaming)) {
+        Chat.cancelStream();
       }
     });
 
@@ -4557,6 +4567,10 @@ const Chat = {
     const stream = {
       id: ++this.state.streamSeq,
       conversationId: this.state.conversationId,
+      // The view this send happened in (streamToken bumps on every conversation
+      // switch/new/delete). Guards conversation-id adoption below: a stream may
+      // only bind ids into Chat.state while the user is still on that view.
+      viewToken: this.state.streamToken,
       userMsg,
       assistantMsg,
       abortController: null,
@@ -4939,7 +4953,11 @@ const Chat = {
         if (event.type === 'init') {
           if (event.conversation_id != null && s) {
             s.conversationId = event.conversation_id;
-            if (this.state.conversationId == null) {
+            // Adopt into the on-screen state only when the user is still on the
+            // view this stream was sent from; a later New-chat/switch also has
+            // conversationId == null and must not be bound to this stream.
+            if (this.state.conversationId == null
+                && this.state.streamToken === s.viewToken) {
               this.state.conversationId = event.conversation_id;
               Storage.setActiveConversationId(event.conversation_id);
               this.loadConversations();
@@ -5126,7 +5144,7 @@ const Chat = {
   // Render a stopped/interrupted answer (explicit Stop, or a refresh that killed the stream): show
   // whatever was generated plus a "stopped" note, with no streaming cursor or live timer.
   _markMessageStopped(msg) {
-    const notice = '<p class="cancelled-notice"><em>Response stopped</em></p>';
+    const notice = '<p class="cancelled-notice"><em>Response interrupted</em></p>';
     UI.updateMessage(msg.id, { html: (msg.html || '') + notice, streaming: false });
   },
 
