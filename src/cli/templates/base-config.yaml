@@ -10,7 +10,7 @@ global:
   LOGGING:
     input_output_filename: "{{ global.LOGGING.input_output_filename | default('chain_input_output.log', true) }}"
 
-{#-
+{#
   Pass each server's config through verbatim (JSON is valid YAML) instead of
   whitelisting fields — a whitelist silently drops any key it doesn't know
   about (new archi options, transport-specific fields like headers/timeout).
