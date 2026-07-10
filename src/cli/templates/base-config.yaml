@@ -228,7 +228,7 @@ data_manager:
     provider: {{ data_manager.captioning.provider | default('', true) }}
     model: {{ data_manager.captioning.model | default('', true) }}
     caption_mode: {{ data_manager.captioning.caption_mode | default('gated', true) }}
-    min_text_chars: {{ data_manager.captioning.min_text_chars | default(200, true) }}
+    min_drawings: {{ data_manager.captioning.min_drawings | default(5, true) }}
     dpi: {{ data_manager.captioning.dpi | default(150, true) }}
   retrievers:
     semantic_retriever:

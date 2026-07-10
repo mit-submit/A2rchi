@@ -229,8 +229,6 @@ class VectorStoreManager:
                         "collection": self.collection_name,
                     }
                 )
-                if "page_text_chars" in img_doc.metadata:
-                    entry_metadata["page_text_chars"] = img_doc.metadata["page_text_chars"]
                 metadatas.append(entry_metadata)
 
         logger.info("Generated %d caption chunks for %s", len(chunks), filename)

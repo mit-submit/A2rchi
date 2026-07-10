@@ -103,31 +103,31 @@ class TestLoadImagesFromPdf:
     def test_gated_mode_keeps_page_with_embedded_image(self, tmp_path):
         pdf_path = self._create_pdf(
             tmp_path,
-            text="This page has enough extracted text to exceed the threshold. " * 8,
+            text="This page also carries a fair amount of extracted text. " * 8,
             with_image=True,
         )
 
         result = load_images_from_pdf(
             pdf_path,
             caption_mode="gated",
-            min_text_chars=200,
+            min_drawings=5,
         )
 
         assert len(result) == 1
         assert result[0].metadata["page_number"] == "1"
-        assert int(result[0].metadata["page_text_chars"]) >= 200
+        assert result[0].surrounding_text != ""
 
-    def test_gated_mode_skips_text_heavy_page_without_embedded_image(self, tmp_path):
+    def test_gated_mode_skips_text_only_page_without_visual_content(self, tmp_path):
         pdf_path = self._create_pdf(
             tmp_path,
-            text="This page has enough extracted text to exceed the threshold. " * 8,
+            text="This page is text only, with no embedded images or drawings. " * 8,
             with_image=False,
         )
 
         result = load_images_from_pdf(
             pdf_path,
             caption_mode="gated",
-            min_text_chars=200,
+            min_drawings=5,
         )
 
         assert result == []
@@ -186,7 +186,7 @@ class TestVectorStoreManagerCaptioningConfig:
         manager = object.__new__(VectorStoreManager)
         manager._captioning_config = {
             "caption_mode": "all",
-            "min_text_chars": "42",
+            "min_drawings": "42",
             "dpi": "144",
         }
 
@@ -201,7 +201,7 @@ class TestVectorStoreManagerCaptioningConfig:
                     "provider": "openai",
                     "model": "gpt-4o",
                     "caption_mode": "all",
-                    "min_text_chars": 64,
+                    "min_drawings": 64,
                     "dpi": 288,
                 }
             },
@@ -215,7 +215,7 @@ class TestVectorStoreManagerCaptioningConfig:
         )
 
         assert rendered["data_manager"]["captioning"]["caption_mode"] == "all"
-        assert rendered["data_manager"]["captioning"]["min_text_chars"] == 64
+        assert rendered["data_manager"]["captioning"]["min_drawings"] == 64
         assert rendered["data_manager"]["captioning"]["dpi"] == 288
         assert "pdf" not in rendered["data_manager"]["captioning"]
         assert "image" not in rendered["data_manager"]["captioning"]
