@@ -25,10 +25,10 @@ factory = PostgresServiceFactory.from_env(password_override=read_secret("PG_PASS
 PostgresServiceFactory.set_instance(factory)
 
 redmine_config = get_services_config().get("redmine_mailbox", {})
-redmine = redmine.Redmine('Redmine_Helpdesk')
+redmine_instance = redmine.Redmine('Redmine_Helpdesk')
 
 while True:
-    redmine.load()
-    redmine.process_new_issues()
-    redmine.process_resolved_issues()
+    redmine_instance.load()
+    redmine_instance.process_new_issues()
+    redmine_instance.process_resolved_issues()
     time.sleep(int(redmine_config["redmine_update_time"]))

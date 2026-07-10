@@ -3,6 +3,7 @@ import os
 import shutil
 import socket
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -138,6 +139,7 @@ class TemplateManager:
             self._stage_prompts,
             self._stage_agents,
             self._stage_skills,
+            self._stage_mcp_copy,
             self._stage_configs,
             self._stage_service_artifacts,
             self._stage_postgres_init,
@@ -272,6 +274,147 @@ class TemplateManager:
         else:
             logger.warning("No skill markdown files found in %s", src_dir)
 
+    def _stage_mcp_copy(self, context: TemplateContext) -> None:
+        """Make MCP sidecar build contexts available inside the deployment dir.
+
+        The compose template renders ``build: <build_context>`` verbatim and
+        ``docker compose build`` resolves that relative to the deployment dir,
+        so any source-built sidecar needs its build context present there. For
+        each ``mcp_server`` that builds from source (has ``build_context``), the
+        value can take three forms:
+
+        * **Git source** (a mapping ``{repo, ref?, subdir?}``): the repo is
+          cloned fresh on every ``archi create`` (default ``ref: main``) and the
+          chosen ``subdir`` is copied into ``<base_dir>/mcp_build/<name>``. This
+          is *not* pinned/vendored — configuring the sidecar pulls the latest.
+        * **A local path inside the shipped source tree** (``archi_code/...``):
+          left as-is — :meth:`copy_source_code` already ships ``src`` as
+          ``archi_code``.
+        * **Any other local path** (absolute or arbitrary dir): resolved at
+          create time and copied into ``<base_dir>/mcp_build/<name>``.
+
+        In the two copy/clone cases ``build_context`` is rewritten to the
+        deployment-relative ``./mcp_build/<name>`` so the deployment is portable.
+        Image-based sidecars (no ``build_context``) are untouched.
+        """
+        config = context.config_manager.config or {}
+        mcp_servers = config.get("mcp_servers") or {}
+        if not mcp_servers:
+            return
+
+        dest_root = context.base_dir / "mcp_build"
+        rewrites: Dict[str, str] = {}
+
+        for name, server_cfg in mcp_servers.items():
+            if not isinstance(server_cfg, dict):
+                continue
+            build_context = server_cfg.get("build_context")
+            if not build_context:
+                # Image-based sidecar (or no build at all); nothing to fetch.
+                continue
+
+            dest_dir = dest_root / name
+
+            if isinstance(build_context, dict):
+                # Git source: cloned fresh on every create (not pinned/vendored).
+                self._clone_mcp_build_context(name, build_context, dest_dir)
+                rewrites[name] = f"./mcp_build/{name}"
+                continue
+
+            # Local path already shipped inside archi_code via copy_source_code.
+            normalized = str(build_context).lstrip("./")
+            if normalized == "archi_code" or normalized.startswith("archi_code/"):
+                logger.debug(
+                    f"MCP sidecar '{name}' builds from shipped source "
+                    f"({build_context}); no copy needed"
+                )
+                continue
+
+            src_dir = self._resolve_directory_path(str(build_context), config)
+            if not src_dir.exists() or not src_dir.is_dir():
+                raise ValueError(
+                    f"MCP sidecar '{name}' build_context not found: {src_dir} "
+                    f"(from build_context: {build_context})"
+                )
+
+            dest_root.mkdir(parents=True, exist_ok=True)
+            if dest_dir.exists():
+                shutil.rmtree(dest_dir)
+            shutil.copytree(src_dir, dest_dir)
+
+            rewrites[name] = f"./mcp_build/{name}"
+            logger.info(
+                f"Copied MCP sidecar '{name}' build context from {src_dir} to "
+                f"{dest_dir} (build_context -> {rewrites[name]})"
+            )
+
+        # Propagate rewrites to every loaded config so the rendered compose.yaml
+        # (which reads configs[0]) and each config.yaml agree on the path.
+        for cfg in context.config_manager.get_configs():
+            servers = cfg.get("mcp_servers") or {}
+            for name, rewritten in rewrites.items():
+                if isinstance(servers.get(name), dict):
+                    servers[name]["build_context"] = rewritten
+
+    def _clone_mcp_build_context(self, name: str, spec: Dict[str, Any], dest_dir: Path) -> None:
+        """Clone a git-sourced MCP build context into ``dest_dir``.
+
+        ``spec`` is ``{repo, ref?, subdir?}``. ``ref`` defaults to ``main`` and
+        may be a branch, tag, or commit SHA; ``subdir`` selects a path within the
+        repo (the whole repo is used if omitted). The clone is shallow when the
+        ref is a branch/tag and falls back to a full clone + checkout for a SHA.
+        The source's ``.git`` directory is never copied into the build context.
+        """
+        repo = spec.get("repo")
+        if not repo:
+            raise ValueError(f"MCP sidecar '{name}' build_context is missing 'repo'")
+        ref = str(spec.get("ref") or "main")
+        subdir = spec.get("subdir")
+
+        dest_dir.parent.mkdir(parents=True, exist_ok=True)
+        if dest_dir.exists():
+            shutil.rmtree(dest_dir)
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix=f"mcp-{name}-"))
+        try:
+            try:
+                # Fast path: branch/tag refs allow a shallow single-branch clone.
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", "--branch", ref, str(repo), str(tmp_dir)],
+                    check=True, capture_output=True, text=True,
+                )
+            except subprocess.CalledProcessError:
+                # Fall back for commit SHAs (not valid for --branch).
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                subprocess.run(
+                    ["git", "clone", str(repo), str(tmp_dir)],
+                    check=True, capture_output=True, text=True,
+                )
+                subprocess.run(
+                    ["git", "-C", str(tmp_dir), "checkout", ref],
+                    check=True, capture_output=True, text=True,
+                )
+
+            src = tmp_dir / subdir if subdir else tmp_dir
+            if not src.is_dir():
+                raise ValueError(
+                    f"MCP sidecar '{name}': subdir '{subdir}' not found in {repo}@{ref}"
+                )
+            shutil.copytree(src, dest_dir, ignore=shutil.ignore_patterns(".git"))
+            logger.info(
+                f"Cloned MCP sidecar '{name}' build context from {repo}@{ref}"
+                + (f" (subdir {subdir})" if subdir else "")
+                + f" -> {dest_dir}"
+            )
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip() or str(exc)
+            raise ValueError(
+                f"MCP sidecar '{name}': failed to clone {repo}@{ref}: {detail}"
+            ) from exc
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     def _copy_default_prompts(self, context: TemplateContext) -> None:
         """Copy default prompt templates to deployment for PromptService."""
         # Source from examples/defaults/prompts/ (not source code)
@@ -390,7 +533,7 @@ class TemplateManager:
                 self._apply_host_mode_port_overrides(updated_config)
 
             services_cfg = updated_config.get("services", {})
-            for service_name in ("chat_app", "redmine_mailbox", "piazza"):
+            for service_name in ("chat_app", "redmine_mailbox", "piazza", "jira_ticket_responder"):
                 service_cfg = services_cfg.get(service_name)
                 if isinstance(service_cfg, dict):
                     service_cfg["agents_dir"] = DEPLOYMENT_AGENTS_DIR
@@ -536,6 +679,11 @@ class TemplateManager:
 
         if context.plan.get_service("grader").enabled:
             template_vars["rubrics"] = self._get_grader_rubrics(context.config_manager)
+
+        # Pass MCP server configs so compose can volume-mount stdio packages
+        # and emit sidecar services for servers with build_context/image.
+        mcp_servers = context.config_manager.config.get("mcp_servers", {}) or {}
+        template_vars["mcp_servers"] = mcp_servers
 
         compose_template = self.env.get_template(BASE_COMPOSE_TEMPLATE)
         compose_rendered = compose_template.render(**template_vars)

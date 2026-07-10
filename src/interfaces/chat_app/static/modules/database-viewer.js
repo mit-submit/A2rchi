@@ -428,8 +428,8 @@ LIMIT 20;`
     const csvRows = [
       columns.join(','),
       ...rows.map(row => 
-        columns.map(col => {
-          const val = row[col];
+        columns.map((col,i) => {
+          const val = Array.isArray(row) ? row[i] : row[col];
           if (val === null || val === undefined) return '';
           const str = String(val);
           // Escape quotes and wrap in quotes if needed

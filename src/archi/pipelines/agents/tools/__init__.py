@@ -13,6 +13,8 @@ from .monit_opensearch import (
     create_monit_opensearch_search_tool,
     create_monit_opensearch_aggregation_tool,
 )
+from .ingest import create_ingest_url_tool
+from .indico_ingest import create_ingest_indico_event_tool
 
 __all__ = [
     "check_tool_permission",
@@ -27,4 +29,6 @@ __all__ = [
     "MONITOpenSearchClient",
     "create_monit_opensearch_search_tool",
     "create_monit_opensearch_aggregation_tool",
+    "create_ingest_url_tool",
+    "create_ingest_indico_event_tool",
 ]

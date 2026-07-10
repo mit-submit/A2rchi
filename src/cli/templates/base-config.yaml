@@ -23,7 +23,33 @@ mcp_servers:
   {%- for server_name, server_config in (mcp_servers | default({}, true)).items() %}
   {{ server_name }}:
     transport: {{ server_config.transport | default('streamable_http', true) }}
-    url: {{ server_config.url | default('', true) }}
+    {%- if server_config.url is defined %}
+    url: {{ server_config.url }}
+    {%- endif %}
+    {%- if server_config.command is defined %}
+    command: {{ server_config.command }}
+    {%- endif %}
+    {%- if server_config.args is defined %}
+    args: {{ server_config.args | tojson }}
+    {%- endif %}
+    {%- if server_config.env is defined %}
+    env: {{ server_config.env | tojson }}
+    {%- endif %}
+    {%- if server_config.env_from_secrets is defined %}
+    env_from_secrets: {{ server_config.env_from_secrets | tojson }}
+    {%- endif %}
+    {%- if server_config.host_file_mounts is defined %}
+    host_file_mounts: {{ server_config.host_file_mounts | tojson }}
+    {%- endif %}
+    {%- if server_config.build_context is defined %}
+    build_context: {{ server_config.build_context }}
+    {%- endif %}
+    {%- if server_config.image is defined %}
+    image: {{ server_config.image }}
+    {%- endif %}
+    {%- if server_config.skill is defined %}
+    skill: {{ server_config.skill }}
+    {%- endif %}
   {%- endfor %}
 
 services:
@@ -71,6 +97,20 @@ services:
     answer_tag: {{ services.redmine_mailbox.answer_tag | default('-- archi -- Resolving email was sent', true) }}
     imap4_port: {{ services.redmine_mailbox.imap4_port | default(993, true) }}
     mailbox_update_time: {{ services.redmine_mailbox.mailbox_update_time | default(10, true) }}
+    default_provider: {{ services.redmine_mailbox.default_provider | default('local', true) }}
+    default_model: {{ services.redmine_mailbox.default_model | default('qwen3:32b', true) }}
+    providers: {{ services.redmine_mailbox.providers | default({"local": {"enabled": true, "base_url": "http://localhost:11434", "mode": "ollama", "default_model": "llama3.2", "models": ["llama3.2"]}}) | tojson }}
+  jira_ticket_responder:
+    url: {{ services.jira_ticket_responder.url | default('', true) | tojson }}
+    projects: {{ services.jira_ticket_responder.projects | default([], true) | tojson }}
+    visible_to_role: {{ services.jira_ticket_responder.visible_to_role | default('', true) | tojson }}
+    poll_interval_minutes: {{ services.jira_ticket_responder.poll_interval_minutes | default(1, true) }}
+    lookback_days: {{ services.jira_ticket_responder.lookback_days | default(7, true) }}
+    eligible_statuses: {{ services.jira_ticket_responder.eligible_statuses | default(["Open", "In Progress"], true) | tojson }}
+    agent_class: {{ services.jira_ticket_responder.agent_class | default('CMSCompOpsAgent', true) }}
+    agents_dir: "{{ services.jira_ticket_responder.agents_dir | default('', true) }}"
+    default_provider: {{ services.jira_ticket_responder.default_provider | default(services.chat_app.default_provider | default('local', true), true) }}
+    default_model: {{ services.jira_ticket_responder.default_model | default(services.chat_app.default_model | default('llama3.2', true), true) }}
   postgres:
     port: {{ services.postgres.port | default(5432, true) }}
     user: {{ services.postgres.user | default('archi', true) }}
@@ -124,7 +164,7 @@ services:
       {%- if services.chat_app.ab_testing.force_yaml_override is defined %}
       force_yaml_override: {{ services.chat_app.ab_testing.force_yaml_override | default(false, true) }}
       {%- endif %}
-      comparison_rate: {{ services.chat_app.ab_testing.comparison_rate | default(services.chat_app.ab_testing.sample_rate | default(0.2, true), true) }}
+      comparison_rate: {{ services.chat_app.ab_testing.comparison_rate | default(services.chat_app.ab_testing.sample_rate | default(0.0)) }}
       variant_label_mode: {{ services.chat_app.ab_testing.variant_label_mode | default(services.chat_app.ab_testing.disclosure_mode | default("post_vote_reveal", true), true) }}
       activity_panel_default_state: {{ services.chat_app.ab_testing.activity_panel_default_state | default(services.chat_app.ab_testing.default_trace_mode | default("hidden", true), true) }}
       max_pending_comparisons_per_conversation: {{ services.chat_app.ab_testing.max_pending_comparisons_per_conversation | default(services.chat_app.ab_testing.max_pending_per_conversation | default(1, true), true) }}
@@ -283,6 +323,40 @@ data_manager:
       enabled: {{ data_manager.sources.sso.enabled | default(true, true) }}
       visible: {{ data_manager.sources.sso.visible | default(true, true) }}
       schedule: '{{ data_manager.sources.sso.schedule | default("", true) }}'
+    indico:
+      enabled: {{ data_manager.sources.indico.enabled | default(false, true) }}
+      visible: {{ data_manager.sources.indico.visible | default(true, true) }}
+      schedule: '{{ data_manager.sources.indico.schedule | default("", true) }}'
+      base_url: {{ data_manager.sources.indico.base_url | default('https://indico.cern.ch', true) }}
+      use_sso: {{ data_manager.sources.indico.use_sso | default(true) }}
+      # Day filtering (all optional - if none set, scrapes all days)
+      {%- if data_manager.sources.indico.max_days is defined %}
+      max_days: {{ data_manager.sources.indico.max_days }}
+      {%- endif %}
+      {%- if data_manager.sources.indico.only_first_day is defined %}
+      only_first_day: {{ data_manager.sources.indico.only_first_day }}
+      {%- endif %}
+      {%- if data_manager.sources.indico.days is defined %}
+      days: {{ data_manager.sources.indico.days | tojson }}
+      {%- endif %}
+      {%- if data_manager.sources.indico.date_range is defined %}
+      date_range: {{ data_manager.sources.indico.date_range | tojson }}
+      {%- endif %}
+      sso_kwargs:
+        headless: {{ data_manager.sources.indico.sso_kwargs.headless | default(true, true) }}
+        site_type: {{ data_manager.sources.indico.sso_kwargs.site_type | default('generic', true) }}
+      slide_conversion:
+        enabled: {{ data_manager.sources.indico.slide_conversion.enabled | default(true) }}
+        store_originals: {{ data_manager.sources.indico.slide_conversion.store_originals | default(false, true) }}
+        formats:
+          {%- set indico_formats = data_manager.sources.indico.slide_conversion.formats | default(['pdf', 'pptx', 'ppt', 'odp'], true) %}
+          {%- for format in indico_formats %}
+          - {{ format }}
+          {%- endfor %}
+        llm_enabled: {{ data_manager.sources.indico.slide_conversion.llm_enabled | default(false, true) }}
+        llm_model: {{ data_manager.sources.indico.slide_conversion.llm_model | default('', true) }}
+      plot_extraction:
+        enabled: {{ data_manager.sources.indico.plot_extraction.enabled | default(false, true) }}
     jira:
       enabled: {{ data_manager.sources.jira.enabled | default(true, true) }}
       url: {{ data_manager.sources.jira.url | default('', true) }}

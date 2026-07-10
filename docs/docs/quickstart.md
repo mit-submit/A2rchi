@@ -22,6 +22,7 @@ Application Services:
   grader               Automated grading service for assignments with web interface
 
 Integration Services:
+  jira_ticket_responder  Jira ticket responder service
   piazza               Integration service for Piazza posts and Slack notifications
   mattermost           Integration service for Mattermost channels
   redmine-mailer       Email processing and Cleo/Redmine ticket management

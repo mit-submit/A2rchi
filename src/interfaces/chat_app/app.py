@@ -97,6 +97,7 @@ from src.utils.rbac import (
 )
 from src.utils.rbac.permissions import get_permission_context, is_admin as rbac_is_admin
 from src.utils.rbac.audit import log_authentication_event
+from src.utils.rbac.jwt_parser import decode_jwt_claims
 
 
 logger = get_logger(__name__)
@@ -1627,6 +1628,7 @@ class ChatWrapper:
             client_sent_msg_ts,
             client_timeout,
             timestamps,
+            config_name,
             user_id=user_id,
         )
         if error_code is not None:
@@ -1810,17 +1812,18 @@ class ChatWrapper:
                 logger.error("Failed to store user message: %s", exc)
 
         # Store both responses as messages
+        pipeline_used = ChatWrapper._get_agent_class_from_cfg(self.services_config.get("chat_app", {})) or ""
         arm_a_mid = self._store_assistant_message(
             context.conversation_id,
             arm_a_final_text,
             model_used=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-            pipeline_used=self.current_pipeline_used,
+            pipeline_used=pipeline_used,
         )
         arm_b_mid = self._store_assistant_message(
             context.conversation_id,
             arm_b_final_text,
             model_used=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-            pipeline_used=self.current_pipeline_used,
+            pipeline_used=pipeline_used,
         )
 
         # Persist per-arm latency for analysis by reusing the timing table keyed by message_id.
@@ -1841,9 +1844,9 @@ class ChatWrapper:
                     response_a_mid=arm_a_mid,
                     response_b_mid=arm_b_mid,
                     model_a=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-                    pipeline_a=self.current_pipeline_used or "",
+                    pipeline_a=pipeline_used,
                     model_b=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-                    pipeline_b=self.current_pipeline_used or "",
+                    pipeline_b=pipeline_used,
                     is_config_a_first=is_champion_first,
                     variant_a_name=arm_a_variant.name,
                     variant_b_name=arm_b_variant.name,
@@ -2867,19 +2870,93 @@ class FlaskAppWrapper(object):
             'permissions': get_permission_context()
         })
 
+    def _authenticate_bearer_token(self):
+        """Authenticate via Bearer token in Authorization header.
+
+        If a valid Bearer token is present, decode the JWT claims,
+        extract user info and roles, and populate the Flask session
+        so downstream code works identically to SSO-cookie auth.
+
+        Returns True if authentication succeeded, False otherwise.
+        """
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return False
+
+        token_string = auth_header[7:]
+        claims = decode_jwt_claims(token_string)
+        if not claims:
+            return False
+
+        # Check expiration
+        import time as _time
+        exp = claims.get('exp')
+        if exp and _time.time() > exp:
+            logger.warning("Bearer token has expired")
+            return False
+
+        # Extract user info from JWT claims (Keycloak / CERN SSO format)
+        email = claims.get('email', claims.get('preferred_username', 'unknown'))
+        name = claims.get('name', claims.get('preferred_username', ''))
+        username = claims.get('preferred_username', claims.get('email', ''))
+        user_id = claims.get('sub', '')
+
+        # Extract roles via the existing RBAC helper
+        user_roles = get_user_roles(claims, email)
+
+        # Upsert user into the users table so that conversation_metadata
+        # can reference user_id via the FK constraint.
+        if user_id:
+            try:
+                user_service = UserService(pg_config=self.pg_config)
+                user_service.get_or_create_user(
+                    user_id=user_id,
+                    auth_provider='sso',
+                    display_name=name,
+                    email=email,
+                )
+            except Exception as ue:
+                logger.warning(f"Failed to upsert bearer user {user_id} into users table: {ue}")
+
+        # Populate the session so all downstream code works unchanged
+        self._set_user_session(
+            email=email,
+            name=name,
+            username=username,
+            user_id=user_id,
+            auth_method='bearer',
+            roles=user_roles
+        )
+
+        log_authentication_event(
+            user=email,
+            event_type='bearer_auth',
+            success=True,
+            method='bearer',
+            details=f"Roles: {user_roles}"
+        )
+        return True
+
     def require_auth(self, f):
         """Decorator to require authentication for routes.
-        
+
         When SSO is enabled and anonymous access is blocked (sso.allow_anonymous: false),
         unauthenticated users are redirected to SSO login instead of getting a 401 error.
+
+        Also supports Bearer token authentication via the Authorization header,
+        allowing programmatic / API access without a browser session.
         """
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not self.auth_enabled:
                 # If auth is not enabled, allow access
                 return f(*args, **kwargs)
-            
+
             if not session.get('logged_in'):
+                # Try Bearer token authentication for API requests
+                if self._authenticate_bearer_token():
+                    return f(*args, **kwargs)
+
                 # Check if SSO is enabled and anonymous access is blocked
                 if self.sso_enabled:
                     registry = get_registry()
@@ -2892,13 +2969,18 @@ class FlaskAppWrapper(object):
                             method='web',
                             details=f"path={request.path}, method={request.method}"
                         )
+                        # For API requests return 401 instead of redirect
+                        if request.path.startswith('/api/'):
+                            return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
                         # Redirect to login page which will trigger SSO
                         return redirect(url_for('login'))
-                
+
+                # Return 401 Unauthorized response for API requests
                 if request.path.startswith('/api/'):
                     return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-                return redirect(url_for('login'))
-            
+                else:
+                    return redirect(url_for('login'))
+
             return f(*args, **kwargs)
         return decorated_function
 
@@ -2921,14 +3003,18 @@ class FlaskAppWrapper(object):
                 # First check authentication
                 if not self.auth_enabled:
                     return f(*args, **kwargs)
-                
+
                 if not session.get('logged_in'):
-                    if self.sso_enabled:
-                        registry = get_registry()
-                        if not registry.allow_anonymous:
-                            return redirect(url_for('login'))
-                    return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-                
+                    # Try Bearer token authentication
+                    if not self._authenticate_bearer_token():
+                        if self.sso_enabled:
+                            registry = get_registry()
+                            if not registry.allow_anonymous:
+                                if request.path.startswith('/api/'):
+                                    return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
+                                return redirect(url_for('login'))
+                        return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
+
                 # Now check permission
                 roles = session.get('roles', [])
                 if not has_permission(permission, roles):

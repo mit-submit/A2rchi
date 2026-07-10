@@ -49,6 +49,7 @@ Archi provides these deployable services:
 |---------|-------------|-------------|
 | `chatbot` | Web-based chat interface | 7861 |
 | `data_manager` | Data ingestion and vectorstore management | 7871 |
+| `jira_ticket_responder` | Jira ticket responder service | — |
 | `piazza` | Piazza forum integration with Slack | — |
 | `redmine-mailer` | Redmine ticket responses via email | — |
 | `mattermost` | Mattermost channel integration | — |
@@ -113,6 +114,7 @@ Secrets are stored in a `.env` file passed via `--env-file`. Required secrets de
 | `HUGGINGFACEHUB_API_TOKEN` | Private HuggingFace models |
 | `GIT_USERNAME` / `GIT_TOKEN` | Git source |
 | `JIRA_PAT` | JIRA source |
+| `JIRA_TICKET_RESPONDER_PAT` | Jira ticket responder service |
 | `REDMINE_USER` / `REDMINE_PW` | Redmine source |
 
 See [Data Sources](data_sources.md) and [Services](services.md) for service-specific secrets.

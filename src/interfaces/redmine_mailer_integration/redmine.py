@@ -68,23 +68,31 @@ class RedmineAIWrapper:
         }
         self.conn = None
         self.cursor = None
+        self.current_model_used = self.redmine_config.get("model")
+        self.current_pipeline_used = self.redmine_config.get("pipeline")
 
         self.config_id = 1 # TODO: make dynamic a la chat_app/app.py
 
     def prepare_context_for_storage(self, source_documents):
-        
-        # load the present list of sources
+        link = None
+        context = ""
+
         sources = PostgresCatalogService.load_sources_catalog(self.data_path, self.pg_config)
 
         num_retrieved_docs = len(source_documents)
-        context = ""
+
         if num_retrieved_docs > 0:
             for k in range(num_retrieved_docs):
                 document = source_documents[k]
+
+                # Extract link from individual document
                 link = document.metadata.get('url', 'No URL')
+
                 multiple_newlines = r'\n{2,}'
                 content = re.sub(multiple_newlines, '\n', document.page_content)
                 context += f"Source {k+1}: {document.metadata.get('title', 'No Title')} ({link})\n\n{content}\n\n\n\n"
+        else:
+            link = ""  # ← Ensure link has a value
 
         return link, context
 
@@ -99,8 +107,8 @@ class RedmineAIWrapper:
         insert_tups = (
             [
                 # (service, issue_id, sender, content, context, ts) -- same ts for both just to have, not as interested in timing info for redmine service...
-                (service, issue_id, "User", user_message, '', '', ts, self.config_id),
-                (service, issue_id, "archi", archi_message, link, archi_context, ts, self.config_id),
+                (service, issue_id, "User", user_message, '', '', ts, self.current_model_used, self.current_pipeline_used),
+                (service, issue_id, "archi", archi_message, link, archi_context, ts, self.current_model_used, self.current_pipeline_used),
             ]
         )
 
@@ -236,7 +244,30 @@ class Redmine:
         """
         Adding a note to an existing issue (and move to 'feedback' status)
         """
-        self.redmine.issue.update(issue_id,status_id = self.status_dict['Feedback'],notes = note)
+        try:
+            # Sanitize note: remove problematic characters
+            # Remove emojis and special Unicode characters
+            note_sanitized = note.encode('ascii', 'ignore').decode('ascii')
+
+            logger.debug(f"Updating issue {issue_id}")
+            logger.debug(f"Status ID = {self.status_dict.get('Feedback', 'NOT FOUND')}")
+            logger.debug(f"Note content length = {len(note)}")
+            logger.debug(f"Note preview = {repr(note[:200])}")
+
+            self.redmine.issue.update(
+                issue_id,
+                status_id=self.status_dict['Feedback'],
+                notes=note
+            )
+            logger.info(f"Successfully updated issue {issue_id}")
+
+        except KeyError as e:
+            logger.error(f"KeyError: {e} - Check status_dict: {self.status_dict}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update issue {issue_id}: {e}", exc_info=True)
+            raise
+
         return
 
     def reopen_issue(self, issue_id, note,attachments):
@@ -271,7 +302,7 @@ class Redmine:
         """
         Create a brand new issue in the redmine system
         """
-        if not subject.strip():
+        if not subject or not subject.strip():
             subject = 'EMPTY subject'
         issue = self.redmine.issue.new()
         issue.project_id = self.project.id
