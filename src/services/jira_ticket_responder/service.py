@@ -39,6 +39,10 @@ class JiraTicketResponderService:
         self.agent_config = agent_config
 
     def poll_once(self) -> None:
+        role_actor_cache: dict[
+            tuple[str, tuple[str, ...]], Optional[list[dict[str, Any]]]
+        ] = {}
+        author_role_matches: dict[tuple[str, ...], bool] = {}
         for raw_issue in self.issue_client.search_recent_issues(
             self.config.projects,
             self.config.lookback_days,
@@ -46,13 +50,29 @@ class JiraTicketResponderService:
         ):
             issue_key = str(getattr(raw_issue, "key", "<unknown>"))
             try:
-                self.process_issue(raw_issue)
+                self.process_issue(
+                    raw_issue,
+                    role_actor_cache=role_actor_cache,
+                    author_role_matches=author_role_matches,
+                )
             except Exception:
                 logger.error(
                     "Failed to process Jira issue %s", issue_key, exc_info=True
                 )
 
-    def process_issue(self, raw_issue: Any) -> bool:
+    def process_issue(
+        self,
+        raw_issue: Any,
+        *,
+        role_actor_cache: Optional[
+            dict[tuple[str, tuple[str, ...]], Optional[list[dict[str, Any]]]]
+        ] = None,
+        author_role_matches: Optional[dict[tuple[str, ...], bool]] = None,
+    ) -> bool:
+        role_actor_cache = role_actor_cache if role_actor_cache is not None else {}
+        author_role_matches = (
+            author_role_matches if author_role_matches is not None else {}
+        )
         issue = jira_interface.extract_issue(raw_issue)
         if not is_issue_eligible(issue, self.config.eligible_statuses):
             return False
@@ -74,6 +94,63 @@ class JiraTicketResponderService:
         for comment in comments:
             if not is_mention_trigger_comment(self.issue_client, comment):
                 continue
+            if self.config.mention_allowed_roles:
+                project_key = jira_project_key(issue.key)
+                role_cache_key = (
+                    project_key,
+                    tuple(self.config.mention_allowed_roles),
+                )
+                if role_cache_key not in role_actor_cache:
+                    try:
+                        role_actor_cache[role_cache_key] = (
+                            self.issue_client.fetch_project_role_actors(
+                                project_key,
+                                self.config.mention_allowed_roles,
+                            )
+                        )
+                    except Exception:
+                        role_actor_cache[role_cache_key] = None
+                        logger.error(
+                            "Failed to resolve configured Jira mention roles for issue %s.",
+                            issue.key,
+                            exc_info=True,
+                        )
+                        return answered_any
+                role_actors = role_actor_cache[role_cache_key]
+                if role_actors is None:
+                    return answered_any
+                author_key = (
+                    project_key,
+                    *self.config.mention_allowed_roles,
+                    *(
+                        jira_interface.jira_user_identity_value(comment.author, field)
+                        for field in jira_interface.JIRA_USER_IDENTITY_FIELDS
+                    ),
+                )
+                if author_key not in author_role_matches:
+                    try:
+                        author_role_matches[author_key] = (
+                            self.issue_client.comment_author_matches_project_role_actors(
+                                comment,
+                                role_actors,
+                            )
+                        )
+                    except Exception:
+                        logger.error(
+                            "Failed to authorize Jira mention comment %s on issue %s.",
+                            comment.id,
+                            issue.key,
+                            exc_info=True,
+                        )
+                        author_role_matches[author_key] = False
+                if not author_role_matches[author_key]:
+                    logger.info(
+                        "Skipping Jira mention comment %s on issue %s because its "
+                        "author is not in an allowed project role.",
+                        comment.id,
+                        issue.key,
+                    )
+                    continue
             answered_any = (
                 self._answer_mention_trigger(issue, comment, comments) or answered_any
             )
@@ -105,16 +182,22 @@ class JiraTicketResponderService:
         ):
             return False
 
+        prompt_payload_budget = max(
+            1,
+            self.agent_config.prompt_max_chars
+            - responder_prompts.archi_answer_prompt_overhead_chars(),
+        )
         prompt = responder_prompts.build_mention_prompt(
             issue,
             comment,
             comments,
-            self.agent_config.prompt_max_chars,
+            prompt_payload_budget,
         )
-        if len(prompt) > self.agent_config.prompt_max_chars:
+        archi_prompt = responder_prompts.build_archi_answer_prompt(prompt)
+        if len(archi_prompt) > self.agent_config.prompt_max_chars:
             last_error = (
                 "Jira mention prompt exceeds model-derived prompt budget: "
-                f"prompt_chars={len(prompt)} "
+                f"prompt_chars={len(archi_prompt)} "
                 f"budget_chars={self.agent_config.prompt_max_chars}"
             )
             self._mark_trigger_failed(trigger_key, last_error)
@@ -196,8 +279,9 @@ class JiraTicketResponderService:
         prompt: str,
         conversation_title: str,
     ) -> bool:
+        archi_prompt = responder_prompts.build_archi_answer_prompt(prompt)
         try:
-            result = self.archi(history=[("User", prompt)])
+            result = self.archi(history=[("User", archi_prompt)])
         except Exception as exc:
             self._mark_trigger_failed(
                 trigger_key,
@@ -223,7 +307,7 @@ class JiraTicketResponderService:
 
         jira_comment_body = responder_formatting.build_jira_comment_body(answer, result)
         try:
-            response_comment_id = self.issue_client.post_restricted_comment(
+            response_comment_id = self.issue_client.post_comment(
                 issue.key,
                 jira_comment_body,
                 self.config.visible_to_role,
@@ -253,7 +337,7 @@ class JiraTicketResponderService:
         try:
             source_documents = getattr(result, "source_documents", []) or []
             conversation_id = self.persist_interaction(
-                conversation_title, prompt, answer, source_documents
+                conversation_title, archi_prompt, answer, source_documents
             )
             self.trigger_store.link_conversation(trigger_key, conversation_id)
         except Exception as exc:
@@ -418,3 +502,10 @@ def issue_trigger_key(issue_key: str) -> str:
 
 def comment_trigger_key(comment_id: str) -> str:
     return f"comment:{comment_id}"
+
+
+def jira_project_key(issue_key: str) -> str:
+    project_key, separator, issue_number = issue_key.rpartition("-")
+    if not separator or not project_key or not issue_number:
+        raise ValueError(f"Invalid Jira issue key: {issue_key}")
+    return project_key

@@ -247,6 +247,7 @@ class TestJiraConfigValidation:
         assert jira_config["poll_interval_minutes"] == 1
         assert jira_config["lookback_days"] == 7
         assert jira_config["respond_to_mentions"] is False
+        assert jira_config["mention_allowed_roles"] == []
         assert jira_config["eligible_statuses"] == ["Open", "In Progress"]
         assert jira_config["projects"] == ["CMSTZ", "CMSDM"]
 
@@ -261,6 +262,7 @@ class TestJiraConfigValidation:
                         "projects": ["CMSTZ"],
                         "visible_to_role": "Developers",
                         "respond_to_mentions": True,
+                        "mention_allowed_roles": ["Developers", "Administrators"],
                     },
                 }
             )
@@ -271,6 +273,28 @@ class TestJiraConfigValidation:
         assert (
             config["services"]["jira_ticket_responder"]["respond_to_mentions"] is True
         )
+        assert config["services"]["jira_ticket_responder"]["mention_allowed_roles"] == [
+            "Developers",
+            "Administrators",
+        ]
+
+    def test_base_config_renders_public_visibility_when_role_is_omitted(self):
+        rendered = (
+            _template_env()
+            .get_template("base-config.yaml")
+            .render(
+                services={
+                    "jira_ticket_responder": {
+                        "url": "https://jira.example/",
+                        "projects": ["CMSTZ"],
+                    },
+                }
+            )
+        )
+
+        config = yaml.safe_load(rendered)
+
+        assert config["services"]["jira_ticket_responder"]["visible_to_role"] == ""
 
     def test_base_config_renders_explicit_jira_agent_class(self):
         rendered = (
@@ -375,6 +399,49 @@ class TestJiraConfigValidation:
         manager = ConfigurationManager([str(config_path)], _template_env())
 
         manager.validate_configs(["jira_ticket_responder"], [])
+
+    def test_validate_jira_config_accepts_optional_visibility_and_mention_roles(
+        self, tmp_path
+    ):
+        config_path = _write_config(
+            tmp_path,
+            {
+                "jira_ticket_responder": {
+                    "url": "https://jira.example/",
+                    "projects": ["CMSTZ"],
+                    "respond_to_mentions": True,
+                    "mention_allowed_roles": ["Developers"],
+                }
+            },
+        )
+        manager = ConfigurationManager([str(config_path)], _template_env())
+
+        manager.validate_configs(["jira_ticket_responder"], [])
+
+    @pytest.mark.parametrize(
+        "value",
+        ["Developers", [""], ["Developers", 7], [None]],
+    )
+    def test_validate_jira_config_rejects_invalid_mention_allowed_roles(
+        self, tmp_path, value
+    ):
+        config_path = _write_config(
+            tmp_path,
+            {
+                "jira_ticket_responder": {
+                    "url": "https://jira.example/",
+                    "projects": ["CMSTZ"],
+                    "mention_allowed_roles": value,
+                }
+            },
+        )
+        manager = ConfigurationManager([str(config_path)], _template_env())
+
+        with pytest.raises(
+            ValueError,
+            match="services.jira_ticket_responder.mention_allowed_roles",
+        ):
+            manager.validate_configs(["jira_ticket_responder"], [])
 
     @pytest.mark.parametrize(
         "projects",

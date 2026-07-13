@@ -87,14 +87,90 @@ class JiraIssueClient:
                 break
             start_at += max_results
 
-    def post_restricted_comment(
-        self, issue_key: str, body: str, visible_to_role: str
+    def post_comment(
+        self, issue_key: str, body: str, visible_to_role: Optional[str]
     ) -> Optional[str]:
-        visibility = {"type": "role", "value": visible_to_role}
-        created_comment = self.client.add_comment(
-            issue_key, body, visibility=visibility
-        )
+        if visible_to_role is None:
+            created_comment = self.client.add_comment(issue_key, body)
+        else:
+            visibility = {"type": "role", "value": visible_to_role}
+            created_comment = self.client.add_comment(
+                issue_key, body, visibility=visibility
+            )
         return extract_created_jira_comment_id(created_comment)
+
+    def fetch_project_role_actors(
+        self, project_key: str, role_names: list[str]
+    ) -> list[dict[str, Any]]:
+        project_roles = self.client.project_roles(project_key)
+        unknown_roles = [role for role in role_names if role not in project_roles]
+        if unknown_roles:
+            raise ValueError(
+                f"Unknown Jira project roles for {project_key}: "
+                f"{', '.join(unknown_roles)}"
+            )
+
+        actors = []
+        for role_name in role_names:
+            role_id = project_roles[role_name]["id"]
+            role = self.client.project_role(project_key, role_id)
+            role_actors = role.raw["actors"]
+            if not isinstance(role_actors, list):
+                raise ValueError(
+                    f"Jira project role {role_name} for {project_key} has invalid actors."
+                )
+            actors.extend(role_actors)
+        return actors
+
+    def comment_author_matches_project_role_actors(
+        self, comment: JiraComment, actors: list[dict[str, Any]]
+    ) -> bool:
+        # Jira Server role actors identify direct users by user key and groups by
+        # group name. Group-backed roles therefore require the author's expanded
+        # Jira group membership; this follows Jira's project-role REST contract.
+        author_identities = {
+            value
+            for field in JIRA_USER_IDENTITY_FIELDS
+            if (value := jira_user_identity_value(comment.author, field))
+        }
+        group_names = set()
+        for actor in actors:
+            actor_type = actor.get("type")
+            actor_name = str(actor.get("name") or "").strip()
+            if actor_type == "atlassian-user-role-actor":
+                actor_user = actor.get("actorUser") or {}
+                actor_identities = {
+                    actor_name,
+                    *(
+                        jira_user_identity_value(actor_user, field)
+                        for field in JIRA_USER_IDENTITY_FIELDS
+                    ),
+                }
+                actor_identities.discard("")
+                if author_identities.intersection(actor_identities):
+                    return True
+            elif actor_type == "atlassian-group-role-actor" and actor_name:
+                group_names.add(actor_name)
+
+        if not group_names:
+            return False
+
+        author_name = jira_user_identity_value(comment.author, "name")
+        if not author_name:
+            raise ValueError(
+                "Jira comment author must include name to resolve group role membership."
+            )
+        user = self.client.user(author_name, expand="groups")
+        raw_groups = user.raw["groups"]
+        group_items = raw_groups["items"]
+        if not isinstance(group_items, list):
+            raise ValueError("Jira user groups payload must include an items list.")
+        author_group_names = {
+            str(group["name"]).strip()
+            for group in group_items
+            if isinstance(group, dict) and str(group.get("name") or "").strip()
+        }
+        return bool(group_names.intersection(author_group_names))
 
     def fetch_recent_comments(self, issue_key: str) -> list[JiraComment]:
         response = self.client._get_json(

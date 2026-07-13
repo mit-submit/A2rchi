@@ -279,7 +279,7 @@ archi create [...] --services chatbot,redmine-mailer
 
 ## Jira Ticket Responder Service
 
-Polls configured Jira projects for recently updated tickets in the configured eligible statuses, answers each issue trigger once, and posts the answer as a role-restricted Jira comment for operators to approve. It can also answer Jira comments that explicitly mention the responder account when `respond_to_mentions` is enabled.
+Polls configured Jira projects for recently updated tickets in the configured eligible statuses, answers each issue trigger once, and posts the answer as a Jira comment for operators to approve. Answers can be public or role-restricted. The service can also answer Jira comments that explicitly mention the responder account when `respond_to_mentions` is enabled.
 
 ### Configuration
 
@@ -290,10 +290,12 @@ services:
     projects:
       - CMSTZ
       - CMSDM
-    visible_to_role: Developers
+    visible_to_role: Developers # Optional; omit to make answers public.
     poll_interval_minutes: 1  # Optional; defaults to 1.
     lookback_days: 7          # Optional; defaults to 7.
     respond_to_mentions: false # Optional; defaults to false.
+    mention_allowed_roles:     # Optional; empty or omitted allows all roles.
+      - Developers
     eligible_statuses:        # Optional; defaults to ["Open", "In Progress"].
       - Open
       - In Progress
@@ -306,6 +308,8 @@ The `jira_ticket_responder` service uses `services.jira_ticket_responder` only. 
 - Each poll searches configured projects and `eligible_statuses` with a rolling Jira JQL window of `updated >= "-<lookback_days>d"`, so tickets updated while the service was down are still considered while they remain in the configured lookback window.
 - The service stores Jira answer state in `jira_responder_triggers`. Issue answers use trigger key `issue:<ISSUE_KEY>`. Mention answers use trigger key `comment:<COMMENT_ID>`.
 - When `respond_to_mentions` is `true`, the service fetches the 50 newest comments for each candidate issue, detects Jira Server/Data Center wiki mentions like `[~cmsai]` using the authenticated Jira service account `name`, and ignores comments authored by that service account.
+- When `mention_allowed_roles` is non-empty, a mention is answered only when its author belongs to at least one configured Jira project role. Direct role membership and membership through a Jira group both count. Unknown roles and role lookup failures deny mention responses for the affected issue. Empty or omitted `mention_allowed_roles` allows every non-service-account author.
+- `visible_to_role` controls Jira comment visibility independently of mention authorization. When it is a non-empty role name, answers are restricted to that one Jira role. When it is empty or omitted, answers are public to everyone who can view the issue. Jira supports only one role in a comment visibility restriction.
 - Mention scanning does not apply a separate comment timestamp cutoff. If an issue is selected because it was recently updated, an older mention can be answered if it is still among the 50 newest comments and has no trigger row.
 - Issue triggers and mention-comment triggers are independent. If both are eligible in the same poll, both can produce Jira comments.
 - A trigger in `answering` is retried once after 60 seconds. If that retried trigger is still `answering` after 600 seconds, it is marked `failed`. `answered` and `failed` triggers are skipped by later polls.
@@ -348,7 +352,7 @@ PG_PASSWORD=...
 # Add the API key required by the resolved Archi provider, such as OPENAI_API_KEY.
 ```
 
-`JIRA_PAT` is used by the Jira data source for read-only ingestion. `JIRA_TICKET_RESPONDER_PAT` is used by the ticket responder service to browse issues and add restricted comments. Use distinct Jira accounts for least privilege, and keep the ticket responder token tied to a dedicated account because the responder uses that account identity for comment posting and mention self-filtering.
+`JIRA_PAT` is used by the Jira data source for read-only ingestion. `JIRA_TICKET_RESPONDER_PAT` is used by the ticket responder service to browse issues and add comments. Use distinct Jira accounts for least privilege, and keep the ticket responder token tied to a dedicated account because the responder uses that account identity for comment posting and mention self-filtering.
 
 Include any provider key required by the resolved Archi provider in the `.env` passed to `archi create` so it is copied into the deployment. Provider key validation is handled by Archi during agent startup.
 

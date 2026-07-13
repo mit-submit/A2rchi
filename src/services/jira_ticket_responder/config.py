@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from src.utils import jira as jira_utils
 
@@ -14,11 +15,12 @@ JIRA_PROMPT_CHARS_PER_TOKEN = 3
 class JiraServiceConfig:
     url: str
     projects: list[str]
-    visible_to_role: str
+    visible_to_role: Optional[str]
     poll_interval_minutes: int
     lookback_days: int
     eligible_statuses: list[str]
     respond_to_mentions: bool
+    mention_allowed_roles: list[str]
 
     @classmethod
     def from_config(cls, raw_config: dict) -> "JiraServiceConfig":
@@ -27,7 +29,7 @@ class JiraServiceConfig:
                 "Missing required config section: services.jira_ticket_responder"
             )
 
-        required = ["url", "projects", "visible_to_role"]
+        required = ["url", "projects"]
         missing = [key for key in required if raw_config.get(key) in (None, "")]
         if missing:
             raise ValueError(
@@ -58,13 +60,17 @@ class JiraServiceConfig:
                 raw_config["respond_to_mentions"],
                 "respond_to_mentions",
             )
+        mention_allowed_roles = cls._parse_optional_role_list(
+            raw_config.get("mention_allowed_roles"),
+            "mention_allowed_roles",
+        )
 
         url = str(raw_config["url"]).strip()
-        visible_to_role = str(raw_config["visible_to_role"]).strip()
-        if not url or not visible_to_role:
-            raise ValueError(
-                "services.jira_ticket_responder url and visible_to_role must not be empty."
-            )
+        visible_to_role = cls._parse_optional_role(
+            raw_config.get("visible_to_role"), "visible_to_role"
+        )
+        if not url:
+            raise ValueError("services.jira_ticket_responder.url must not be empty.")
 
         return cls(
             url=url,
@@ -74,6 +80,7 @@ class JiraServiceConfig:
             lookback_days=lookback_days,
             eligible_statuses=eligible_statuses,
             respond_to_mentions=respond_to_mentions,
+            mention_allowed_roles=mention_allowed_roles,
         )
 
     @staticmethod
@@ -99,6 +106,40 @@ class JiraServiceConfig:
         if not isinstance(value, bool):
             raise ValueError(error)
         return value
+
+    @staticmethod
+    def _parse_optional_role(value: object, field_name: str) -> Optional[str]:
+        if value in (None, ""):
+            return None
+        error = (
+            f"services.jira_ticket_responder.{field_name} must be a non-empty string."
+        )
+        if not isinstance(value, str):
+            raise ValueError(error)
+        role = value.strip()
+        if not role:
+            raise ValueError(error)
+        return role
+
+    @staticmethod
+    def _parse_optional_role_list(value: object, field_name: str) -> list[str]:
+        if value in (None, ""):
+            return []
+        error = (
+            f"services.jira_ticket_responder.{field_name} must be a list of "
+            "non-empty Jira project role names."
+        )
+        if not isinstance(value, list):
+            raise ValueError(error)
+        roles = []
+        for value_role in value:
+            if not isinstance(value_role, str):
+                raise ValueError(error)
+            role = value_role.strip()
+            if not role:
+                raise ValueError(error)
+            roles.append(role)
+        return roles
 
 
 @dataclass(frozen=True)

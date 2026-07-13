@@ -40,6 +40,9 @@ class _FakeIssueClient:
         recent_comments_by_issue=None,
         fail_recent_comments=False,
         response_comment_id="jira-response-1",
+        project_role_actors=None,
+        role_authorization=None,
+        fail_project_roles=False,
     ):
         self.order = order if order is not None else []
         self.fail_post = fail_post
@@ -49,15 +52,20 @@ class _FakeIssueClient:
         )
         self.fail_recent_comments = fail_recent_comments
         self.response_comment_id = response_comment_id
+        self.project_role_actors = project_role_actors or []
+        self.role_authorization = role_authorization or {}
+        self.fail_project_roles = fail_project_roles
         self.searches = []
         self.recent_comment_fetches = []
+        self.project_role_fetches = []
+        self.role_authorization_checks = []
         self.posted = []
 
     def search_recent_issues(self, projects, lookback_days, eligible_statuses):
         self.searches.append((projects, lookback_days, eligible_statuses))
         return list(self.issues)
 
-    def post_restricted_comment(self, issue_key, body, visible_to_role):
+    def post_comment(self, issue_key, body, visible_to_role):
         self.order.append("post")
         if self.fail_post:
             raise RuntimeError("post failed")
@@ -77,6 +85,16 @@ class _FakeIssueClient:
 
     def comment_authored_by_authenticated_user(self, comment):
         return comment.author.get("name") == "cmsai"
+
+    def fetch_project_role_actors(self, project_key, role_names):
+        self.project_role_fetches.append((project_key, role_names))
+        if self.fail_project_roles:
+            raise RuntimeError("project roles failed")
+        return self.project_role_actors
+
+    def comment_author_matches_project_role_actors(self, comment, actors):
+        self.role_authorization_checks.append((comment.author, actors))
+        return self.role_authorization.get(comment.author.get("name"), False)
 
 
 class _FakeTriggerStore:
@@ -228,13 +246,15 @@ def _service(
     projects=None,
     eligible_statuses=None,
     respond_to_mentions=False,
+    mention_allowed_roles=None,
+    visible_to_role="Developers",
     trigger_store=None,
     prompt_max_chars=1_000_000,
 ):
     config = responder_config.JiraServiceConfig(
         url="https://jira.example/",
         projects=projects if projects is not None else ["CMSTZ"],
-        visible_to_role="Developers",
+        visible_to_role=visible_to_role,
         poll_interval_minutes=1,
         lookback_days=7,
         eligible_statuses=(
@@ -243,6 +263,7 @@ def _service(
             else ["Open", "In Progress"]
         ),
         respond_to_mentions=respond_to_mentions,
+        mention_allowed_roles=mention_allowed_roles or [],
     )
     return responder_service.JiraTicketResponderService(
         config=config,
@@ -256,6 +277,10 @@ def _service(
             prompt_max_chars=prompt_max_chars,
         ),
     )
+
+
+def _expected_archi_prompt(ticket_prompt):
+    return responder_prompts.build_archi_answer_prompt(ticket_prompt)
 
 
 class TestJiraServiceConfig:
@@ -273,6 +298,19 @@ class TestJiraServiceConfig:
         assert config.projects == ["CMSTZ", "CMSDM"]
         assert config.eligible_statuses == ["Open", "In Progress"]
         assert config.respond_to_mentions is False
+        assert config.mention_allowed_roles == []
+        assert config.visible_to_role == "Developers"
+
+    def test_from_config_defaults_role_filters_to_all_roles(self):
+        config = responder_config.JiraServiceConfig.from_config(
+            {
+                "url": "https://jira.example/",
+                "projects": ["CMSTZ"],
+            }
+        )
+
+        assert config.mention_allowed_roles == []
+        assert config.visible_to_role is None
 
     def test_from_config_reads_poll_interval_lookback_statuses_and_mentions(
         self,
@@ -286,6 +324,7 @@ class TestJiraServiceConfig:
                 "lookback_days": 14,
                 "eligible_statuses": ["Open", "Triaged"],
                 "respond_to_mentions": True,
+                "mention_allowed_roles": ["Developers", "Administrators"],
             }
         )
 
@@ -293,6 +332,7 @@ class TestJiraServiceConfig:
         assert config.lookback_days == 14
         assert config.eligible_statuses == ["Open", "Triaged"]
         assert config.respond_to_mentions is True
+        assert config.mention_allowed_roles == ["Developers", "Administrators"]
 
     def test_from_config_defaults_empty_optional_fields(self):
         config = responder_config.JiraServiceConfig.from_config(
@@ -334,6 +374,37 @@ class TestJiraServiceConfig:
                     "projects": ["CMSTZ"],
                     "visible_to_role": "Developers",
                     "respond_to_mentions": value,
+                }
+            )
+
+    @pytest.mark.parametrize(
+        "value",
+        ["Developers", [""], ["Developers", 7], [None]],
+    )
+    def test_from_config_rejects_invalid_mention_allowed_roles(self, value):
+        with pytest.raises(
+            ValueError,
+            match="services.jira_ticket_responder.mention_allowed_roles",
+        ):
+            responder_config.JiraServiceConfig.from_config(
+                {
+                    "url": "https://jira.example/",
+                    "projects": ["CMSTZ"],
+                    "mention_allowed_roles": value,
+                }
+            )
+
+    @pytest.mark.parametrize("value", [[], 7, "   "])
+    def test_from_config_rejects_invalid_visible_to_role(self, value):
+        with pytest.raises(
+            ValueError,
+            match="services.jira_ticket_responder.visible_to_role",
+        ):
+            responder_config.JiraServiceConfig.from_config(
+                {
+                    "url": "https://jira.example/",
+                    "projects": ["CMSTZ"],
+                    "visible_to_role": value,
                 }
             )
 
@@ -436,6 +507,41 @@ class TestJiraAgentConfig:
 
 
 class TestJiraTicketPrompt:
+    def test_build_archi_answer_prompt_adds_operator_style_instructions(self):
+        prompt = responder_prompts.build_archi_answer_prompt("Issue payload.")
+
+        assert prompt.startswith(
+            "You are Archi, a CMS Computing Operations assistant answering Jira tickets."
+        )
+        assert (
+            "Do not claim that you performed, will perform, approved, created, "
+            "granted, staged, invalidated, deleted, retried, or changed anything"
+            in prompt
+        )
+        assert prompt.endswith("\n\nIssue payload.")
+
+    def test_build_archi_answer_prompt_preserves_evaluated_resolution_policy(self):
+        prompt = responder_prompts.build_archi_answer_prompt("Issue payload.")
+
+        expected_policies = (
+            "Before drafting, extract the operator resolution from the evidence.",
+            "Prefer historical answer evidence from the same Jira project",
+            "Separate what the operator told the requester from what the operator "
+            "or another service actually did.",
+            "Preserve negative policy boundaries, routing decisions, ownership "
+            "boundaries, exception criteria, limits, prerequisites, and follow-up "
+            "requirements",
+            "Do not replace a user-facing URL with an internal OKG node id.",
+            "starting with the current Jira project when possible",
+            "Do not convert a routing decision into an offer for Archi or CompOps "
+            "to act.",
+            "state that boundary first",
+            "answer definitively only when the available tools provide that evidence",
+        )
+
+        for policy in expected_policies:
+            assert policy in prompt
+
     def test_build_ticket_prompt_excludes_comments(self):
         issue = jira_interface.JiraIssue(
             key="CMSTZ-7",
@@ -1098,7 +1204,7 @@ class TestJiraTicketResponderService:
             ("issue:CMSDM-2", "issue", "CMSDM-2", None),
         ]
         assert len(archi_instance.calls) == 2
-        assert archi_instance.calls[0]["history"][0][1] == (
+        assert archi_instance.calls[0]["history"][0][1] == _expected_archi_prompt(
             "Suggest a solution to this problem.\n\n"
             "Issue:\n"
             "CMSTZ-1\n\n"
@@ -1109,7 +1215,7 @@ class TestJiraTicketResponderService:
             "Description:\n"
             "Transfers fail with timeout."
         )
-        assert archi_instance.calls[1]["history"][0][1] == (
+        assert archi_instance.calls[1]["history"][0][1] == _expected_archi_prompt(
             "Suggest a solution to this problem.\n\n"
             "Issue:\n"
             "CMSDM-2\n\n"
@@ -1145,6 +1251,103 @@ class TestJiraTicketResponderService:
             "Use the documented fix.",
             [],
         )
+
+    def test_poll_once_reuses_role_authorization_within_project(self):
+        first_mention = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] first request.",
+            author={"name": "developer"},
+            created="",
+            updated="",
+        )
+        second_mention = jira_interface.JiraComment(
+            id="7382884",
+            body="[~cmsai] second request.",
+            author={"name": "developer"},
+            created="",
+            updated="",
+        )
+        actors = [{"type": "atlassian-group-role-actor", "name": "jira-devs"}]
+        issue_client = _FakeIssueClient(
+            issues=[_raw_issue(key="CMSTZ-1"), _raw_issue(key="CMSTZ-2")],
+            recent_comments_by_issue={
+                "CMSTZ-1": [first_mention],
+                "CMSTZ-2": [second_mention],
+            },
+            project_role_actors=actors,
+            role_authorization={"developer": True},
+        )
+        trigger_store = _FakeTriggerStore(
+            denied_keys={"issue:CMSTZ-1", "issue:CMSTZ-2"}
+        )
+        service = _service(
+            issue_client,
+            _FakeArchi(),
+            respond_to_mentions=True,
+            mention_allowed_roles=["Developers"],
+            trigger_store=trigger_store,
+        )
+        service.persist_interaction = Mock(side_effect=[101, 102])
+
+        service.poll_once()
+
+        assert issue_client.project_role_fetches == [("CMSTZ", ["Developers"])]
+        assert issue_client.role_authorization_checks == [
+            ({"name": "developer"}, actors)
+        ]
+        assert [claim[0] for claim in trigger_store.claims] == [
+            "issue:CMSTZ-1",
+            "comment:7382883",
+            "issue:CMSTZ-2",
+            "comment:7382884",
+        ]
+
+    def test_poll_once_refreshes_role_authorization_on_next_poll(self):
+        first_mention = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] first request.",
+            author={"name": "developer"},
+            created="",
+            updated="",
+        )
+        second_mention = jira_interface.JiraComment(
+            id="7382884",
+            body="[~cmsai] request after role removal.",
+            author={"name": "developer"},
+            created="",
+            updated="",
+        )
+        actors = [{"type": "atlassian-group-role-actor", "name": "jira-devs"}]
+        issue_client = _FakeIssueClient(
+            issues=[_raw_issue(key="CMSTZ-1")],
+            recent_comments_by_issue={"CMSTZ-1": [first_mention]},
+            project_role_actors=actors,
+            role_authorization={"developer": True},
+        )
+        trigger_store = _FakeTriggerStore(denied_keys={"issue:CMSTZ-1"})
+        service = _service(
+            issue_client,
+            _FakeArchi(),
+            respond_to_mentions=True,
+            mention_allowed_roles=["Developers"],
+            trigger_store=trigger_store,
+        )
+        service.persist_interaction = Mock(return_value=101)
+
+        service.poll_once()
+        issue_client.recent_comments_by_issue["CMSTZ-1"] = [second_mention]
+        issue_client.role_authorization["developer"] = False
+        service.poll_once()
+
+        assert issue_client.project_role_fetches == [
+            ("CMSTZ", ["Developers"]),
+            ("CMSTZ", ["Developers"]),
+        ]
+        assert [claim[0] for claim in trigger_store.claims] == [
+            "issue:CMSTZ-1",
+            "comment:7382883",
+            "issue:CMSTZ-1",
+        ]
 
     @patch("src.services.jira_ticket_responder.service.psycopg2.extras.execute_values")
     def test_poll_once_e2e_answers_multiple_projects_and_persists(self, execute_values):
@@ -1200,15 +1403,17 @@ class TestJiraTicketResponderService:
                 "history": [
                     (
                         "User",
-                        "Suggest a solution to this problem.\n\n"
-                        "Issue:\n"
-                        "CMSTZ-1\n\n"
-                        "Summary:\n"
-                        "Broken transfer\n\n"
-                        "Status:\n"
-                        "Open\n\n"
-                        "Description:\n"
-                        "Transfers fail with timeout.",
+                        _expected_archi_prompt(
+                            "Suggest a solution to this problem.\n\n"
+                            "Issue:\n"
+                            "CMSTZ-1\n\n"
+                            "Summary:\n"
+                            "Broken transfer\n\n"
+                            "Status:\n"
+                            "Open\n\n"
+                            "Description:\n"
+                            "Transfers fail with timeout."
+                        ),
                     )
                 ]
             }
@@ -1301,15 +1506,17 @@ class TestJiraTicketResponderService:
                 "history": [
                     (
                         "User",
-                        "Suggest a solution to this problem.\n\n"
-                        "Issue:\n"
-                        "CMSTZ-1\n\n"
-                        "Summary:\n"
-                        "Broken transfer\n\n"
-                        "Status:\n"
-                        "Open\n\n"
-                        "Description:\n"
-                        "Transfers fail with timeout.",
+                        _expected_archi_prompt(
+                            "Suggest a solution to this problem.\n\n"
+                            "Issue:\n"
+                            "CMSTZ-1\n\n"
+                            "Summary:\n"
+                            "Broken transfer\n\n"
+                            "Status:\n"
+                            "Open\n\n"
+                            "Description:\n"
+                            "Transfers fail with timeout."
+                        ),
                     )
                 ]
             }
@@ -1379,15 +1586,17 @@ class TestJiraTicketResponderService:
         ]
         service.persist_interaction.assert_called_once_with(
             "Jira issue CMSTZ-1",
-            "Suggest a solution to this problem.\n\n"
-            "Issue:\n"
-            "CMSTZ-1\n\n"
-            "Summary:\n"
-            "Broken transfer\n\n"
-            "Status:\n"
-            "Open\n\n"
-            "Description:\n"
-            "Transfers fail with timeout.",
+            _expected_archi_prompt(
+                "Suggest a solution to this problem.\n\n"
+                "Issue:\n"
+                "CMSTZ-1\n\n"
+                "Summary:\n"
+                "Broken transfer\n\n"
+                "Status:\n"
+                "Open\n\n"
+                "Description:\n"
+                "Transfers fail with timeout."
+            ),
             "Use the documented fix.",
             [],
         )
@@ -1536,6 +1745,142 @@ class TestJiraTicketResponderService:
         assert mention_prompt.count("Comment ID: 7382883") == 1
         assert "Comment ID: 7382884" in mention_prompt
         assert "[~cmsai] service-authored context." in mention_prompt
+
+    def test_empty_mention_allowed_roles_allows_any_human_author(self):
+        human_mention = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] please check this transfer.",
+            author={"name": "human-user"},
+            created="",
+            updated="",
+        )
+        issue_client = _FakeIssueClient(
+            recent_comments_by_issue={"CMSTZ-1": [human_mention]}
+        )
+        trigger_store = _FakeTriggerStore(denied_keys={"issue:CMSTZ-1"})
+        service = _service(
+            issue_client,
+            _FakeArchi(),
+            respond_to_mentions=True,
+            mention_allowed_roles=[],
+            trigger_store=trigger_store,
+        )
+        service.persist_interaction = Mock(return_value=42)
+
+        assert service.process_issue(_raw_issue()) is True
+        assert issue_client.project_role_fetches == []
+        assert trigger_store.claims[-1] == (
+            "comment:7382883",
+            "mention_comment",
+            "CMSTZ-1",
+            "7382883",
+        )
+
+    def test_mention_allowed_roles_only_answers_author_in_any_configured_role(self):
+        allowed_mention = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] allowed request.",
+            author={"name": "developer"},
+            created="",
+            updated="",
+        )
+        denied_mention = jira_interface.JiraComment(
+            id="7382884",
+            body="[~cmsai] denied request.",
+            author={"name": "reporter"},
+            created="",
+            updated="",
+        )
+        actors = [{"type": "atlassian-group-role-actor", "name": "jira-devs"}]
+        issue_client = _FakeIssueClient(
+            recent_comments_by_issue={"CMSTZ-1": [denied_mention, allowed_mention]},
+            project_role_actors=actors,
+            role_authorization={"developer": True, "reporter": False},
+        )
+        trigger_store = _FakeTriggerStore(denied_keys={"issue:CMSTZ-1"})
+        service = _service(
+            issue_client,
+            _FakeArchi(),
+            respond_to_mentions=True,
+            mention_allowed_roles=["Developers", "Administrators"],
+            trigger_store=trigger_store,
+        )
+        service.persist_interaction = Mock(return_value=42)
+
+        assert service.process_issue(_raw_issue()) is True
+        assert issue_client.project_role_fetches == [
+            ("CMSTZ", ["Developers", "Administrators"])
+        ]
+        assert [claim[0] for claim in trigger_store.claims] == [
+            "issue:CMSTZ-1",
+            "comment:7382883",
+        ]
+
+    def test_mention_role_lookup_failure_fails_closed(self):
+        human_mention = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] please check this transfer.",
+            author={"name": "developer"},
+            created="",
+            updated="",
+        )
+        issue_client = _FakeIssueClient(
+            recent_comments_by_issue={"CMSTZ-1": [human_mention]},
+            fail_project_roles=True,
+        )
+        trigger_store = _FakeTriggerStore()
+        service = _service(
+            issue_client,
+            _FakeArchi(),
+            respond_to_mentions=True,
+            mention_allowed_roles=["Developers"],
+            trigger_store=trigger_store,
+        )
+        service.persist_interaction = Mock(return_value=42)
+
+        assert service.process_issue(_raw_issue()) is True
+        assert trigger_store.claims == [("issue:CMSTZ-1", "issue", "CMSTZ-1", None)]
+        assert issue_client.posted == [
+            ("CMSTZ-1", "Use the documented fix.", "Developers")
+        ]
+
+    def test_poll_once_caches_project_role_lookup_failure(self):
+        human_mention = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] please check this transfer.",
+            author={"name": "developer"},
+            created="",
+            updated="",
+        )
+        issue_client = _FakeIssueClient(
+            issues=[_raw_issue(key="CMSTZ-1"), _raw_issue(key="CMSTZ-2")],
+            recent_comments_by_issue={
+                "CMSTZ-1": [human_mention],
+                "CMSTZ-2": [human_mention],
+            },
+            fail_project_roles=True,
+        )
+        trigger_store = _FakeTriggerStore()
+        service = _service(
+            issue_client,
+            _FakeArchi(),
+            respond_to_mentions=True,
+            mention_allowed_roles=["Developers"],
+            trigger_store=trigger_store,
+        )
+        service.persist_interaction = Mock(side_effect=[101, 102])
+
+        service.poll_once()
+
+        assert issue_client.project_role_fetches == [("CMSTZ", ["Developers"])]
+        assert [claim[0] for claim in trigger_store.claims] == [
+            "issue:CMSTZ-1",
+            "issue:CMSTZ-2",
+        ]
+        assert issue_client.posted == [
+            ("CMSTZ-1", "Use the documented fix.", "Developers"),
+            ("CMSTZ-2", "Use the documented fix.", "Developers"),
+        ]
 
     def test_mention_prompt_over_budget_marks_trigger_failed_without_archi_call(self):
         human_mention = jira_interface.JiraComment(
@@ -1935,15 +2280,13 @@ class TestJiraIssueClient:
             is False
         )
 
-    def test_post_restricted_comment_uses_role_visibility(self):
+    def test_post_comment_uses_role_visibility(self):
         client = object.__new__(jira_interface.JiraIssueClient)
         client.client = SimpleNamespace(
             add_comment=Mock(return_value=SimpleNamespace(id=8001))
         )
 
-        response_comment_id = client.post_restricted_comment(
-            "CMSTZ-1", "Fix it", "Developers"
-        )
+        response_comment_id = client.post_comment("CMSTZ-1", "Fix it", "Developers")
 
         assert response_comment_id == "8001"
         client.client.add_comment.assert_called_once_with(
@@ -1952,12 +2295,131 @@ class TestJiraIssueClient:
             visibility={"type": "role", "value": "Developers"},
         )
 
-    def test_post_restricted_comment_returns_none_without_exposed_id(self):
+    def test_post_comment_without_role_posts_public_comment(self):
+        client = object.__new__(jira_interface.JiraIssueClient)
+        client.client = SimpleNamespace(
+            add_comment=Mock(return_value=SimpleNamespace(id=8001))
+        )
+
+        response_comment_id = client.post_comment("CMSTZ-1", "Fix it", None)
+
+        assert response_comment_id == "8001"
+        client.client.add_comment.assert_called_once_with("CMSTZ-1", "Fix it")
+
+    def test_fetch_project_role_actors_returns_actors_for_all_selected_roles(self):
+        client = object.__new__(jira_interface.JiraIssueClient)
+        client.client = SimpleNamespace(
+            project_roles=Mock(
+                return_value={
+                    "Developers": {"id": "10001"},
+                    "Administrators": {"id": "10002"},
+                }
+            ),
+            project_role=Mock(
+                side_effect=[
+                    SimpleNamespace(raw={"actors": [{"name": "dev-user"}]}),
+                    SimpleNamespace(raw={"actors": [{"name": "admin-user"}]}),
+                ]
+            ),
+        )
+
+        actors = client.fetch_project_role_actors(
+            "CMSTZ", ["Developers", "Administrators"]
+        )
+
+        assert actors == [{"name": "dev-user"}, {"name": "admin-user"}]
+
+    def test_fetch_project_role_actors_rejects_unknown_configured_role(self):
+        client = object.__new__(jira_interface.JiraIssueClient)
+        client.client = SimpleNamespace(
+            project_roles=Mock(return_value={"Developers": {"id": "10001"}})
+        )
+
+        with pytest.raises(ValueError, match="Unknown Jira project roles for CMSTZ"):
+            client.fetch_project_role_actors("CMSTZ", ["Developers", "Administrators"])
+
+    def test_comment_author_matches_direct_project_role_actor(self):
+        client = object.__new__(jira_interface.JiraIssueClient)
+        client.client = SimpleNamespace(user=Mock())
+        comment = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] please check this.",
+            author={"key": "JIRAUSER123", "name": "developer"},
+            created="",
+            updated="",
+        )
+        actors = [
+            {
+                "type": "atlassian-user-role-actor",
+                "name": "JIRAUSER123",
+            }
+        ]
+
+        assert client.comment_author_matches_project_role_actors(comment, actors)
+        client.client.user.assert_not_called()
+
+    def test_comment_author_matches_group_project_role_actor(self):
+        client = object.__new__(jira_interface.JiraIssueClient)
+        client.client = SimpleNamespace(
+            user=Mock(
+                return_value=SimpleNamespace(
+                    raw={
+                        "groups": {
+                            "items": [
+                                {"name": "jira-users"},
+                                {"name": "jira-developers"},
+                            ]
+                        }
+                    }
+                )
+            )
+        )
+        comment = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] please check this.",
+            author={"key": "JIRAUSER123", "name": "developer"},
+            created="",
+            updated="",
+        )
+        actors = [
+            {
+                "type": "atlassian-group-role-actor",
+                "name": "jira-developers",
+            }
+        ]
+
+        assert client.comment_author_matches_project_role_actors(comment, actors)
+        client.client.user.assert_called_once_with("developer", expand="groups")
+
+    def test_comment_author_does_not_match_unrelated_project_role_group(self):
+        client = object.__new__(jira_interface.JiraIssueClient)
+        client.client = SimpleNamespace(
+            user=Mock(
+                return_value=SimpleNamespace(
+                    raw={"groups": {"items": [{"name": "jira-users"}]}}
+                )
+            )
+        )
+        comment = jira_interface.JiraComment(
+            id="7382883",
+            body="[~cmsai] please check this.",
+            author={"key": "JIRAUSER123", "name": "reporter"},
+            created="",
+            updated="",
+        )
+        actors = [
+            {
+                "type": "atlassian-group-role-actor",
+                "name": "jira-developers",
+            }
+        ]
+
+        assert not client.comment_author_matches_project_role_actors(comment, actors)
+
+    def test_post_comment_returns_none_without_exposed_id(self):
         client = object.__new__(jira_interface.JiraIssueClient)
         client.client = SimpleNamespace(add_comment=Mock(return_value=object()))
 
-        response_comment_id = client.post_restricted_comment(
-            "CMSTZ-1", "Fix it", "Developers"
-        )
+        response_comment_id = client.post_comment("CMSTZ-1", "Fix it", "Developers")
 
         assert response_comment_id is None
