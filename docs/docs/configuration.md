@@ -34,6 +34,8 @@ Global settings shared across all services.
 
 Default accepted files: `.pdf`, `.md`, `.txt`, `.docx`, `.html`, `.htm`, `.json`, `.yaml`, `.yml`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.java`, `.go`, `.rs`, `.c`, `.cpp`, `.h`, `.sh`
 
+> If `global.ACCEPTED_FILES` is omitted, Archi uses the default list above. When `captioning.enabled` is `true`, Archi automatically extends that default with standalone image file types like `.png`, `.jpg`, and `.webp`. If you explicitly set `global.ACCEPTED_FILES`, that list is used as-is and captioning does not override it.
+
 ---
 
 ## `services`
@@ -225,6 +227,55 @@ Controls data ingestion, vectorstore behaviour, and retrieval settings.
 | `stemming.enabled` | bool | `false` | Enable Porter Stemmer for improved matching |
 
 > **Note:** `use_hybrid_search` is a dynamic runtime setting (managed via the configuration API), not a YAML config key.
+
+### Captioning (Multimodal Ingestion)
+
+Vision-language model (VLM) captioning generates text descriptions for images and
+PDF page visuals at ingest time, embedding them alongside normal text chunks.
+This enables visual content (plots, diagrams, photos) to participate in
+text-based retrieval without changing the embedding or retrieval backend.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `captioning.enabled` | bool | `false` | Enable VLM captioning during ingestion |
+| `captioning.provider` | string | `""` | Provider name for the captioning model (e.g. `openai`, `anthropic`, `local`) |
+| `captioning.model` | string | `""` | Model identifier for the VLM (e.g. `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `captioning.caption_mode` | string | `gated` | PDF page captioning strategy: `gated` (only low-text pages), `all`, or `none` |
+| `captioning.min_text_chars` | int | `200` | Text-density threshold for `gated` mode — pages with fewer extracted characters are captioned |
+| `captioning.dpi` | int | `150` | Render resolution for PDF pages (higher = better quality, more memory) |
+
+**Supported image file types:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`, `.tif`, `.webp`
+
+**Caption modes for PDFs:**
+
+- **`gated`** (recommended): Captions PDF pages that have fewer than `min_text_chars` characters
+  of extracted text, and also keeps pages with embedded images eligible for captioning even when
+  they contain more text. Text-only pages above the threshold use only the existing text extraction
+  path. This avoids redundant captioning of pure text pages while still capturing visual context
+  from mixed-content documents like CMS analysis notes.
+- **`all`**: Captions every PDF page regardless of text content.
+- **`none`**: Disables PDF page captioning (standalone image files are still captioned if `enabled` is true).
+
+**Metadata:** Caption-derived chunks include `chunk_source: "vision_caption"` in their metadata,
+along with `caption_model`, `caption_provider`, and `page_number` (for PDFs). Text chunks are
+tagged with `chunk_source: "text"`. This allows filtering or debugging based on chunk provenance.
+
+**Example configuration:**
+
+```yaml
+data_manager:
+  captioning:
+    enabled: true
+    provider: openai
+    model: gpt-4o
+    caption_mode: gated
+    min_text_chars: 200
+    dpi: 150
+```
+
+> **Important:** If `captioning.enabled` is `true`, the configured provider must support vision
+> (`supports_vision: true`). If not, ingestion will fail with a clear error. Set
+> `captioning.enabled: false` (the default) to use text-only ingestion.
 
 ### Sources
 

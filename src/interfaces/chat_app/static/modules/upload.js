@@ -196,11 +196,13 @@ class DataUploader {
   initDropzone() {
     const dropzoneEl = document.getElementById('file-dropzone');
     if (!dropzoneEl) return;
+    const acceptedFiles = dropzoneEl.dataset.acceptedFiles
+      || '.pdf,.md,.txt,.docx,.html,.htm,.json,.yaml,.yml,.py,.js,.ts,.jsx,.tsx,.java,.go,.rs,.c,.cpp,.h,.sh,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp';
 
     // Check if Dropzone is available
     if (typeof Dropzone === 'undefined') {
       console.warn('Dropzone.js not loaded - file upload will use fallback');
-      this.initFallbackUpload(dropzoneEl);
+      this.initFallbackUpload(dropzoneEl, acceptedFiles);
       return;
     }
 
@@ -212,7 +214,7 @@ class DataUploader {
       paramName: 'file',
       maxFilesize: 50, // MB
       timeout: 600000, // 10 minutes — large files need time to upload + process
-      acceptedFiles: '.pdf,.md,.txt,.docx,.html,.htm,.json,.yaml,.yml,.py,.js,.ts,.jsx,.tsx,.java,.go,.rs,.c,.cpp,.h,.sh',
+      acceptedFiles,
       parallelUploads: 2,
       autoProcessQueue: true,
       addRemoveLinks: false,
@@ -237,12 +239,12 @@ class DataUploader {
   /**
    * Fallback Upload (when Dropzone is not available)
    */
-  initFallbackUpload(dropzoneEl) {
+  initFallbackUpload(dropzoneEl, acceptedFiles) {
     // Create a hidden file input
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.pdf,.md,.txt,.docx,.html,.htm,.json,.yaml,.yml,.py,.js,.ts,.jsx,.tsx,.java,.go,.rs,.c,.cpp,.h,.sh';
+    fileInput.accept = acceptedFiles;
     fileInput.style.display = 'none';
     dropzoneEl.appendChild(fileInput);
 

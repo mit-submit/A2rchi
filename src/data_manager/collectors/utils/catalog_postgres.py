@@ -28,6 +28,12 @@ DEFAULT_TEXT_EXTENSIONS = {
     ".csv", ".tsv", ".html", ".htm", ".log", ".py", ".c", ".cpp", ".C", ".h",
 }
 
+DEFAULT_IMAGE_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp",
+}
+
+DEFAULT_INGESTABLE_EXTENSIONS = DEFAULT_TEXT_EXTENSIONS | DEFAULT_IMAGE_EXTENSIONS
+
 # Map metadata keys to PostgreSQL column names
 _METADATA_COLUMN_MAP = {
     "path": "file_path",
@@ -59,7 +65,7 @@ class PostgresCatalogService:
 
     data_path: Path | str
     pg_config: Dict[str, Any]
-    include_extensions: Sequence[str] = field(default_factory=lambda: sorted(DEFAULT_TEXT_EXTENSIONS))
+    include_extensions: Sequence[str] = field(default_factory=lambda: sorted(DEFAULT_INGESTABLE_EXTENSIONS))
     _file_index: Dict[str, str] = field(init=False, default_factory=dict)
     _metadata_index: Dict[str, str] = field(init=False, default_factory=dict)
     _id_cache: Dict[str, int] = field(init=False, default_factory=dict)  # resource_hash -> document id

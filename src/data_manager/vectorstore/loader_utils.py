@@ -14,6 +14,13 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
+
+
+def is_image_file(file_path: str | Path) -> bool:
+    """Return True if the file has a supported image extension."""
+    return Path(file_path).suffix.lower() in IMAGE_EXTENSIONS
+
 
 def select_loader(file_path: str | Path):
     """Return a document loader instance appropriate for the given path, or None.

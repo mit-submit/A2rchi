@@ -120,6 +120,12 @@ class BaseReActAgent:
                     resolved_metadata.setdefault("tool_inputs_by_id", tool_inputs_by_id)
             except Exception as exc:
                 logger.debug("Failed to attach tool_inputs_by_id to metadata: %s", exc)
+            try:
+                evidence = memory.retrieved_evidence()
+                if evidence.get("items"):
+                    resolved_metadata.setdefault("retrieved_evidence", evidence)
+            except Exception as exc:
+                logger.debug("Failed to attach retrieved evidence to metadata: %s", exc)
         return PipelineOutput(
             answer=answer,
             source_documents=documents,

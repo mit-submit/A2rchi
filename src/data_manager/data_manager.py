@@ -39,6 +39,10 @@ class DataManager():
         self.scraper_manager = ScraperManager(dm_config=self.config["data_manager"])
         self.ticket_manager = TicketManager(dm_config=self.config["data_manager"])
 
+        captioning_cfg = self.config["data_manager"].get("captioning", {})
+        if captioning_cfg.get("enabled", False):
+            self._resolve_captioning_provider(captioning_cfg)
+
         self.vector_manager = VectorStoreManager(
             config=self.config,
             global_config=self.global_config,
@@ -109,3 +113,130 @@ class DataManager():
     def _update_after_collect(self) -> None:
         self.persistence.flush_index()
         self.vector_manager.update_vectorstore()
+
+    def _resolve_captioning_provider(self, captioning_cfg: dict) -> None:
+        """Resolve the configured captioning provider for ingestion."""
+        from src.data_manager.captioning.caption_service import ConfigurationError
+
+        provider_name = captioning_cfg.get("provider")
+        if not provider_name:
+            raise ConfigurationError(
+                "captioning.enabled is true but captioning.provider is not set."
+            )
+
+        base_url = captioning_cfg.get("base_url")
+        if not base_url:
+            services_cfg = self.config.get("services", {})
+            for service_cfg in services_cfg.values():
+                if not isinstance(service_cfg, dict):
+                    continue
+                provider_cfg = service_cfg.get("providers", {})
+                if not isinstance(provider_cfg, dict):
+                    continue
+                entry = provider_cfg.get(provider_name, {})
+                if isinstance(entry, dict) and entry.get("base_url"):
+                    base_url = entry["base_url"]
+                    break
+
+        try:
+            from src.archi.providers import get_provider, get_provider_by_name
+            from src.archi.providers.base import ProviderConfig, ProviderType
+
+            if base_url and provider_name.lower() in ("local", "ollama"):
+                config = ProviderConfig(
+                    provider_type=ProviderType.LOCAL,
+                    base_url=base_url,
+                    models=[],
+                )
+                provider = get_provider(ProviderType.LOCAL, config=config, use_cache=False)
+            else:
+                provider = get_provider_by_name(provider_name)
+        except ImportError:
+            logger.warning(
+                "Provider registry not available; attempting direct provider resolution."
+            )
+            provider = self._resolve_provider_direct(provider_name, base_url=base_url)
+
+        if provider is None:
+            raise ConfigurationError(
+                f"Could not resolve captioning provider '{provider_name}'. "
+                "Check that the provider is configured and has valid credentials."
+            )
+
+        captioning_cfg["_provider"] = provider
+        logger.info("Resolved captioning provider: %s", provider_name)
+
+    def _resolve_provider_direct(self, provider_name: str, base_url: Optional[str] = None):
+        """Fallback provider resolution without the registry helper."""
+        import importlib
+
+        from src.archi.providers.base import ProviderConfig, ProviderType
+
+        provider_type_map = {
+            "openai": (
+                "src.archi.providers.openai_provider",
+                "OpenAIProvider",
+                ProviderType.OPENAI,
+                "OPENAI_API_KEY",
+            ),
+            "anthropic": (
+                "src.archi.providers.anthropic_provider",
+                "AnthropicProvider",
+                ProviderType.ANTHROPIC,
+                "ANTHROPIC_API_KEY",
+            ),
+            "gemini": (
+                "src.archi.providers.gemini_provider",
+                "GeminiProvider",
+                ProviderType.GEMINI,
+                "GOOGLE_API_KEY",
+            ),
+            "openrouter": (
+                "src.archi.providers.openrouter_provider",
+                "OpenRouterProvider",
+                ProviderType.OPENROUTER,
+                "OPENROUTER_API_KEY",
+            ),
+            "local": (
+                "src.archi.providers.local_provider",
+                "LocalProvider",
+                ProviderType.LOCAL,
+                "",
+            ),
+            "cern_litellm": (
+                "src.archi.providers.cern_litellm_provider",
+                "CERNLiteLLMProvider",
+                ProviderType.CERN_LITELLM,
+                "",
+            ),
+        }
+
+        entry = provider_type_map.get(provider_name.lower())
+        if entry is None:
+            return None
+
+        module_path, class_name, provider_type, api_key_env = entry
+        mod = importlib.import_module(module_path)
+        cls = getattr(mod, class_name)
+
+        if not base_url:
+            services_cfg = self.config.get("services", {})
+            for service_cfg in services_cfg.values():
+                if not isinstance(service_cfg, dict):
+                    continue
+                entry_cfg = service_cfg.get("providers", {}).get(provider_name, {})
+                if isinstance(entry_cfg, dict) and entry_cfg.get("base_url"):
+                    base_url = entry_cfg["base_url"]
+                    break
+
+        config = ProviderConfig(
+            provider_type=provider_type,
+            api_key_env=api_key_env,
+            base_url=base_url,
+            enabled=True,
+        )
+        try:
+            return cls(config)
+        except Exception as exc:
+            logger.warning("Failed to create provider %s: %s", provider_name, exc)
+            return None

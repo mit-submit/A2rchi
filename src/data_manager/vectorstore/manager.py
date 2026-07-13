@@ -14,7 +14,7 @@ from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogSe
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
-from .loader_utils import select_loader
+from .loader_utils import is_image_file, select_loader
 from .postgres_vectorstore import PostgresVectorStore
 
 logger = get_logger(__name__)
@@ -105,9 +105,143 @@ class VectorStoreManager:
                 self.parallel_workers = default_workers
         self.parallel_workers = max(1, self.parallel_workers)
 
+        self._captioning_config = self._data_manager_config.get("captioning", {})
+        self._captioning_enabled = bool(self._captioning_config.get("enabled", False))
+        self._caption_service = None
+
+        if self._captioning_enabled:
+            self._init_caption_service()
+
         logger.info(
             f"VectorStoreManager initialized: collection={self.collection_name}"
         )
+
+    def _init_caption_service(self) -> None:
+        """Initialize the captioning service for multimodal ingestion."""
+        from src.data_manager.captioning.caption_service import CaptionService
+
+        provider = self._captioning_config.get("_provider")
+        if provider is None:
+            logger.warning(
+                "Captioning is enabled in config but no provider was resolved "
+                "(captioning._provider is missing). Captioning will be disabled "
+                "for this service."
+            )
+            self._captioning_enabled = False
+            return
+
+        self._caption_service = CaptionService(
+            provider=provider,
+            model_name=self._captioning_config.get("model", ""),
+            prompt=self._captioning_config.get("prompt"),
+            max_retries=int(self._captioning_config.get("max_retries", 3)),
+        )
+        logger.info("Caption service initialized for VectorStoreManager")
+
+    def _get_pdf_caption_settings(self) -> tuple[str, int, int]:
+        """Return PDF captioning settings from flat config keys."""
+        caption_mode = self._captioning_config.get("caption_mode", "gated")
+        min_drawings = int(self._captioning_config.get("min_drawings", 5))
+        render_dpi = int(
+            self._captioning_config.get(
+                "render_dpi",
+                self._captioning_config.get("dpi", 150),
+            )
+        )
+        return caption_mode, min_drawings, render_dpi
+
+    def _generate_caption_chunks(
+        self, file_path: str, filehash: str, file_level_metadata: Dict
+    ) -> tuple[List[str], List[Dict]]:
+        """Generate caption-derived chunks for an image or PDF file."""
+        from langchain_core.documents import Document
+
+        from src.data_manager.captioning.caption_service import CaptioningError
+        from src.data_manager.captioning.image_loader import (
+            load_images_from_file,
+            load_images_from_pdf,
+        )
+
+        path = Path(file_path)
+        filename = path.name
+        ext = path.suffix.lower()
+        caption_mode, min_drawings, render_dpi = self._get_pdf_caption_settings()
+
+        image_docs = []
+        if is_image_file(file_path):
+            try:
+                image_docs = load_images_from_file(path)
+            except Exception as exc:
+                logger.warning("Failed to load image file %s: %s", file_path, exc)
+                return [], []
+        elif ext == ".pdf":
+            try:
+                image_docs = load_images_from_pdf(
+                    path,
+                    caption_mode=caption_mode,
+                    min_drawings=min_drawings,
+                    render_dpi=render_dpi,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to extract PDF page images from %s: %s", file_path, exc
+                )
+                return [], []
+
+        if not image_docs:
+            return [], []
+
+        chunks: List[str] = []
+        metadatas: List[Dict] = []
+        provider_name = self._captioning_config.get("provider", "unknown")
+        model_name = self._captioning_config.get("model", "unknown")
+
+        for img_doc in image_docs:
+            try:
+                caption = self._caption_service.caption_image(
+                    image_bytes=img_doc.image_bytes,
+                    mime_type=img_doc.mime_type,
+                    context=img_doc.surrounding_text,
+                )
+            except CaptioningError as exc:
+                logger.warning(
+                    "Caption failed for page %s of %s: %s",
+                    img_doc.metadata.get("page_number", "?"),
+                    filename,
+                    exc,
+                )
+                continue
+
+            if not caption.strip():
+                continue
+
+            caption_doc = Document(page_content=caption.replace("\x00", ""), metadata={})
+            split_docs = self.text_splitter.split_documents([caption_doc])
+
+            for split_doc in split_docs:
+                chunk = split_doc.page_content or ""
+                if not chunk.strip():
+                    continue
+
+                chunks.append(chunk)
+                entry_metadata = {**file_level_metadata}
+                entry_metadata.update(
+                    {
+                        "chunk_source": "vision_caption",
+                        "caption_model": model_name,
+                        "caption_provider": provider_name,
+                        "page_number": img_doc.metadata.get("page_number", "1"),
+                        "source_file": filename,
+                        "caption_mode": caption_mode if ext == ".pdf" else "image",
+                        "filename": filename,
+                        "resource_hash": filehash,
+                        "collection": self.collection_name,
+                    }
+                )
+                metadatas.append(entry_metadata)
+
+        logger.info("Generated %d caption chunks for %s", len(chunks), filename)
+        return chunks, metadatas
 
     def delete_existing_collection_if_reset(self) -> None:
         """Delete the collection if reset_collection is enabled.
@@ -288,106 +422,128 @@ class VectorStoreManager:
             filename = Path(file_path).name
             logger.debug(f"Processing file: {filename} (hash: {filehash})")
 
-            try:
-                loader = self.loader(file_path)
-            except Exception as exc:
-                logger.error(
-                    f"Failed to load file: {file_path}. Skipping. Exception: {exc}"
-                )
-                self._catalog.update_ingestion_status(filehash, "failed", str(exc))
-                return None
-
-            if loader is None:
-                self._catalog.update_ingestion_status(
-                    filehash, "failed", f"Unsupported file format: {file_path}"
-                )
-                return None
-
             file_level_metadata = self._load_file_metadata(filehash)
-            try:
-                docs = loader.load()
-            except Exception as exc:
-                logger.error(
-                    "Failed to read file %s. Skipping. Exception: %s", file_path, exc
-                )
-                self._catalog.update_ingestion_status(filehash, "failed", str(exc))
-                return None
-
-            split_docs = self.text_splitter.split_documents(docs)
+            is_image = is_image_file(file_path)
 
             chunks: List[str] = []
             metadatas: List[Dict] = []
 
-            # Prepend a short metadata line to every chunk for Indico only, so retrieval
-            # can find talks by event, date, contribution, or speaker. Other web/git/sso/
-            # ticket/local_files documents must not get this prefix. Indico shares
-            # source_type="web" with the link/elog scrapers, so we gate on the
-            # integration-specific "scraper" metadata field instead.
-            scraper = (file_level_metadata or {}).get("scraper")
-            chunk_prefix = ""
-            if isinstance(scraper, str) and scraper.strip().lower() == "indico":
-                meta = file_level_metadata or {}
-                event_title = meta.get("event_title")
-                event_date = meta.get("event_date")
-                contrib_title = meta.get("contribution_title") or meta.get("title")
-                speaker = meta.get("speaker")
-                speaker_affiliation = meta.get("speaker_affiliation")
-                start_time = meta.get("start_time")
-                duration = meta.get("duration")
-                session = meta.get("session")
-                parts = []
-                if event_title:
-                    parts.append(f"Event: {event_title}.")
-                if event_date:
-                    parts.append(f"Event date: {event_date}.")
-                if contrib_title:
-                    parts.append(f"Contribution: {contrib_title}.")
-                if speaker:
-                    parts.append(f"Speaker: {speaker}.")
-                if speaker_affiliation:
-                    parts.append(f"Affiliation: {speaker_affiliation}.")
-                if start_time:
-                    parts.append(f"Start time: {start_time}.")
-                if duration:
-                    parts.append(f"Duration: {duration} min.")
-                if session:
-                    parts.append(f"Session: {session}.")
-                if parts:
-                    chunk_prefix = " ".join(parts) + "\n\n"
+            if not is_image:
+                try:
+                    loader = self.loader(file_path)
+                except Exception as exc:
+                    logger.error(
+                        f"Failed to load file: {file_path}. Skipping. Exception: {exc}"
+                    )
+                    self._catalog.update_ingestion_status(filehash, "failed", str(exc))
+                    return None
 
-            for index, split_doc in enumerate(split_docs):
-                chunk = split_doc.page_content or ""
-                # Remove NUL bytes that PostgreSQL cannot handle
-                chunk = chunk.replace("\x00", "")
+                if loader is None:
+                    self._catalog.update_ingestion_status(
+                        filehash, "failed", f"Unsupported file format: {file_path}"
+                    )
+                    return None
 
-                # Prepend Indico metadata so retrieval can match by event/speaker.
-                if chunk_prefix:
-                    chunk = chunk_prefix + chunk
+                try:
+                    docs = loader.load()
+                except Exception as exc:
+                    logger.error(
+                        "Failed to read file %s. Skipping. Exception: %s", file_path, exc
+                    )
+                    self._catalog.update_ingestion_status(filehash, "failed", str(exc))
+                    return None
 
-                if apply_stemming:
-                    words = tokenize(chunk)
-                    chunk = " ".join(stem(word) for word in words)
+                split_docs = self.text_splitter.split_documents(docs)
 
-                if not chunk.strip():
-                    continue
+                # Prepend a short metadata line to every chunk for Indico only, so retrieval
+                # can find talks by event, date, contribution, or speaker. Other web/git/sso/
+                # ticket/local_files documents must not get this prefix. Indico shares
+                # source_type="web" with the link/elog scrapers, so we gate on the
+                # integration-specific "scraper" metadata field instead.
+                scraper = (file_level_metadata or {}).get("scraper")
+                chunk_prefix = ""
+                if isinstance(scraper, str) and scraper.strip().lower() == "indico":
+                    meta = file_level_metadata or {}
+                    event_title = meta.get("event_title")
+                    event_date = meta.get("event_date")
+                    contrib_title = meta.get("contribution_title") or meta.get("title")
+                    speaker = meta.get("speaker")
+                    speaker_affiliation = meta.get("speaker_affiliation")
+                    start_time = meta.get("start_time")
+                    duration = meta.get("duration")
+                    session = meta.get("session")
+                    parts = []
+                    if event_title:
+                        parts.append(f"Event: {event_title}.")
+                    if event_date:
+                        parts.append(f"Event date: {event_date}.")
+                    if contrib_title:
+                        parts.append(f"Contribution: {contrib_title}.")
+                    if speaker:
+                        parts.append(f"Speaker: {speaker}.")
+                    if speaker_affiliation:
+                        parts.append(f"Affiliation: {speaker_affiliation}.")
+                    if start_time:
+                        parts.append(f"Start time: {start_time}.")
+                    if duration:
+                        parts.append(f"Duration: {duration} min.")
+                    if session:
+                        parts.append(f"Session: {session}.")
+                    if parts:
+                        chunk_prefix = " ".join(parts) + "\n\n"
 
-                chunks.append(chunk)
+                for index, split_doc in enumerate(split_docs):
+                    chunk = split_doc.page_content or ""
+                    # Remove NUL bytes that PostgreSQL cannot handle
+                    chunk = chunk.replace("\x00", "")
 
-                doc_metadata = getattr(split_doc, "metadata", {}) or {}
-                if not isinstance(doc_metadata, dict):
-                    doc_metadata = dict(doc_metadata)
-                entry_metadata = {**file_level_metadata, **doc_metadata}
-                entry_metadata["chunk_index"] = index
-                entry_metadata["filename"] = filename
-                entry_metadata["resource_hash"] = filehash
-                entry_metadata["collection"] = self.collection_name
-                metadatas.append(entry_metadata)
+                    # Prepend Indico metadata so retrieval can match by event/speaker.
+                    if chunk_prefix:
+                        chunk = chunk_prefix + chunk
+
+                    if apply_stemming:
+                        words = tokenize(chunk)
+                        chunk = " ".join(stem(word) for word in words)
+
+                    if not chunk.strip():
+                        continue
+
+                    chunks.append(chunk)
+
+                    doc_metadata = getattr(split_doc, "metadata", {}) or {}
+                    if not isinstance(doc_metadata, dict):
+                        doc_metadata = dict(doc_metadata)
+                    entry_metadata = {**file_level_metadata, **doc_metadata}
+                    entry_metadata["chunk_index"] = index
+                    entry_metadata["chunk_source"] = "text"
+                    entry_metadata["filename"] = filename
+                    entry_metadata["resource_hash"] = filehash
+                    entry_metadata["collection"] = self.collection_name
+                    metadatas.append(entry_metadata)
+
+            if self._captioning_enabled and self._caption_service is not None:
+                if is_image or Path(file_path).suffix.lower() == ".pdf":
+                    try:
+                        caption_chunks, caption_metas = self._generate_caption_chunks(
+                            file_path, filehash, file_level_metadata
+                        )
+                        chunks.extend(caption_chunks)
+                        metadatas.extend(caption_metas)
+                    except Exception as exc:
+                        logger.warning(
+                            "Captioning failed for %s; text chunks unaffected: %s",
+                            filename,
+                            exc,
+                        )
 
             if not chunks:
                 logger.info(f"No chunks generated for {filename}; skipping.")
-                self._catalog.update_ingestion_status(
-                    filehash, "failed", "No text chunks could be extracted"
+                message = (
+                    "Image file but captioning produced no chunks"
+                    if is_image
+                    else "No text chunks could be extracted"
                 )
+                self._catalog.update_ingestion_status(filehash, "failed", message)
                 return None
 
             return filename, chunks, metadatas

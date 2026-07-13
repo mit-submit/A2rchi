@@ -114,6 +114,9 @@ def test_add_to_postgres_commits_every_25_files(monkeypatch):
     manager.collection_name = "test_collection"
     manager._data_manager_config = {"stemming": {"enabled": False}}
     manager._pg_config = {"host": "localhost"}
+    manager._captioning_enabled = False
+    manager._captioning_config = {}
+    manager._caption_service = None
 
     catalog = MagicMock()
     catalog.get_document_id.return_value = 1

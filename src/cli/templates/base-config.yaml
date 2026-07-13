@@ -3,10 +3,19 @@ name: {{ name | default("default", true) }}
 global:
   DATA_PATH: "{{ global.DATA_PATH | default('/root/data/', true) }}"
   ACCOUNTS_PATH: "{{ global.ACCOUNTS_PATH | default('/root/.accounts/', true) }}"
+  {%- set default_accepted_files = ['.pdf', '.md', '.txt', '.docx', '.html', '.htm', '.json', '.yaml', '.yml', '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.sh'] %}
+  {%- set captioning_image_files = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp'] %}
+  {%- set captioning_enabled = data_manager.captioning.enabled | default(false, true) %}
+  {%- set default_upload_files = default_accepted_files + (captioning_image_files if captioning_enabled else []) %}
+  {%- set upload_files = global.ACCEPTED_FILES if global.ACCEPTED_FILES is defined else default_upload_files %}
+  {%- if upload_files %}
   ACCEPTED_FILES:
-    {%- for file_type in global.ACCEPTED_FILES | default(['.pdf', '.md', '.txt', '.docx', '.html', '.htm', '.json', '.yaml', '.yml', '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.sh']) %}
+    {%- for file_type in upload_files %}
     - "{{ file_type }}"
     {%- endfor %}
+  {%- else %}
+  ACCEPTED_FILES: []
+  {%- endif %}
   LOGGING:
     input_output_filename: "{{ global.LOGGING.input_output_filename | default('chain_input_output.log', true) }}"
 
@@ -255,6 +264,13 @@ data_manager:
   stemming:
     enabled: {{ data_manager.stemming.enabled | default(false, true) }}
   distance_metric: {{ data_manager.distance_metric | default('cosine', true) }}
+  captioning:
+    enabled: {{ data_manager.captioning.enabled | default(false, true) }}
+    provider: {{ data_manager.captioning.provider | default('', true) }}
+    model: {{ data_manager.captioning.model | default('', true) }}
+    caption_mode: {{ data_manager.captioning.caption_mode | default('gated', true) }}
+    min_drawings: {{ data_manager.captioning.min_drawings | default(5, true) }}
+    dpi: {{ data_manager.captioning.dpi | default(150, true) }}
   retrievers:
     semantic_retriever:
       num_documents_to_retrieve: {{ data_manager.retrievers.semantic_retriever.num_documents_to_retrieve | default(5, true) }}

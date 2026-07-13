@@ -20,6 +20,7 @@ from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.vectorstore.loader_utils import load_text_from_path
 from src.interfaces.chat_app.document_utils import check_credentials
 from src.utils.env import read_secret
+from src.utils.file_acceptance import get_effective_accepted_files
 from src.utils.logging import get_logger
 from src.data_manager.collectors.utils.catalog_postgres import _METADATA_COLUMN_MAP
 from src.utils.config_access import get_full_config
@@ -240,7 +241,7 @@ class FlaskAppWrapper:
         if not filename.strip():
             return jsonify({"error": "empty_filename"}), 400
 
-        accepted = [ext.lower() for ext in self.global_config.get("ACCEPTED_FILES", [])]
+        accepted = get_effective_accepted_files(self.config)
         file_extension = os.path.splitext(filename)[1].lower()
         if accepted and file_extension not in accepted:
             return jsonify({"error": "unsupported_extension", "allowed": accepted}), 400

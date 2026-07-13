@@ -17,6 +17,7 @@ INDEXED_METADATA_KEYS: Tuple[str, ...] = (
     "created_at",
     "modified_at",
     "ingested_at",
+    "chunk_source",
 )
 
 

@@ -317,6 +317,7 @@ class PostgresVectorStore(VectorStore):
                 query = f"""
                     SELECT 
                         c.id,
+                        c.chunk_index,
                         c.chunk_text,
                         c.metadata,
                         c.embedding {self._distance_op} %s::vector AS distance,
@@ -342,6 +343,10 @@ class PostgresVectorStore(VectorStore):
             metadata = row["metadata"] or {}
             if isinstance(metadata, str):
                 metadata = json.loads(metadata)
+            if row.get("chunk_index") is not None:
+                metadata.setdefault("chunk_index", row["chunk_index"])
+            if row.get("id") is not None:
+                metadata.setdefault("document_chunk_id", row["id"])
             
             # Add document-level metadata
             if row["resource_hash"]:
@@ -436,6 +441,7 @@ class PostgresVectorStore(VectorStore):
                     WITH scored AS (
                         SELECT 
                             c.id,
+                            c.chunk_index,
                             c.chunk_text,
                             c.metadata,
                             1.0 - (c.embedding {self._distance_op} %s::vector) AS semantic_score,
@@ -472,6 +478,10 @@ class PostgresVectorStore(VectorStore):
             metadata = row["metadata"] or {}
             if isinstance(metadata, str):
                 metadata = json.loads(metadata)
+            if row.get("chunk_index") is not None:
+                metadata.setdefault("chunk_index", row["chunk_index"])
+            if row.get("id") is not None:
+                metadata.setdefault("document_chunk_id", row["id"])
 
             if row["resource_hash"]:
                 metadata["resource_hash"] = row["resource_hash"]
