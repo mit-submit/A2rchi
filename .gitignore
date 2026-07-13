@@ -16,6 +16,7 @@ venv
 .vscode
 *secrets/
 *secrets*
+!src/cli/templates/helm/templates/secrets.yaml
 logos/
 docs/site
 setup.sh

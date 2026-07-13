@@ -13,6 +13,7 @@ from jinja2 import Environment
 from src.cli.service_registry import service_registry
 from src.cli.utils.service_builder import DeploymentPlan
 from src.cli.utils.grafana_styling import assign_feedback_palette
+from src.cli.utils.helpers import HELM_PREFIX
 from src.utils.ab_testing import DEFAULT_AB_AGENTS_DIR
 from src.utils.logging import get_logger
 
@@ -28,6 +29,14 @@ BASE_GRAFANA_DASHBOARDS_TEMPLATE = "grafana/dashboards.yaml"
 BASE_GRAFANA_ARCHI_DEFAULT_DASHBOARDS_TEMPLATE = "grafana/archi-default-dashboard.json"
 BASE_GRAFANA_CONFIG_TEMPLATE = "grafana/grafana.ini"
 DEPLOYMENT_AGENTS_DIR = "/root/archi/agents"
+
+HELM_CHAT_CONFIGMAP = "helm/templates/chatbot/configmap.yaml"
+HELM_DM_CONFIGMAP = "helm/templates/data-manager/configmap.yaml"
+HELM_POSTGRES_CONFIGMAP = "helm/templates/postgres/configmap.yaml"
+HELM_GRAFANA_CONFIGMAP = "helm/templates/grafana/configmap.yaml"
+HELM_CONFIG_SEED = "helm/templates/config-seed.yaml"
+HELM_CHART_YAML_TEMPLATE = "helm/Chart.yaml"
+HELM_VALUES_YAML_TEMPLATE = "helm/values.yaml"
 
 
 def get_git_information() -> Dict[str, str]:
@@ -94,12 +103,17 @@ class TemplateContext:
     @property
     def benchmarking(self) -> bool:
         return bool(self.options.get("benchmarking"))
+    
+    @property
+    def helm(self) -> bool:
+        return bool(self.options.get("helm"))
+    
 
 
 class TemplateManager:
     """Manages template rendering and file preparation using service registry"""
 
-    def __init__(self, jinja_env: Environment, verbosity: int):
+    def __init__(self, jinja_env: Environment, verbosity: int, helm: bool = False):
         self.env = jinja_env
         self.global_verbosity = verbosity
         self.registry = service_registry
@@ -107,6 +121,7 @@ class TemplateManager:
             "grafana": self._render_grafana_assets,
             "grader": self._copy_grader_assets,
         }
+        self.helm = helm
 
     def prepare_deployment_files(
         self,
@@ -137,7 +152,7 @@ class TemplateManager:
     def _build_workflow(self, context: TemplateContext) -> List[Callable[[TemplateContext], None]]:
         stages: List[Callable[[TemplateContext], None]] = [
             self._stage_prompts,
-            self._stage_agents,
+            self._stage_agents, 
             self._stage_skills,
             self._stage_mcp_copy,
             self._stage_configs,
@@ -151,12 +166,24 @@ class TemplateManager:
         if context.benchmarking:
             stages.append(self._stage_benchmarking)
 
+        if context.helm:
+            stages.append(self._stage_chart)
+            stages.append(self._stage_values)
+            stages.append(self._stage_config_seed)
+            stages.append(self._stage_tools)
+            stages.remove(self._stage_compose) #Not needed for Helm deployments
+            stages.remove(self._stage_source_copy)
+            stages.remove(self._stage_mcp_copy) #Ignore for now, pending MCP sidecar implementation
+
         return stages
 
     # individual stages
     def _stage_prompts(self, context: TemplateContext) -> None:
         # Copy default prompt templates (condense/, chat/, system/ structure)
-        self._copy_default_prompts(context)
+        if context.helm:
+            self._helm_render_default_prompts(context)
+        else:
+            self._copy_default_prompts(context)
         context.prompt_mappings = {}
 
     def _stage_agents(self, context: TemplateContext) -> None:
@@ -164,6 +191,7 @@ class TemplateManager:
         dst_dir = context.base_dir / "data" / "agents"
         ab_dst_dir = context.base_dir / "data" / "ab_agents"
         services_cfg = config.get("services", {}) or {}
+        agents_data = {}
 
         if context.benchmarking:
             benchmark_cfg = services_cfg.get("benchmarking", {}) or {}
@@ -180,8 +208,14 @@ class TemplateManager:
                 raise ValueError(f"Benchmark agent file not found: {source_path}")
             if source_path.suffix.lower() != ".md":
                 raise ValueError(f"Benchmark agent file must be a .md file: {source_path}")
-            dst_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source_path, dst_dir / source_path.name)
+
+            if context.helm:
+                with open(source_path, 'r') as f:
+                    agents_data[source_path.name] = f.read()
+                self._helm_render_agents(context, agents_data)
+            else:
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source_path, dst_dir / source_path.name)
             return
 
         agents_dir = (services_cfg.get("chat_app") or {}).get("agents_dir")
@@ -190,27 +224,115 @@ class TemplateManager:
                 return
             raise ValueError("Missing required services.chat_app.agents_dir in config.")
         src_dir = self._resolve_directory_path(str(agents_dir), config)
-        self._copy_markdown_directory(
-            src_dir,
-            dst_dir,
-            missing_message=f"Agents directory not found: {src_dir}",
-            empty_message=f"No agent markdown files found in {src_dir}",
-            required=True,
-        )
 
-        ab_dst_dir.mkdir(parents=True, exist_ok=True)
+        if context.helm:
+            for agent_file in list(src_dir.glob("*.md"))+list(src_dir.glob("*.py")):
+                with open(agent_file, 'r') as f:
+                    file_name = os.path.basename(agent_file)
+                    agents_data[file_name] = f.read()
+        else:
+            self._copy_markdown_directory(
+                src_dir,
+                dst_dir,
+                missing_message=f"Agents directory not found: {src_dir}",
+                empty_message=f"No agent markdown files found in {src_dir}",
+                required=True,
+            )
+
+        if not context.helm:
+            ab_dst_dir.mkdir(parents=True, exist_ok=True)
         ab_cfg = ((services_cfg.get("chat_app") or {}).get("ab_testing") or {})
         ab_agents_dir = ab_cfg.get("ab_agents_dir")
         if not ab_agents_dir:
+            if context.helm:
+                #Saves the agents_data as fall back
+                self._helm_render_agents(context, agents_data) 
             return
         ab_src_dir = self._resolve_directory_path(str(ab_agents_dir), config)
-        self._copy_markdown_directory(
-            ab_src_dir,
-            ab_dst_dir,
-            missing_message=f"A/B agents directory not found: {ab_src_dir}",
-            empty_message=f"No A/B agent markdown files found in {ab_src_dir}",
-            required=False,
+        
+        if context.helm:
+            for ab_agent_file in ab_src_dir.glob("*.md"):
+                with open(ab_agent_file, 'r') as f:
+                    file_name = os.path.basename(ab_agent_file)
+                    agents_data[file_name] = f.read()
+            self._helm_render_agents(context, agents_data)
+        else:
+            self._copy_markdown_directory(
+                ab_src_dir,
+                ab_dst_dir,
+                missing_message=f"A/B agents directory not found: {ab_src_dir}",
+                empty_message=f"No A/B agent markdown files found in {ab_src_dir}",
+                required=False,
+            )
+
+        
+    def _helm_render_agents(self, context: TemplateContext, agents_data: dict) -> None:
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
+        helm_config = tmpl.render(agents=agents_data, archi_name=context.plan.name) 
+        file_path = chart_dir / "templates/chatbot-agents-configmap.yaml"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path,"w") as f:
+            f.write(helm_config)
+
+    def _helm_render_skills(self, context: TemplateContext, skills_data: dict) -> None:
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
+        helm_config = tmpl.render(skills=skills_data, archi_name=context.plan.name) 
+        file_path = chart_dir / "templates/chatbot-skills-configmap.yaml"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path,"w") as f:
+            f.write(helm_config)
+
+    def _stage_chart(self, context: TemplateContext) -> None:
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_CHART_YAML_TEMPLATE)  
+        rendered = tmpl.render(  
+            name=context.plan.name,  
+            app_version=get_git_version(),   
         )
+        with open(chart_dir / "Chart.yaml","w") as f:
+            f.write(rendered)
+
+    def _stage_values(self, context: TemplateContext) -> None:
+
+        template_vars = context.plan.to_template_vars()
+        port_config = self._extract_port_config(context)
+        allow_port_reuse = context.get_option("allow_port_reuse", False)
+        self._check_ports_available(context, port_config, allow_port_reuse=allow_port_reuse)
+        template_vars.update(port_config)
+        template_vars.setdefault("postgres_port", context.config_manager.config.get("services", {}).get("postgres", {}).get("port", 5432))
+        template_vars.setdefault("verbosity", self.global_verbosity)
+
+        template_vars["app_version"] = get_git_version()
+
+        # Compose template still expects optional lists
+        template_vars.setdefault("prompt_files", [])
+        template_vars.setdefault("rubrics", [])
+
+        if context.plan.get_service("grader").enabled:
+            template_vars["rubrics"] = self._get_grader_rubrics(context.config_manager)
+
+        # Pass MCP server configs so compose can volume-mount stdio packages
+        # and emit sidecar services for servers with build_context/image.
+        mcp_servers = context.config_manager.config.get("mcp_servers", {}) or {}
+        template_vars["mcp_servers"] = mcp_servers
+
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_VALUES_YAML_TEMPLATE)  
+
+        rendered = tmpl.render(archi_name=context.plan.name,**template_vars)
+        with open(chart_dir / "values.yaml","w") as f:
+            f.write(rendered)
+
+    def _stage_config_seed(self, context: TemplateContext) -> None:
+
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_CONFIG_SEED)  
+
+        rendered = tmpl.render(name=context.plan.name)
+        with open(chart_dir / "templates/config-seed.yaml","w") as f:
+            f.write(rendered)
 
     @staticmethod
     def _resolve_directory_path(raw_path: str, config: Dict[str, Any]) -> Path:
@@ -253,6 +375,7 @@ class TemplateManager:
         config = context.config_manager.config or {}
         services_cfg = config.get("services", {}) or {}
         skills_dir = (services_cfg.get("chat_app") or {}).get("skills_dir")
+        skills_data = {}
         if not skills_dir:
             logger.debug("No skills_dir configured; skipping skills copy")
             return
@@ -267,13 +390,54 @@ class TemplateManager:
         copied = 0
         for skill_file in sorted(src_dir.iterdir()):
             if skill_file.is_file() and skill_file.suffix.lower() == ".md":
-                shutil.copyfile(skill_file, dst_dir / skill_file.name)
+                if context.helm:
+                    with open(skill_file, 'r') as f:
+                        skills_data[skill_file.name] = f.read()
+                else:
+                    shutil.copyfile(skill_file, dst_dir / skill_file.name)
                 copied += 1
         if copied:
             logger.info("Copied %d skill file(s) from %s", copied, src_dir)
         else:
             logger.warning("No skill markdown files found in %s", src_dir)
 
+        if context.helm:
+            self._helm_render_skills(context, skills_data)
+
+    def _stage_tools(self, context: TemplateContext) -> None:
+        #Only required for helm deployments for now 
+        config = context.config_manager.config or {}
+        services_cfg = config.get("services", {}) or {}
+        tools_dir = (services_cfg.get("chat_app") or {}).get("tools_dir")
+        tools_data = {}
+
+        if not tools_dir:
+            logger.debug("No tools_dir configured; skipping tools copy")
+            return
+
+        src_dir = Path(tools_dir).expanduser()
+        if not src_dir.exists() or not src_dir.is_dir():
+            logger.warning("Tools directory not found: %s", src_dir)
+            return
+        
+        copied = 0
+        for tool_file in sorted(src_dir.iterdir()):
+            if tool_file.is_file() and tool_file.suffix.lower() == ".py":
+                with open(tool_file, 'r') as f:
+                    tools_data[tool_file.name] = f.read()
+                copied += 1
+        if copied:
+            logger.info("Copied %d tool file(s) from %s", copied, src_dir)
+        else:
+            logger.warning("No tool python files found in %s", src_dir)
+
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
+        helm_config = tmpl.render(tools=tools_data, archi_name=context.plan.name) 
+        file_path = chart_dir / "templates/chatbot-tools-configmap.yaml"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path,"w") as f:
+            f.write(helm_config)
     def _stage_mcp_copy(self, context: TemplateContext) -> None:
         """Make MCP sidecar build contexts available inside the deployment dir.
 
@@ -440,14 +604,56 @@ class TemplateManager:
                         shutil.copyfile(prompt_file, dst_file)
                         logger.debug(f"Copied default prompt: {prompt_type}/{prompt_file.name}")
 
+    def _helm_render_default_prompts(self, context: TemplateContext) -> None:
+        # Source from examples/defaults/prompts/ (not source code)
+        repo_root = Path(__file__).parent.parent.parent.parent
+        defaults_prompts_dir = repo_root / "examples" / "defaults" / "prompts"
+
+        dict_prompts = {
+            "condense": {},
+            "chat": {},
+            "system": {}
+        }
+        for prompt_type in ["condense", "chat", "system"]:
+            src_dir = defaults_prompts_dir / prompt_type
+            
+            if src_dir.exists():
+                for prompt_file in src_dir.glob("*.prompt"):
+                    with open(prompt_file, 'r') as f:
+                        file_name = os.path.basename(prompt_file)
+                        dict_prompts[prompt_type][file_name] = f.read()
+
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
+        helm_config = tmpl.render(condense_prompts=dict_prompts["condense"],
+                                  chat_prompts=dict_prompts["chat"],
+                                  system_prompts=dict_prompts["system"],
+                                  archi_name=context.plan.name) 
+        file_path = chart_dir / "templates/chatbot-prompts-configmap.yaml"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path,"w") as f:
+            f.write(helm_config)
+
+
     def _stage_configs(self, context: TemplateContext) -> None:
         self._render_config_files(context)
 
     def _stage_service_artifacts(self, context: TemplateContext) -> None:
-        for name, hook in self._service_hooks.items():
-            if context.plan.get_service(name).enabled:
-                logger.info(f"Rendering supplemental assets for service {name}")
-                hook(context)
+        helm = context.helm
+        if helm:
+            enabled_services = context.plan.get_enabled_services()
+            for service in enabled_services:
+                chart_dir = context.base_dir / "templates" / f"{service}-service.yaml"
+                tmpl = self.env.get_template(str(HELM_PREFIX / service / "service.yaml"))  
+                helm_config = tmpl.render(name=context.plan.name) 
+                with open(chart_dir,"w") as f:
+                    f.write(helm_config)
+        
+        else:
+            for name, hook in self._service_hooks.items():
+                if context.plan.get_service(name).enabled:
+                    logger.info(f"Rendering supplemental assets for service {name}")
+                    hook(context)
 
     def _stage_postgres_init(self, context: TemplateContext) -> None:
         self._render_postgres_init(context)
@@ -456,7 +662,10 @@ class TemplateManager:
         self._render_compose_file(context)
 
     def _stage_web_lists(self, context: TemplateContext) -> None:
-        self._copy_web_input_lists(context)
+        if context.helm:
+            self._helm_render_web_input_lists(context)
+        else:
+            self._copy_web_input_lists(context)
 
     def _stage_source_copy(self, context: TemplateContext) -> None:
         self.copy_source_code(context.base_dir)
@@ -519,11 +728,14 @@ class TemplateManager:
     # config rendering
     def _render_config_files(self, context: TemplateContext) -> None:
         configs_path = context.base_dir / "configs"
-        configs_path.mkdir(parents=True, exist_ok=True)
         benchmarking_enabled = bool(getattr(context, "benchmarking", False))
+        helm = bool(getattr(context, "helm", False))
+        if not helm:
+            configs_path.mkdir(parents=True, exist_ok=True)
 
         archi_configs = context.config_manager.get_configs()
         single_mode = len(archi_configs) == 1
+        config_data = {}
         for archi_config in archi_configs:
             name = archi_config["name"]
             updated_config = copy.deepcopy(archi_config)
@@ -549,14 +761,27 @@ class TemplateManager:
                     agent_md_file = benchmark_cfg.get("agent_md_file")
                     if agent_md_file:
                         benchmark_cfg["agent_md_file"] = f"{DEPLOYMENT_AGENTS_DIR}/{Path(str(agent_md_file)).name}"
+            if helm:
+                updated_config.setdefault("utils", {}).setdefault("postgres", {})["host"] = "{{ .Values.archi.name }}-postgres"
 
             config_template = self.env.get_template(BASE_CONFIG_TEMPLATE)
             config_rendered = config_template.render(verbosity=context.plan.verbosity, **updated_config)
 
             target_name = "config.yaml" if single_mode else f"{name}.yaml"
-            with open(configs_path / target_name, "w") as f:
-                f.write(config_rendered)
-            logger.info(f"Rendered configuration file {configs_path / target_name}")
+            config_data[target_name] = config_rendered
+            if not helm:
+                with open(configs_path / target_name, "w") as f:
+                    f.write(config_rendered)
+                logger.info(f"Rendered  configuration file {configs_path / target_name}")
+
+        if helm:
+            chart_dir = context.base_dir
+            tmpl = self.env.get_template(HELM_CHAT_CONFIGMAP)  
+            helm_config = tmpl.render(configs=config_data, archi_name=context.plan.name) 
+            file_path = chart_dir / "templates/chatbot-configmap.yaml"
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path,"w") as f:
+                f.write(helm_config)
 
     # service-specific assets
     def _render_grafana_assets(self, context: TemplateContext) -> None:
@@ -573,13 +798,8 @@ class TemplateManager:
             host_mode=context.plan.host_mode,
             postgres_port=postgres_port,
         )
-        with open(grafana_dir / "datasources.yaml", "w") as f:
-            f.write(datasources)
-
         dashboards_template = self.env.get_template(BASE_GRAFANA_DASHBOARDS_TEMPLATE)
         dashboards = dashboards_template.render()
-        with open(grafana_dir / "dashboards.yaml", "w") as f:
-            f.write(dashboards)
 
         configs = context.config_manager.get_configs()
         palette = assign_feedback_palette(configs)
@@ -588,13 +808,33 @@ class TemplateManager:
         dashboard = dashboard_template.render(
             feedback_palette=palette,
         )
-        with open(grafana_dir / "archi-default-dashboard.json", "w") as f:
-            f.write(dashboard)
-
         config_template = self.env.get_template(BASE_GRAFANA_CONFIG_TEMPLATE)
         grafana_config = config_template.render()
-        with open(grafana_dir / "grafana.ini", "w") as f:
-            f.write(grafana_config)
+
+        if context.helm:
+            grafana_dict = {}
+            grafana_dict["datasources.yaml"] = datasources
+            grafana_dict["dashboards.yaml"] = dashboards
+            grafana_dict["archi-default-dashboard.json"] = dashboard
+            grafana_dict["grafana.ini"] = grafana_config
+
+            chart_dir = context.base_dir
+            tmpl = self.env.get_template(HELM_GRAFANA_CONFIGMAP)  
+            helm_config = tmpl.render(grafana_dict=grafana_dict, archi_name=context.plan.name) 
+            file_path = chart_dir / "templates/grafana-configmap.yaml"
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path,"w") as f:
+                f.write(helm_config)
+        
+        else:
+            with open(grafana_dir / "datasources.yaml", "w") as f:
+                f.write(datasources)
+            with open(grafana_dir / "dashboards.yaml", "w") as f:
+                f.write(dashboards)
+            with open(grafana_dir / "archi-default-dashboard.json", "w") as f:
+                f.write(dashboard)
+            with open(grafana_dir / "grafana.ini", "w") as f:
+                f.write(grafana_config)
 
     def _copy_grader_assets(self, context: TemplateContext) -> None:
         archi_config = context.config_manager.get_configs()[0]
@@ -618,6 +858,7 @@ class TemplateManager:
 
     # postgres + compose rendering
     def _render_postgres_init(self, context: TemplateContext) -> None:
+        helm = bool(getattr(context, "helm", False))
         grafana_enabled = context.plan.get_service("grafana").enabled
         grafana_pg_password = (
             context.secrets_manager.get_secret("GRAFANA_PG_PASSWORD") if grafana_enabled else ""
@@ -657,9 +898,18 @@ class TemplateManager:
         )
         dest = context.base_dir / "init.sql"
 
-        with open(dest, "w") as f:
-            f.write(init_sql)
-        logger.debug(f"Wrote PostgreSQL init script to {dest}")
+        if not helm:
+            with open(dest, "w") as f:
+                f.write(init_sql)
+            logger.debug(f"Wrote PostgreSQL init script to {dest}")
+
+        if helm:
+            chart_dir = context.base_dir
+            tmpl = self.env.get_template(HELM_POSTGRES_CONFIGMAP)  
+            helm_config = tmpl.render(init_sql=init_sql,archi_name=context.plan.name) 
+            with open(chart_dir / "templates/postgres-init-configmap.yaml","w") as f:
+                f.write(helm_config)
+
 
 
     def _render_compose_file(self, context: TemplateContext) -> None:
@@ -856,6 +1106,7 @@ class TemplateManager:
         input_lists = context.config_manager.get_input_lists()
         if not input_lists:
             return
+        
 
         for input_list in input_lists:
             if os.path.exists(input_list):
@@ -863,6 +1114,28 @@ class TemplateManager:
                 logger.debug(f"Copied input list {input_list}")
             else:
                 logger.warning(f"Configured input list {input_list} not found; skipping")
+    
+
+    def _helm_render_web_input_lists(self, context: TemplateContext) -> None:
+        input_lists = context.config_manager.get_input_lists()
+        if not input_lists:
+            return
+        
+        dict_input_lists = {}
+        for input_list in input_lists:
+            with open(input_list, 'r') as f:
+                file_name = os.path.basename(input_list)
+                dict_input_lists[file_name] = f.read()
+
+        chart_dir = context.base_dir
+        tmpl = self.env.get_template(HELM_DM_CONFIGMAP)  
+        helm_config = tmpl.render(input_lists=dict_input_lists, archi_name=context.plan.name) 
+        file_path = chart_dir / "templates/data-manager-configmap.yaml"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path,"w") as f:
+            f.write(helm_config)
+
+
 
     def copy_source_code(self, base_dir: Path) -> None:
         # Try to locate the repository root in a robust way. Prefer CWD when

@@ -592,6 +592,125 @@ def evaluate(name: str, config_file: str, config_dir: str, env_file: str, force:
         else: 
             raise click.ClickException(f"Failed due to the following exception: {e}")
 
+@click.command()
+@click.option('--name', '-n', type=str, required=True, help="Name of the archi deployment")
+@click.option('--config', '-c', 'config_files', type=str, multiple=True, help="Path to .yaml archi configuration")
+@click.option('--config-dir', '-cd', 'config_dir', type=str, help="Path to configs directory")
+@click.option('--templates-dir', '-td', 'templates_dir', type=str, help="Path to where the helm charts will be created")
+@click.option('--env-file', '-e', type=str, required=False, help="Path to .env file with secrets")
+@click.option('--services', '-s', callback=parse_services_option, 
+              help="Comma-separated list of services")
+@click.option('--gpu-ids', callback=parse_gpu_ids_option, help='GPU configuration: "all" or comma-separated IDs')
+@click.option('--tag', '-t', type=str, default="2000", help="Image tag for built containers")
+@click.option('--hostmode', 'host_mode', is_flag=True, help="Use host network mode")
+@click.option('--verbosity', '-v', type=int, default=3, help="Logging verbosity level (0-4)")
+@click.option('--dry', '--dry-run', is_flag=True, help="Validate configuration and show what would be created without actually deploying")
+@click.option('--reinstall', 'force_reinstall', is_flag=True, help="Force reinstall helm installation")
+def install(name: str, config_files: list, config_dir: str, templates_dir: str, env_file: str, services: list, dry: bool, verbosity: int, host_mode:bool, force_reinstall: bool, **other_flags):
+    
+    """Create an ARCHI deployment with selected services and data sources."""
+
+    if not (bool(config_files) ^ bool(config_dir)): 
+        raise click.ClickException(f"Must specify only one of config files or config dir")
+    if config_dir: 
+        config_path = Path(config_dir)
+        config_files = [item for item in config_path.iterdir() if item.is_file()]
+    if len(config_files) != 1:
+        raise click.ClickException("Exactly one config file is supported; please provide a single -c file.")
+
+    click.echo("Starting ARCHI deployment process...")
+    setup_cli_logging(verbosity=verbosity)
+    logger = get_logger(__name__)
+
+    warn_if_template_mismatch()
+
+    # Validate inputs
+    validate_services_selection(services)
+    
+    # Combine services and data sources for processing
+    enabled_services = services.copy()
+    base_dir = Path(templates_dir)
+    helm_name = name.replace("_","-")
+
+    # Initialize managers
+    config_manager = ConfigurationManager(config_files,env)
+    secrets_manager = SecretsManager(env_file, config_manager)
+
+    # Resolve enabled sources from config (no CLI source overrides).
+    # Keep links enabled by default.
+    config_defined_sources = config_manager.get_enabled_sources()
+    config_disabled_sources = config_manager.get_disabled_sources()
+    enabled_sources = list(dict.fromkeys(["links"] + config_defined_sources))
+    enabled_sources = [src for src in enabled_sources if src not in config_disabled_sources]
+    enabled_sources = source_registry.resolve_dependencies(enabled_sources)
+
+    disabled_conflicts = sorted(set(enabled_sources) & set(config_disabled_sources))
+    if disabled_conflicts:
+        raise click.ClickException(
+            f"Cannot enable sources due to disabled dependencies in config: {', '.join(disabled_conflicts)}"
+        )
+
+    # Log deployment info and dependency resolution
+    log_deployment_start(helm_name, services, enabled_sources, dry)
+    log_dependency_resolution(services, enabled_services)
+
+    # Validate configuration and secrets
+    config_manager.validate_configs(enabled_services, enabled_sources)
+    logger.info("Configurations validated successfully")
+
+    required_secrets, all_secrets = secrets_manager.get_secrets(set(enabled_services), set(enabled_sources))
+    secrets_manager.validate_secrets(required_secrets)
+    logger.info(f"Required secrets validated: {', '.join(sorted(required_secrets))}")
+    extra = all_secrets - required_secrets
+    if extra:
+        logger.info(f"Also passing additional secrets found: {', '.join(sorted(extra))}")
+
+    config_manager.set_sources_enabled(enabled_sources)
+    
+    # Build compose configuration
+    helm_config = ServiceBuilder.build_helm_config(
+        name=helm_name, verbosity=verbosity, base_dir=base_dir,
+        enabled_services=enabled_services, enabled_sources=enabled_sources, secrets=all_secrets, host_mode=host_mode,
+        **other_flags
+    )
+
+    # Handle dry run
+    service_only_resolved = [s for s in service_registry.resolve_dependencies(enabled_services) 
+                                if s in service_registry.get_all_services()]
+    
+    # Actual deployment
+    helm_template_manager = TemplateManager(env, verbosity,helm=True)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    secrets_manager.create_secret_template(base_dir, helm_name,env, all_secrets)
+    
+    volume_manager = VolumeManager(helm=True)
+    volume_manager.create_volume_templates(base_dir, helm_config, env=env, name=helm_name)
+
+    helm_template_manager.prepare_deployment_files(
+        helm_config,
+        config_manager,
+        secrets_manager,
+        helm=True,
+        allow_port_reuse=True, #checked later
+        **other_flags,
+    )
+
+    # Host-side seeding removed; container config-seed handles schema + ingestion before services start.
+    
+    deployment_manager = DeploymentManager(helm=True)
+    use_selenium = config_manager.use_selenium
+    deployment_manager.create_deployment_templates(
+        base_dir,
+        services=service_only_resolved,
+        env=env,
+        name=helm_name,
+        use_selenium=use_selenium,
+        template_vars=helm_config.to_template_vars(),
+    )
+    
+    if not dry:
+        deployment_manager.helm_install(name, templates_dir, force_reinstall)
 
 def main():
     """
@@ -604,4 +723,5 @@ def main():
     cli.add_command(list_services)
     cli.add_command(list_deployments)
     cli.add_command(evaluate)
+    cli.add_command(install)
     cli()

@@ -52,10 +52,7 @@ class archi():
         Initialize the Pipeline chosen by the config.
         """
         logger.debug(f"Initializing Pipeline: {class_name}.")
-        logger.debug("With args:")
-        logger.debug(f"{args}")
-        logger.debug("and kwargs:")
-        logger.debug(f"{kwargs}")
+        logger.debug(f"With args: {args} and kwargs: {kwargs}")
         try:
             cls = getattr(_get_pipelines_module(), class_name)
             return cls(*args, **kwargs)
