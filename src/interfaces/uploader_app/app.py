@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
 from functools import wraps
-import secrets
 import re
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for, session, flash
@@ -19,7 +18,7 @@ from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogSe
 from src.data_manager.collectors.tickets.ticket_manager import TicketManager
 from src.data_manager.vectorstore.loader_utils import load_text_from_path
 from src.interfaces.chat_app.document_utils import check_credentials
-from src.utils.env import read_secret
+from src.utils.env import read_secret, read_or_create_persistent_secret
 from src.utils.logging import get_logger
 from src.data_manager.collectors.utils.catalog_postgres import _METADATA_COLUMN_MAP
 from src.utils.config_access import get_full_config
@@ -51,8 +50,15 @@ class FlaskAppWrapper:
         self.catalog = PostgresCatalogService(self.data_path, pg_config=self.pg_config)
         self.status_file = status_file or (Path(self.data_path) / "ingestion_status.json")
 
-        secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY") or secrets.token_hex(32)
-        self.app.secret_key = secret_key
+        # Persist an auto-generated key under DATA_PATH when none is configured,
+        # so uploader sessions survive a restart (same policy as the chat app).
+        # Distinct filename: the chat app persists under this secret name's
+        # default file on the SAME shared data volume — the two independently-
+        # authenticated apps must not end up signing with one key.
+        self.app.secret_key = read_or_create_persistent_secret(
+            "FLASK_UPLOADER_APP_SECRET_KEY", self.data_path,
+            filename=".uploader_app_secret_key",
+        )
         self.app.config["SESSION_COOKIE_NAME"] = "uploader_session"
         self.app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB upload limit
 

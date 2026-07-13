@@ -68,6 +68,19 @@ Agents are defined by **agent specs** — Markdown files with YAML frontmatter s
 
 ---
 
+## Playbooks
+
+Playbooks are per-user reusable instruction packs — the chat-side analog of editing a `SKILL.md` skill file, for users who have no filesystem access:
+
+- **Invoke** one in chat by typing `/` and picking it from the menu (`/name arguments…`); the turn shows a playbook chip.
+- **Manage** them under **Settings → Playbooks**: create, edit, delete, share (make public), and add public playbooks shared by other users to your active list.
+- **Ask the agent**: the assistant can save, update, and delete your playbooks through its own tools (it always previews a draft and asks before saving, and asks before deleting).
+- **Export/import** uses the Agent Skills `<name>/SKILL.md` zip layout, so playbooks are portable to and from claude.ai. Imports always arrive private.
+
+Public playbooks from other users are read-only and their content is fenced before the agent sees it. See the [API reference](api_reference.md#playbooks) for the REST endpoints.
+
+---
+
 ## Models & Providers
 
 Archi supports five LLM provider types:

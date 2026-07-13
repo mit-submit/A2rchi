@@ -725,6 +725,17 @@ body {
   color: var(--text-secondary);
 }
 
+/* Chip on a user turn that applied a saved playbook (live + on reload). */
+.message-playbook-chip {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .message-content {
   font-size: var(--text-base);
   line-height: var(--line-height);
@@ -932,12 +943,22 @@ body {
 }
 
 .input-container {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
   max-width: var(--message-max-width);
 }
+
+.playbook-menu { position: absolute; bottom: 100%; left: 0; right: 0; margin-bottom: 6px;
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.12); max-height: 240px;
+  overflow-y: auto; z-index: 50; }
+.playbook-menu-item { padding: 8px 12px; cursor: pointer; display: flex; flex-direction: column; }
+.playbook-menu-item.active, .playbook-menu-item:hover { background: var(--bg-primary); }
+.playbook-menu-name { font-weight: 600; }
+.playbook-menu-desc { font-size: .82em; color: var(--text-secondary); }
 
 .input-wrapper {
   display: flex;
@@ -3334,6 +3355,22 @@ body {
   border-color: var(--accent);
 }
 
+/* Playbook-applied step: a distinct activity marker (not a tool call) that names
+   the playbook shaping the turn — for both /name and auto-pickup. */
+.playbook-marker {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.playbook-icon-glyph {
+  font-size: 0.95em;
+  line-height: 1;
+  margin-right: 2px;
+}
+.playbook-step .step-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .success-marker {
   background: var(--accent);
   border-color: var(--accent);
@@ -3919,6 +3956,324 @@ body {
 .agent-spec-save:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* -----------------------------------------------------------------------------
+   Playbooks (Settings section)
+   ----------------------------------------------------------------------------- */
+
+.playbooks-panel {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.playbooks-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.playbooks-header h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.playbooks-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.playbooks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.playbook-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.playbook-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.playbooks-search {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.playbooks-search:focus {
+  border-color: var(--accent);
+}
+
+.playbooks-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.playbooks-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.playbooks-tab:hover {
+  color: var(--text-primary);
+}
+
+.playbooks-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* master-detail view toggle */
+.playbooks-panel[data-view="list"] [data-when="editor"] { display: none; }
+.playbooks-panel[data-view="editor"] [data-when="list"] { display: none; }
+
+.playbooks-body--editor { gap: 8px; }
+
+.playbooks-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.playbooks-footer--editor {
+  justify-content: flex-end;
+}
+
+.playbooks-new,
+.playbooks-export,
+.playbooks-import {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+.playbooks-new {
+  background: var(--accent);
+  color: white;
+}
+
+.playbooks-new:hover {
+  opacity: 0.88;
+}
+
+.playbooks-export,
+.playbooks-import {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.playbooks-export:hover,
+.playbooks-import:hover {
+  background: var(--bg-hover);
+}
+
+/* group headers inside the Active tab (Yours / Added from public) */
+.playbooks-group-title {
+  margin-top: 6px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.playbooks-group-title:first-child {
+  margin-top: 0;
+}
+
+.playbooks-back {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.playbooks-back:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+#playbook-name,
+#playbook-description,
+#playbook-visibility {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  box-sizing: border-box;
+}
+
+#playbook-name:focus,
+#playbook-description:focus,
+#playbook-visibility:focus {
+  border-color: var(--accent);
+}
+
+/* "team" badge on shared playbooks (panel rows + / menu). */
+.playbook-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+#playbook-body {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  padding: 8px 10px;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  box-sizing: border-box;
+}
+
+#playbook-body:focus {
+  border-color: var(--accent);
+}
+
+.playbooks-status {
+  min-height: 16px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.playbook-save,
+.playbook-cancel {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.playbook-save {
+  background: var(--accent);
+  color: white;
+}
+
+.playbook-save:hover {
+  opacity: 0.88;
+}
+
+.playbook-cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.playbook-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.playbook-edit,
+.playbook-delete,
+.playbook-view,
+.playbook-add,
+.playbook-remove {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.playbook-edit,
+.playbook-view,
+.playbook-remove {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.playbook-edit:hover,
+.playbook-view:hover,
+.playbook-remove:hover {
+  background: var(--bg-hover);
+}
+
+.playbook-add {
+  background: var(--accent);
+  color: white;
+}
+
+.playbook-add:hover {
+  opacity: 0.88;
+}
+
+.playbook-delete {
+  background: var(--error-bg, #fef2f2);
+  color: var(--error-text);
+}
+
+.playbook-delete:hover {
+  opacity: 0.8;
 }
 
 /* -----------------------------------------------------------------------------
