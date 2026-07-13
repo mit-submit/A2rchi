@@ -38,6 +38,12 @@ which archi
 
 The command prints the path to the `archi` executable.
 
+## Helm deployments
+
+Archi also supports rendering and installing a Helm chart through the `archi install` command. This is useful when you want to deploy archi into a Kubernetes cluster instead of running the compose-based workflow locally. The standard command uses the local helm installation to deploy archi using the created chart. With the `dry-run` flag the CLI command only creates the chart and required templates.
+
+For a full walkthrough, see the [Helm deployment guide](helm_deployment.md).
+
 <details>
 <summary>Show Full Installation Script</summary>
 
