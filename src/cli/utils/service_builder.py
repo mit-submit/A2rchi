@@ -70,6 +70,7 @@ class DeploymentPlan:
             "piazza": ServiceState(),
             "mattermost": ServiceState(),
             "redmine-mailer": ServiceState(),
+            "jira_ticket_responder": ServiceState(),
             "benchmarking": ServiceState(),
         }
 

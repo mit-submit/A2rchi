@@ -191,6 +191,7 @@ PostgreSQL database settings.
 
 ### Other Services
 
+- **`services.jira_ticket_responder`**: Requires `url`, `projects` (a non-empty list of Jira project keys using uppercase letters, digits, or underscores and starting with a letter), and `visible_to_role`. Optional fields are `poll_interval_minutes` (defaults to `1`), `lookback_days` (defaults to `7`), `eligible_statuses` (defaults to `["Open", "In Progress"]`), `agent_class`, `agents_dir`, `default_provider`, and `default_model`; `agent_class` defaults to `CMSCompOpsAgent`, while provider/model default from `services.chat_app`. Do not add `enabled`; run the process with `--services jira_ticket_responder`.
 - **`services.piazza`**: Requires `network_id`, `agent_class`, `provider`, `model`
 - **`services.mattermost`**: Requires `update_time`
 - **`services.redmine_mailbox`**: Requires `url`, `project`, `redmine_update_time`, `mailbox_update_time`

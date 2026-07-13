@@ -20,6 +20,8 @@ from .monit_opensearch import (
     create_monit_opensearch_search_tool,
     create_monit_opensearch_aggregation_tool,
 )
+from .ingest import create_ingest_url_tool
+from .indico_ingest import create_ingest_indico_event_tool
 
 logger = get_logger(__name__)
 
@@ -36,6 +38,8 @@ __all__ = [
     "MONITOpenSearchClient",
     "create_monit_opensearch_search_tool",
     "create_monit_opensearch_aggregation_tool",
+    "create_ingest_url_tool",
+    "create_ingest_indico_event_tool",
 ]
 
 _seen_names = set(__all__)

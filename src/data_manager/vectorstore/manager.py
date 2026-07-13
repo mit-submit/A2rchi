@@ -8,17 +8,19 @@ from typing import Any, Dict, List, Optional
 import nltk
 import psycopg2
 import psycopg2.extras
-from .loader_utils import select_loader
-from .postgres_vectorstore import PostgresVectorStore
 from langchain_text_splitters.character import CharacterTextSplitter
 
 from src.data_manager.collectors.utils.catalog_postgres import PostgresCatalogService
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
 
+from .loader_utils import select_loader
+from .postgres_vectorstore import PostgresVectorStore
+
 logger = get_logger(__name__)
 
 SUPPORTED_DISTANCE_METRICS = ["l2", "cosine", "ip"]
+
 
 class VectorStoreManager:
     """
@@ -48,7 +50,9 @@ class VectorStoreManager:
                 **self._services_config["postgres"],
             }
         self._pg_config = pg_config
-        self._catalog = PostgresCatalogService(self.data_path, pg_config=self._pg_config)
+        self._catalog = PostgresCatalogService(
+            self.data_path, pg_config=self._pg_config
+        )
 
         embedding_name = self._data_manager_config["embedding_name"]
         self.collection_name = (
@@ -65,7 +69,10 @@ class VectorStoreManager:
         # Build embedding model
         embedding_class_map = self._data_manager_config["embedding_class_map"]
         from src.utils.config_service import ConfigService
-        embedding_class_map = ConfigService._resolve_embedding_classes(embedding_class_map)
+
+        embedding_class_map = ConfigService._resolve_embedding_classes(
+            embedding_class_map
+        )
 
         embedding_entry = embedding_class_map[embedding_name]
         embedding_class = embedding_entry["class"]
@@ -98,7 +105,9 @@ class VectorStoreManager:
                 self.parallel_workers = default_workers
         self.parallel_workers = max(1, self.parallel_workers)
 
-        logger.info(f"VectorStoreManager initialized: collection={self.collection_name}")
+        logger.info(
+            f"VectorStoreManager initialized: collection={self.collection_name}"
+        )
 
     def delete_existing_collection_if_reset(self) -> None:
         """Delete the collection if reset_collection is enabled.
@@ -136,7 +145,8 @@ class VectorStoreManager:
                 logger.info(
                     "reset_collection is enabled; truncated document_chunks, "
                     "reset %d documents for collection %s",
-                    reset_docs, self.collection_name,
+                    reset_docs,
+                    self.collection_name,
                 )
         except Exception as exc:
             logger.error("Failed during collection reset: %s", exc)
@@ -178,7 +188,9 @@ class VectorStoreManager:
         """Synchronise filesystem documents with the vectorstore."""
         store = self.fetch_collection()
 
-        sources = PostgresCatalogService.load_sources_catalog(self.data_path, self._pg_config)
+        sources = PostgresCatalogService.load_sources_catalog(
+            self.data_path, self._pg_config
+        )
         logger.info(f"Loaded {len(sources)} sources from catalog")
 
         # Get hashes currently in vectorstore
@@ -187,7 +199,9 @@ class VectorStoreManager:
 
         hashes_in_data = set(files_in_data.keys())
 
-        logger.info(f"Files in catalog: {len(hashes_in_data)}, Files in vectorstore: {len(hashes_in_vstore)}")
+        logger.info(
+            f"Files in catalog: {len(hashes_in_data)}, Files in vectorstore: {len(hashes_in_vstore)}"
+        )
 
         if hashes_in_data == hashes_in_vstore:
             logger.info("Vectorstore is up to date")
@@ -208,7 +222,7 @@ class VectorStoreManager:
                 try:
                     self._add_to_postgres(files_to_add)
                 except Exception as e:
-                    logger.error(f"Files could not be added",exc_info=e)
+                    logger.error(f"Files could not be added", exc_info=e)
             logger.info("Vectorstore update has been completed")
 
         logger.info(f"N Collection: {store.count()}")
@@ -225,7 +239,7 @@ class VectorStoreManager:
                     WHERE (metadata->>'collection' = %s OR metadata->>'collection' IS NULL)
                       AND metadata->>'resource_hash' IS NOT NULL
                     """,
-                    (self.collection_name,)
+                    (self.collection_name,),
                 )
                 return {row[0] for row in cursor.fetchall()}
         finally:
@@ -243,10 +257,12 @@ class VectorStoreManager:
                         WHERE metadata->>'resource_hash' = %s
                           AND (metadata->>'collection' = %s OR metadata->>'collection' IS NULL)
                         """,
-                        (resource_hash, self.collection_name)
+                        (resource_hash, self.collection_name),
                     )
                 conn.commit()
-                logger.debug(f"Removed {len(hashes_to_remove)} resource hashes from vectorstore")
+                logger.debug(
+                    f"Removed {len(hashes_to_remove)} resource hashes from vectorstore"
+                )
         finally:
             conn.close()
 
@@ -261,7 +277,9 @@ class VectorStoreManager:
             self._catalog.update_ingestion_status(filehash, "embedding")
 
         files_to_add_items = list(files_to_add.items())
-        apply_stemming = self._data_manager_config.get("stemming", {}).get("enabled", False)
+        apply_stemming = self._data_manager_config.get("stemming", {}).get(
+            "enabled", False
+        )
         if apply_stemming:
             tokenize = nltk.tokenize.word_tokenize
             stem = self.stemmer.stem
@@ -273,19 +291,25 @@ class VectorStoreManager:
             try:
                 loader = self.loader(file_path)
             except Exception as exc:
-                logger.error(f"Failed to load file: {file_path}. Skipping. Exception: {exc}")
+                logger.error(
+                    f"Failed to load file: {file_path}. Skipping. Exception: {exc}"
+                )
                 self._catalog.update_ingestion_status(filehash, "failed", str(exc))
                 return None
 
             if loader is None:
-                self._catalog.update_ingestion_status(filehash, "failed", f"Unsupported file format: {file_path}")
+                self._catalog.update_ingestion_status(
+                    filehash, "failed", f"Unsupported file format: {file_path}"
+                )
                 return None
 
             file_level_metadata = self._load_file_metadata(filehash)
             try:
                 docs = loader.load()
             except Exception as exc:
-                logger.error("Failed to read file %s. Skipping. Exception: %s", file_path, exc)
+                logger.error(
+                    "Failed to read file %s. Skipping. Exception: %s", file_path, exc
+                )
                 self._catalog.update_ingestion_status(filehash, "failed", str(exc))
                 return None
 
@@ -294,11 +318,52 @@ class VectorStoreManager:
             chunks: List[str] = []
             metadatas: List[Dict] = []
 
+            # Prepend a short metadata line to every chunk for Indico only, so retrieval
+            # can find talks by event, date, contribution, or speaker. Other web/git/sso/
+            # ticket/local_files documents must not get this prefix. Indico shares
+            # source_type="web" with the link/elog scrapers, so we gate on the
+            # integration-specific "scraper" metadata field instead.
+            scraper = (file_level_metadata or {}).get("scraper")
+            chunk_prefix = ""
+            if isinstance(scraper, str) and scraper.strip().lower() == "indico":
+                meta = file_level_metadata or {}
+                event_title = meta.get("event_title")
+                event_date = meta.get("event_date")
+                contrib_title = meta.get("contribution_title") or meta.get("title")
+                speaker = meta.get("speaker")
+                speaker_affiliation = meta.get("speaker_affiliation")
+                start_time = meta.get("start_time")
+                duration = meta.get("duration")
+                session = meta.get("session")
+                parts = []
+                if event_title:
+                    parts.append(f"Event: {event_title}.")
+                if event_date:
+                    parts.append(f"Event date: {event_date}.")
+                if contrib_title:
+                    parts.append(f"Contribution: {contrib_title}.")
+                if speaker:
+                    parts.append(f"Speaker: {speaker}.")
+                if speaker_affiliation:
+                    parts.append(f"Affiliation: {speaker_affiliation}.")
+                if start_time:
+                    parts.append(f"Start time: {start_time}.")
+                if duration:
+                    parts.append(f"Duration: {duration} min.")
+                if session:
+                    parts.append(f"Session: {session}.")
+                if parts:
+                    chunk_prefix = " ".join(parts) + "\n\n"
+
             for index, split_doc in enumerate(split_docs):
                 chunk = split_doc.page_content or ""
                 # Remove NUL bytes that PostgreSQL cannot handle
-                chunk = chunk.replace('\x00', '')
-                
+                chunk = chunk.replace("\x00", "")
+
+                # Prepend Indico metadata so retrieval can match by event/speaker.
+                if chunk_prefix:
+                    chunk = chunk_prefix + chunk
+
                 if apply_stemming:
                     words = tokenize(chunk)
                     chunk = " ".join(stem(word) for word in words)
@@ -320,7 +385,9 @@ class VectorStoreManager:
 
             if not chunks:
                 logger.info(f"No chunks generated for {filename}; skipping.")
-                self._catalog.update_ingestion_status(filehash, "failed", "No text chunks could be extracted")
+                self._catalog.update_ingestion_status(
+                    filehash, "failed", "No text chunks could be extracted"
+                )
                 return None
 
             return filename, chunks, metadatas
@@ -356,7 +423,7 @@ class VectorStoreManager:
         try:
             with conn.cursor() as cursor:
                 import json
-                
+
                 total_files = len(files_to_add_items)
                 files_since_commit = 0
                 for file_idx, (filehash, file_path) in enumerate(files_to_add_items):
@@ -365,7 +432,9 @@ class VectorStoreManager:
                         continue
 
                     filename, chunks, metadatas = processed
-                    logger.info(f"Embedding file {file_idx+1}/{total_files}: {filename} ({len(chunks)} chunks)")
+                    logger.info(
+                        f"Embedding file {file_idx+1}/{total_files}: {filename} ({len(chunks)} chunks)"
+                    )
 
                     savepoint_name = f"sp_embed_{file_idx}"
                     cursor.execute(f"SAVEPOINT {savepoint_name}")
@@ -384,33 +453,44 @@ class VectorStoreManager:
                         files_since_commit += 1
                         if files_since_commit >= commit_batch_size:
                             conn.commit()
-                            logger.info("Committed embedding progress batch (%d files)", files_since_commit)
+                            logger.info(
+                                "Committed embedding progress batch (%d files)",
+                                files_since_commit,
+                            )
                             files_since_commit = 0
                         continue
 
                     logger.info(f"Finished embedding {filename}")
-                    
+
                     # Get document_id from the catalog (documents table)
                     document_id = self._catalog.get_document_id(filehash)
                     if document_id is None:
-                        logger.warning(f"No document record found for {filehash}, chunks will have NULL document_id")
+                        logger.warning(
+                            f"No document record found for {filehash}, chunks will have NULL document_id"
+                        )
 
                     insert_data = []
-                    for idx, (chunk, embedding, metadata) in enumerate(zip(chunks, embeddings, metadatas)):
+                    for idx, (chunk, embedding, metadata) in enumerate(
+                        zip(chunks, embeddings, metadatas)
+                    ):
                         # Ensure no NUL bytes in chunk or metadata JSON
-                        clean_chunk = chunk.replace('\x00', '')
-                        clean_metadata_json = json.dumps(metadata).replace('\x00', '')
-                        
-                        insert_data.append((
-                            document_id,  # Link to documents table
-                            idx,   # chunk_index
-                            clean_chunk,
-                            embedding,
-                            clean_metadata_json,
-                        ))
+                        clean_chunk = chunk.replace("\x00", "")
+                        clean_metadata_json = json.dumps(metadata).replace("\x00", "")
+
+                        insert_data.append(
+                            (
+                                document_id,  # Link to documents table
+                                idx,  # chunk_index
+                                clean_chunk,
+                                embedding,
+                                clean_metadata_json,
+                            )
+                        )
 
                     try:
-                        logger.debug(f"Inserting data in {filename} document_id = {document_id}")
+                        logger.debug(
+                            f"Inserting data in {filename} document_id = {document_id}"
+                        )
                         psycopg2.extras.execute_values(
                             cursor,
                             """
@@ -420,7 +500,9 @@ class VectorStoreManager:
                             insert_data,
                             template="(%s, %s, %s, %s::vector, %s::jsonb)",
                         )
-                        logger.debug(f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})")
+                        logger.debug(
+                            f"Added {len(insert_data)} chunks for {filename} (document_id={document_id})"
+                        )
 
                         # Update timestamps and mark as embedded
                         cursor.execute(
@@ -445,12 +527,18 @@ class VectorStoreManager:
                     files_since_commit += 1
                     if files_since_commit >= commit_batch_size:
                         conn.commit()
-                        logger.info("Committed embedding progress batch (%d files)", files_since_commit)
+                        logger.info(
+                            "Committed embedding progress batch (%d files)",
+                            files_since_commit,
+                        )
                         files_since_commit = 0
 
                 if files_since_commit > 0:
                     conn.commit()
-                    logger.info("Committed final embedding progress batch (%d files)", files_since_commit)
+                    logger.info(
+                        "Committed final embedding progress batch (%d files)",
+                        files_since_commit,
+                    )
         finally:
             conn.close()
 
@@ -485,7 +573,9 @@ class VectorStoreManager:
                 )
                 continue
 
-            if resource_hash in files_in_data and files_in_data[resource_hash] != str(path):
+            if resource_hash in files_in_data and files_in_data[resource_hash] != str(
+                path
+            ):
                 logger.warning(
                     "Duplicate resource hash detected in index; keeping first occurrence. "
                     f"hash={resource_hash}, existing={files_in_data[resource_hash]}, ignored={path}"
@@ -495,10 +585,14 @@ class VectorStoreManager:
             files_in_data[resource_hash] = str(path)
 
         if missing_files:
-            logger.warning(f"Found {len(missing_files)} missing files in catalog (first 5): {missing_files[:5]}")
+            logger.warning(
+                f"Found {len(missing_files)} missing files in catalog (first 5): {missing_files[:5]}"
+            )
         if skipped_dirs:
             logger.debug(f"Skipped {len(skipped_dirs)} directories in catalog")
-        logger.info(f"Collected {len(files_in_data)} valid indexed documents (after filtering missing/dirs)")
+        logger.info(
+            f"Collected {len(files_in_data)} valid indexed documents (after filtering missing/dirs)"
+        )
 
         return files_in_data
 
