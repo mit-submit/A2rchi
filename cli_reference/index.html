@@ -94,6 +94,8 @@
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#archi-evaluate">archi evaluate</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#archi-install">archi install</a>
+    </li>
         </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#environment-variables">Environment Variables</a>
@@ -123,6 +125,10 @@
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../advanced_setup_deploy/">Advanced Setup</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../helm_deployment/">Helm Deployment</a>
                 </li>
               </ul>
               <ul>
@@ -417,6 +423,12 @@ archi restart -n my-archi --service chatbot -e new_secrets.env --no-build
   -e .secrets.env --gpu-ids all
 </code></pre>
 <p>See <a href="../benchmarking/">Benchmarking</a> for full details on query format and evaluation modes.</p>
+<hr />
+<h3 id="archi-install"><code>archi install</code></h3>
+<p>Create and optionally install a Helm chart for an Archi deployment.</p>
+<pre><code class="language-bash">archi install --name &lt;name&gt; --config &lt;config.yaml&gt; --templates-dir &lt;dir&gt; --env-file &lt;secrets.env&gt; --services &lt;services&gt; [OPTIONS]
+</code></pre>
+<p>Supports <code>--gpu-ids</code> with the same values as <code>create</code>. For explicit IDs such as <code>0,1</code>, the generated chart sets <code>NVIDIA_VISIBLE_DEVICES</code> and requests the matching <code>nvidia.com/gpu</code> count. For <code>all</code>, the chart sets <code>NVIDIA_VISIBLE_DEVICES=all</code>; adjust <code>gpu.count</code> in <code>values.yaml</code> if your Kubernetes cluster requires an explicit GPU limit.</p>
 <hr />
 <h2 id="environment-variables">Environment Variables</h2>
 <table>

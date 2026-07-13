@@ -116,6 +116,10 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../helm_deployment/">Helm Deployment</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../developer_guide/">Developer Guide</a>
                 </li>
               </ul>
@@ -212,7 +216,7 @@ The remaining steps mirror the Podman flow. NOTE: this has not yet been fully te
 
 </details>
 
-<p>Once these requirements are met, the <code>archi create [...] --gpu-ids &lt;gpus&gt;</code> option will deploy Archi across your GPUs.</p>
+<p>Once these requirements are met, the <code>archi create [...] --gpu-ids &lt;gpus&gt;</code> option will deploy Archi across your GPUs. For Helm deployments, <code>archi install [...] --gpu-ids &lt;gpus&gt;</code> writes the GPU settings into the generated chart. Explicit IDs request the matching <code>nvidia.com/gpu</code> count; <code>all</code> sets <code>NVIDIA_VISIBLE_DEVICES=all</code>, and you can set <code>gpu.count</code> in <code>values.yaml</code> when your Kubernetes cluster requires an explicit limit.</p>
 <h2 id="helpful-notes-for-production-deployments">Helpful Notes for Production Deployments</h2>
 <p>You may wish to use the CLI in order to stage production deployments. This section covers some useful notes to keep in mind.</p>
 <h3 id="running-multiple-deployments-on-the-same-machine">Running multiple deployments on the same machine</h3>
@@ -289,7 +293,7 @@ The remaining steps mirror the Podman flow. NOTE: this has not yet been fully te
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
         <a href="../benchmarking/" class="btn btn-neutral float-left" title="Benchmarking"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../developer_guide/" class="btn btn-neutral float-right" title="Developer Guide">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="../helm_deployment/" class="btn btn-neutral float-right" title="Helm Deployment">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -319,7 +323,7 @@ The remaining steps mirror the Podman flow. NOTE: this has not yet been fully te
       <span><a href="../benchmarking/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
-      <span><a href="../developer_guide/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="../helm_deployment/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>
