@@ -239,7 +239,7 @@ docker logs archi-myapp-data-manager
 <p><strong>Symptom</strong>: Login fails or "unauthorized" errors.</p>
 <p><strong>Checks</strong>:</p>
 <ol>
-<li>Ensure <code>FLASK_UPLOADER_APP_SECRET_KEY</code> is set in your <code>.secrets.env</code> for stable session behavior.</li>
+<li>Session keys are stable by default: when <code>FLASK_UPLOADER_APP_SECRET_KEY</code> is not configured, the app generates one and persists it under <code>DATA_PATH</code> (mode 0600), so sessions survive restarts. Set the secret explicitly in <code>.secrets.env</code> when you want to control rotation — rotating it (or deleting the persisted key file) invalidates all sessions, which is also the lever if you need to force-log-out everyone; a plain restart no longer does that.</li>
 <li>Verify postgres is running and accessible.</li>
 <li>Check that auth tables were initialized — the chat service creates them on first startup.</li>
 </ol>

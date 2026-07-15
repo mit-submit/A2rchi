@@ -62,6 +62,8 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#agents-tools">Agents &amp; Tools</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#playbooks">Playbooks</a>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#models-providers">Models &amp; Providers</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#configuration-management">Configuration Management</a>
@@ -253,6 +255,16 @@ Archi supports several data ingestion methods:</p>
 <h2 id="agents-tools">Agents &amp; Tools</h2>
 <p>Agents are defined by <strong>agent specs</strong> — Markdown files with YAML frontmatter specifying name, tools, and system prompt. The agent specs directory is configured via <code>services.chat_app.agents_dir</code>.</p>
 <p><strong><a href="../agents_tools/">Read more →</a></strong></p>
+<hr />
+<h2 id="playbooks">Playbooks</h2>
+<p>Playbooks are per-user reusable instruction packs — the chat-side analog of editing a <code>SKILL.md</code> skill file, for users who have no filesystem access:</p>
+<ul>
+<li><strong>Invoke</strong> one in chat by typing <code>/</code> and picking it from the menu (<code>/name arguments…</code>); the turn shows a playbook chip.</li>
+<li><strong>Manage</strong> them under <strong>Settings → Playbooks</strong>: create, edit, delete, share (make public), and add public playbooks shared by other users to your active list.</li>
+<li><strong>Ask the agent</strong>: the assistant can save, update, and delete your playbooks through its own tools (it always previews a draft and asks before saving, and asks before deleting).</li>
+<li><strong>Export/import</strong> uses the Agent Skills <code>&lt;name&gt;/SKILL.md</code> zip layout, so playbooks are portable to and from claude.ai. Imports always arrive private.</li>
+</ul>
+<p>Public playbooks from other users are read-only and their content is fenced before the agent sees it. See the <a href="../api_reference/#playbooks">API reference</a> for the REST endpoints.</p>
 <hr />
 <h2 id="models-providers">Models &amp; Providers</h2>
 <p>Archi supports five LLM provider types:</p>

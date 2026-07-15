@@ -104,6 +104,26 @@
     </li>
         </ul>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#playbooks">Playbooks</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#get-apiplaybooks">GET /api/playbooks</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#get-apiplaybooksid">GET /api/playbooks/&lt;id&gt;</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#post-apiplaybooks">POST /api/playbooks</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#put-apiplaybooksid">PUT /api/playbooks/&lt;id&gt;</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#delete-apiplaybooksid">DELETE /api/playbooks/&lt;id&gt;</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#post-apiplaybooksidenable-post-apiplaybooksiddisable">POST /api/playbooks/&lt;id&gt;/enable · POST /api/playbooks/&lt;id&gt;/disable</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#get-apiplaybooksexport">GET /api/playbooks/export</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#post-apiplaybooksimport">POST /api/playbooks/import</a>
+    </li>
+        </ul>
+    </li>
     <li class="toctree-l2"><a class="reference internal" href="#authentication">Authentication</a>
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#getpost-login">GET|POST /login</a>
@@ -396,6 +416,25 @@
   ]
 }
 </code></pre>
+<hr />
+<h2 id="playbooks">Playbooks</h2>
+<p>Per-user reusable instruction packs (the chat-side analog of an Agent Skills <code>SKILL.md</code>). Invoked in chat with <code>/name</code>; managed from <strong>Settings → Playbooks</strong> or via this API. In anonymous mode the caller's <code>client_id</code> doubles as the owner credential — pass it as a query parameter (GET) or JSON body field (POST/PUT/DELETE). With SSO enabled the verified session identity is the owner and <code>client_id</code> is ignored.</p>
+<h3 id="get-apiplaybooks"><code>GET /api/playbooks</code></h3>
+<p>List the caller's playbooks plus public ones (no bodies). Each item carries <code>id</code>, <code>name</code>, <code>description</code>, <code>visibility</code>, <code>is_mine</code>, and <code>is_enabled</code> (whether a public playbook has been added to the caller's active list).</p>
+<h3 id="get-apiplaybooksid"><code>GET /api/playbooks/&lt;id&gt;</code></h3>
+<p>Fetch one playbook, including its body — own or public.</p>
+<h3 id="post-apiplaybooks"><code>POST /api/playbooks</code></h3>
+<p>Create a playbook owned by the caller: <code>{name, description, body, visibility?, client_id?}</code>. Names are lowercase slugs (<code>a-z0-9</code> with single hyphens, max 64 chars). Returns <code>409</code> for a duplicate own name, <code>400</code> for validation errors.</p>
+<h3 id="put-apiplaybooksid"><code>PUT /api/playbooks/&lt;id&gt;</code></h3>
+<p>Update fields of an owned playbook (same body shape; all fields optional).</p>
+<h3 id="delete-apiplaybooksid"><code>DELETE /api/playbooks/&lt;id&gt;</code></h3>
+<p>Delete an owned playbook.</p>
+<h3 id="post-apiplaybooksidenable-post-apiplaybooksiddisable"><code>POST /api/playbooks/&lt;id&gt;/enable</code> · <code>POST /api/playbooks/&lt;id&gt;/disable</code></h3>
+<p>Add / remove a public playbook to / from the caller's active list (opt-in). Own playbooks are always active.</p>
+<h3 id="get-apiplaybooksexport"><code>GET /api/playbooks/export</code></h3>
+<p>Download the caller's <strong>own</strong> playbooks as a zip of <code>&lt;name&gt;/SKILL.md</code> folders (the Agent Skills layout, portable to claude.ai). Public playbooks owned by others are excluded.</p>
+<h3 id="post-apiplaybooksimport"><code>POST /api/playbooks/import</code></h3>
+<p>Import playbooks from a multipart upload (field <code>file</code>: a zip of <code>&lt;name&gt;/SKILL.md</code> folders or a single SKILL.md) or the legacy JSON body <code>{playbooks: [...], on_conflict?, client_id?}</code>. <code>on_conflict</code> is <code>skip</code> (default) or <code>overwrite</code>. Imports are always created <strong>private</strong> (a file's public flag never publishes deployment-wide); per-item validation errors are reported without aborting the batch.</p>
 <hr />
 <h2 id="authentication">Authentication</h2>
 <p>Authentication routes are served at the application root (not under <code>/api/</code>).</p>
