@@ -396,7 +396,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     context TEXT NOT NULL DEFAULT '',
     
     ts TIMESTAMPTZ NOT NULL,
-    
+
     conf_id INTEGER REFERENCES configs(config_id)
 );
 
@@ -628,6 +628,76 @@ GRANT SELECT ON
     ab_variant_metrics,
     migration_state
 TO grafana;
+{% endif %}
+
+-- ============================================================================
+-- 12. PLAYBOOKS (user-authored playbook library)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS playbooks (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(100) NOT NULL,        -- kebab-case slug, unique per owner
+    description TEXT NOT NULL,                 -- one-line "when to use this" hint
+    body        TEXT NOT NULL,                 -- the instructions/knowledge injected on load
+    owner_id    VARCHAR(200) NOT NULL,         -- verified identity (auth) or client_id (anonymous)
+    visibility  VARCHAR(10) NOT NULL DEFAULT 'private',  -- 'private' | 'public' (read-only for others)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_playbooks_owner_name ON playbooks(owner_id, name);
+CREATE INDEX IF NOT EXISTS idx_playbooks_owner ON playbooks(owner_id);
+CREATE INDEX IF NOT EXISTS idx_playbooks_public ON playbooks(visibility) WHERE visibility = 'public';
+
+-- ============================================================================
+-- 13. CONVERSATION PLAYBOOK TURNS (per-turn playbook tracking side table)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS conversation_playbook_turns (
+    message_id    INTEGER PRIMARY KEY REFERENCES conversations(message_id) ON DELETE CASCADE,
+    playbook_name VARCHAR(100) NOT NULL,
+    playbook_id   INTEGER,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Per-user opt-in to PUBLIC playbooks owned by others. A user's always-in-context
+-- listing AND their invokable set are their own playbooks PLUS the public ones they
+-- enable here — so the shared public library never bloats every user's prompt by default.
+CREATE TABLE IF NOT EXISTS user_enabled_playbooks (
+    user_id     VARCHAR(200) NOT NULL,                                   -- enrolling user (OIDC sub or client_id)
+    playbook_id INTEGER NOT NULL REFERENCES playbooks(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, playbook_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_enabled_playbooks_user ON user_enabled_playbooks(user_id);
+
+-- ============================================================================
+-- 14. PLAYBOOK INVOCATIONS (unified usage ledger — both sources, with status)
+-- ============================================================================
+-- One honest row per playbook use, for BOTH the explicit /name path and the
+-- model-invoked (auto) Playbook tool. Distinct from conversation_playbook_turns
+-- (which serves only the chip/regenerate for explicit /name turns). Keep this DDL
+-- textually identical to PlaybookService.ensure_schema. NO owner_id (owner ids
+-- double as access credentials); NO FK on playbook_id (a row must survive the
+-- playbook's deletion).
+CREATE TABLE IF NOT EXISTS playbook_invocations (
+    id              SERIAL PRIMARY KEY,
+    conversation_id INTEGER,
+    message_id      INTEGER,
+    playbook_id     INTEGER,
+    playbook_name   VARCHAR(100) NOT NULL,
+    source          TEXT NOT NULL CHECK (source IN ('explicit', 'auto')),
+    status          TEXT NOT NULL DEFAULT 'ok'
+                    CHECK (status IN ('ok', 'not_found', 'unavailable', 'error')),
+    arm             TEXT,
+    ts              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_playbook_invocations_name_ts ON playbook_invocations(playbook_name, ts);
+
+-- Grafana reads the usage ledger for dashboards. A dedicated grant (not the
+-- section-11 bulk list) because that block runs before this table exists.
+{% if use_grafana %}
+GRANT SELECT ON playbook_invocations TO grafana;
 {% endif %}
 
 -- ============================================================================

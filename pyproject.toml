@@ -49,6 +49,9 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: marks tests that need a live database or external services (deselect with '-m \"not integration\"')",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/archi-physics/archi"

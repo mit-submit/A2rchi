@@ -40,11 +40,18 @@ class PipelineOutput:
     def extract_tool_calls(self) -> List[Dict[str, Any]]:
         """Return a normalized list of tool calls extracted from message history."""
         tool_results: Dict[str, Any] = {}
+        # content_and_artifact tools (the Playbook loader) attach a small server-side
+        # dict to the ToolMessage; carry it through so persistence can read the
+        # resolved playbook name/id without re-parsing the result string.
+        tool_artifacts: Dict[str, Any] = {}
         tool_inputs_by_id: Dict[str, Any] = self.metadata.get("tool_inputs_by_id", {}) if self.metadata else {}
         for msg in self.messages:
             tool_call_id = getattr(msg, "tool_call_id", None)
             if tool_call_id:
                 tool_results[tool_call_id] = getattr(msg, "content", "")
+                artifact = getattr(msg, "artifact", None)
+                if artifact is not None:
+                    tool_artifacts[tool_call_id] = artifact
 
         tool_calls: List[Dict[str, Any]] = []
         for msg in self.messages:
@@ -71,6 +78,8 @@ class PipelineOutput:
                             entry["name"] = fallback.get("tool_name", entry.get("name"))
                 if tool_call_id and tool_call_id in tool_results:
                     entry["result"] = tool_results[tool_call_id]
+                if tool_call_id and tool_call_id in tool_artifacts:
+                    entry["artifact"] = tool_artifacts[tool_call_id]
                 tool_calls.append(entry)
         return tool_calls
 

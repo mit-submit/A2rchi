@@ -11,6 +11,7 @@ from src.utils.connection_pool import ConnectionPool
 from src.utils.config_service import ConfigService
 from src.utils.conversation_service import ConversationService
 from src.utils.document_selection_service import DocumentSelectionService
+from src.utils.playbook_service import PlaybookService
 from src.utils.user_service import UserService
 
 
@@ -62,6 +63,7 @@ class PostgresServiceFactory:
         self._config_service: Optional[ConfigService] = None
         self._conversation_service: Optional[ConversationService] = None
         self._document_selection_service: Optional[DocumentSelectionService] = None
+        self._playbook_service: Optional[PlaybookService] = None
     
     @classmethod
     def from_config(
@@ -216,6 +218,15 @@ class PostgresServiceFactory:
                 connection_pool=self.connection_pool,
             )
         return self._document_selection_service
+
+    @property
+    def playbook_service(self) -> PlaybookService:
+        """Get PlaybookService (lazy-initialized) for the user-authored playbook library."""
+        if self._playbook_service is None:
+            self._playbook_service = PlaybookService(
+                connection_pool=self.connection_pool,
+            )
+        return self._playbook_service
     
     def close(self) -> None:
         """Close connection pool and cleanup resources."""
@@ -228,6 +239,7 @@ class PostgresServiceFactory:
         self._config_service = None
         self._conversation_service = None
         self._document_selection_service = None
+        self._playbook_service = None
     
     def __enter__(self) -> 'PostgresServiceFactory':
         """Context manager entry."""
