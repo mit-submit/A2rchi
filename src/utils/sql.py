@@ -195,6 +195,18 @@ SET last_message_at = %s
 WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
 """
 
+SQL_UPDATE_CONVERSATION_TITLE = """
+UPDATE conversation_metadata
+SET title = %s
+WHERE conversation_id = %s AND client_id = %s;
+"""
+
+SQL_UPDATE_CONVERSATION_TITLE_BY_USER = """
+UPDATE conversation_metadata
+SET title = %s
+WHERE conversation_id = %s AND (user_id = %s OR client_id = %s);
+"""
+
 # =============================================================================
 # Tool Calls Queries
 # =============================================================================
@@ -449,5 +461,17 @@ FROM conversations c
 LEFT JOIN conversation_playbook_turns cpt ON cpt.message_id = c.message_id
 WHERE c.conversation_id = %s AND c.sender = %s
 ORDER BY c.message_id DESC
+LIMIT 1;
+"""
+
+# =============================================================================
+# Attachment Queries
+# =============================================================================
+
+SQL_ATTACHMENT_FOR_TOOLS = """
+SELECT filename, kind, extracted_text, extraction_meta, original_bytes
+FROM conversation_attachments
+WHERE conversation_id = %s AND filename = %s
+ORDER BY created_at DESC
 LIMIT 1;
 """

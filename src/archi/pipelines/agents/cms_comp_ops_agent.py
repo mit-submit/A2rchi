@@ -10,6 +10,9 @@ from src.archi.pipelines.agents.base_react import BaseReActAgent
 from src.archi.pipelines.agents.playbook_mixin import SupportsPlaybooks
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 from src.archi.pipelines.agents.tools import (
+    create_attachment_list_tool,
+    create_attachment_read_tool,
+    create_attachment_search_tool,
     create_document_fetch_tool,
     create_file_search_tool,
     create_ingest_url_tool,
@@ -30,6 +33,10 @@ logger = get_logger(__name__)
 
 class CMSCompOpsAgent(SupportsPlaybooks, BaseReActAgent):
     """Agent designed for CMS CompOps operations."""
+
+    # This agent mounts the chat attachment tools (see _extra_run_tools), so
+    # the chat app may route large attachments to manifest/tool mode for it.
+    supports_attachment_tools = True
 
     def __init__(
         self,
@@ -122,6 +129,26 @@ class CMSCompOpsAgent(SupportsPlaybooks, BaseReActAgent):
                 "No MONIT condor URL configured in services.chat_app.tools; "
                 "condor OpenSearch tools not available"
             )
+
+    def _extra_run_tools(self, **kwargs) -> List[Callable]:
+        """Mount this chat's conversation-scoped attachment tools (spec
+        2026-07-07) into the single agent build.
+
+        This agent opts in to the chat app's attachment feature: when the
+        request carries an attachment_tools_ctx, contribute the three
+        conversation-scoped attachment tools to the base's one-shot toolset
+        build. Returning them here (rather than rebuilding the agent after the
+        base packs it) keeps an attachment turn to a single graph compile. The
+        base merges these after the vector tools, under _begin_run's lock.
+        """
+        ctx = kwargs.get("attachment_tools_ctx")
+        if not ctx:
+            return []
+        return [
+            create_attachment_list_tool(ctx),
+            create_attachment_read_tool(ctx),
+            create_attachment_search_tool(ctx),
+        ]
 
     def get_tool_registry(self) -> Dict[str, Callable[[], Any]]:
         return {name: entry["builder"] for name, entry in self._tool_definitions().items()}

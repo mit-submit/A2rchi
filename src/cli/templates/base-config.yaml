@@ -128,6 +128,22 @@ services:
     static_folder: "{{ services.chat_app.static_folder | default('/root/archi/src/interfaces/chat_app/static', true) }}"
     num_responses_until_feedback: {{ services.chat_app.num_responses_until_feedback | default(3, true) }}
     include_copy_button: {{ services.chat_app.include_copy_button | default(false, true) }}
+    attachments:
+      enabled: {{ services.chat_app.attachments.enabled | default(true, false) }}
+      max_file_mb: {{ services.chat_app.attachments.max_file_mb | default(30, true) }}
+      max_per_conversation: {{ services.chat_app.attachments.max_per_conversation | default(20, true) }}
+      max_total_mb_per_user: {{ services.chat_app.attachments.max_total_mb_per_user | default(512, false) }}
+      abandoned_conversation_ttl_hours: {{ services.chat_app.attachments.abandoned_conversation_ttl_hours | default(72, false) }}
+      text_budget_chars: {{ services.chat_app.attachments.text_budget_chars | default(400000, true) }}
+      text_poor_page_chars: {{ services.chat_app.attachments.text_poor_page_chars | default(50, true) }}
+      zip_max_decompressed_mb: {{ services.chat_app.attachments.zip_max_decompressed_mb | default(500, true) }}
+      zip_max_entries: {{ services.chat_app.attachments.zip_max_entries | default(1000, true) }}
+      agent_tools_enabled: {{ services.chat_app.attachments.agent_tools_enabled | default(true, false) }}
+      inline_char_limit: {{ services.chat_app.attachments.inline_char_limit | default(32000, true) }}
+      tool_read_max_chars: {{ services.chat_app.attachments.tool_read_max_chars | default(20000, true) }}
+      tool_read_max_bytes: {{ services.chat_app.attachments.tool_read_max_bytes | default(8388608, true) }}
+      tool_list_max_chars: {{ services.chat_app.attachments.tool_list_max_chars | default(40000, true) }}
+      tool_search_max_results: {{ services.chat_app.attachments.tool_search_max_results | default(20, true) }}
     flask_debug_mode: {{ services.chat_app.flask_debug_mode | default(true, false) }}
     auth:
       enabled: {{ services.chat_app.auth.enabled | default(false, true) }}

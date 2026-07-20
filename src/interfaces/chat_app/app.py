@@ -60,6 +60,7 @@ from src.utils.sql import (
     SQL_GET_REACTION_FEEDBACK,
     SQL_CREATE_AGENT_TRACE, SQL_UPDATE_AGENT_TRACE, SQL_GET_AGENT_TRACE,
     SQL_GET_TRACE_BY_MESSAGE, SQL_GET_ACTIVE_TRACE, SQL_CANCEL_ACTIVE_TRACES,
+    SQL_UPDATE_CONVERSATION_TITLE, SQL_UPDATE_CONVERSATION_TITLE_BY_USER,
 )
 from src.utils.playbook_service import (
     PlaybookService, PlaybookNotFoundError,
@@ -70,6 +71,14 @@ from src.archi.pipelines.agents.tools.playbook_tools import (
     set_pending_playbook, get_pending_playbook, clear_pending_playbook,
     classify_playbook_tool_result,
 )
+from src.utils.attachment_context import (
+    build_attachments_block,
+    build_tools_ctx,
+    inject_attachments_into_history,
+    route_attachment_items,
+)
+from src.utils.attachment_service import AttachmentService
+from src.interfaces.chat_app.attachment_routes import register_attachments
 from src.interfaces.chat_app.document_utils import *
 from src.interfaces.chat_app.playbook_routes import register_playbooks
 from src.interfaces.chat_app.service_alerts import (
@@ -398,6 +407,18 @@ class ChatWrapper:
 
         # shared conversation service for A/B comparisons & metrics
         self.conv_service = ConversationService(connection_params=self.pg_config)
+        # Per-conversation attachments (spec 2026-07-06). Schema is owned by
+        # the service entrypoint because Helm never runs config-seed.
+        self.attachments_config = (
+            self.services_config.get("chat_app", {}).get("attachments", {}) or {}
+        )
+        self.attachments_enabled = bool(self.attachments_config.get("enabled", True))
+        self.attachment_service = AttachmentService(connection_params=self.pg_config)
+        if self.attachments_enabled:
+            try:
+                self.attachment_service.ensure_schema()
+            except Exception as exc:
+                logger.warning("Attachment schema init failed (feature degraded): %s", exc)
         self.user_service = UserService(pg_config=self.pg_config)
         self.ab_agent_spec_service = ABAgentSpecService(pg_config=self.pg_config)
 
@@ -1013,7 +1034,7 @@ class ChatWrapper:
         Update an agent trace with new events and/or status.
         """
         completed_at = datetime.now(timezone.utc) if status in ('completed', 'cancelled', 'error') else None
-        
+
         conn = psycopg2.connect(**self.pg_config)
         cursor = conn.cursor()
         try:
@@ -1028,6 +1049,23 @@ class ChatWrapper:
         finally:
             cursor.close()
             conn.close()
+
+    def sweep_abandoned_attachment_conversations(self) -> None:
+        """Delete message-less conversations that only ever held an attachment
+        (attach-to-new-chat, then the chat was abandoned or the file removed),
+        older than the configured TTL. Run once at service startup. Non-fatal.
+        """
+        ttl_hours = int(self.attachments_config.get("abandoned_conversation_ttl_hours", 72))
+        if ttl_hours <= 0:
+            return
+        try:
+            swept = self.attachment_service.sweep_abandoned_conversations(ttl_hours)
+            if swept:
+                logger.info(
+                    "Swept %d abandoned attachment-only conversation(s) on startup", swept
+                )
+        except Exception as exc:
+            logger.warning("Abandoned attachment-conversation sweep failed (non-fatal): %s", exc)
 
     def get_agent_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -1155,7 +1193,7 @@ class ChatWrapper:
 
         """
         service = "Chatbot"
-        title = first_message[:20] + ("..." if len(first_message) > 20 else "")
+        title = self._derive_conversation_title(first_message)
         now = datetime.now(timezone.utc)
         
         version = os.getenv("APP_VERSION", "unknown")
@@ -1603,6 +1641,10 @@ class ChatWrapper:
         else:
             history = self.query_conversation_history(conversation_id, client_id, user_id)
             self.update_conversation_timestamp(conversation_id, client_id, user_id)
+            if not history:
+                # Conversation was pre-created at attach time (placeholder
+                # title); the real first message names it now.
+                self._set_conversation_title(conversation_id, content, client_id, user_id)
 
         timestamps["query_convo_history_ts"] = datetime.now(timezone.utc)
 
@@ -1654,6 +1696,8 @@ class ChatWrapper:
         if len(history) >= QUERY_LIMIT:
             return None, 500
 
+        history = self._with_attachment_context(conversation_id, history)
+
         if model is None:
             logger.debug(f"Model for chat context is None. Setting to default.")
             chat_cfg = self.config.get("services", {}).get("chat_app", {})
@@ -1676,6 +1720,88 @@ class ChatWrapper:
                 playbook_id=playbook_id,
             ),
             None,
+        )
+
+    @staticmethod
+    def _derive_conversation_title(content: str) -> str:
+        """Conversation title from the first message: the first 20 chars, with
+        an ellipsis when the message is longer. Single source of truth for both
+        create_conversation and the attach-time title set."""
+        content = content or ""
+        return content[:20] + ("..." if len(content) > 20 else "")
+
+    def _set_conversation_title(self, conversation_id, content, client_id, user_id):
+        title = self._derive_conversation_title(content)
+        try:
+            conn = psycopg2.connect(**self.pg_config)
+            cursor = conn.cursor()
+            if user_id:
+                cursor.execute(
+                    SQL_UPDATE_CONVERSATION_TITLE_BY_USER,
+                    (title, conversation_id, user_id, client_id),
+                )
+            else:
+                cursor.execute(
+                    SQL_UPDATE_CONVERSATION_TITLE, (title, conversation_id, client_id)
+                )
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as exc:
+            logger.warning("Failed to set conversation title: %s", exc)
+
+    def _with_attachment_context(self, conversation_id, history):
+        """Splice the in-flight <attachments> block into the model-bound
+        history (never persisted). Failure degrades to no attachments."""
+        if not self.attachments_enabled:
+            return history
+        try:
+            items = self.attachment_service.get_context_items(conversation_id)
+            if not items:
+                return history
+            # NOTE: this probes the live pipeline for agent capability, same as
+            # _attachment_tools_ctx() does later at the actual pipeline call
+            # site. update_config() runs between the two probes and can in
+            # rare cases swap the pipeline class mid-request, so routing could
+            # pick manifest-mode here while no tools end up mounted below.
+            # Accepted, degrades honestly (model reports content unavailable).
+            items = self._route_attachment_items(items)
+            budget = int(self.attachments_config.get("text_budget_chars", 400000))
+            block = build_attachments_block(items, budget)
+            return inject_attachments_into_history(history, block)
+        except Exception as exc:
+            logger.warning("Attachment context injection failed: %s", exc)
+            return history
+
+    def _attachment_tools_available(self) -> bool:
+        """D6: tools (and therefore manifest-mode) only for pipelines that
+        actually MOUNT the attachment tools. refresh_agent lives on every
+        BaseReActAgent, so gating on it would route large attachments to
+        manifest mode for agents that never mount the tools — telling the model
+        to use tools that aren't there. Gate on the explicit capability the
+        mounting agent declares instead."""
+        if not self.attachments_enabled:
+            return False
+        if not self.attachments_config.get("agent_tools_enabled", True):
+            return False
+        pipeline = getattr(getattr(self, "archi", None), "pipeline", None)
+        return bool(getattr(pipeline, "supports_attachment_tools", False))
+
+    def _attachment_tools_ctx(self, conversation_id):
+        """Conversation-scoped tool context, or None when tools must not mount."""
+        if not self._attachment_tools_available():
+            return None
+        return build_tools_ctx(conversation_id, self.attachment_service,
+                               self.attachments_config)
+
+    def _route_attachment_items(self, items):
+        """Delegate D1 hybrid routing to route_attachment_items (attachment_context)."""
+        cfg = self.attachments_config
+        return route_attachment_items(
+            items,
+            tools_available=self._attachment_tools_available(),
+            inline_limit=cfg.get("inline_char_limit", 32000),
+            budget_chars=cfg.get("text_budget_chars", 400000),
         )
 
     def _message_content(self, message) -> str:
@@ -1878,6 +2004,11 @@ class ChatWrapper:
                 "b": f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
             }
 
+            # Both arms share the same conversation, so mount the same
+            # conversation-scoped attachment tools on each. Computed once here (it
+            # hits Postgres via count_for_conversation) rather than per-arm.
+            attachment_tools_ctx = self._attachment_tools_ctx(context.conversation_id)
+
             def _stream_arm(arm_archi, arm_label):
                 """Run one arm's stream in a thread, pushing events to the shared queue."""
                 set_playbook_owner(_playbook_owner)  # G2: ContextVars don't cross the thread boundary
@@ -1896,6 +2027,7 @@ class ChatWrapper:
                         history=context.history,
                         conversation_id=context.conversation_id,
                         vectorstore=vs,
+                        attachment_tools_ctx=attachment_tools_ctx,
                     ):
                         output_meta = output.metadata or {}
                         for event in formatter.process(output):
@@ -2002,6 +2134,14 @@ class ChatWrapper:
                     self._record_playbook_turn_best_effort(user_prompt_mid, context)
                 except Exception as exc:
                     logger.error("Failed to store user message: %s", exc)
+
+            if self.attachments_enabled and user_prompt_mid and not context.is_refresh:
+                try:
+                    self.attachment_service.bind_unbound_to_message(
+                        context.conversation_id, user_prompt_mid
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to bind attachments to message (A/B): %s", exc)
 
             # Store both responses as messages
             pipeline_used = ChatWrapper._get_agent_class_from_cfg(self.services_config.get("chat_app", {})) or ""
@@ -2295,6 +2435,13 @@ class ChatWrapper:
             context,
             context.is_refresh,
         )
+        if self.attachments_enabled and message_ids and not context.is_refresh:
+            try:
+                self.attachment_service.bind_unbound_to_message(
+                    context.conversation_id, message_ids[0]
+                )
+            except Exception as exc:
+                logger.warning("Failed to bind attachments to message: %s", exc)
         timestamps["insert_convo_ts"] = datetime.now(timezone.utc)
         context.history.append((ARCHI_SENDER, result["answer"]))
 
@@ -2346,7 +2493,8 @@ class ChatWrapper:
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
 
-            result = self.archi(history=context.history, conversation_id=context.conversation_id)
+            result = self.archi(history=context.history, conversation_id=context.conversation_id,
+                                attachment_tools_ctx=self._attachment_tools_ctx(context.conversation_id))
             timestamps["chain_finished_ts"] = datetime.now(timezone.utc)
 
             # keep track of total number of queries and log this amount
@@ -2461,7 +2609,8 @@ class ChatWrapper:
                 pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
 
-            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id,model=context.model_used):
+            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id,model=context.model_used,
+                                            attachment_tools_ctx=self._attachment_tools_ctx(context.conversation_id)):
                 if client_timeout and time.time() - stream_start_time > client_timeout:
                     if trace_id:
                         total_duration_ms = int((time.time() - stream_start_time) * 1000)
@@ -2696,7 +2845,14 @@ class FlaskAppWrapper(object):
         self.app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
         # SESSION_COOKIE_SECURE should be True in production (HTTPS only)
         # Leave it False for local development to work over HTTP
-        self.app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB upload limit
+        # Whole-request upload ceiling. Floor at 100 MB, but lift it above the
+        # configured per-file attachment cap (+15% multipart framing slack) so a
+        # large max_file_mb stays reachable instead of being silently clipped by
+        # Flask with a bare 413 before the friendly size check ever runs.
+        _att_max_file_mb = int((self.chat_app_config.get("attachments", {}) or {}).get("max_file_mb", 30))
+        self.app.config['MAX_CONTENT_LENGTH'] = max(
+            100 * 1024 * 1024, int(_att_max_file_mb * 1024 * 1024 * 1.15)
+        )
         
         self.app.config['ACCOUNTS_FOLDER'] = self.global_config["ACCOUNTS_PATH"]
         os.makedirs(self.app.config['ACCOUNTS_FOLDER'], exist_ok=True)
@@ -2744,6 +2900,9 @@ class FlaskAppWrapper(object):
         # create the chat from the wrapper and ensure default config is active
         self.chat = ChatWrapper()
         self.chat.update_config(config_name=self.config["name"])
+        # Reclaim conversations abandoned after attach-to-new-chat. Non-fatal.
+        if self.chat.attachments_enabled:
+            self.chat.sweep_abandoned_attachment_conversations()
 
         # enable CORS:
         CORS(self.app)
@@ -2881,6 +3040,17 @@ class FlaskAppWrapper(object):
             chat_app_config=self.chat_app_config,
             require_auth=self.require_auth,
         )
+
+        # Conversation attachments (private per-conversation files)
+        if self.chat.attachments_enabled:
+            logger.info("Adding conversation attachment endpoints")
+            register_attachments(
+                self.app,
+                service=self.chat.attachment_service,
+                perm_decorator=self.require_perm(Permission.Chat.QUERY),
+                create_conversation_fn=self.chat.create_conversation,
+                attachments_config=self.chat.attachments_config,
+            )
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -5001,7 +5171,16 @@ class FlaskAppWrapper(object):
                              basic_auth_enabled=self.basic_auth_enabled)
 
     def index(self):
-        return render_template('index.html')
+        att_cfg = self.chat.attachments_config
+        return render_template(
+            'index.html',
+            attachments_enabled=self.chat.attachments_enabled,
+            attachments_max_file_mb=att_cfg.get('max_file_mb', 30),
+            # Empty accept = unfiltered picker: unknown extensions are now
+            # sniffed server-side, so the picker must not hide .conf/.example
+            # files; unsupported picks still get a friendly rejection.
+            attachments_accept="",
+        )
 
     def terms(self):
         return render_template('terms.html')

@@ -178,6 +178,48 @@ If auth is disabled, all users can manage alerts. If auth is enabled and the man
 
 ---
 
+## Attaching files to a conversation
+
+Click the paperclip (📎) in the chat box — or drag a file onto the page — to
+attach a file to the current conversation. The assistant can then use the
+file's text for every question in that conversation.
+
+- **Private by design.** Attachments belong to one conversation. They are
+  never added to the shared knowledge base, are invisible to other users and
+  other conversations, and are permanently deleted when you delete the
+  conversation (or click the chip's ✕).
+- **Supported:** PDF, HTML, `.zip` bundles, and **any file that reads as
+  text** — Markdown, code, `.conf`/`.example`/`Dockerfile`-style files with
+  unusual or missing extensions are all accepted (the content is sniffed, not
+  the extension). Word/Excel/PowerPoint: export as PDF first. Images: not yet
+  supported.
+- **Zips degrade gracefully — up to the per-file size cap.** A zip within the
+  size limit has its readable files stitched into one document; files beyond
+  the decompression budgets are listed by name and truncations are marked
+  inline rather than rejected. A zip whose *compressed* upload is over the
+  per-file limit is still turned away like any other oversized file. PDF text
+  carries `--- Page N ---` markers, so page-specific questions ("what's on
+  page 5?") work.
+- **Size limits.** Each file must fit the per-file cap (30 MB by default), and
+  there is a per-user total-storage limit across all of your conversations. An
+  upload over either limit is turned away with a message saying which — free up
+  space by removing files you no longer need with the chip's ✕.
+- **Honest warnings.** Scanned PDFs ("I can barely read this"), skipped zip
+  entries, and content truncated to fit the context budget are all shown on
+  the file's chip — nothing fails silently, and the assistant is told never
+  to invent the contents of anything skipped.
+- The 📎×N badge near the input box lists everything the assistant currently
+  sees in this conversation; ✕ removes a file immediately and permanently.
+- **Big files are read on demand.** Large attachments and repo zips aren't
+  pasted into the prompt: the assistant sees a file manifest and reads exactly
+  the files your question needs (`list_attachment_files`,
+  `read_attachment_file`, `search_attachment_files`) — watch it happen in the
+  agent-activity panel. Every file in a zip is reachable by name up to the
+  5000-entry index cap (search inside zips covers text files; PDFs inside a
+  zip are readable by name but not yet grep-searchable).
+
+---
+
 ## Admin Guide
 
 ### Becoming an Admin
