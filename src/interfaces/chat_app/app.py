@@ -47,6 +47,7 @@ from src.data_manager.data_viewer_service import DataViewerService
 from src.data_manager.vectorstore.manager import VectorStoreManager
 from src.utils.env import read_secret
 from src.utils.logging import get_logger
+from src.utils.connection_pool import ConnectionPool
 from src.utils.config_access import get_full_config, get_services_config, get_global_config, get_dynamic_config
 from src.utils.config_service import ConfigService, StaticConfig
 from src.utils.sql import (
@@ -303,6 +304,7 @@ class ChatWrapper:
             "password": read_secret("PG_PASSWORD"),
             **self.services_config["postgres"],
         }
+        self.pool = ConnectionPool.get_instance(self.pg_config)
         self.config_service = ConfigService(pg_config=self.pg_config)
 
         # initialize data manager (ingestion handled by data-manager service)
@@ -327,9 +329,6 @@ class ChatWrapper:
         self.conv_service = ConversationService(connection_params=self.pg_config)
         self.user_service = UserService(pg_config=self.pg_config)
         self.ab_agent_spec_service = ABAgentSpecService(pg_config=self.pg_config)
-
-        self.conn = None
-        self.cursor = None
 
         # initialize agent spec
         chat_cfg = self.services_config.get("chat_app", {})
@@ -849,16 +848,10 @@ class ChatWrapper:
             feedback['inappropriate'],
         )
 
-        # create connection to database
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute(SQL_INSERT_FEEDBACK, insert_tup)
-        self.conn.commit()
-
-        # clean up database connection state
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_INSERT_FEEDBACK, insert_tup)
+            conn.commit()
 
     def delete_reaction_feedback(self, message_id: int):
         """
@@ -866,13 +859,10 @@ class ChatWrapper:
         """
         if message_id is None:
             return
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute(SQL_DELETE_REACTION_FEEDBACK, (message_id,))
-        self.conn.commit()
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_DELETE_REACTION_FEEDBACK, (message_id,))
+            conn.commit()
 
     def get_reaction_feedback(self, message_id: int):
         """
@@ -881,13 +871,10 @@ class ChatWrapper:
         """
         if message_id is None:
             return None
-        self.conn = psycopg2.connect(**self.pg_config)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute(SQL_GET_REACTION_FEEDBACK, (message_id,))
-        row = self.cursor.fetchone()
-        self.cursor.close()
-        self.conn.close()
-        self.cursor, self.conn = None, None
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_GET_REACTION_FEEDBACK, (message_id,))
+                row = cursor.fetchone()
         return row[0] if row else None
 
     # =========================================================================
@@ -910,20 +897,16 @@ class ChatWrapper:
         trace_id = str(uuid.uuid4())
         started_at = datetime.now(timezone.utc)
         
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                SQL_CREATE_AGENT_TRACE,
-                (trace_id, conversation_id, None, user_message_id,
-                 config_id, pipeline_name, json.dumps([]), started_at, 'running')
-            )
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    SQL_CREATE_AGENT_TRACE,
+                    (trace_id, conversation_id, None, user_message_id,
+                     config_id, pipeline_name, json.dumps([]), started_at, 'running')
+                )
             conn.commit()
             logger.info(f"Created agent trace {trace_id} for conversation {conversation_id}")
             return trace_id
-        finally:
-            cursor.close()
-            conn.close()
 
     def update_agent_trace(
         self,
@@ -941,20 +924,16 @@ class ChatWrapper:
         """
         completed_at = datetime.now(timezone.utc) if status in ('completed', 'cancelled', 'error') else None
         
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                SQL_UPDATE_AGENT_TRACE,
-                (json.dumps(events), completed_at, status, message_id,
-                 total_tool_calls, total_duration_ms, cancelled_by, cancellation_reason,
-                 trace_id)
-            )
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    SQL_UPDATE_AGENT_TRACE,
+                    (json.dumps(events), completed_at, status, message_id,
+                     total_tool_calls, total_duration_ms, cancelled_by, cancellation_reason,
+                     trace_id)
+                )
             conn.commit()
             logger.debug(f"Updated agent trace {trace_id}: status={status}")
-        finally:
-            cursor.close()
-            conn.close()
 
     def get_agent_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -963,49 +942,37 @@ class ChatWrapper:
         Returns:
             Dict with trace data or None if not found
         """
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(SQL_GET_AGENT_TRACE, (trace_id,))
-            row = cursor.fetchone()
-            if row is None:
-                return None
-            return self._trace_from_row(row)
-        finally:
-            cursor.close()
-            conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_GET_AGENT_TRACE, (trace_id,))
+                row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._trace_from_row(row)
 
     def get_trace_by_message(self, message_id: int) -> Optional[Dict[str, Any]]:
         """
         Get agent trace by the final message ID.
         """
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(SQL_GET_TRACE_BY_MESSAGE, (message_id,))
-            row = cursor.fetchone()
-            if row is None:
-                return None
-            return self._trace_from_row(row)
-        finally:
-            cursor.close()
-            conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_GET_TRACE_BY_MESSAGE, (message_id,))
+                row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._trace_from_row(row)
 
     def get_active_trace(self, conversation_id: int) -> Optional[Dict[str, Any]]:
         """
         Get the currently running trace for a conversation, if any.
         """
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(SQL_GET_ACTIVE_TRACE, (conversation_id,))
-            row = cursor.fetchone()
-            if row is None:
-                return None
-            return self._trace_from_row(row)
-        finally:
-            cursor.close()
-            conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_GET_ACTIVE_TRACE, (conversation_id,))
+                row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._trace_from_row(row)
 
     def cancel_active_traces(
         self,
@@ -1019,21 +986,17 @@ class ChatWrapper:
         Returns:
             Number of traces cancelled
         """
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                SQL_CANCEL_ACTIVE_TRACES,
-                (datetime.now(timezone.utc), cancelled_by, cancellation_reason, conversation_id)
-            )
-            count = cursor.rowcount
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    SQL_CANCEL_ACTIVE_TRACES,
+                    (datetime.now(timezone.utc), cancelled_by, cancellation_reason, conversation_id)
+                )
+                count = cursor.rowcount
             conn.commit()
             if count > 0:
                 logger.info(f"Cancelled {count} active traces for conversation {conversation_id}")
             return count
-        finally:
-            cursor.close()
-            conn.close()
 
 
     def query_conversation_history(self, conversation_id, client_id, user_id: Optional[str] = None):
@@ -1042,34 +1005,27 @@ class ChatWrapper:
         is determined by ascending message_id. Each tuple contains the sender and
         the message content
         """
-        # create connection to database (use local vars for thread safety)
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                # ensure conversation belongs to user/client before querying
+                if user_id:
+                    cursor.execute(SQL_GET_CONVERSATION_METADATA_BY_USER, (conversation_id, user_id, client_id))
+                else:
+                    cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
+                metadata = cursor.fetchone()
+                if metadata is None:
+                    raise ConversationAccessError("Conversation does not exist for this client")
 
-        # ensure conversation belongs to user/client before querying
-        if user_id:
-            cursor.execute(SQL_GET_CONVERSATION_METADATA_BY_USER, (conversation_id, user_id, client_id))
-        else:
-            cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
-        metadata = cursor.fetchone()
-        if metadata is None:
-            cursor.close()
-            conn.close()
-            raise ConversationAccessError("Conversation does not exist for this client")
+                # query conversation history
+                cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
+                history_rows = cursor.fetchall()
 
-        # query conversation history
-        cursor.execute(SQL_QUERY_CONVO, (conversation_id,))
-        history_rows = cursor.fetchall()
         comparisons = self.conv_service.get_conversation_ab_comparisons(str(conversation_id))
         suppressed_ids = self._suppressed_ab_message_ids(comparisons)
         if suppressed_ids:
             history_rows = [row for row in history_rows if row[2] not in suppressed_ids]
         history_rows = collapse_assistant_sequences(history_rows, sender_name=ARCHI_SENDER)
         history = [(row[0], row[1]) for row in history_rows]
-
-        # clean up database connection state
-        cursor.close()
-        conn.close()
 
         return history
 
@@ -1090,16 +1046,11 @@ class ChatWrapper:
         # title, created_at, last_message_at, client_id, version, user_id
         insert_tup = (title, now, now, client_id, version, user_id)
 
-        # create connection to database (use local vars for thread safety)
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        cursor.execute(SQL_CREATE_CONVERSATION, insert_tup)
-        conversation_id = cursor.fetchone()[0]
-        conn.commit()
-
-        # clean up database connection state
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_CREATE_CONVERSATION, insert_tup)
+                conversation_id = cursor.fetchone()[0]
+            conn.commit()
 
         logger.info(f"Created new conversation with ID: {conversation_id}")
         return conversation_id
@@ -1111,20 +1062,14 @@ class ChatWrapper:
         """
         now = datetime.now(timezone.utc)
 
-        # create connection to database (use local vars for thread safety)
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-
-        # update timestamp
-        if user_id:
-            cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP_BY_USER, (now, conversation_id, user_id, client_id))
-        else:
-            cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id, client_id))
-        conn.commit()
-
-        # clean up database connection state
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                # update timestamp
+                if user_id:
+                    cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP_BY_USER, (now, conversation_id, user_id, client_id))
+                else:
+                    cursor.execute(SQL_UPDATE_CONVERSATION_TIMESTAMP, (now, conversation_id, client_id))
+            conn.commit()
 
     def prepare_context_for_storage(self, source_documents, scores):
         scores = scores or []
@@ -1182,16 +1127,11 @@ class ChatWrapper:
             ]
         )
 
-        # create connection to database (use local vars for thread safety)
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
-        conn.commit()
-        message_ids = list(map(lambda tup: tup[0], cursor.fetchall()))
-
-        # clean up database connection state
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
+                message_ids = list(map(lambda tup: tup[0], cursor.fetchall()))
+            conn.commit()
 
         return message_ids
 
@@ -1223,40 +1163,34 @@ class ChatWrapper:
         insert_tups.append(
             (service, conversation_id, ARCHI_SENDER, '', '', '', now, model_provider, pipeline_used)
         )
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
-        conn.commit()
-        ids = list(map(lambda tup: tup[0], cursor.fetchall()))
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
+                ids = list(map(lambda tup: tup[0], cursor.fetchall()))
+            conn.commit()
         if is_refresh:
             return None, ids[0]
         return ids[0], ids[1]
 
     def update_message_content(self, message_id, content) -> None:
         """Overwrite a (placeholder) message's content with the latest streamed text."""
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        cursor.execute(SQL_UPDATE_MESSAGE_CONTENT, (self._sanitize_text(content), message_id))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_UPDATE_MESSAGE_CONTENT, (self._sanitize_text(content), message_id))
+            conn.commit()
 
     def finalize_streamed_message(self, message_id, content, link, archi_context, context, ts) -> None:
         """Write the final assistant content + RAG metadata onto the pre-inserted placeholder row."""
         model_provider = f"{context.provider_used}/{context.model_used}"
         pipeline_used = type(context.pipeline_used).__name__
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        cursor.execute(
-            SQL_FINALIZE_MESSAGE,
-            (self._sanitize_text(content), self._sanitize_text(link), self._sanitize_text(archi_context),
-             model_provider, pipeline_used, ts, message_id),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    SQL_FINALIZE_MESSAGE,
+                    (self._sanitize_text(content), self._sanitize_text(link), self._sanitize_text(archi_context),
+                     model_provider, pipeline_used, ts, message_id),
+                )
+            conn.commit()
 
     def insert_timing(self, message_id, timestamps):
         """
@@ -1280,15 +1214,10 @@ class ChatWrapper:
             timestamps['server_response_msg_ts'] - timestamps['server_received_msg_ts']
         )
 
-        # create connection to database (use local vars for thread safety)
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        cursor.execute(SQL_INSERT_TIMING, insert_tup)
-        conn.commit()
-
-        # clean up database connection state
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(SQL_INSERT_TIMING, insert_tup)
+            conn.commit()
 
     def insert_tool_calls_from_output(self, conversation_id: int, message_id: int, output: PipelineOutput) -> None:
         """
@@ -1346,13 +1275,10 @@ class ChatWrapper:
         
         logger.debug("Inserting %d tool calls for message %d", len(insert_tups), message_id)
 
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        psycopg2.extras.execute_values(cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
-        conn.commit()
-
-        cursor.close()
-        conn.close()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                psycopg2.extras.execute_values(cursor, SQL_INSERT_TOOL_CALLS, insert_tups)
+            conn.commit()
 
     def _init_timestamps(self) -> Dict[str, datetime]:
         return {
@@ -1857,18 +1783,16 @@ class ChatWrapper:
         user_prompt_mid = None
         if not is_refresh:
             try:
-                conn = psycopg2.connect(**self.pg_config)
-                cursor = conn.cursor()
-                insert_tups = [
-                    ("chat", context.conversation_id, context.sender, context.content,
-                     "", "", datetime.now(), None, None),
-                ]
-                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
-                row = cursor.fetchone()
-                user_prompt_mid = row[0] if row else None
-                conn.commit()
-                cursor.close()
-                conn.close()
+                with self.pool.get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        insert_tups = [
+                            ("chat", context.conversation_id, context.sender, context.content,
+                             "", "", datetime.now(), None, None),
+                        ]
+                        psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
+                        row = cursor.fetchone()
+                        user_prompt_mid = row[0] if row else None
+                    conn.commit()
             except Exception as exc:
                 logger.error("Failed to store user message: %s", exc)
 
@@ -1938,17 +1862,15 @@ class ChatWrapper:
     def _store_assistant_message(self, conversation_id, content, model_used=None, pipeline_used=None):
         """Store an assistant message and return the message_id."""
         try:
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
-            insert_tups = [
-                ("chat", conversation_id, "archi", content, "", "", datetime.now(), model_used, pipeline_used),
-            ]
-            psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
-            row = cursor.fetchone()
-            mid = row[0] if row else None
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with self.pool.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    insert_tups = [
+                        ("chat", conversation_id, "archi", content, "", "", datetime.now(), model_used, pipeline_used),
+                    ]
+                    psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
+                    row = cursor.fetchone()
+                    mid = row[0] if row else None
+                conn.commit()
             return mid
         except Exception as exc:
             logger.error("Failed to store assistant message: %s", exc)
@@ -1984,15 +1906,13 @@ class ChatWrapper:
     def _get_last_user_message_id(self, conversation_id):
         """Get the most recent user message_id for a conversation."""
         try:
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT message_id FROM conversations WHERE conversation_id = %s AND LOWER(sender) = 'user' ORDER BY ts DESC LIMIT 1",
-                (conversation_id,),
-            )
-            row = cursor.fetchone()
-            cursor.close()
-            conn.close()
+            with self.pool.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT message_id FROM conversations WHERE conversation_id = %s AND LOWER(sender) = 'user' ORDER BY ts DESC LIMIT 1",
+                        (conversation_id,),
+                    )
+                    row = cursor.fetchone()
             return row[0] if row else None
         except Exception as exc:
             logger.error("Failed to get user message id: %s", exc)
@@ -2221,12 +2141,6 @@ class ChatWrapper:
             # NOTE: we log the error message and return here
             logger.error(f"Failed to produce response: {e}", exc_info=True)
             return None, None, None, timestamps, 500
-
-        finally:
-            if self.cursor is not None:
-                self.cursor.close()
-            if self.conn is not None:
-                self.conn.close()
 
         timestamps['finish_call_ts'] = datetime.now(timezone.utc)
 
@@ -2551,11 +2465,6 @@ class ChatWrapper:
                     cancellation_reason=str(exc),
                 )
             yield {"type": "error", "status": 500, "message": "server error; see chat logs for message"}
-        finally:
-            if self.cursor is not None:
-                self.cursor.close()
-            if self.conn is not None:
-                self.conn.close()
 
 
 class FlaskAppWrapper(object):
@@ -2592,8 +2501,7 @@ class FlaskAppWrapper(object):
             "password": read_secret("PG_PASSWORD"),
             **self.services_config["postgres"],
         }
-        self.conn = None
-        self.cursor = None
+        self.pool = ConnectionPool.get_instance(self.pg_config)
 
         # Initialize config service for dynamic settings
         self.config_service = ConfigService(pg_config=self.pg_config)
@@ -4497,31 +4405,31 @@ class FlaskAppWrapper(object):
         if not all(mids):
             return None
 
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                """
-                SELECT message_id, sender, content, model_used
-                FROM conversations
-                WHERE message_id = ANY(%s)
-                ORDER BY message_id ASC
-                """,
-                (mids,),
-            )
-            messages = {
-                row[0]: {
-                    "message_id": row[0],
-                    "sender": row[1],
-                    "content": row[2],
-                    "model_used": row[3],
-                    "trace": self.chat.get_trace_by_message(row[0]),
-                }
-                for row in cursor.fetchall()
+        with self.pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT message_id, sender, content, model_used
+                    FROM conversations
+                    WHERE message_id = ANY(%s)
+                    ORDER BY message_id ASC
+                    """,
+                    (mids,),
+                )
+                rows = cursor.fetchall()
+
+        # get_trace_by_message borrows its own pooled connection, so resolve
+        # traces after this one has been returned.
+        messages = {
+            row[0]: {
+                "message_id": row[0],
+                "sender": row[1],
+                "content": row[2],
+                "model_used": row[3],
+                "trace": self.chat.get_trace_by_message(row[0]),
             }
-        finally:
-            cursor.close()
-            conn.close()
+            for row in rows
+        }
 
         response_a = messages.get(comparison.response_a_mid)
         response_b = messages.get(comparison.response_b_mid)
@@ -4834,14 +4742,13 @@ class FlaskAppWrapper(object):
                 return jsonify({'error': 'client_id missing'}), 400
             limit = min(int(request.args.get('limit', 50)), 500)
 
-            # create connection to database
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
-            if user_id:
-                cursor.execute(SQL_LIST_CONVERSATIONS_BY_USER, (user_id, client_id, limit))
-            else:
-                cursor.execute(SQL_LIST_CONVERSATIONS, (client_id, limit))
-            rows = cursor.fetchall()
+            with self.pool.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    if user_id:
+                        cursor.execute(SQL_LIST_CONVERSATIONS_BY_USER, (user_id, client_id, limit))
+                    else:
+                        cursor.execute(SQL_LIST_CONVERSATIONS, (client_id, limit))
+                    rows = cursor.fetchall()
 
             conversations = []
             for row in rows:
@@ -4851,10 +4758,6 @@ class FlaskAppWrapper(object):
                     'created_at': row[2].isoformat() if row[2] else None,
                     'last_message_at': row[3].isoformat() if row[3] else None,
                 })
-
-            # clean up database connection state
-            cursor.close()
-            conn.close()
 
             return jsonify({'conversations': conversations}), 200
 
@@ -4885,26 +4788,23 @@ class FlaskAppWrapper(object):
             if not user_id and not client_id:
                 return jsonify({'error': 'client_id missing'}), 400
 
-            # create connection to database
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
+            with self.pool.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # get conversation metadata
+                    if user_id:
+                        cursor.execute(SQL_GET_CONVERSATION_METADATA_BY_USER, (conversation_id, user_id, client_id))
+                    else:
+                        cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
+                    meta_row = cursor.fetchone()
 
-            # get conversation metadata
-            if user_id:
-                cursor.execute(SQL_GET_CONVERSATION_METADATA_BY_USER, (conversation_id, user_id, client_id))
-            else:
-                cursor.execute(SQL_GET_CONVERSATION_METADATA, (conversation_id, client_id))
-            meta_row = cursor.fetchone()
+                    # if no metadata found, return error
+                    if not meta_row:
+                        return jsonify({'error': 'conversation not found'}), 404
 
-            # if no metadata found, return error
-            if not meta_row:
-                cursor.close()
-                conn.close()
-                return jsonify({'error': 'conversation not found'}), 404
+                    # get history of the conversation along with latest feedback state
+                    cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
+                    history_rows = cursor.fetchall()
 
-            # get history of the conversation along with latest feedback state
-            cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
-            history_rows = cursor.fetchall()
             comparisons = self.chat.conv_service.get_conversation_ab_comparisons(str(conversation_id))
             suppressed_ids = self.chat._suppressed_ab_message_ids(comparisons)
             if suppressed_ids:
@@ -4919,16 +4819,18 @@ class FlaskAppWrapper(object):
             trace_map = {}
             if assistant_mids:
                 placeholders = ','.join(['%s'] * len(assistant_mids))
-                cursor.execute(f"""
-                    SELECT trace_id, conversation_id, message_id, user_message_id,
-                           config_id, pipeline_name, events, started_at, completed_at,
-                           status, total_tool_calls, total_tokens_used, total_duration_ms,
-                           cancelled_by, cancellation_reason, created_at
-                    FROM agent_traces
-                    WHERE message_id IN ({placeholders})
-                """, tuple(assistant_mids))
-                for trace_row in cursor.fetchall():
-                    trace_map[trace_row[2]] = trace_row
+                with self.pool.get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(f"""
+                            SELECT trace_id, conversation_id, message_id, user_message_id,
+                                   config_id, pipeline_name, events, started_at, completed_at,
+                                   status, total_tool_calls, total_tokens_used, total_duration_ms,
+                                   cancelled_by, cancellation_reason, created_at
+                            FROM agent_traces
+                            WHERE message_id IN ({placeholders})
+                        """, tuple(assistant_mids))
+                        for trace_row in cursor.fetchall():
+                            trace_map[trace_row[2]] = trace_row
             
             for row in history_rows:
                 msg = {
@@ -4966,10 +4868,6 @@ class FlaskAppWrapper(object):
                 'pending_ab_comparisons': serialized_pending,
                 'pending_ab_comparison': serialized_pending[-1] if serialized_pending else None,
             }
-
-            # clean up database connection state
-            cursor.close()
-            conn.close()
 
             return jsonify(conversation), 200
 
@@ -5016,21 +4914,15 @@ class FlaskAppWrapper(object):
             if not user_id and not client_id:
                 return jsonify({'error': 'client_id missing when deleting.'}), 400
 
-            # create connection to database
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
-
-            # Delete conversation metadata (SQL CASCADE will delete all child messages)
-            if user_id:
-                cursor.execute(SQL_DELETE_CONVERSATION_BY_USER, (conversation_id, user_id, client_id))
-            else:
-                cursor.execute(SQL_DELETE_CONVERSATION, (conversation_id, client_id))
-            deleted_count = cursor.rowcount
-            conn.commit()
-
-            # clean up database connection state
-            cursor.close()
-            conn.close()
+            with self.pool.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Delete conversation metadata (SQL CASCADE will delete all child messages)
+                    if user_id:
+                        cursor.execute(SQL_DELETE_CONVERSATION_BY_USER, (conversation_id, user_id, client_id))
+                    else:
+                        cursor.execute(SQL_DELETE_CONVERSATION, (conversation_id, client_id))
+                    deleted_count = cursor.rowcount
+                conn.commit()
 
             if deleted_count == 0:
                 return jsonify({'error': 'Conversation not found'}), 404

@@ -85,16 +85,23 @@ class ConnectionPool:
         self._timeout = timeout
         self._pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
         self._closed = False
-        
-        self._initialize_pool()
-    
+        self._init_lock = threading.Lock()
+
+        # Best-effort eager init. If postgres is not accepting connections yet
+        # (e.g. the chatbot container started before the database), defer to the
+        # first get_connection() rather than failing application startup.
+        try:
+            self._initialize_pool()
+        except ConnectionPoolError as e:
+            logger.warning(f"Deferring connection pool initialization: {e}")
+
     def _initialize_pool(self) -> None:
         """Initialize the connection pool."""
         try:
             self._pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=self._min_conn,
                 maxconn=self._max_conn,
-                **self._pg_config,
+                **self._keepalive_config(self._pg_config),
             )
             logger.info(
                 f"Connection pool initialized: min={self._min_conn}, max={self._max_conn}"
@@ -102,7 +109,53 @@ class ConnectionPool:
         except psycopg2.Error as e:
             logger.error(f"Failed to initialize connection pool: {e}")
             raise ConnectionPoolError(f"Failed to initialize pool: {e}") from e
-    
+
+    @staticmethod
+    def _keepalive_config(pg_config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Add TCP keepalives so the kernel tears down connections whose server
+        went away, instead of leaving them to fail on first use.
+        """
+        return {
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+            **pg_config,
+        }
+
+    def _ensure_pool(self) -> psycopg2.pool.ThreadedConnectionPool:
+        """Return the pool, initializing it if a previous attempt was deferred."""
+        if self._closed:
+            raise ConnectionPoolError("Connection pool is closed")
+
+        if self._pool is None:
+            with self._init_lock:
+                if self._pool is None:
+                    self._initialize_pool()
+
+        return self._pool
+
+    @staticmethod
+    def _is_alive(conn: psycopg2.extensions.connection) -> bool:
+        """
+        Check whether a pooled connection is still usable.
+
+        psycopg2 only marks a connection closed once an operation on it has
+        failed, so a connection killed server-side (postgres restart, idle
+        timeout) still looks open until someone tries to use it. Ping it here
+        so that failure lands on the pool rather than on the caller's query.
+        """
+        if conn.closed:
+            return False
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            return True
+        except psycopg2.Error:
+            return False
+
     @classmethod
     def get_instance(
         cls,
@@ -162,23 +215,41 @@ class ConnectionPool:
             ConnectionTimeoutError: If timeout waiting for connection
             ConnectionPoolError: If pool is closed or other error
         """
-        if self._closed or self._pool is None:
-            raise ConnectionPoolError("Connection pool is closed")
-        
+        pool = self._ensure_pool()
+
         conn = None
         try:
-            conn = self._pool.getconn()
-            
+            conn = pool.getconn()
+
             if conn is None:
                 raise ConnectionTimeoutError(
                     f"Could not acquire connection within {self._timeout}s timeout"
                 )
-            
-            if conn.closed:
-                conn = self._reconnect(conn)
-            
+
+            # A pooled connection can die while idle, and a postgres restart kills
+            # every one of them at once. Discard dead connections through the pool
+            # (so their bookkeeping slots are freed) until one is usable; getconn
+            # opens a fresh connection once the idle list has been drained.
+            attempts = 0
+            while not self._is_alive(conn):
+                logger.warning("Discarding stale pooled connection")
+                pool.putconn(conn, close=True)
+                conn = None
+
+                attempts += 1
+                if attempts > self._max_conn:
+                    raise ConnectionPoolError(
+                        f"Could not acquire a live connection after {attempts} attempts"
+                    )
+
+                conn = pool.getconn()
+                if conn is None:
+                    raise ConnectionTimeoutError(
+                        f"Could not acquire connection within {self._timeout}s timeout"
+                    )
+
             yield conn
-            
+
         except psycopg2.pool.PoolError as e:
             logger.error(f"Pool error: {e}")
             raise ConnectionTimeoutError(f"Connection pool exhausted: {e}") from e
@@ -188,21 +259,13 @@ class ConnectionPool:
                 conn.rollback()
             raise
         finally:
-            if conn is not None and self._pool is not None:
+            if conn is not None:
                 try:
-                    self._pool.putconn(conn)
+                    pool.putconn(conn)
                 except Exception as e:
                     logger.warning(f"Error returning connection to pool: {e}")
-    
-    def _reconnect(self, conn: psycopg2.extensions.connection) -> psycopg2.extensions.connection:
-        """Reconnect a closed connection."""
-        logger.warning("Reconnecting closed connection")
-        try:
-            conn = psycopg2.connect(**self._pg_config)
-            return conn
-        except psycopg2.Error as e:
-            raise ConnectionPoolError(f"Failed to reconnect: {e}") from e
-    
+
+
     def execute(
         self,
         query: str,
@@ -250,9 +313,7 @@ class ConnectionPool:
                 pass
 
     def get_connection_direct(self):
-        if self._pool is None or self._closed:
-            raise ConnectionPoolError("Connection pool is closed")
-        return self._pool.getconn()
+        return self._ensure_pool().getconn()
     
     def __enter__(self) -> "ConnectionPool":
         return self
