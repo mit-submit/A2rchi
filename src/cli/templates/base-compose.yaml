@@ -178,9 +178,9 @@ services:
       {%- if srv_cfg.transport == 'stdio' and srv_cfg.path is defined %}
       - {{ srv_cfg.path }}:/root/mcp-packages/{{ srv_name }}:ro
       {%- endif %}
-      {%- endfor %}
-      {%- for host_path in (host_file_mounts | default([])) %}
+      {%- for host_path in (srv_cfg.host_file_mounts | default([])) %}
       - {{ host_path }}:{{ host_path }}:ro
+      {%- endfor %}
       {%- endfor %}
     {#- Build the MCP auto-install command for stdio packages with a path #}
     {%- set mcp_installs = [] %}
