@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set, Tuple
+import asyncio
 import re
 import threading
 import time
@@ -60,7 +61,11 @@ class BaseReActAgent:
         # single background loop, so concurrent calls (when the model emits
         # parallel tool calls) corrupt response routing and leak server-side
         # connections. Holding this lock makes parallel calls run one at a time.
+        # The threading lock covers the sync path (stream); the asyncio lock
+        # covers the coroutine path (astream), where tools run as concurrent
+        # coroutines on the session's own loop instead of blocking threads.
         self._mcp_call_lock = threading.Lock()
+        self._mcp_async_lock = asyncio.Lock()
         self._mcp_skills_text: str = ""
         self._active_tools: List[Callable] = []
         self._static_middleware: Optional[List[Callable]] = None
@@ -1165,15 +1170,18 @@ class BaseReActAgent:
                 - Runs on the SAME loop where the client was initialized
                 - Session streams remain valid
                 """
-                # Capture the runner + the shared MCP call lock in closure
+                # Capture the runner + the shared MCP call locks in closure
                 runner = self._async_runner
                 mcp_call_lock = self._mcp_call_lock
+                mcp_async_lock = self._mcp_async_lock
                 tool_name = async_tool.name
 
-                def sync_wrapper(*args, **kwargs):
-                    if runner.in_loop_thread():
-                        raise RuntimeError("sync_wrapper called from MCP loop thread; would deadlock")
-                    # Streamed tool_call chunks arrive without args; record here so the UI can resolve them by tool_call_id.
+                orig_coroutine = async_tool.coroutine
+
+                async def locked_coroutine(*args, _orig=orig_coroutine, **kwargs):
+                    # astream invokes the tool coroutine directly on the MCP
+                    # session loop; serialize through the asyncio lock so
+                    # parallel tool calls can't corrupt the shared session.
                     try:
                         recorded = {
                             k: v
@@ -1186,9 +1194,18 @@ class BaseReActAgent:
                         logger.debug(
                             "Failed to record MCP tool input for %s: %s", tool_name, exc
                         )
+                    async with mcp_async_lock:
+                        return await _orig(*args, **kwargs)
+
+                async_tool.coroutine = locked_coroutine
+
+                def sync_wrapper(*args, **kwargs):
+                    if runner.in_loop_thread():
+                        raise RuntimeError("sync_wrapper called from MCP loop thread; would deadlock")
                     # Run on the background loop - NOT a new loop! Serialize via
                     # the shared lock so parallel tool calls can't hit the single
                     # MCP session concurrently (which deadlocks + leaks connections).
+                    # Input recording happens inside locked_coroutine for both paths.
                     with mcp_call_lock:
                         return runner.run(async_tool.coroutine(*args, **kwargs))
 
