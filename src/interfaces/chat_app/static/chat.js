@@ -794,6 +794,7 @@ const UI = {
       messagesInner: document.querySelector('.messages-inner'),
       inputField: document.querySelector('.input-field'),
       sendBtn: document.querySelector('.send-btn'),
+      composerHint: document.querySelector('.composer-hint'),
       modelSelectA: null,
 
       settingsBtn: document.querySelector('.settings-btn'),
@@ -913,7 +914,10 @@ const UI = {
     });
 
     // Auto-resize textarea
-    this.elements.inputField?.addEventListener('input', () => this.autoResizeInput());
+    this.elements.inputField?.addEventListener('input', () => {
+      this.autoResizeInput();
+      this.hideComposerHint();
+    });
 
     // Playbook quick-invoke autocomplete
     this.elements.inputField?.addEventListener('input', () => PlaybookMenu.maybeShow());
@@ -1987,7 +1991,32 @@ const UI = {
       sendBtn.title = 'Send message';
       sendBtn.setAttribute('aria-label', 'Send message');
       sendBtn.innerHTML = this.sendBtnDefaultHtml;
+      // An upload that started mid-stream couldn't lock the stop-mode
+      // button; restore the composer lock now that the stream is done.
+      this.setSendPending(window.Attachments?.hasPendingUploads?.() === true);
     }
+  },
+
+  // Transient "waiting for attachments to finish uploading" state on Send.
+  setSendPending(pending) {
+    const sendBtn = this.elements.sendBtn;
+    if (!sendBtn) return;
+    sendBtn.classList.toggle('send-pending', pending);
+    sendBtn.disabled = pending;
+  },
+
+  showComposerHint(message) {
+    const hint = this.elements.composerHint;
+    if (!hint) return;
+    hint.textContent = message;
+    hint.hidden = false;
+  },
+
+  hideComposerHint() {
+    const hint = this.elements.composerHint;
+    if (!hint || hint.hidden) return;
+    hint.hidden = true;
+    hint.textContent = '';
   },
 
   showCustomModelInput(show) {
@@ -2304,7 +2333,7 @@ const UI = {
     }
 
     return `
-      <div class="message ${roleClass}" data-id="${msg.id || ''}">
+      <div class="message ${roleClass}" data-id="${msg.id || ''}"${isUser ? ` data-message-id="${msg.id || ''}"` : ''}>
         <div class="message-inner">
           <div class="message-header">
             <div class="message-avatar">${avatar}</div>
@@ -4120,6 +4149,10 @@ const Chat = {
     activeTrace: null,         // { traceId, events: [], toolCalls: Map<toolCallId, toolData> }
     traceVerboseMode: localStorage.getItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE) || 'normal', // 'minimal' | 'normal' | 'verbose'
     abortController: null,     // AbortController for cancellation
+    // Bumped whenever the user leaves the current conversation (New Chat,
+    // switch, delete). Async completions capture it at start and may not
+    // write conversation state back if it moved on without them.
+    conversationEpoch: 0,
     // Provider state
     providers: [],
     pipelineDefaultModel: null,
@@ -4185,6 +4218,22 @@ const Chat = {
   async init() {
     Markdown.init();
     UI.init();
+
+    window.Attachments?.init({
+      getConversationId: () => this.state.conversationId,
+      setConversationId: (id) => {
+        this.state.conversationId = id;
+        Storage.setActiveConversationId(id);
+      },
+      getClientId: () => this.clientId ?? API.clientId ?? Storage.getClientId(),
+      onUploadStateChange: (pending) => {
+        // While a reply streams the button is the Stop control — leave it
+        // usable; setStreamingState(false) re-applies the lock at stream end.
+        if (pending && this.state.isStreaming) return;
+        UI.setSendPending(pending);
+        if (!pending) UI.hideComposerHint();
+      },
+    });
 
     // Load initial data
     await Promise.all([
@@ -4600,6 +4649,7 @@ const Chat = {
       const data = await API.loadConversation(conversationId);
       if (!data) return;
 
+      this.state.conversationEpoch += 1;
       this.state.conversationId = conversationId;
       Storage.setActiveConversationId(conversationId);
 
@@ -4624,7 +4674,8 @@ const Chat = {
       this.state.abVotePending = false;
 
       UI.renderMessages(this.state.messages);
-      
+      window.Attachments?.onConversationLoaded(conversationId);
+
       // Render historical trace data for assistant messages
       for (const msg of this.state.messages) {
         if (msg.sender !== 'User' && msg.trace) {
@@ -4652,6 +4703,7 @@ const Chat = {
       this.state.abVotePending = false;
       Storage.setActiveConversationId(null);
       UI.renderMessages([]);
+      window.Attachments?.reset();
       UI.hideABVoteButtons();
       UI.setInputDisabled(false);
       UI.showToast('Conversation not found. Starting a new chat.');
@@ -4739,6 +4791,12 @@ const Chat = {
 
   async newConversation() {
     try {
+      // Everything still in flight (a streaming reply, a held upload)
+      // belongs to the conversation being left: invalidate it first so a
+      // late completion can't restore the old conversation id, and stop the
+      // stream — its reply has no home on screen anymore.
+      this.state.conversationEpoch += 1;
+      if (this.state.isStreaming) await this.cancelStream();
       await API.newConversation();
       this.state.conversationId = null;
       this.state.messages = [];
@@ -4749,8 +4807,10 @@ const Chat = {
       Storage.setActiveConversationId(null);
       
       UI.renderMessages([]);
+      window.Attachments?.reset();
       UI.hideABVoteButtons();
       UI.setInputDisabled(false);
+      UI.setSendPending(window.Attachments?.hasPendingUploads?.() === true);
       await this.loadConversations();
     } catch (e) {
       console.error('Failed to create conversation:', e);
@@ -4764,6 +4824,7 @@ const Chat = {
       await API.deleteConversation(conversationId);
       
       if (this.state.conversationId === conversationId) {
+        this.state.conversationEpoch += 1;
         this.state.conversationId = null;
         this.state.messages = [];
         this.state.history = [];
@@ -4772,10 +4833,11 @@ const Chat = {
         this.state.abVotePending = false;
         Storage.setActiveConversationId(null);
         UI.renderMessages([]);
+        window.Attachments?.reset();
         UI.hideABVoteButtons();
         UI.setInputDisabled(false);
       }
-      
+
       await this.loadConversations();
     } catch (e) {
       console.error('Failed to delete conversation:', e);
@@ -4783,8 +4845,19 @@ const Chat = {
   },
 
   async sendMessage() {
+    if (this.state.isStreaming) return;
+
     let text = UI.getInputValue();
-    if (!text || this.state.isStreaming) return;
+    if (!text) {
+      // Empty box: if files are queued, nudge for a prompt instead of a
+      // silent no-op; otherwise there is nothing to send.
+      if (window.Attachments?.hasComposerAttachments?.()) {
+        UI.showComposerHint('Add a message to send it with your attachment.');
+        UI.elements.inputField?.focus();
+      }
+      return;
+    }
+    UI.hideComposerHint();
 
     const selected = this.getSelectedProviderAndModel();
     if (selected.provider && !selected.model) {
@@ -4796,6 +4869,14 @@ const Chat = {
     if (this.hasReachedABPendingLimit()) {
       const limit = this.getABPendingLimit();
       UI.showToast(`Please resolve one of the pending comparisons before continuing (limit: ${limit}).`);
+      return;
+    }
+
+    // A turn may not race ahead of an attachment still uploading — the file
+    // would land half-attached. The send button is already locked by the
+    // upload-state callback; this guard catches Enter and says why.
+    if (window.Attachments?.hasPendingUploads?.()) {
+      UI.showComposerHint('Your attachment is still uploading — send once it finishes.');
       return;
     }
 
@@ -4843,6 +4924,9 @@ const Chat = {
     this.state.messages.push(userMsg);
     this.state.history.push(['User', text]);
     UI.addMessage(userMsg);
+    // Pending attachment cards move from the chat box onto this message
+    // (ChatGPT-style); the post-stream refresh reconciles with server truth.
+    window.Attachments?.onMessageSent();
 
     UI.clearInput();
     UI.setInputDisabled(true, { disableSend: false });
@@ -4893,6 +4977,9 @@ const Chat = {
   },
 
   async sendABMessage(userText, configA, playbookName = null) {
+    // Same stale-completion rule as streamResponse: leaving the conversation
+    // mid-comparison must not let late events restore it.
+    const epochAtSend = this.state.conversationEpoch;
     if (!this.state.abPool) {
       UI.showToast('A/B pool is not configured on the server. Cannot run comparison.');
       this.state.isStreaming = false;
@@ -4967,9 +5054,10 @@ const Chat = {
         if (event.type === 'ab_meta') {
           abMeta = event;
           // Update conversation_id if server assigned one
-          if (event.conversation_id != null) {
+          if (event.conversation_id != null && epochAtSend === this.state.conversationEpoch) {
             this.state.conversationId = event.conversation_id;
             Storage.setActiveConversationId(event.conversation_id);
+            window.Attachments?.refresh(event.conversation_id);
           }
           continue;
         }
@@ -5189,6 +5277,9 @@ const Chat = {
   },
 
   async streamResponse(messageId, configName) {
+    // If the user leaves this conversation mid-stream (New Chat, switch),
+    // the epochs stop matching and late events may not write state back.
+    const epochAtSend = this.state.conversationEpoch;
     let streamedText = '';
     
     // Initialize trace state for this stream
@@ -5322,12 +5413,15 @@ const Chat = {
             if (msgEl) msgEl.dataset.id = event.message_id;
           }
 
-          if (event.conversation_id != null) {
+          if (event.conversation_id != null && epochAtSend === this.state.conversationEpoch) {
             this.state.conversationId = event.conversation_id;
             Storage.setActiveConversationId(event.conversation_id);
+            window.Attachments?.refresh(event.conversation_id);
           }
-          
-          this.state.history.push(['archi', finalText]);
+
+          if (epochAtSend === this.state.conversationEpoch) {
+            this.state.history.push(['archi', finalText]);
+          }
           
           // Re-highlight code blocks
           if (typeof hljs !== 'undefined') {

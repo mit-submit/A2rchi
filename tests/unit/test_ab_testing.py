@@ -400,6 +400,7 @@ def test_stream_ab_comparison_emits_per_arm_final_before_ab_meta():
     chat.ab_pool = Mock()
     chat.ab_pool.sample_matchup.return_value = (fast_variant, slow_variant, True)
     chat.ab_pool.variant_label_mode = "post_vote_reveal"
+    chat.attachments_enabled = False
     chat.archi = SimpleNamespace(vs_connector=SimpleNamespace(get_vectorstore=Mock(return_value=object())))
     chat.update_config = Mock()
     chat._resolve_config_name = Mock(return_value="default")

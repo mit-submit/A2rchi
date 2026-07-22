@@ -180,6 +180,14 @@ body {
   overflow: hidden;
 }
 
+/* While pending attachment cards are visible, the input row sizes to its
+   content so cards grow the composer UP into the messages row; with the
+   fixed track they overflowed below the viewport and were clipped. The
+   empty composer keeps the normal fixed height above. */
+.app:has(.composer-attachments:not([hidden])) {
+  grid-template-rows: var(--header-height) 1fr auto;
+}
+
 .app.sidebar-collapsed {
   grid-template-columns: 0 1fr;
 }
@@ -1113,6 +1121,23 @@ body {
 .send-btn:disabled {
   color: var(--border-color);
   cursor: not-allowed;
+}
+
+/* Waiting for an in-flight attachment to finish before the turn is sent. */
+.send-btn.send-pending {
+  cursor: progress;
+}
+.send-btn.send-pending svg {
+  display: none;
+}
+.send-btn.send-pending::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
 .agent-dropdown {
@@ -2306,6 +2331,19 @@ body {
     min-height: 40px;
     width: 40px;
     height: 40px;
+  }
+
+  /* Five composer controls can't share one row with the input at this
+     width: wrap the settings/agent cluster onto its own row so the input
+     keeps usable space beside the attach and send buttons. The input grid
+     track must follow content height for the taller composer (same reason
+     as the .app:has(.composer-attachments) rule). */
+  .app {
+    grid-template-rows: var(--header-height) 1fr auto;
+  }
+
+  .input-left-controls {
+    flex-basis: 100%;
   }
 }
 
@@ -4417,3 +4455,79 @@ body {
     max-height: 150px;
   }
 }
+
+/* ===== Conversation attachments (Attachment ≠ admin Upload) =====
+   ChatGPT/Claude interaction model: pending cards live INSIDE the chat box
+   (.composer-attachments row above the text field); sent cards attach to the
+   user message (.message-attachment-chips). No warning glyphs — warnings are
+   model-facing only. */
+.input-wrapper { flex-wrap: wrap; }
+.composer-attachments {
+  flex-basis: 100%;
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 8px 6px 2px;
+  max-height: 148px;   /* ~2 card rows; more attachments scroll here */
+  overflow-y: auto;
+}
+/* display:flex above would defeat the hidden attribute (author rules beat
+   the UA [hidden]{display:none}); without this, the empty strip's padding
+   + the wrapper's flex gap pushed the text row ~18px off-center. */
+.composer-attachments[hidden] { display: none; }
+.composer-hint {
+  flex-basis: 100%;
+  padding: 4px 8px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #718096);
+}
+.composer-hint[hidden] { display: none; }
+.attachment-card {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  padding: 6px 10px;
+  max-width: 240px;
+  font-size: 12px;
+}
+.attachment-card-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 8px; flex: none;
+  background: var(--bg-tertiary, #eef1f5);
+  color: var(--text-secondary, #5a6472);
+}
+.attachment-card-error { border-color: #e5b8b3; }
+.attachment-card-error .attachment-card-icon { background: #fdecea; color: #c0392b; }
+.attachment-card-error .attachment-card-sub { color: #c0392b; }
+/* Pending upload: breathe the icon so "Attaching…" reads as live, not frozen. */
+.attachment-card-pending .attachment-card-icon { animation: pulse 1.4s ease-in-out infinite; }
+.attachment-card-info { display: flex; flex-direction: column; min-width: 0; }
+.attachment-card-name {
+  font-weight: 500; color: var(--text-primary, #1a202c);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;
+}
+.attachment-card-sub {
+  font-size: 11px; color: var(--text-secondary, #718096);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;
+}
+.attachment-card-sub:empty { display: none; }
+.attachment-card-remove {
+  cursor: pointer; background: none; border: none; flex: none;
+  color: var(--text-secondary, #718096); opacity: 0.5;
+  font-size: 13px; line-height: 1; padding: 2px;
+}
+.attachment-card:hover .attachment-card-remove { opacity: 1; }
+.attachment-card-compact { padding: 4px 8px; border-radius: 8px; }
+.attachment-card-compact .attachment-card-icon { width: 22px; height: 22px; }
+.attachment-card-compact .attachment-card-remove { display: none; }
+.attachment-card-warning {
+  font-size: 11px; color: var(--text-secondary, #718096);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;
+}
+.attach-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex: none;
+  background: none; border: none; border-radius: 6px; cursor: pointer;
+  color: var(--text-secondary, #718096);
+}
+.attach-btn:hover { background: var(--bg-tertiary, #f1f5f9); color: var(--text-primary, #1a202c); }
+.message-attachment-chips { margin: 2px 0 8px; display: flex; gap: 8px; flex-wrap: wrap; }

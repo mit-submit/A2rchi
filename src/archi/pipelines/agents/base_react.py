@@ -20,6 +20,7 @@ from src.archi.providers import get_model
 from src.archi.providers.base import ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.run_memory import RunMemory
+from src.archi.pipelines.agents.utils.run_context import RunContext
 from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
 from src.archi.pipelines.agents.tools import initialize_mcp_client
 from src.utils.logging import get_logger
@@ -32,6 +33,12 @@ class BaseReActAgent:
     process user queries using configurable language models and prompts.
     """
     DEFAULT_RECURSION_LIMIT = 50
+
+    # Subclasses that mount the chat attachment tools (list/read/search) in
+    # their per-run tool build set this True. The chat app routes attachments
+    # to manifest/tool mode only for pipelines that declare it — a pipeline
+    # merely exposing refresh_agent does NOT mount the tools.
+    supports_attachment_tools: bool = False
 
     def __init__(
         self,
@@ -53,7 +60,9 @@ class BaseReActAgent:
         self.selected_tool_names: List[str] = []
         if agent_spec is not None:
             self.selected_tool_names = list(getattr(agent_spec, "tools", []) or [])
-        self._active_memory: Optional[RunMemory] = None
+        # A single agent instance serves every request thread (Flask threaded=True);
+        # RunContext makes each run's agent/memory capture atomic (see _begin_run).
+        self._run_ctx = RunContext()
         self._static_tools: Optional[List[Callable]] = None
         self._mcp_tools: Optional[List[Callable]] = None
         self._mcp_skills_text: str = ""
@@ -83,14 +92,12 @@ class BaseReActAgent:
 
     def start_run_memory(self) -> RunMemory:
         """Create and store the active memory for the current run."""
-        memory = self.create_run_memory()
-        self._active_memory = memory
-        return memory
+        return self._run_ctx.start_memory(self.create_run_memory)
 
     @property
     def active_memory(self) -> Optional[RunMemory]:
         """Return the memory currently associated with the run, if any."""
-        return self._active_memory
+        return self._run_ctx.active_memory
 
     def finalize_output(
         self,
@@ -266,21 +273,41 @@ class BaseReActAgent:
                 return str(reasoning_content)
         return ""
 
+    def _begin_run(
+        self, **kwargs
+    ) -> Tuple[Dict[str, Any], Optional[CompiledStateGraph], Optional[RunMemory]]:
+        """Prepare inputs and atomically capture this run's agent and memory.
+
+        A single agent instance serves every thread (Flask ``threaded=True``), so
+        ``self.agent`` / ``self.active_memory`` are re-pointed by each concurrent
+        run. RunContext holds its lock only across preparation and capture; the
+        stream/invoke body then works off the returned locals, so a second
+        request cannot swap the agent or memory REFERENCES this run reads
+        mid-stream. Tool callbacks that resolve ``self.active_memory`` at
+        execution time read a per-context ContextVar (see RunContext), so they
+        record into the memory of the run executing on their own thread/task,
+        not whichever run started most recently.
+        """
+        return self._run_ctx.capture(
+            self._prepare_agent_inputs,
+            get_agent_fn=lambda: self.agent,
+            refresh_fn=lambda: self.refresh_agent(force=True),
+            **kwargs,
+        )
+
     def invoke(self, **kwargs) -> PipelineOutput:
         """Synchronously invoke the agent graph and return the final output."""
         logger.debug("Invoking %s", self.__class__.__name__)
-        agent_inputs = self._prepare_agent_inputs(**kwargs)
-        if self.agent is None:
-            self.refresh_agent(force=True)
+        agent_inputs, agent, run_memory = self._begin_run(**kwargs)
         logger.debug("Agent refreshed, invoking now")
         recursion_limit = self._recursion_limit()
         try:
-            answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": recursion_limit})
+            answer_output = agent.invoke(agent_inputs, {"recursion_limit": recursion_limit})
             logger.debug("Agent invocation completed")
             logger.debug(answer_output)
             messages = self._extract_messages(answer_output)
             metadata = self._metadata_from_agent_output(answer_output)
-            output = self._build_output_from_messages(messages, metadata=metadata)
+            output = self._build_output_from_messages(messages, metadata=metadata, memory=run_memory)
             return output
         except GraphRecursionError as exc:
             logger.warning(
@@ -294,14 +321,13 @@ class BaseReActAgent:
                 recursion_limit=recursion_limit,
                 latest_messages=[],
                 agent_inputs=agent_inputs,
+                memory=run_memory,
             )
 
     def stream(self, **kwargs) -> Iterator[PipelineOutput]:
         """Stream agent updates synchronously with structured trace events."""
         logger.debug("Streaming %s", self.__class__.__name__)
-        agent_inputs = self._prepare_agent_inputs(**kwargs)
-        if self.agent is None:
-            self.refresh_agent(force=True)
+        agent_inputs, agent, run_memory = self._begin_run(**kwargs)
         recursion_limit = self._recursion_limit()
 
         all_messages: List[BaseMessage] = []  # Accumulated full messages
@@ -318,7 +344,7 @@ class BaseReActAgent:
         last_response_metadata: Optional[Dict[str, Any]] = None
         
         try:
-            for event in self.agent.stream(
+            for event in agent.stream(
                 agent_inputs,
                 stream_mode="messages",
                 config={"recursion_limit": recursion_limit},
@@ -340,9 +366,9 @@ class BaseReActAgent:
                 if response_metadata:
                     last_response_metadata = response_metadata
 
-                if self.active_memory:
+                if run_memory:
                     try:
-                        self.active_memory.record_tool_calls_from_message(message)
+                        run_memory.record_tool_calls_from_message(message)
                     except Exception as exc:
                         logger.debug("Failed to record tool calls from stream message: %s", exc)
                 
@@ -365,7 +391,7 @@ class BaseReActAgent:
                             duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
                             yield self.finalize_output(
                                 answer="",
-                                memory=self.active_memory,
+                                memory=run_memory,
                                 messages=[],
                                 metadata={
                                     "event_type": "thinking_end",
@@ -381,7 +407,7 @@ class BaseReActAgent:
                         
                         yield self.finalize_output(
                             answer="",
-                            memory=self.active_memory,
+                            memory=run_memory,
                             messages=[message],
                             metadata={"event_type": "tool_start"},
                             final=False,
@@ -393,7 +419,7 @@ class BaseReActAgent:
                     logger.debug("Received stream event type=%s: %s", type(event).__name__, str(event)[:1000])
                     yield self.finalize_output(
                         answer="",
-                        memory=self.active_memory,
+                        memory=run_memory,
                         messages=[message],
                         metadata={
                             "event_type": "tool_output",
@@ -421,7 +447,7 @@ class BaseReActAgent:
                                 thinking_start_time = time.time()
                                 yield self.finalize_output(
                                     answer="",
-                                    memory=self.active_memory,
+                                    memory=run_memory,
                                     messages=[],
                                     metadata={
                                         "event_type": "thinking_start",
@@ -437,7 +463,7 @@ class BaseReActAgent:
                                 thinking_start_time = time.time()
                                 yield self.finalize_output(
                                     answer="",
-                                    memory=self.active_memory,
+                                    memory=run_memory,
                                     messages=[],
                                     metadata={
                                         "event_type": "thinking_start",
@@ -469,7 +495,7 @@ class BaseReActAgent:
                                 last_visible_content = visible_content
                                 yield self.finalize_output(
                                     answer=visible_content,
-                                    memory=self.active_memory,
+                                    memory=run_memory,
                                     messages=[message],
                                     metadata={"event_type": "text"},
                                     final=False,
@@ -485,7 +511,7 @@ class BaseReActAgent:
                 duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
                 yield self.finalize_output(
                     answer="",
-                    memory=self.active_memory,
+                    memory=run_memory,
                     messages=[],
                     metadata={
                         "event_type": "thinking_end",
@@ -500,6 +526,7 @@ class BaseReActAgent:
                 recursion_limit=recursion_limit,
                 latest_messages=all_messages or latest_messages,
                 agent_inputs=agent_inputs,
+                memory=run_memory,
             )
             yield recursion_output
             return
@@ -515,7 +542,7 @@ class BaseReActAgent:
                 duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
                 yield self.finalize_output(
                     answer="",
-                    memory=self.active_memory,
+                    memory=run_memory,
                     messages=[],
                     metadata={
                         "event_type": "thinking_end",
@@ -529,6 +556,8 @@ class BaseReActAgent:
                 error=exc,
                 agent_inputs=agent_inputs,
                 latest_messages=all_messages or latest_messages,
+                agent=agent,
+                memory=run_memory,
             )
             yield overflow_output
             return
@@ -544,7 +573,7 @@ class BaseReActAgent:
             duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
             yield self.finalize_output(
                 answer="",
-                memory=self.active_memory,
+                memory=run_memory,
                 messages=[],
                 metadata={
                     "event_type": "thinking_end",
@@ -596,7 +625,7 @@ class BaseReActAgent:
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
-                memory=self.active_memory,
+                memory=run_memory,
                 messages=all_messages,
                 metadata=final_metadata,
                 final=True,
@@ -604,16 +633,14 @@ class BaseReActAgent:
         else:
             logger.warning("No final answer found from stream. Messages: %s",
                           [self._format_message(m) for m in all_messages[:5]])
-            output = self._build_output_from_messages(all_messages)
+            output = self._build_output_from_messages(all_messages, memory=run_memory)
             output.metadata.update(final_metadata)
             yield output
 
     async def astream(self, **kwargs) -> AsyncIterator[PipelineOutput]:
         """Stream agent updates asynchronously with structured trace events."""
         logger.debug("Streaming %s asynchronously", self.__class__.__name__)
-        agent_inputs = self._prepare_agent_inputs(**kwargs)
-        if self.agent is None:
-            self.refresh_agent(force=True)
+        agent_inputs, agent, run_memory = self._begin_run(**kwargs)
         recursion_limit = self._recursion_limit()
 
         all_messages: List[BaseMessage] = []
@@ -630,7 +657,7 @@ class BaseReActAgent:
         last_response_metadata: Optional[Dict[str, Any]] = None
         
         try:
-            async for event in self.agent.astream(
+            async for event in agent.astream(
                 agent_inputs,
                 stream_mode="messages",
                 config={"recursion_limit": recursion_limit},
@@ -651,9 +678,9 @@ class BaseReActAgent:
                 if response_metadata:
                     last_response_metadata = response_metadata
 
-                if self.active_memory:
+                if run_memory:
                     try:
-                        self.active_memory.record_tool_calls_from_message(message)
+                        run_memory.record_tool_calls_from_message(message)
                     except Exception as exc:
                         logger.debug("Failed to record tool calls from async stream message: %s", exc)
                 
@@ -675,7 +702,7 @@ class BaseReActAgent:
                             duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
                             yield self.finalize_output(
                                 answer="",
-                                memory=self.active_memory,
+                                memory=run_memory,
                                 messages=[],
                                 metadata={
                                     "event_type": "thinking_end",
@@ -722,7 +749,7 @@ class BaseReActAgent:
                                 thinking_start_time = time.time()
                                 yield self.finalize_output(
                                     answer="",
-                                    memory=self.active_memory,
+                                    memory=run_memory,
                                     messages=[],
                                     metadata={
                                         "event_type": "thinking_start",
@@ -738,7 +765,7 @@ class BaseReActAgent:
                                 thinking_start_time = time.time()
                                 yield self.finalize_output(
                                     answer="",
-                                    memory=self.active_memory,
+                                    memory=run_memory,
                                     messages=[],
                                     metadata={
                                         "event_type": "thinking_start",
@@ -783,7 +810,7 @@ class BaseReActAgent:
                 duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
                 yield self.finalize_output(
                     answer="",
-                    memory=self.active_memory,
+                    memory=run_memory,
                     messages=[],
                     metadata={
                         "event_type": "thinking_end",
@@ -798,6 +825,7 @@ class BaseReActAgent:
                 recursion_limit=recursion_limit,
                 latest_messages=all_messages or latest_messages,
                 agent_inputs=agent_inputs,
+                memory=run_memory,
             )
             yield recursion_output
             return
@@ -813,7 +841,7 @@ class BaseReActAgent:
                 duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
                 yield self.finalize_output(
                     answer="",
-                    memory=self.active_memory,
+                    memory=run_memory,
                     messages=[],
                     metadata={
                         "event_type": "thinking_end",
@@ -827,6 +855,8 @@ class BaseReActAgent:
                 error=exc,
                 agent_inputs=agent_inputs,
                 latest_messages=all_messages or latest_messages,
+                agent=agent,
+                memory=run_memory,
             )
             yield overflow_output
             return
@@ -842,7 +872,7 @@ class BaseReActAgent:
             duration_ms = int((time.time() - thinking_start_time) * 1000) if thinking_start_time else 0
             yield self.finalize_output(
                 answer="",
-                memory=self.active_memory,
+                memory=run_memory,
                 messages=[],
                 metadata={
                     "event_type": "thinking_end",
@@ -893,7 +923,7 @@ class BaseReActAgent:
         if final_answer:
             yield self.finalize_output(
                 answer=final_answer,
-                memory=self.active_memory,
+                memory=run_memory,
                 messages=all_messages,
                 metadata=final_metadata,
                 final=True,
@@ -901,7 +931,7 @@ class BaseReActAgent:
         else:
             logger.warning("No final answer found from async stream. Messages: %s",
                           [self._format_message(m) for m in all_messages[:5]])
-            output = self._build_output_from_messages(all_messages)
+            output = self._build_output_from_messages(all_messages, memory=run_memory)
             output.metadata.update(final_metadata)
             yield output
 
@@ -1268,6 +1298,16 @@ class BaseReActAgent:
         history_messages = [infer_speaker(msg[0])(msg[1]) for msg in history]
         return {"history": history_messages}
 
+    def _extra_run_tools(self, **kwargs) -> Sequence[Callable]:
+        """Per-run tools a subclass wants merged into the single agent build.
+
+        The base agent contributes none. Subclasses that expose request-scoped
+        tools (e.g. CMSCompOpsAgent's conversation-scoped attachment tools)
+        return them here so the graph is compiled once with the complete
+        toolset instead of being rebuilt after the base build.
+        """
+        return []
+
     def _prepare_agent_inputs(self, **kwargs) -> Dict[str, Any]:
         """Prepare agent state and formatted inputs shared by invoke/stream."""
         memory = self.start_run_memory()
@@ -1284,6 +1324,14 @@ class BaseReActAgent:
         extra_tools = None
         if hasattr(self, "_vector_tools"):
             extra_tools = self._vector_tools if self._vector_tools else None  # type: ignore[attr-defined]
+
+        # Let a subclass contribute per-run tools (e.g. the chat attachment
+        # tools) so the agent COMPILES ONCE with the full toolset. Rebuilding
+        # the agent after this — the old opt-in pattern — compiled the LangGraph
+        # graph twice per attachment turn and discarded the first build.
+        run_tools = self._extra_run_tools(**kwargs)
+        if run_tools:
+            extra_tools = list(extra_tools or []) + list(run_tools)
 
         self.refresh_agent(extra_tools=extra_tools)
 
@@ -1503,8 +1551,11 @@ class BaseReActAgent:
         *,
         metadata: Optional[Dict[str, Any]] = None,
         final: bool = True,
+        memory: Optional[RunMemory] = None,
     ) -> PipelineOutput:
         """Create a PipelineOutput from the agent's message history."""
+        if memory is None:
+            memory = self.active_memory
         if messages:
             answer_text = self._message_content(messages[-1]) or "No answer generated by the agent."
         else:
@@ -1512,7 +1563,7 @@ class BaseReActAgent:
         safe_metadata = dict(metadata or {})
         return self.finalize_output(
             answer=answer_text,
-            memory=self.active_memory,
+            memory=memory,
             messages=messages,
             metadata=safe_metadata,
             final=final,
@@ -1584,12 +1635,18 @@ class BaseReActAgent:
         error: Exception,
         agent_inputs: Optional[Dict[str, Any]] = None,
         latest_messages: Optional[Sequence[BaseMessage]] = None,
+        agent: Optional[CompiledStateGraph] = None,
+        memory: Optional[RunMemory] = None,
     ) -> "PipelineOutput":
         """Build a graceful response after a context-window overflow.
 
         Attempts a single retry with the last user message only; falls back to
         a plain error message if the retry also fails or is not possible.
         """
+        if agent is None:
+            agent = self.agent
+        if memory is None:
+            memory = self.active_memory
         # Try a lightweight retry with just the last human message
         if agent_inputs and "messages" in agent_inputs:
             original_messages: List[BaseMessage] = list(agent_inputs.get("messages") or [])
@@ -1598,7 +1655,7 @@ class BaseReActAgent:
             if trimmed:
                 try:
                     trimmed_inputs = {**agent_inputs, "messages": trimmed}
-                    answer_output = self.agent.invoke(
+                    answer_output = agent.invoke(
                         trimmed_inputs, {"recursion_limit": 10}
                     )
                     messages_out: List[BaseMessage] = list(
@@ -1618,7 +1675,7 @@ class BaseReActAgent:
                         )
                         return self.finalize_output(
                             answer=answer_text,
-                            memory=self.active_memory,
+                            memory=memory,
                             messages=messages_out,
                             metadata={"event_type": "final", "context_overflow_retry": True},
                             final=True,
@@ -1638,7 +1695,7 @@ class BaseReActAgent:
         )
         return self.finalize_output(
             answer=self._message_content(fallback_msg),
-            memory=self.active_memory,
+            memory=memory,
             messages=list(latest_messages or []) + [fallback_msg],
             metadata={"event_type": "error", "error_type": "context_overflow"},
             final=True,
@@ -1651,14 +1708,18 @@ class BaseReActAgent:
         recursion_limit: int,
         latest_messages: Sequence[BaseMessage],
         agent_inputs: Optional[Dict[str, Any]] = None,
+        memory: Optional[RunMemory] = None,
     ) -> PipelineOutput:
         """Build a best-effort response after recursion exhaustion."""
+        if memory is None:
+            memory = self.active_memory
         metadata = self._recursion_metadata(recursion_limit, error)
         wrap_message = self._generate_wrap_up_message(
             recursion_limit=recursion_limit,
             error=error,
             latest_messages=latest_messages,
             agent_inputs=agent_inputs,
+            memory=memory,
         )
         messages: List[BaseMessage] = list(latest_messages) if latest_messages else []
         if wrap_message:
@@ -1674,7 +1735,7 @@ class BaseReActAgent:
             )
         return self.finalize_output(
             answer=self._message_content(messages[-1]),
-            memory=self.active_memory,
+            memory=memory,
             messages=messages,
             metadata=metadata,
             final=True,
@@ -1687,14 +1748,18 @@ class BaseReActAgent:
         recursion_limit: int,
         latest_messages: Sequence[BaseMessage],
         agent_inputs: Optional[Dict[str, Any]] = None,
+        memory: Optional[RunMemory] = None,
     ) -> PipelineOutput:
         """Async wrapper to build a best-effort response after recursion exhaustion."""
+        if memory is None:
+            memory = self.active_memory
         metadata = self._recursion_metadata(recursion_limit, error)
         wrap_message = await self._generate_wrap_up_message_async(
             recursion_limit=recursion_limit,
             error=error,
             latest_messages=latest_messages,
             agent_inputs=agent_inputs,
+            memory=memory,
         )
         messages: List[BaseMessage] = list(latest_messages) if latest_messages else []
         if wrap_message:
@@ -1710,7 +1775,7 @@ class BaseReActAgent:
             )
         return self.finalize_output(
             answer=self._message_content(messages[-1]),
-            memory=self.active_memory,
+            memory=memory,
             messages=messages,
             metadata=metadata,
             final=True,
@@ -1723,9 +1788,10 @@ class BaseReActAgent:
         error: Exception,
         latest_messages: Sequence[BaseMessage],
         agent_inputs: Optional[Dict[str, Any]],
+        memory: Optional[RunMemory] = None,
     ) -> Optional[BaseMessage]:
         """Perform a single LLM-only wrap-up to summarize steps and answer."""
-        prompt = self._build_wrap_up_prompt(recursion_limit, error, latest_messages, agent_inputs)
+        prompt = self._build_wrap_up_prompt(recursion_limit, error, latest_messages, agent_inputs, memory=memory)
         try:
             response = self.agent_llm.invoke(
                 [
@@ -1751,9 +1817,10 @@ class BaseReActAgent:
         error: Exception,
         latest_messages: Sequence[BaseMessage],
         agent_inputs: Optional[Dict[str, Any]],
+        memory: Optional[RunMemory] = None,
     ) -> Optional[BaseMessage]:
         """Async LLM-only wrap-up to summarize steps and answer."""
-        prompt = self._build_wrap_up_prompt(recursion_limit, error, latest_messages, agent_inputs)
+        prompt = self._build_wrap_up_prompt(recursion_limit, error, latest_messages, agent_inputs, memory=memory)
         try:
             if hasattr(self.agent_llm, "ainvoke"):
                 response = await self.agent_llm.ainvoke(
@@ -1786,6 +1853,7 @@ class BaseReActAgent:
         error: Exception,
         latest_messages: Sequence[BaseMessage],
         agent_inputs: Optional[Dict[str, Any]],
+        memory: Optional[RunMemory] = None,
     ) -> str:
         """Construct a concise wrap-up prompt using gathered context."""
         messages = list(latest_messages or [])
@@ -1798,7 +1866,8 @@ class BaseReActAgent:
         for msg in messages[-6:]:
             conversation_snippets.append(f"- {self._format_message(msg)}")
 
-        memory = self.active_memory
+        if memory is None:
+            memory = self.active_memory
         notes = memory.intermediate_steps() if memory else []
         document_summaries: List[str] = []
         if memory:

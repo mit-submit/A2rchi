@@ -144,6 +144,48 @@ services:
         enabled: true
 ```
 
+### Conversation attachments
+
+Per-conversation file attachments in the chat UI (`services.chat_app.attachments`):
+
+Defaults track the Claude/ChatGPT attachment limits (30 MB per file, 20 files
+per chat). File types are sniffed, not allowlisted: any file whose content
+reads as text is accepted, whatever its extension.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `true` | Feature flag; `false` removes the endpoints and the paperclip. |
+| `max_file_mb` | `30` | Per-file size cap (server-enforced). Uploads are stream-read only up to this cap, and the whole-request ceiling auto-lifts above it, so values over 100 MB are honored. |
+| `max_per_conversation` | `20` | Attachment count cap per conversation. |
+| `max_total_mb_per_user` | `512` | Per-user total attachment storage cap (sum of file sizes across every conversation). An upload that would exceed it is rejected with a friendly message. `0` disables the quota. |
+| `abandoned_conversation_ttl_hours` | `72` | A brand-new chat that only ever received an attachment (never a message) is swept on service startup once older than this many hours; its attachments cascade away. `0` disables the sweep. |
+| `text_budget_chars` | `400000` | Total attachment text injected per turn (~100k tokens); oldest content is truncated first, with a visible notice. Also caps the text kept from a zip bundle. |
+| `text_poor_page_chars` | `50` | A PDF page with less extractable text than this counts as "text-poor" (scanned-PDF warning). Kept low so sparse slide decks aren't flagged. |
+| `zip_max_decompressed_mb` | `500` | Decompressed-bytes read budget per zip. Not a rejection: once spent, remaining files are listed by name only. |
+| `zip_max_entries` | `1000` | Zip entries opened per bundle. Not a rejection: entries beyond it are counted in a warning. |
+| `agent_tools_enabled` | `true` | Mounts read-only attachment tools on agent pipelines whenever the conversation has attachments. |
+| `inline_char_limit` | `32000` | Attachments up to this size are inlined into the prompt; bigger ones inject a manifest and are tool-read. |
+| `tool_read_max_chars` | `20000` | Max characters returned per `read_attachment_file` call (continue with `offset`). |
+| `tool_read_max_bytes` | `8388608` | Per-entry decompression hard cap for on-demand zip reads. |
+| `tool_list_max_chars` | `40000` | Max characters of `list_attachment_files` output. |
+| `tool_search_max_results` | `20` | Max matches returned by `search_attachment_files`. |
+
+Attachments are stored in PostgreSQL (`conversation_attachments`) and are
+deleted by `ON DELETE CASCADE` when their conversation is deleted. They never
+enter the shared vector store. Total per-user storage is bounded by
+`max_total_mb_per_user`, and conversations abandoned right after an
+attach-to-new-chat are reclaimed by the `abandoned_conversation_ttl_hours`
+startup sweep.
+
+Tool behavior notes: `list_attachment_files` accepts optional `prefix`/`glob`
+filters to list one folder of a bundle; `search_attachment_files` matches file
+contents **and** file names; `read_attachment_file` accepts `mode="raw"` to
+return the stored original text (bypassing extraction) when extraction looks
+partial. HTML files whose visible text is a small fraction of the file (for
+example single-file apps holding their data in `<script>` blocks) get the raw
+script/style content appended at extraction time, with a warning recorded on
+the attachment and shown to the model.
+
 ### `services.postgres`
 
 PostgreSQL database settings.

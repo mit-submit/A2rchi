@@ -404,6 +404,25 @@ CREATE INDEX IF NOT EXISTS idx_conversations_conv ON conversations(conversation_
 CREATE INDEX IF NOT EXISTS idx_conversations_ts ON conversations(ts);
 CREATE INDEX IF NOT EXISTS idx_conversations_model ON conversations(model_used);
 
+-- Per-conversation attachments (private to one conversation; cascade with it)
+CREATE TABLE IF NOT EXISTS conversation_attachments (
+    attachment_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id INTEGER NOT NULL
+                    REFERENCES conversation_metadata(conversation_id) ON DELETE CASCADE,
+    owner           TEXT NOT NULL,
+    message_id      INTEGER,
+    filename        TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    size_bytes      BIGINT NOT NULL,
+    extension       TEXT NOT NULL,
+    original_bytes  BYTEA NOT NULL,
+    extracted_text  TEXT NOT NULL,
+    extraction_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_conv_attachments_conversation
+    ON conversation_attachments(conversation_id);
+
 -- Feedback on messages
 CREATE TABLE IF NOT EXISTS feedback (
     mid INTEGER NOT NULL REFERENCES conversations(message_id) ON DELETE CASCADE,
