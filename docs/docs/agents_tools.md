@@ -199,39 +199,16 @@ Archi supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.i
 
 ### How It Works
 
-1. MCP servers are defined in your deployment runtime configuration
+1. MCP servers are declared in a `.mcp.json` file next to your deployment config
 2. An agent spec includes `mcp` in its `tools` list to opt in
 3. At agent initialization, Archi connects to the MCP servers and discovers available tools
 4. The MCP tools are added to the agent's toolset alongside built-in tools
 
 ### Configuration
 
-Define MCP servers in your deployment configuration:
-
-```yaml
-mcp_servers:
-  my_server:
-    transport: "stdio"
-    command: "uvx"
-    args:
-      - "mcp-server-example"
-  web_search:
-    transport: "sse"
-    url: "http://localhost:8080/sse"
-```
-
-Each server entry follows the format expected by the `langchain-mcp-adapters` library:
-
-- **`transport`**: Communication method — `"stdio"` (subprocess), `"streamable_http"` (HTTP), or `"sse"` (HTTP Server-Sent Events)
-- **`command`** / **`args`**: For `stdio` transport, the command to launch the server
-- **`url`** / **`headers`**: For HTTP-based transports, the server endpoint and optional request headers
-
-### `.mcp.json` (Claude-compatible)
-
-Instead of (or in addition to) the YAML block, servers can be declared in a
-`.mcp.json` file placed **next to the deployment config** — the same
-project-scoped file format used by Claude Code and other MCP clients, so one
-file can serve both:
+Declare MCP servers in a `.mcp.json` file placed **next to the deployment
+config** — the same project-scoped file format used by Claude Code and other
+MCP clients, so one file can serve both:
 
 ```json
 {
@@ -260,18 +237,25 @@ Details:
   `stdio`, `"http"` → `streamable_http`, `"sse"` → `sse`. When `type` is
   omitted it is inferred: entries with `command` are stdio, entries with `url`
   are HTTP. Archi-only fields (`path`, `host_file_mounts`, `env_from_secrets`,
-  `build_context`, `image`, `skill`) are allowed in entries and behave exactly
-  as in the YAML block; MCP clients like Claude Code ignore fields they don't
-  know, so the file stays shareable.
-- **Precedence**: if a server name appears in both `.mcp.json` and the YAML
-  `mcp_servers:` block, the YAML definition wins (a warning is logged).
+  `build_context`, `image`, `skill`) are allowed in entries and are ignored by
+  MCP clients like Claude Code that don't know them, so the file stays
+  shareable.
 - **Environment variable expansion**: string values may reference `${VAR}` or
   `${VAR:-default}` (Claude Code's syntax). Expansion happens **at connect
   time inside the service container**, against the container's environment —
   so secrets like the bearer token above come from the deployment's env/secret
   wiring and are never baked into rendered config files. A reference to an
   unset variable with no default disables that server with a clear error in
-  the logs. (Expansion applies to YAML-defined servers too.)
+  the logs.
+
+Each server entry follows the format expected by the `langchain-mcp-adapters`
+library once normalized:
+
+- **`transport`** (from `type`): `stdio` (subprocess), `streamable_http`
+  (HTTP), or `sse` (HTTP Server-Sent Events)
+- **`command`** / **`args`**: for `stdio`, the command to launch the server
+- **`url`** / **`headers`**: for HTTP-based transports, the endpoint and
+  optional request headers
 
 ### Agent Spec Example
 

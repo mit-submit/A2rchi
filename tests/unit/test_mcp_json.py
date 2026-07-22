@@ -124,7 +124,7 @@ def test_expand_leaves_non_placeholder_dollars_alone():
 
 
 # ---------------------------------------------------------------------------
-# ConfigurationManager: discovery + merge precedence
+# ConfigurationManager: .mcp.json discovery
 # ---------------------------------------------------------------------------
 
 def _write_yaml(tmp_path, config, filename="config.yaml"):
@@ -141,18 +141,16 @@ def test_config_manager_merges_adjacent_mcp_json(tmp_path):
     assert servers["from-file"]["transport"] == "streamable_http"
 
 
-def test_config_manager_yaml_wins_on_collision(tmp_path):
+def test_config_manager_yaml_block_ignored(tmp_path):
+    # A stale `mcp_servers:` block in the YAML is no longer read; the .mcp.json
+    # fully defines the set.
     config_path = _write_yaml(tmp_path, {
         "name": "test", "services": {},
-        "mcp_servers": {"shared": {"transport": "streamable_http", "url": "http://yaml/mcp"},
-                        "yaml-only": {"transport": "stdio", "command": "python"}},
+        "mcp_servers": {"yaml-only": {"transport": "stdio", "command": "python"}},
     })
-    _write_mcp_json(tmp_path, {"shared": {"type": "http", "url": "http://json/mcp"},
-                               "json-only": {"type": "http", "url": "http://json2/mcp"}})
+    _write_mcp_json(tmp_path, {"from-file": {"type": "http", "url": "http://json/mcp"}})
     manager = ConfigurationManager([str(config_path)], env=None)
-    servers = manager.config["mcp_servers"]
-    assert servers["shared"]["url"] == "http://yaml/mcp"
-    assert set(servers) == {"shared", "yaml-only", "json-only"}
+    assert set(manager.config["mcp_servers"]) == {"from-file"}
 
 
 def test_config_manager_explicit_mcp_servers_file(tmp_path):
@@ -175,7 +173,17 @@ def test_config_manager_missing_explicit_file_fails_load(tmp_path):
         ConfigurationManager([str(config_path)], env=None)
 
 
-def test_config_manager_no_mcp_json_leaves_config_untouched(tmp_path):
+def test_config_manager_no_mcp_json_yields_empty(tmp_path):
     config_path = _write_yaml(tmp_path, {"name": "test", "services": {}})
     manager = ConfigurationManager([str(config_path)], env=None)
-    assert "mcp_servers" not in manager.config
+    assert manager.config["mcp_servers"] == {}
+
+
+def test_config_manager_yaml_block_without_json_yields_empty(tmp_path):
+    # No .mcp.json present: a YAML `mcp_servers:` block is dropped, not used.
+    config_path = _write_yaml(tmp_path, {
+        "name": "test", "services": {},
+        "mcp_servers": {"yaml-only": {"transport": "stdio", "command": "python"}},
+    })
+    manager = ConfigurationManager([str(config_path)], env=None)
+    assert manager.config["mcp_servers"] == {}

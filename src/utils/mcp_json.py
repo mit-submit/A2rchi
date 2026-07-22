@@ -1,9 +1,9 @@
 """
 Claude-style `.mcp.json` support.
 
-MCP servers can be declared in a `.mcp.json` file next to a deployment config —
-the same file format Claude Code and other MCP clients use — instead of (or in
-addition to) the YAML config's `mcp_servers:` block:
+MCP servers are declared in a `.mcp.json` file next to a deployment config —
+the same project-scoped file format Claude Code and other MCP clients use, so
+one file serves both archi and Claude:
 
     {
       "mcpServers": {
