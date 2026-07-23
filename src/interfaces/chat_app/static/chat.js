@@ -1761,14 +1761,16 @@ const UI = {
     const currentForm = this.collectAgentSpecForm();
     const selectedTools = currentForm.tools || [];
     const items = tools.map((tool) => {
-      const toolName = tool.name || '';
+      // Tolerate both shapes: an object {name, description} or a bare name string.
+      const toolName = typeof tool === 'string' ? tool : (tool.name || '');
+      const toolDesc = typeof tool === 'string' ? '' : (tool.description || '');
       const checked = selectedTools.includes(toolName) ? 'checked' : '';
       return `
       <label class="agent-spec-tool">
         <input type="checkbox" class="agent-spec-tool-checkbox" value="${Utils.escapeHtml(toolName)}" ${checked} />
         <div class="agent-spec-tool-info">
           <div class="agent-spec-tool-name">${Utils.escapeHtml(toolName)}</div>
-          <div class="agent-spec-tool-desc">${Utils.escapeHtml(tool.description || '')}</div>
+          <div class="agent-spec-tool-desc">${Utils.escapeHtml(toolDesc)}</div>
         </div>
       </label>`;
     });

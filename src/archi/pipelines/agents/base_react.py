@@ -2,6 +2,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, Asyn
 import re
 import time
 import uuid
+import json
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
@@ -1170,9 +1171,47 @@ class BaseReActAgent:
                 runner = self._async_runner
                 tool_name = async_tool.name
 
+                def sanitize_value(v):
+                    """Recursively sanitize a value, including JSON-encoded strings."""
+                    if isinstance(v, str):
+                        # Check if this string is itself JSON - if so, parse and re-serialize it
+                        # to catch any malformed content (trailing commas, etc.)
+                        stripped = v.strip()
+                        if stripped.startswith(("{", "[")):
+                            try:
+                                parsed = json.loads(stripped)
+                                return json.dumps(parsed)  # re-serialize clean
+                            except json.JSONDecodeError:
+                                # It's a JSON string but malformed - try to fix trailing commas
+                                # Remove trailing commas before } or ]
+                                fixed = re.sub(r",\s*([}\]])", r"\1", stripped)
+                                try:
+                                    parsed = json.loads(fixed)
+                                    return json.dumps(parsed)
+                                except json.JSONDecodeError:
+                                    logger.warning("Could not fix malformed JSON string: %s", v[:100])
+                                    return v  # pass through, will still fail but at least we tried
+                        return v
+                    elif isinstance(v, dict):
+                        return {k: sanitize_value(val) for k, val in v.items()}
+                    elif isinstance(v, list):
+                        return [sanitize_value(item) for item in v]
+                    else:
+                        try:
+                            return json.loads(json.dumps(v, default=str))
+                        except (TypeError, ValueError):
+                            return v
+
                 def sync_wrapper(*args, **kwargs):
                     if runner.in_loop_thread():
                         raise RuntimeError("sync_wrapper called from MCP loop thread; would deadlock")
+                    # Sanitize kwargs to ensure valid JSON-serializable arguments
+                    sanitized_kwargs = {}
+                    for k, v in kwargs.items():
+                        if k in {"config", "run_manager", "callbacks"}:
+                            sanitized_kwargs[k] = v
+                            continue
+                        sanitized_kwargs[k] = sanitize_value(v)
                     # Streamed tool_call chunks arrive without args; record here so the UI can resolve them by tool_call_id.
                     try:
                         recorded = {
@@ -1187,7 +1226,7 @@ class BaseReActAgent:
                             "Failed to record MCP tool input for %s: %s", tool_name, exc
                         )
                     # Run on the background loop - NOT a new loop!
-                    return runner.run(async_tool.coroutine(*args, **kwargs))
+                    return runner.run(async_tool.coroutine(*args, **sanitized_kwargs))
 
                 # Assign the wrapper to the tool's 'func' attribute
                 async_tool.func = sync_wrapper
