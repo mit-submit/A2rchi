@@ -1066,6 +1066,11 @@ class BaseReActAgent:
         """Explicitly set the static tools cache."""
         self._static_tools = list(value)
 
+    @property
+    def loaded_mcp_tools(self) -> List[Callable]:
+        """Return the MCP tools successfully loaded for this agent."""
+        return list(self._mcp_tools or [])
+
     def refresh_agent(
         self,
         *,
@@ -1134,14 +1139,14 @@ class BaseReActAgent:
         static_names = [name for name in selected if name != "mcp"]
         return self._select_tools_from_registry(static_names)
 
-    def _build_mcp_tools(self) -> List[Callable]:
+    def _build_mcp_tools(self) -> Optional[List[Callable]]:
         """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
         try:
             self._async_runner = AsyncLoopThread.get_instance()
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client())
+            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client(self.config))
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None

@@ -1,0 +1,269 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+DATASET_FIELDS = {
+    "id",
+    "question",
+    "expected_answer",
+    "freshness",
+    "answer_mode",
+    "answer_source",
+    "expected_atoms",
+}
+FRESHNESS_VALUES = {"static", "live"}
+ANSWER_MODE_VALUES = {"direct_answer", "needs_information", "escalate", "refuse"}
+ANSWER_SOURCE_VALUES = {"rucio", "okg", "document", "external_system", "composite"}
+OUTCOME_VALUES = {"entailed", "not_mentioned", "contradicted", "unjudgeable"}
+
+
+@dataclass(frozen=True)
+class Atom:
+    id: str
+    text: str
+    required: bool
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class DatasetItem:
+    id: str
+    question: str
+    expected_answer: str
+    freshness: str
+    answer_mode: Optional[str]
+    answer_source: Optional[str]
+    expected_atoms: Optional[List[Atom]]
+
+
+@dataclass(frozen=True)
+class Judgment:
+    atom_id: str
+    outcome: str
+    rationale: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def _strict_keys(value: Dict[str, Any], allowed: set, context: str) -> None:
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ValueError(f"{context} has unknown field(s): {', '.join(unknown)}")
+
+
+def _nonempty_string(
+    value: Any, context: str, *, normalize_newlines: bool = False
+) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{context} must be a non-empty string")
+    if "\x00" in value:
+        raise ValueError(f"{context} must not contain NUL characters")
+    if normalize_newlines:
+        return value.replace("\r\n", "\n").replace("\r", "\n")
+    return value
+
+
+def _optional_enum(value: Any, allowed: set, context: str) -> Optional[str]:
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in allowed:
+        raise ValueError(f"{context} must be one of: {', '.join(sorted(allowed))}")
+    return value
+
+
+def validate_atoms(
+    raw_atoms: Any,
+    *,
+    context: str,
+    require_one: bool,
+    require_required: bool,
+) -> List[Atom]:
+    if not isinstance(raw_atoms, list):
+        raise ValueError(f"{context} must be a list")
+    if require_one and not raw_atoms:
+        raise ValueError(f"{context} must contain at least one atom")
+    atoms: List[Atom] = []
+    seen = set()
+    for index, raw in enumerate(raw_atoms):
+        atom_context = f"{context}[{index}]"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{atom_context} must be an object")
+        _strict_keys(raw, {"id", "text", "required"}, atom_context)
+        atom_id = _nonempty_string(raw.get("id"), f"{atom_context}.id")
+        text = _nonempty_string(raw.get("text"), f"{atom_context}.text")
+        required = raw.get("required")
+        if not isinstance(required, bool):
+            raise ValueError(f"{atom_context}.required must be a boolean")
+        if atom_id in seen:
+            raise ValueError(f"{context} contains duplicate atom id '{atom_id}'")
+        seen.add(atom_id)
+        atoms.append(Atom(id=atom_id, text=text, required=required))
+    if require_required and not any(atom.required for atom in atoms):
+        raise ValueError(f"{context} must contain at least one required atom")
+    return atoms
+
+
+def derive_item_id(question: str, expected_answer: str) -> str:
+    canonical = json.dumps(
+        {"question": question, "expected_answer": expected_answer},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"qa-{hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:20]}"
+
+
+def validate_dataset_rows(raw_rows: Any) -> List[DatasetItem]:
+    if not isinstance(raw_rows, list):
+        raise ValueError("dataset JSON must contain an array")
+    items: List[DatasetItem] = []
+    seen_ids = set()
+    for index, raw in enumerate(raw_rows):
+        context = f"dataset row {index + 1}"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{context} must be an object")
+        _strict_keys(raw, DATASET_FIELDS, context)
+        question = _nonempty_string(
+            raw.get("question"), f"{context}.question", normalize_newlines=True
+        )
+        expected_answer = _nonempty_string(
+            raw.get("expected_answer"),
+            f"{context}.expected_answer",
+            normalize_newlines=True,
+        )
+        freshness = raw.get("freshness")
+        if freshness not in FRESHNESS_VALUES:
+            raise ValueError(
+                f"{context}.freshness must be one of: {', '.join(sorted(FRESHNESS_VALUES))}"
+            )
+        explicit_id = raw.get("id")
+        item_id = (
+            _nonempty_string(explicit_id, f"{context}.id")
+            if explicit_id is not None
+            else derive_item_id(question, expected_answer)
+        )
+        if item_id in seen_ids:
+            raise ValueError(f"dataset contains duplicate or colliding id '{item_id}'")
+        seen_ids.add(item_id)
+        expected_atoms = None
+        if "expected_atoms" in raw:
+            expected_atoms = validate_atoms(
+                raw["expected_atoms"],
+                context=f"{context}.expected_atoms",
+                require_one=True,
+                require_required=True,
+            )
+        items.append(
+            DatasetItem(
+                id=item_id,
+                question=question,
+                expected_answer=expected_answer,
+                freshness=freshness,
+                answer_mode=_optional_enum(
+                    raw.get("answer_mode"), ANSWER_MODE_VALUES, f"{context}.answer_mode"
+                ),
+                answer_source=_optional_enum(
+                    raw.get("answer_source"),
+                    ANSWER_SOURCE_VALUES,
+                    f"{context}.answer_source",
+                ),
+                expected_atoms=expected_atoms,
+            )
+        )
+    return items
+
+
+def load_dataset(path: Path) -> Tuple[str, List[DatasetItem], bytes]:
+    if not path.exists() or not path.is_file():
+        raise ValueError(f"dataset must be an existing file: {path}")
+    suffix = path.suffix.lower()
+    if suffix not in {".json", ".jsonl"}:
+        raise ValueError("dataset must use .json or .jsonl")
+    try:
+        raw_bytes = path.read_bytes()
+        text = raw_bytes.decode("utf-8")
+        if suffix == ".json":
+            rows = json.loads(text)
+        else:
+            rows = []
+            for line_number, line in enumerate(text.splitlines(), 1):
+                if not line.strip():
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"invalid JSONL at line {line_number}: {exc.msg}"
+                    ) from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError("dataset must be UTF-8 encoded") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON dataset: {exc.msg}") from exc
+    return suffix[1:], validate_dataset_rows(rows), raw_bytes
+
+
+def validate_gold_output(raw: Any, *, context: str) -> List[Atom]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{context} must be an object")
+    _strict_keys(raw, {"atoms"}, context)
+    return validate_atoms(
+        raw.get("atoms"),
+        context=f"{context}.atoms",
+        require_one=True,
+        require_required=True,
+    )
+
+
+def validate_judgments(
+    raw: Any,
+    *,
+    gold_atoms: Sequence[Atom],
+    context: str,
+) -> List[Judgment]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{context} must be an object")
+    _strict_keys(raw, {"judgments"}, context)
+    raw_judgments = raw.get("judgments")
+    if not isinstance(raw_judgments, list):
+        raise ValueError(f"{context}.judgments must be a list")
+    gold_ids = {atom.id for atom in gold_atoms}
+    judgments: List[Judgment] = []
+    seen = set()
+    allowed = {"atom_id", "outcome", "rationale"}
+    for index, raw_judgment in enumerate(raw_judgments):
+        item_context = f"{context}.judgments[{index}]"
+        if not isinstance(raw_judgment, dict):
+            raise ValueError(f"{item_context} must be an object")
+        _strict_keys(raw_judgment, allowed, item_context)
+        atom_id = _nonempty_string(
+            raw_judgment.get("atom_id"), f"{item_context}.atom_id"
+        )
+        if atom_id not in gold_ids:
+            raise ValueError(f"{item_context} references unknown gold atom '{atom_id}'")
+        if atom_id in seen:
+            raise ValueError(f"{context} contains duplicate judgment for '{atom_id}'")
+        seen.add(atom_id)
+        outcome = raw_judgment.get("outcome")
+        if outcome not in OUTCOME_VALUES:
+            raise ValueError(f"{item_context}.outcome must be a supported outcome")
+        rationale = _nonempty_string(
+            raw_judgment.get("rationale"), f"{item_context}.rationale"
+        )
+        judgments.append(
+            Judgment(
+                atom_id=atom_id,
+                outcome=outcome,
+                rationale=rationale,
+            )
+        )
+    missing = sorted(gold_ids - seen)
+    if missing:
+        raise ValueError(f"{context} is missing judgment(s) for: {', '.join(missing)}")
+    return judgments
