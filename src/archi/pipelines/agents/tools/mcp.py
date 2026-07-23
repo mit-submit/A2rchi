@@ -120,7 +120,7 @@ async def initialize_mcp_client() -> Tuple[Optional[MultiServerMCPClient], List[
         else:
             # For HTTP-based transports, `env` is for the sidecar container (compose),
             # not the MCP client connection — drop it here.
-            if server_cfg.get("env").get("httpx_client_factory"):
+            if (server_cfg.get("env") or {}).get("httpx_client_factory"):
                 cfg["httpx_client_factory"] = lambda **kwargs: mcp_http_client_factory(verify=server_cfg.get("host_file_mounts")[0],**kwargs)
             cfg.pop("env", None)
         client_configs[name] = cfg
