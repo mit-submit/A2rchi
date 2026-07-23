@@ -5,72 +5,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Minimal stubs so tests can run without langchain-core installed.
-if "langchain_core" not in sys.modules:
-    langchain_core = types.ModuleType("langchain_core")
-    sys.modules["langchain_core"] = langchain_core
+# Heavy-dep stubs live in tests/unit/conftest.py (guarded, shared).
 
-if "langchain_core.documents" not in sys.modules:
-    documents_module = types.ModuleType("langchain_core.documents")
-    documents_module.Document = object
-    sys.modules["langchain_core.documents"] = documents_module
 
-if "langchain_core.embeddings" not in sys.modules:
-    embeddings_module = types.ModuleType("langchain_core.embeddings")
-    embeddings_module.Embeddings = object
-    sys.modules["langchain_core.embeddings"] = embeddings_module
 
-if "langchain_core.vectorstores" not in sys.modules:
-    vectorstores_module = types.ModuleType("langchain_core.vectorstores")
-    vectorstores_module.VectorStore = object
-    sys.modules["langchain_core.vectorstores"] = vectorstores_module
 
-if "nltk" not in sys.modules:
-    nltk_module = types.ModuleType("nltk")
-    nltk_module.tokenize = types.SimpleNamespace(word_tokenize=lambda text: text.split())
-    nltk_module.stem = types.SimpleNamespace(PorterStemmer=lambda: types.SimpleNamespace(stem=lambda w: w))
-    nltk_module.download = lambda *_args, **_kwargs: None
-    sys.modules["nltk"] = nltk_module
 
-if "langchain_text_splitters" not in sys.modules:
-    sys.modules["langchain_text_splitters"] = types.ModuleType("langchain_text_splitters")
 
-if "langchain_text_splitters.character" not in sys.modules:
-    character_module = types.ModuleType("langchain_text_splitters.character")
 
-    class _DummyCharacterTextSplitter:
-        def __init__(self, *args, **kwargs):
-            pass
 
-        def split_documents(self, docs):
-            return docs
 
-    character_module.CharacterTextSplitter = _DummyCharacterTextSplitter
-    sys.modules["langchain_text_splitters.character"] = character_module
-
-if "langchain_community" not in sys.modules:
-    sys.modules["langchain_community"] = types.ModuleType("langchain_community")
-
-if "langchain_community.document_loaders" not in sys.modules:
-    loaders_module = types.ModuleType("langchain_community.document_loaders")
-
-    class _DummyLoader:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def load(self):
-            return []
-
-    loaders_module.BSHTMLLoader = _DummyLoader
-    loaders_module.PyPDFLoader = _DummyLoader
-    loaders_module.PythonLoader = _DummyLoader
-    loaders_module.TextLoader = _DummyLoader
-    sys.modules["langchain_community.document_loaders"] = loaders_module
-
-if "langchain_community.document_loaders.text" not in sys.modules:
-    text_module = types.ModuleType("langchain_community.document_loaders.text")
-    text_module.TextLoader = sys.modules["langchain_community.document_loaders"].TextLoader
-    sys.modules["langchain_community.document_loaders.text"] = text_module
 
 from src.data_manager.vectorstore import manager as manager_module
 from src.data_manager.vectorstore.manager import VectorStoreManager

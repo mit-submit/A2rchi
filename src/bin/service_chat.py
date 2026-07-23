@@ -7,9 +7,11 @@ from flask import Flask
 from src.interfaces.chat_app.api import register_api
 from src.interfaces.chat_app.app import FlaskAppWrapper
 from src.utils.env import read_secret
-from src.utils.logging import setup_logging
+from src.utils.logging import get_logger, setup_logging
 from src.utils.postgres_service_factory import PostgresServiceFactory
 from src.utils.config_access import get_full_config
+
+logger = get_logger(__name__)
 
 
 def main():
@@ -24,6 +26,19 @@ def main():
     # Set up shared Postgres services (expects config already in DB)
     factory = PostgresServiceFactory.from_env(password_override=read_secret("PG_PASSWORD"))
     PostgresServiceFactory.set_instance(factory)
+
+    # Playbook schema (idempotent migration for pre-existing volumes) runs once at
+    # service startup, not inside the Flask wrapper. A failure must not block
+    # startup: the chat flow tolerates a missing side table (playbook tracking
+    # degrades; chat keeps working).
+    try:
+        factory.playbook_service.ensure_schema()
+    except Exception as exc:
+        logger.error(
+            "Could not ensure playbook schema — playbook features will degrade "
+            "(no turn tracking, chip-less conversation loads) until it succeeds: %s",
+            exc,
+        )
 
     # Reload config from Postgres (runtime source of truth)
     config = get_full_config()

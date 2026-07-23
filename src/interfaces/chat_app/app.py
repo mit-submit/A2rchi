@@ -45,7 +45,7 @@ from src.archi.utils.output_dataclass import PipelineOutput
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
 from src.data_manager.vectorstore.manager import VectorStoreManager
-from src.utils.env import read_secret
+from src.utils.env import read_secret, read_or_create_persistent_secret
 from src.utils.logging import get_logger
 from src.utils.config_access import get_full_config, get_services_config, get_global_config, get_dynamic_config
 from src.utils.config_service import ConfigService, StaticConfig
@@ -55,12 +55,23 @@ from src.utils.sql import (
     SQL_LIST_CONVERSATIONS, SQL_GET_CONVERSATION_METADATA, SQL_DELETE_CONVERSATION,
     SQL_LIST_CONVERSATIONS_BY_USER, SQL_GET_CONVERSATION_METADATA_BY_USER,
     SQL_DELETE_CONVERSATION_BY_USER, SQL_UPDATE_CONVERSATION_TIMESTAMP_BY_USER,
-    SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK, SQL_DELETE_REACTION_FEEDBACK,
+    SQL_INSERT_TOOL_CALLS, SQL_QUERY_CONVO_WITH_FEEDBACK,
+    SQL_QUERY_CONVO_WITH_FEEDBACK_NO_PLAYBOOKS, SQL_DELETE_REACTION_FEEDBACK,
     SQL_GET_REACTION_FEEDBACK,
     SQL_CREATE_AGENT_TRACE, SQL_UPDATE_AGENT_TRACE, SQL_GET_AGENT_TRACE,
     SQL_GET_TRACE_BY_MESSAGE, SQL_GET_ACTIVE_TRACE, SQL_CANCEL_ACTIVE_TRACES,
 )
+from src.utils.playbook_service import (
+    PlaybookService, PlaybookNotFoundError,
+    playbook_invocation_text, resolve_playbook_owner,
+)
+from src.archi.pipelines.agents.tools.playbook_tools import (
+    set_playbook_owner, get_playbook_owner,
+    set_pending_playbook, get_pending_playbook, clear_pending_playbook,
+    classify_playbook_tool_result,
+)
 from src.interfaces.chat_app.document_utils import *
+from src.interfaces.chat_app.playbook_routes import register_playbooks
 from src.interfaces.chat_app.service_alerts import (
     register_service_alerts, get_active_banner_alerts, is_alert_manager,
 )
@@ -77,7 +88,9 @@ from src.utils.ab_testing import (
     normalize_ab_trace_mode,
     resolve_ab_agents_dir,
 )
-from src.interfaces.chat_app.event_formatter import PipelineEventFormatter
+from src.interfaces.chat_app.event_formatter import (
+    PipelineEventFormatter, build_playbook_applied_events, playbook_loads_from_events,
+)
 from src.utils.conversation_service import ConversationService
 from src.utils.user_service import UserService
 from src.utils.ab_agent_spec_service import ABAgentSpecService, ABAgentSpecRecord
@@ -274,6 +287,65 @@ class ChatRequestContext:
     model_used: Optional[str] = None
     provider_used: Optional[str] = None
     pipeline_used: Optional[str] = None
+    # Name of the user-invoked playbook applied to this turn (None if none). The clean
+    # `content` is stored/titled; the playbook body is injected only into `history`.
+    playbook_name: Optional[str] = None
+    playbook_id: Optional[int] = None
+
+
+def _pooled_playbook_service(pg_config) -> PlaybookService:
+    """PlaybookService on the process-wide pooled factory when available.
+
+    The agent path initializes PostgresServiceFactory at startup; reusing it
+    avoids a fresh TCP connection per call. Falls back to direct connections
+    when no factory exists (e.g. non-agent pipelines). Shared by ChatWrapper
+    (chat-flow turn tracking) and FlaskAppWrapper (REST + staging) so neither
+    class can lose the accessor again.
+    """
+    try:
+        from src.utils.postgres_service_factory import PostgresServiceFactory
+        factory = PostgresServiceFactory.get_instance()
+        if factory is not None:
+            return factory.playbook_service
+    except Exception as exc:
+        logger.debug("Pooled PlaybookService unavailable, using direct connections: %s", exc)
+    return PlaybookService(pg_config=pg_config)
+
+
+def _query_convo_history_rows(cursor, conversation_id):
+    """History rows (sender, content, message_id, feedback, comment_count,
+    model_used, playbook_name) for one conversation.
+
+    Falls back to the no-playbooks variant when conversation_playbook_turns is
+    missing (failed boot migration): chips degrade to absent instead of every
+    conversation load returning 500.
+    """
+    try:
+        cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id,))
+    except psycopg2.errors.UndefinedTable:
+        cursor.connection.rollback()  # leave the aborted transaction before retrying
+        logger.warning(
+            "conversation_playbook_turns missing; loading conversation %s without playbook chips",
+            conversation_id,
+        )
+        cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK_NO_PLAYBOOKS, (conversation_id,))
+    return cursor.fetchall()
+
+
+def _resolve_auto_playbook_invocation(tc):
+    """Resolve (playbook_id, name, status) for a model-invoked Playbook tool call.
+
+    Prefer the ToolMessage artifact: a successful load carries the resolved id +
+    name (server-side only) and implies status 'ok'. Fall back to classifying the
+    result string when no artifact rode along — every error return path of the tool
+    yields artifact=None. `tc` is one entry from PipelineOutput.extract_tool_calls.
+    """
+    args = tc.get("args") or {}
+    requested = args.get("playbook") if isinstance(args, dict) else None
+    artifact = tc.get("artifact")
+    if isinstance(artifact, dict) and artifact.get("kind") == "playbook":
+        return artifact.get("playbook_id"), artifact.get("playbook_name") or requested, "ok"
+    return None, requested, classify_playbook_tool_result(tc.get("result", ""))
 
 
 class ChatWrapper:
@@ -304,6 +376,7 @@ class ChatWrapper:
             **self.services_config["postgres"],
         }
         self.config_service = ConfigService(pg_config=self.pg_config)
+
 
         # initialize data manager (ingestion handled by data-manager service)
         # self.data_manager = DataManager(run_ingestion=False)
@@ -1149,6 +1222,52 @@ class ChatWrapper:
 
         return context
 
+    def _playbook_svc(self) -> PlaybookService:
+        """Playbook service for chat-flow turn tracking (pooled when possible).
+
+        Regression guard: the chat flow calls this on ChatWrapper — it must
+        exist HERE, not only on FlaskAppWrapper (review run 3, finding 1).
+        """
+        return _pooled_playbook_service(self.pg_config)
+
+    def _insert_conversation_rows(self, insert_tups) -> List[int]:
+        """execute_values SQL_INSERT_CONVO rows and return the new message_ids
+        (one per row, in order). Shared by the normal and A/B store paths so
+        the insert + id-extraction logic cannot drift between them."""
+        # use local vars for thread safety; close even if the insert raises
+        conn = psycopg2.connect(**self.pg_config)
+        try:
+            cursor = conn.cursor()
+            psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
+            conn.commit()
+            message_ids = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+        finally:
+            conn.close()
+        return message_ids
+
+    def _record_playbook_turn_best_effort(self, message_id, context) -> None:
+        """Side-table write for a /name turn — must never break the message
+        insert itself (the service raises; a missing side table degrades)."""
+        if not (message_id and context.playbook_name):
+            return
+        try:
+            self._playbook_svc().record_playbook_turn(
+                message_id, context.playbook_name, context.playbook_id)
+        except Exception as exc:
+            logger.warning("Could not record playbook turn for message %s: %s", message_id, exc)
+        # Unified ledger: also log this explicit /name use to playbook_invocations
+        # (one honest row per use across both sources). Independent best-effort so a
+        # ledger failure never affects the chip side-table write above. Regenerate
+        # turns are excluded upstream (this runs only when not is_refresh), matching
+        # the side table — a known, deliberate limitation.
+        try:
+            self._playbook_svc().record_invocation(
+                getattr(context, "conversation_id", None), message_id,
+                context.playbook_id, context.playbook_name, source="explicit", status="ok")
+        except Exception as exc:
+            logger.warning("Could not record playbook invocation for message %s: %s", message_id, exc)
+
     def insert_conversation(self, conversation_id, user_message, archi_message, link, archi_context, context:ChatRequestContext, is_refresh=False) -> List[int]:
         """
         """
@@ -1169,8 +1288,9 @@ class ChatWrapper:
         pipeline_used = type(context.pipeline_used).__name__
         archi_context = _sanitize(archi_context)
 
-        # construct insert_tups with model_used and pipeline_used
+        # construct insert_tups with model_used, pipeline_used only (9 shared columns).
         # Format: (service, conversation_id, sender, content, link, context, ts, model_used, pipeline_used)
+        # Playbook tracking goes to the side table via PlaybookService.record_playbook_turn, not here.
         insert_tups = (
             [
                 (service, conversation_id, user_sender, user_content, '', '', user_msg_ts, model_provider, pipeline_used),
@@ -1182,16 +1302,11 @@ class ChatWrapper:
             ]
         )
 
-        # create connection to database (use local vars for thread safety)
-        conn = psycopg2.connect(**self.pg_config)
-        cursor = conn.cursor()
-        psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
-        conn.commit()
-        message_ids = list(map(lambda tup: tup[0], cursor.fetchall()))
+        message_ids = self._insert_conversation_rows(insert_tups)
 
-        # clean up database connection state
-        cursor.close()
-        conn.close()
+        if not is_refresh:
+            self._record_playbook_turn_best_effort(
+                message_ids[0] if message_ids else None, context)
 
         return message_ids
 
@@ -1261,12 +1376,15 @@ class ChatWrapper:
 
         insert_tups = []
         step_number = 0
+        auto_invocations = []  # (playbook_id, name, status) for model-invoked Playbook loads
         for tc in tool_calls:
             step_number += 1
             tool_call_id = tc.get("id", "")
             tool_name = tc.get("name", "unknown")
             tool_args = tc.get("args", {})
             tool_result = tc.get("result", "")
+            if tool_name == "Playbook":
+                auto_invocations.append(_resolve_auto_playbook_invocation(tc))
             if len(tool_result) > 500:
                 tool_result = tool_result[:500] + "..."
             ts = tool_call_timestamps.get(tool_call_id, datetime.now(timezone.utc))
@@ -1280,7 +1398,7 @@ class ChatWrapper:
                 tool_result,
                 ts,
             ))
-        
+
         logger.debug("Inserting %d tool calls for message %d", len(insert_tups), message_id)
 
         conn = psycopg2.connect(**self.pg_config)
@@ -1290,6 +1408,16 @@ class ChatWrapper:
 
         cursor.close()
         conn.close()
+
+        # Unified ledger: one auto row per model-invoked Playbook load (best-effort,
+        # after the agent_tool_calls write so a ledger failure can't lose tool rows).
+        for pb_id, pb_name, pb_status in auto_invocations:
+            try:
+                self._playbook_svc().record_invocation(
+                    conversation_id, message_id, pb_id, pb_name, source="auto", status=pb_status)
+            except Exception as exc:
+                logger.warning(
+                    "Could not record auto playbook invocation for message %s: %s", message_id, exc)
 
     def _init_timestamps(self) -> Dict[str, datetime]:
         return {
@@ -1455,6 +1583,20 @@ class ChatWrapper:
             raise ValueError("client_id is required to process chat messages")
         sender, content = tuple(message[0])
 
+        # `content` stays the clean user text — it titles the conversation and is what
+        # we persist/display. A /name-invoked playbook turn expands only into
+        # `agent_content` (the command block + playbook body), which feeds the agent via
+        # history; the playbook name rides on the context so the stored message can show a chip.
+        pending = get_pending_playbook()
+        playbook_name = pending["name"] if pending else None
+        playbook_id = pending["playbook_id"] if pending else None
+        agent_content = (
+            playbook_invocation_text(
+                content, pending["name"], pending["body"], pending.get("foreign", False)
+            )
+            if pending else content
+        )
+
         if conversation_id is None:
             conversation_id = self.create_conversation(content, client_id, user_id)
             history = []
@@ -1467,12 +1609,47 @@ class ChatWrapper:
         if is_refresh:
             while history and history[-1][0] == ARCHI_SENDER:
                 _ = history.pop(-1)
+            # Re-apply the playbook that shaped the turn being regenerated: its name is
+            # stored on the user row but the body only ever lives in-flight, so without
+            # this the regenerated answer silently loses it.
+            if history:
+                last = history[-1]
+                body = pending["body"] if pending else None
+                foreign = pending.get("foreign", False) if pending else False
+                if pending:
+                    stored_name = pending["name"]
+                else:
+                    try:
+                        stored_name = self._playbook_svc().last_playbook_name_for_sender(
+                            conversation_id, sender)
+                    except Exception as exc:
+                        logger.warning("Could not read stored playbook name for refresh: %s", exc)
+                        stored_name = None
+                if body is None and stored_name:
+                    owner = get_playbook_owner()
+                    if owner:
+                        try:
+                            playbook = self._playbook_svc().resolve_invokable_playbook(
+                                owner, stored_name
+                            )
+                            body = playbook.body
+                            foreign = playbook.owner_id != owner
+                        except PlaybookNotFoundError:
+                            pass  # deleted since — regenerate without it
+                        except Exception as exc:
+                            logger.warning(
+                                "Could not re-apply playbook '%s' on refresh: %s", stored_name, exc
+                            )
+                if body:
+                    history[-1] = (
+                        last[0], playbook_invocation_text(last[1], stored_name, body, foreign)
+                    )
 
         if server_received_msg_ts.timestamp() - client_sent_msg_ts > client_timeout:
             return None, 408
 
         if not is_refresh:
-            history = history + [(sender, content)]
+            history = history + [(sender, agent_content)]
 
         if len(history) >= QUERY_LIMIT:
             return None, 500
@@ -1495,6 +1672,8 @@ class ChatWrapper:
                 model_used=model,
                 provider_used=provider,
                 pipeline_used=pipeline,
+                playbook_name=playbook_name,
+                playbook_id=playbook_id,
             ),
             None,
         )
@@ -1605,291 +1784,352 @@ class ChatWrapper:
             yield {"type": "error", "message": "A/B pool not configured"}
             return
 
-        requested_config = self._resolve_config_name(config_name)
-        self.update_config(config_name=requested_config)
-
-        # Sample matchup
-        arm_a_variant, arm_b_variant, is_champion_first = self.ab_pool.sample_matchup()
-        logger.info(
-            "A/B matchup: arm_a='%s' arm_b='%s' champion_first=%s",
-            arm_a_variant.name, arm_b_variant.name, is_champion_first,
-        )
-
-        # Prepare chat context (shared — same user message for both arms)
-        timestamps = self._init_timestamps()
-        context, error_code = self._prepare_chat_context(
-            message,
-            conversation_id,
-            client_id,
-            is_refresh,
-            server_received_msg_ts,
-            client_sent_msg_ts,
-            client_timeout,
-            timestamps,
-            config_name,
-            user_id=user_id,
-        )
-        if error_code is not None:
-            yield self._error_event(error_code)
-            return
-
-        # Build variant archis
         try:
-            arm_a_variant, arm_a_agent_spec = self._resolve_runtime_ab_variant(arm_a_variant)
-            arm_b_variant, arm_b_agent_spec = self._resolve_runtime_ab_variant(arm_b_variant)
-            archi_a = self._create_variant_archi(
-                arm_a_variant,
-                variant_agent_spec=arm_a_agent_spec,
-                request_provider=provider,
-                request_model=model,
-                request_provider_api_key=provider_api_key,
+            requested_config = self._resolve_config_name(config_name)
+            self.update_config(config_name=requested_config)
+
+            # Sample matchup
+            arm_a_variant, arm_b_variant, is_champion_first = self.ab_pool.sample_matchup()
+            logger.info(
+                "A/B matchup: arm_a='%s' arm_b='%s' champion_first=%s",
+                arm_a_variant.name, arm_b_variant.name, is_champion_first,
             )
-            archi_b = self._create_variant_archi(
-                arm_b_variant,
-                variant_agent_spec=arm_b_agent_spec,
-                request_provider=provider,
-                request_model=model,
-                request_provider_api_key=provider_api_key,
+
+            # Prepare chat context (shared — same user message for both arms)
+            timestamps = self._init_timestamps()
+            context, error_code = self._prepare_chat_context(
+                message,
+                conversation_id,
+                client_id,
+                is_refresh,
+                server_received_msg_ts,
+                client_sent_msg_ts,
+                client_timeout,
+                timestamps,
+                config_name,
+                user_id=user_id,
             )
-        except Exception as exc:
-            logger.error("Failed to create variant pipelines: %s", exc)
-            yield {"type": "error", "message": f"Failed to initialise A/B variants: {exc}"}
-            return
+            if error_code is not None:
+                yield self._error_event(error_code)
+                return
 
-        # Shared queue for real-time interleaving
-        event_queue: queue.Queue = queue.Queue()
-        _SENTINEL = object()
+            # A /name-invoked playbook has no in-arm Playbook tool call to surface, and the
+            # A/B client drops any event lacking an `arm` tag — so emit the applied-playbook
+            # step once per arm here (each flows through the arm-tagged client path into its
+            # own timeline; renderPlaybookApplied dedupes if an arm later re-loads it).
+            for _pb_event in build_playbook_applied_events(get_pending_playbook(), ("a", "b")):
+                yield _pb_event
 
-        # Track final text per arm (mutated by threads).
-        # Thread-safety note: each thread writes to its own key ("a" or "b")
-        # which is safe under CPython's GIL.  The "final_text" value relies on
-        # PipelineEventFormatter yielding *accumulated* content (not deltas);
-        # the last write per arm is therefore the complete response text.
-        arm_results = {
-            "a": {
-                "final_text": "",
-                "error": None,
-                "final_emitted": False,
-                "duration_ms": None,
-            },
-            "b": {
-                "final_text": "",
-                "error": None,
-                "final_emitted": False,
-                "duration_ms": None,
-            },
-        }
-        arm_model_used = {
-            "a": f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-            "b": f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-        }
+            # G2 (Layer 2): the owner ContextVar is set on this request thread by
+            # _stage_playbook_for_request; capture it so each arm thread can re-establish it.
+            # A bare threading.Thread does NOT inherit ContextVars.
+            _playbook_owner = get_playbook_owner()
 
-        def _stream_arm(arm_archi, arm_label):
-            """Run one arm's stream in a thread, pushing events to the shared queue."""
-            import time as _time
-            formatter = PipelineEventFormatter(message_content_fn=self._message_content)
-            t0 = _time.monotonic()
-            first_event_logged = False
+            # Build variant archis
             try:
-                logger.info("A/B arm '%s' thread started (t+0.0s)", arm_label)
-                vs = self.archi.vs_connector.get_vectorstore()
-                logger.info(
-                    "A/B arm '%s' vectorstore ready (t+%.1fs)",
-                    arm_label, _time.monotonic() - t0,
+                arm_a_variant, arm_a_agent_spec = self._resolve_runtime_ab_variant(arm_a_variant)
+                arm_b_variant, arm_b_agent_spec = self._resolve_runtime_ab_variant(arm_b_variant)
+                archi_a = self._create_variant_archi(
+                    arm_a_variant,
+                    variant_agent_spec=arm_a_agent_spec,
+                    request_provider=provider,
+                    request_model=model,
+                    request_provider_api_key=provider_api_key,
                 )
-                for output in arm_archi.pipeline.stream(
-                    history=context.history,
-                    conversation_id=context.conversation_id,
-                    vectorstore=vs,
-                ):
-                    output_meta = output.metadata or {}
-                    for event in formatter.process(output):
-                        if not first_event_logged:
-                            logger.info(
-                                "A/B arm '%s' first event (t+%.1fs): type=%s",
-                                arm_label, _time.monotonic() - t0, event.get("type"),
-                            )
-                            first_event_logged = True
-                        event["arm"] = arm_label
-                        if event["type"] == "text":
-                            arm_results[arm_label]["final_text"] = event["content"]
-                        event_queue.put(event)
-                    if output_meta.get("event_type") == "final" and not arm_results[arm_label]["final_emitted"]:
-                        if not first_event_logged:
-                            logger.info(
-                                "A/B arm '%s' first event (t+%.1fs): type=final",
-                                arm_label, _time.monotonic() - t0,
-                            )
-                            first_event_logged = True
-                        final_text = getattr(output, "answer", "") or formatter.last_text or arm_results[arm_label]["final_text"]
-                        arm_results[arm_label]["final_text"] = final_text
-                        arm_results[arm_label]["final_emitted"] = True
-                        duration_ms = int((_time.monotonic() - t0) * 1000)
-                        arm_results[arm_label]["duration_ms"] = duration_ms
-                        event_queue.put({
-                            "type": "final",
-                            "arm": arm_label,
-                            "response": final_text,
-                            "usage": output_meta.get("usage"),
-                            "model": output_meta.get("model"),
-                            "model_used": arm_model_used[arm_label],
-                            "duration_ms": duration_ms,
-                        })
-            except Exception as exc:
-                arm_results[arm_label]["error"] = str(exc)
-                event_queue.put({"type": "error", "arm": arm_label, "message": str(exc)})
-            finally:
-                logger.info(
-                    "A/B arm '%s' finished (t+%.1fs)",
-                    arm_label, _time.monotonic() - t0,
-                )
-                event_queue.put(_SENTINEL)
-
-        # Yield arm labels early so the frontend can display variant names
-        yield {
-            "type": "ab_arms",
-            "arm_a_name": arm_a_variant.name,
-            "arm_b_name": arm_b_variant.name,
-            "variant_label_mode": self.ab_pool.variant_label_mode,
-        }
-
-        # Start both arms in parallel threads
-        thread_a = threading.Thread(target=_stream_arm, args=(archi_a, "a"), daemon=True)
-        thread_b = threading.Thread(target=_stream_arm, args=(archi_b, "b"), daemon=True)
-        thread_a.start()
-        thread_b.start()
-
-        # Drain the queue in real-time, yielding events as they arrive
-        finished_count = 0
-        while finished_count < 2:
-            item = event_queue.get()
-            if item is _SENTINEL:
-                finished_count += 1
-                continue
-            yield item
-
-        thread_a.join()
-        thread_b.join()
-
-        # Check for errors
-        arm_a_error = arm_results["a"]["error"]
-        arm_b_error = arm_results["b"]["error"]
-        arm_a_final_text = arm_results["a"]["final_text"]
-        arm_b_final_text = arm_results["b"]["final_text"]
-        arm_a_duration_ms = arm_results["a"]["duration_ms"]
-        arm_b_duration_ms = arm_results["b"]["duration_ms"]
-
-        if arm_a_error and arm_b_error:
-            yield {"type": "error", "message": "Both A/B arms failed",
-                   "arm_a_error": arm_a_error, "arm_b_error": arm_b_error}
-            return
-
-        if arm_a_error or arm_b_error:
-            yield {"type": "error", "message": "One A/B arm failed",
-                   "failed_arm": "a" if arm_a_error else "b",
-                   "error": arm_a_error or arm_b_error}
-            return
-
-        # Store user message first (normal chat stores it inline, AB must do so explicitly)
-        user_prompt_mid = None
-        if not is_refresh:
-            try:
-                conn = psycopg2.connect(**self.pg_config)
-                cursor = conn.cursor()
-                insert_tups = [
-                    ("chat", context.conversation_id, context.sender, context.content,
-                     "", "", datetime.now(), None, None),
-                ]
-                psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
-                row = cursor.fetchone()
-                user_prompt_mid = row[0] if row else None
-                conn.commit()
-                cursor.close()
-                conn.close()
-            except Exception as exc:
-                logger.error("Failed to store user message: %s", exc)
-
-        # Store both responses as messages
-        pipeline_used = ChatWrapper._get_agent_class_from_cfg(self.services_config.get("chat_app", {})) or ""
-        arm_a_mid = self._store_assistant_message(
-            context.conversation_id,
-            arm_a_final_text,
-            model_used=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-            pipeline_used=pipeline_used,
-        )
-        arm_b_mid = self._store_assistant_message(
-            context.conversation_id,
-            arm_b_final_text,
-            model_used=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-            pipeline_used=pipeline_used,
-        )
-
-        # Persist per-arm latency for analysis by reusing the timing table keyed by message_id.
-        self._persist_ab_arm_timing(arm_a_mid, arm_a_duration_ms)
-        self._persist_ab_arm_timing(arm_b_mid, arm_b_duration_ms)
-
-        # Get user prompt message ID if not already stored above
-        if not user_prompt_mid:
-            user_prompt_mid = self._get_last_user_message_id(context.conversation_id)
-
-        # Create comparison record (skip if we have no valid message IDs)
-        comparison_id = None
-        if user_prompt_mid and arm_a_mid and arm_b_mid:
-            try:
-                comparison_id = self.conv_service.create_ab_comparison(
-                    conversation_id=context.conversation_id,
-                    user_prompt_mid=user_prompt_mid,
-                    response_a_mid=arm_a_mid,
-                    response_b_mid=arm_b_mid,
-                    model_a=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-                    pipeline_a=pipeline_used,
-                    model_b=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-                    pipeline_b=pipeline_used,
-                    is_config_a_first=is_champion_first,
-                    variant_a_name=arm_a_variant.name,
-                    variant_b_name=arm_b_variant.name,
-                    variant_a_meta=arm_a_variant.to_meta_json(),
-                    variant_b_meta=arm_b_variant.to_meta_json(),
+                archi_b = self._create_variant_archi(
+                    arm_b_variant,
+                    variant_agent_spec=arm_b_agent_spec,
+                    request_provider=provider,
+                    request_model=model,
+                    request_provider_api_key=provider_api_key,
                 )
             except Exception as exc:
-                logger.error("Failed to create A/B comparison record: %s", exc)
-                comparison_id = None
+                logger.error("Failed to create variant pipelines: %s", exc)
+                yield {"type": "error", "message": f"Failed to initialise A/B variants: {exc}"}
+                return
 
-        # Emit final metadata event
-        yield {
-            "type": "ab_meta",
-            "comparison_id": comparison_id,
-            "conversation_id": context.conversation_id,
-            "arm_a_variant": arm_a_variant.name,
-            "arm_b_variant": arm_b_variant.name,
-            "arm_a_model_used": f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
-            "arm_b_model_used": f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
-            "is_champion_first": is_champion_first,
-            "arm_a_message_id": arm_a_mid,
-            "arm_b_message_id": arm_b_mid,
-            "arm_a_duration_ms": arm_a_duration_ms,
-            "arm_b_duration_ms": arm_b_duration_ms,
-            "variant_label_mode": self.ab_pool.variant_label_mode,
-        }
+            # Shared queue for real-time interleaving
+            event_queue: queue.Queue = queue.Queue()
+            _SENTINEL = object()
+
+            # Track final text per arm (mutated by threads).
+            # Thread-safety note: each thread writes to its own key ("a" or "b")
+            # which is safe under CPython's GIL.  The "final_text" value relies on
+            # PipelineEventFormatter yielding *accumulated* content (not deltas);
+            # the last write per arm is therefore the complete response text.
+            arm_results = {
+                "a": {
+                    "final_text": "",
+                    "error": None,
+                    "final_emitted": False,
+                    "duration_ms": None,
+                    "playbook_events": [],  # in-arm playbook_applied events (auto loads)
+                },
+                "b": {
+                    "final_text": "",
+                    "error": None,
+                    "final_emitted": False,
+                    "duration_ms": None,
+                    "playbook_events": [],
+                },
+            }
+            arm_model_used = {
+                "a": f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
+                "b": f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
+            }
+
+            def _stream_arm(arm_archi, arm_label):
+                """Run one arm's stream in a thread, pushing events to the shared queue."""
+                set_playbook_owner(_playbook_owner)  # G2: ContextVars don't cross the thread boundary
+                import time as _time
+                formatter = PipelineEventFormatter(message_content_fn=self._message_content)
+                t0 = _time.monotonic()
+                first_event_logged = False
+                try:
+                    logger.info("A/B arm '%s' thread started (t+0.0s)", arm_label)
+                    vs = self.archi.vs_connector.get_vectorstore()
+                    logger.info(
+                        "A/B arm '%s' vectorstore ready (t+%.1fs)",
+                        arm_label, _time.monotonic() - t0,
+                    )
+                    for output in arm_archi.pipeline.stream(
+                        history=context.history,
+                        conversation_id=context.conversation_id,
+                        vectorstore=vs,
+                    ):
+                        output_meta = output.metadata or {}
+                        for event in formatter.process(output):
+                            if not first_event_logged:
+                                logger.info(
+                                    "A/B arm '%s' first event (t+%.1fs): type=%s",
+                                    arm_label, _time.monotonic() - t0, event.get("type"),
+                                )
+                                first_event_logged = True
+                            event["arm"] = arm_label
+                            if event["type"] == "text":
+                                arm_results[arm_label]["final_text"] = event["content"]
+                            elif event["type"] == "playbook_applied":
+                                # Collected for the unified ledger; filtered to in-arm auto
+                                # loads (tool_call_id-bearing) after the arm's message id is known.
+                                arm_results[arm_label]["playbook_events"].append(event)
+                            event_queue.put(event)
+                        if output_meta.get("event_type") == "final" and not arm_results[arm_label]["final_emitted"]:
+                            if not first_event_logged:
+                                logger.info(
+                                    "A/B arm '%s' first event (t+%.1fs): type=final",
+                                    arm_label, _time.monotonic() - t0,
+                                )
+                                first_event_logged = True
+                            final_text = getattr(output, "answer", "") or formatter.last_text or arm_results[arm_label]["final_text"]
+                            arm_results[arm_label]["final_text"] = final_text
+                            arm_results[arm_label]["final_emitted"] = True
+                            duration_ms = int((_time.monotonic() - t0) * 1000)
+                            arm_results[arm_label]["duration_ms"] = duration_ms
+                            event_queue.put({
+                                "type": "final",
+                                "arm": arm_label,
+                                "response": final_text,
+                                "usage": output_meta.get("usage"),
+                                "model": output_meta.get("model"),
+                                "model_used": arm_model_used[arm_label],
+                                "duration_ms": duration_ms,
+                            })
+                except Exception as exc:
+                    arm_results[arm_label]["error"] = str(exc)
+                    event_queue.put({"type": "error", "arm": arm_label, "message": str(exc)})
+                finally:
+                    logger.info(
+                        "A/B arm '%s' finished (t+%.1fs)",
+                        arm_label, _time.monotonic() - t0,
+                    )
+                    event_queue.put(_SENTINEL)
+
+            # Yield arm labels early so the frontend can display variant names
+            yield {
+                "type": "ab_arms",
+                "arm_a_name": arm_a_variant.name,
+                "arm_b_name": arm_b_variant.name,
+                "variant_label_mode": self.ab_pool.variant_label_mode,
+            }
+
+            # Start both arms in parallel threads
+            thread_a = threading.Thread(target=_stream_arm, args=(archi_a, "a"), daemon=True)
+            thread_b = threading.Thread(target=_stream_arm, args=(archi_b, "b"), daemon=True)
+            thread_a.start()
+            thread_b.start()
+
+            # Drain the queue in real-time, yielding events as they arrive
+            finished_count = 0
+            while finished_count < 2:
+                item = event_queue.get()
+                if item is _SENTINEL:
+                    finished_count += 1
+                    continue
+                yield item
+
+            thread_a.join()
+            thread_b.join()
+
+            # Check for errors
+            arm_a_error = arm_results["a"]["error"]
+            arm_b_error = arm_results["b"]["error"]
+            arm_a_final_text = arm_results["a"]["final_text"]
+            arm_b_final_text = arm_results["b"]["final_text"]
+            arm_a_duration_ms = arm_results["a"]["duration_ms"]
+            arm_b_duration_ms = arm_results["b"]["duration_ms"]
+
+            if arm_a_error and arm_b_error:
+                yield {"type": "error", "message": "Both A/B arms failed",
+                       "arm_a_error": arm_a_error, "arm_b_error": arm_b_error}
+                return
+
+            if arm_a_error or arm_b_error:
+                yield {"type": "error", "message": "One A/B arm failed",
+                       "failed_arm": "a" if arm_a_error else "b",
+                       "error": arm_a_error or arm_b_error}
+                return
+
+            # Store user message first (normal chat stores it inline, AB must do so explicitly)
+            user_prompt_mid = None
+            if not is_refresh:
+                try:
+                    insert_tups = [
+                        ("chat", context.conversation_id, context.sender, context.content,
+                         "", "", datetime.now(), None, None),
+                    ]
+                    inserted_ids = self._insert_conversation_rows(insert_tups)
+                    user_prompt_mid = inserted_ids[0] if inserted_ids else None
+                    self._record_playbook_turn_best_effort(user_prompt_mid, context)
+                except Exception as exc:
+                    logger.error("Failed to store user message: %s", exc)
+
+            # Store both responses as messages
+            pipeline_used = ChatWrapper._get_agent_class_from_cfg(self.services_config.get("chat_app", {})) or ""
+            arm_a_mid = self._store_assistant_message(
+                context.conversation_id,
+                arm_a_final_text,
+                model_used=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
+                pipeline_used=pipeline_used,
+            )
+            arm_b_mid = self._store_assistant_message(
+                context.conversation_id,
+                arm_b_final_text,
+                model_used=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
+                pipeline_used=pipeline_used,
+            )
+
+            # Persist per-arm latency for analysis by reusing the timing table keyed by message_id.
+            self._persist_ab_arm_timing(arm_a_mid, arm_a_duration_ms)
+            self._persist_ab_arm_timing(arm_b_mid, arm_b_duration_ms)
+
+            # Unified ledger: one auto row per in-arm model-invoked Playbook load, keyed to
+            # that arm's assistant message. The up-front /name per-arm events carry no
+            # tool_call_id and were already logged as explicit via the shared turn-recorder;
+            # they are skipped here. Failed in-arm loads produce no artifact hence no event —
+            # an accepted v1 limitation.
+            self._record_ab_playbook_loads(
+                context.conversation_id, arm_a_mid, "a", arm_results["a"]["playbook_events"])
+            self._record_ab_playbook_loads(
+                context.conversation_id, arm_b_mid, "b", arm_results["b"]["playbook_events"])
+
+            # Get user prompt message ID if not already stored above
+            if not user_prompt_mid:
+                user_prompt_mid = self._get_last_user_message_id(context.conversation_id)
+
+            # Create comparison record (skip if we have no valid message IDs)
+            comparison_id = None
+            if user_prompt_mid and arm_a_mid and arm_b_mid:
+                try:
+                    comparison_id = self.conv_service.create_ab_comparison(
+                        conversation_id=context.conversation_id,
+                        user_prompt_mid=user_prompt_mid,
+                        response_a_mid=arm_a_mid,
+                        response_b_mid=arm_b_mid,
+                        model_a=f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
+                        pipeline_a=pipeline_used,
+                        model_b=f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
+                        pipeline_b=pipeline_used,
+                        is_config_a_first=is_champion_first,
+                        variant_a_name=arm_a_variant.name,
+                        variant_b_name=arm_b_variant.name,
+                        variant_a_meta=arm_a_variant.to_meta_json(),
+                        variant_b_meta=arm_b_variant.to_meta_json(),
+                    )
+                except Exception as exc:
+                    logger.error("Failed to create A/B comparison record: %s", exc)
+                    comparison_id = None
+
+            # Emit final metadata event
+            yield {
+                "type": "ab_meta",
+                "comparison_id": comparison_id,
+                "conversation_id": context.conversation_id,
+                "arm_a_variant": arm_a_variant.name,
+                "arm_b_variant": arm_b_variant.name,
+                "arm_a_model_used": f"{arm_a_variant.provider or ''}/{arm_a_variant.model or ''}".strip("/"),
+                "arm_b_model_used": f"{arm_b_variant.provider or ''}/{arm_b_variant.model or ''}".strip("/"),
+                "is_champion_first": is_champion_first,
+                "arm_a_message_id": arm_a_mid,
+                "arm_b_message_id": arm_b_mid,
+                "arm_a_duration_ms": arm_a_duration_ms,
+                "arm_b_duration_ms": arm_b_duration_ms,
+                "variant_label_mode": self.ab_pool.variant_label_mode,
+            }
+        except Exception:
+            logger.error("A/B comparison failed", exc_info=True)
+            yield {"type": "error", "message": "A/B comparison failed; see chat logs for details"}
+            return
 
     def _store_assistant_message(self, conversation_id, content, model_used=None, pipeline_used=None):
         """Store an assistant message and return the message_id."""
         try:
-            conn = psycopg2.connect(**self.pg_config)
-            cursor = conn.cursor()
-            insert_tups = [
+            inserted_ids = self._insert_conversation_rows([
                 ("chat", conversation_id, "archi", content, "", "", datetime.now(), model_used, pipeline_used),
-            ]
-            psycopg2.extras.execute_values(cursor, SQL_INSERT_CONVO, insert_tups)
-            row = cursor.fetchone()
-            mid = row[0] if row else None
-            conn.commit()
-            cursor.close()
-            conn.close()
-            return mid
+            ])
+            return inserted_ids[0] if inserted_ids else None
         except Exception as exc:
             logger.error("Failed to store assistant message: %s", exc)
             return None
+
+    def _record_ab_playbook_loads(self, conversation_id, message_id, arm, events) -> None:
+        """Best-effort unified-ledger write for one A/B arm's in-arm auto Playbook
+        loads (the arm-tagged playbook_applied events that carry a tool_call_id).
+        No-op without a stored arm message id. Never breaks the comparison."""
+        if not message_id:
+            return
+        for load in playbook_loads_from_events(events):
+            try:
+                self._playbook_svc().record_invocation(
+                    conversation_id, message_id, load.get("playbook_id"), load.get("name"),
+                    source="auto", status="ok", arm=arm)
+            except Exception as exc:
+                logger.warning(
+                    "Could not record A/B auto playbook invocation (arm %s): %s", arm, exc)
+
+    def _record_stream_playbook_loads(
+            self, conversation_id, archi_message_id, trace_events, recorded_ids) -> None:
+        """Best-effort unified-ledger write for the stream path's in-turn auto Playbook
+        loads. The stream finalizes on the LAST streamed PipelineOutput, whose .messages
+        hold only the final answer — so insert_tool_calls_from_output extracts nothing and
+        the auto ledger would miss stream-turn loads. Recover them from the persisted trace
+        events (playbook_applied events carry tool_call_id/name/playbook_id), skipping any
+        id already written as an auto row for this turn (``recorded_ids`` — non-empty only
+        for pipelines whose final output DOES carry full messages) so nothing is
+        double-counted. No-op without a stored archi message id or any events; never breaks
+        the stream."""
+        if not (archi_message_id and trace_events):
+            return
+        for load in playbook_loads_from_events(trace_events):
+            if load.get("tool_call_id") in recorded_ids:
+                continue
+            try:
+                self._playbook_svc().record_invocation(
+                    conversation_id, archi_message_id, load.get("playbook_id"), load.get("name"),
+                    source="auto", status="ok")
+            except Exception as exc:
+                logger.warning(
+                    "Could not record stream auto playbook invocation for message %s: %s",
+                    archi_message_id, exc)
 
     def _persist_ab_arm_timing(self, message_id: Optional[int], duration_ms: Optional[int]) -> None:
         """Persist A/B arm latency into the timing table for post-hoc analysis."""
@@ -2322,6 +2562,16 @@ class ChatWrapper:
                 render_markdown=False,  # Client renders with marked.js
             )
 
+            # Stream path only: _finalize_result ran insert_tool_calls_from_output on the
+            # LAST streamed output, whose .messages hold only the final answer — so auto
+            # Playbook loads that happened mid-stream never reached the unified ledger.
+            # Recover them from the trace events, skipping any tool-call id the finalize
+            # already wrote (dedupe for pipelines whose final output does carry messages).
+            if message_ids:
+                recorded_ids = {tc.get("id") for tc in last_output.extract_tool_calls()}
+                self._record_stream_playbook_loads(
+                    context.conversation_id, message_ids[-1], trace_events, recorded_ids)
+
             timestamps["finish_call_ts"] = datetime.now(timezone.utc)
             timestamps["server_received_msg_ts"] = server_received_msg_ts
             timestamps["client_sent_msg_ts"] = datetime.fromtimestamp(client_sent_msg_ts, tz=timezone.utc)
@@ -2434,12 +2684,12 @@ class FlaskAppWrapper(object):
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
         self.salt = read_secret("UPLOADER_SALT")
-        secret_key = read_secret("FLASK_UPLOADER_APP_SECRET_KEY")
-        if not secret_key:
-            logger.warning("FLASK_UPLOADER_APP_SECRET_KEY not found, generating a random secret key")
-            import secrets
-            secret_key = secrets.token_hex(32)
-        self.app.secret_key = secret_key
+        # Persist an auto-generated key in the DATA_PATH volume when none is configured, so signed
+        # sessions survive a restart — a fresh random key per boot would log every user out on each
+        # restart (an explicit FLASK_UPLOADER_APP_SECRET_KEY, if set, still takes precedence).
+        self.app.secret_key = read_or_create_persistent_secret(
+            "FLASK_UPLOADER_APP_SECRET_KEY", self.data_path
+        )
         
         # Session cookie security settings (BYOK security hardening)
         self.app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
@@ -2610,6 +2860,17 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/admin/database', 'database_viewer_page', self.require_perm(Permission.Admin.DATABASE)(self.database_viewer_page))
         self.add_endpoint('/api/admin/database/tables', 'list_database_tables', self.require_perm(Permission.Admin.DATABASE)(self.list_database_tables), methods=["GET"])
         self.add_endpoint('/api/admin/database/query', 'run_database_query', self.require_perm(Permission.Admin.DATABASE)(self.run_database_query), methods=["POST"])
+
+        # Playbook library endpoints (per-user reusable instruction packs,
+        # registered via Blueprint)
+        logger.info("Adding playbook API endpoints")
+        register_playbooks(
+            self.app,
+            auth_enabled=self.auth_enabled,
+            require_auth=self.require_auth,
+            resolve_owner=self._resolve_playbook_owner,
+            playbook_svc=self._playbook_svc,
+        )
 
         # Service status board endpoints (registered via Blueprint)
         logger.info("Adding service status board endpoints")
@@ -2785,6 +3046,9 @@ class FlaskAppWrapper(object):
                         display_name=user_info.get('name', user_info.get('preferred_username', '')),
                         email=user_info.get('email', ''),
                     )
+                    # Track the login (login_count / last_login_at) — best-effort; the enclosing
+                    # try means a tracking failure can never block the login itself.
+                    user_service.record_login(sso_user_id)
                 except Exception as ue:
                     logger.warning(f"Failed to upsert SSO user {sso_user_id} into users table: {ue}")
 
@@ -3979,6 +4243,59 @@ class FlaskAppWrapper(object):
             logger.error(f"Error deleting agent spec: {exc}")
             return jsonify({"error": str(exc)}), 500
 
+    # ── Playbooks (per-user reusable instruction packs) ──────────────────────────
+    def _resolve_playbook_owner(self, request_client_id):
+        """Resolve the verified owner for a playbook operation.
+
+        When auth is enabled and the user is logged in, the server-verified session
+        identity is used and any request-supplied client_id is ignored (closes IDOR).
+        In anonymous / auth-disabled deployments, falls back to the request client_id.
+        Returns (owner_id, None) on success, or (None, flask_error_response) on failure.
+        """
+        owner, err = resolve_playbook_owner(
+            self.auth_enabled, session.get("logged_in"), session.get("user"), request_client_id)
+        if err:
+            return None, (jsonify({"error": err}), 400)
+        return owner, None
+
+    def _playbook_svc(self) -> PlaybookService:
+        """PlaybookService for the REST/staging paths (pooled when possible)."""
+        return _pooled_playbook_service(self.pg_config)
+
+    def _stage_playbook_for_request(self, client_id, playbook_name) -> None:
+        """Stage playbook state for a chat request via per-request ContextVars.
+
+        Sets the verified owner (tools fail closed on None) and, for a
+        /name-invoked turn, the pending (name, body, foreign) triple. The clean
+        message is what gets persisted; the expansion happens only in-flight (see
+        _prepare_chat_context), and the name rides along for the chip.
+        """
+        playbook_owner, _ = self._resolve_playbook_owner(client_id)
+        set_playbook_owner(playbook_owner)   # verified identity (auth on) or client_id (anon); None fails closed
+        clear_pending_playbook()             # start clean so no prior request's playbook leaks via the ContextVar
+        if not playbook_name or not playbook_owner:
+            return
+        try:
+            playbook = self._playbook_svc().resolve_invokable_playbook(
+                playbook_owner, playbook_name
+            )
+            set_pending_playbook(
+                playbook.name, playbook.body, foreign=playbook.owner_id != playbook_owner,
+                playbook_id=playbook.id
+            )
+        except PlaybookNotFoundError:
+            # Deleted between menu load and send: proceed without it (no chip is shown).
+            logger.info("Requested playbook '%s' not found; sending the turn without it", playbook_name)
+            # Unified ledger: record the failed /name attempt (no conversation exists
+            # yet, so ids are NULL). Best-effort — never break the turn.
+            try:
+                self._playbook_svc().record_invocation(
+                    None, None, None, playbook_name, source="explicit", status="not_found")
+            except Exception as exc:
+                logger.warning("Could not record not_found playbook invocation: %s", exc)
+        except Exception as exc:
+            logger.warning("Playbook lookup failed: %s", exc)
+
     def get_agent_info(self):
         """
         Get high-level information about the active agent configuration.
@@ -4520,6 +4837,8 @@ class FlaskAppWrapper(object):
             "provider": payload.get("provider"),
             "model": payload.get("model"),
             "pipeline": payload.get("pipeline"),
+            # Name of a user-invoked playbook to apply to this turn (None if none).
+            "playbook_name": payload.get("playbook_name"),
         }
 
 
@@ -4556,6 +4875,10 @@ class FlaskAppWrapper(object):
             return jsonify({'error': 'client_id missing'}), 400
 
         user_id = session.get('user', {}).get('id') or None
+
+        # Stage playbook state (verified owner + pending /name invocation) on this
+        # request context before the chat pipeline reads it in _prepare_chat_context.
+        self._stage_playbook_for_request(client_id, request_data["playbook_name"])
 
         # query the chat and return the results.
         logger.debug("Calling the ChatWrapper()")
@@ -4621,6 +4944,11 @@ class FlaskAppWrapper(object):
 
         user_id = session.get('user', {}).get('id') or None
 
+        # Stage playbook state (verified owner + pending /name invocation) on this
+        # request context before the chat pipeline reads it in _prepare_chat_context.
+        # stream_with_context keeps these ContextVars live through generator iteration.
+        self._stage_playbook_for_request(client_id, request_data["playbook_name"])
+
         # Get API key from session if available
         session_api_key = None
         if provider and 'provider_api_keys' in session:
@@ -4629,6 +4957,12 @@ class FlaskAppWrapper(object):
         def _event_stream() -> Iterator[str]:
             padding = " " * 2048
             yield json.dumps({"type": "meta", "event": "stream_started", "padding": padding}) + "\n"
+            # A /name-invoked playbook has its body injected server-side (no Playbook tool
+            # call to surface), so emit the applied-playbook activity step up front here.
+            _pending = get_pending_playbook()
+            if _pending and _pending.get("name"):
+                yield json.dumps({"type": "playbook_applied", "name": _pending["name"],
+                                  "body": _pending.get("body", "")}) + "\n"
             for event in self.chat.stream(
                 message,
                 conversation_id,
@@ -4812,6 +5146,7 @@ class FlaskAppWrapper(object):
         Returns:
             JSON with conversation metadata and full message history
         """
+        conn = None
         try:
             data = request.json
             conversation_id = data.get('conversation_id')
@@ -4841,8 +5176,8 @@ class FlaskAppWrapper(object):
                 return jsonify({'error': 'conversation not found'}), 404
 
             # get history of the conversation along with latest feedback state
-            cursor.execute(SQL_QUERY_CONVO_WITH_FEEDBACK, (conversation_id, ))
-            history_rows = cursor.fetchall()
+            # (degrades to chip-less rows if the side-table migration failed)
+            history_rows = _query_convo_history_rows(cursor, conversation_id)
             comparisons = self.chat.conv_service.get_conversation_ab_comparisons(str(conversation_id))
             suppressed_ids = self.chat._suppressed_ab_message_ids(comparisons)
             if suppressed_ids:
@@ -4876,6 +5211,7 @@ class FlaskAppWrapper(object):
                     'feedback': row[3],
                     'comment_count': row[4] if len(row) > 4 else 0,
                     'model_used': row[5] if len(row) > 5 else None,
+                    'playbook_name': row[6] if len(row) > 6 else None,
                 }
                 
                 # Attach trace data if present
@@ -4913,6 +5249,10 @@ class FlaskAppWrapper(object):
         except Exception as e:
             logger.error(f"Error in load_conversation: {str(e)}")
             return jsonify({'error': str(e)}), 500
+        finally:
+            # never leak the connection, whichever path returned
+            if conn is not None and not conn.closed:
+                conn.close()
 
     def new_conversation(self):
         """
@@ -5483,6 +5823,13 @@ class FlaskAppWrapper(object):
 
         if not client_id:
             return jsonify({"error": "client_id missing"}), 400
+
+        # G2: stage playbook state (verified owner + pending /name invocation) on this
+        # request context, mirroring the normal chat endpoints (get_chat_response[_stream]),
+        # so stream_ab_comparison -> _prepare_chat_context injects the body into both arms'
+        # shared history and the existing chip-insert fires. Also sets the owner ContextVar
+        # that the arm threads re-establish below.
+        self._stage_playbook_for_request(client_id, request_data["playbook_name"])
 
         if provider and 'provider_api_keys' in session:
             session_api_key = session.get('provider_api_keys', {}).get(provider.lower())

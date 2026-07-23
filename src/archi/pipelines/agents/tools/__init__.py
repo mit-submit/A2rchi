@@ -22,6 +22,15 @@ from .monit_opensearch import (
 )
 from .ingest import create_ingest_url_tool
 from .indico_ingest import create_ingest_indico_event_tool
+from .playbook_tools import (
+    create_playbook_tool,
+    create_playbook_listing_middleware,
+    create_save_playbook_tool,
+    create_update_playbook_tool,
+    create_delete_playbook_tool,
+    set_playbook_owner,
+    get_playbook_owner,
+)
 
 logger = get_logger(__name__)
 
@@ -40,6 +49,13 @@ __all__ = [
     "create_monit_opensearch_aggregation_tool",
     "create_ingest_url_tool",
     "create_ingest_indico_event_tool",
+    "create_playbook_tool",
+    "create_playbook_listing_middleware",
+    "create_save_playbook_tool",
+    "create_update_playbook_tool",
+    "create_delete_playbook_tool",
+    "set_playbook_owner",
+    "get_playbook_owner",
 ]
 
 _seen_names = set(__all__)

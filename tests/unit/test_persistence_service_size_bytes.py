@@ -5,41 +5,11 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-# Minimal stub so tests can run without langchain-core installed.
-if "langchain_core" not in sys.modules:
-    langchain_core = types.ModuleType("langchain_core")
-    sys.modules["langchain_core"] = langchain_core
+# Heavy-dep stubs live in tests/unit/conftest.py (guarded, shared).
 
-if "langchain_core.documents" not in sys.modules:
-    documents_module = types.ModuleType("langchain_core.documents")
-    documents_module.Document = object
-    sys.modules["langchain_core.documents"] = documents_module
 
-if "langchain_community" not in sys.modules:
-    sys.modules["langchain_community"] = types.ModuleType("langchain_community")
 
-if "langchain_community.document_loaders" not in sys.modules:
-    loaders_module = types.ModuleType("langchain_community.document_loaders")
 
-    class _DummyLoader:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def load(self):
-            return []
-
-    loaders_module.BSHTMLLoader = _DummyLoader
-    loaders_module.PyPDFLoader = _DummyLoader
-    loaders_module.PythonLoader = _DummyLoader
-    sys.modules["langchain_community.document_loaders"] = loaders_module
-
-if "langchain_community.document_loaders.text" not in sys.modules:
-    text_module = types.ModuleType("langchain_community.document_loaders.text")
-    text_module.TextLoader = sys.modules["langchain_community.document_loaders"].TextLoader if hasattr(sys.modules["langchain_community.document_loaders"], "TextLoader") else type("TextLoader", (), {"__init__": lambda self, *_a, **_k: None, "load": lambda self: []})
-    # Ensure TextLoader exists on both modules for imports.
-    if not hasattr(sys.modules["langchain_community.document_loaders"], "TextLoader"):
-        setattr(sys.modules["langchain_community.document_loaders"], "TextLoader", text_module.TextLoader)
-    sys.modules["langchain_community.document_loaders.text"] = text_module
 
 from src.data_manager.collectors.persistence import PersistenceService
 

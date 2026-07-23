@@ -250,7 +250,25 @@ class UserService:
                 return self._row_to_user(row)
         finally:
             self._release_connection(conn)
-    
+
+    def record_login(self, user_id: str) -> None:
+        """Record a successful login: bump ``login_count`` and set ``last_login_at = NOW()``.
+
+        Called by the auth callbacks after the user row is ensured (the SSO callback upserted the
+        user but never updated these columns, so logins went untracked). Best-effort: the caller
+        wraps this so a tracking failure can never block the login itself.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE users SET login_count = login_count + 1, last_login_at = NOW() WHERE id = %s",
+                    (user_id,),
+                )
+                conn.commit()
+        finally:
+            self._release_connection(conn)
+
     def update_preferences(
         self,
         user_id: str,
