@@ -935,6 +935,16 @@ class TemplateManager:
         mcp_servers = context.config_manager.config.get("mcp_servers", {}) or {}
         template_vars["mcp_servers"] = mcp_servers
 
+        # Sidecar servers (build_context/image) mount their own host_file_mounts;
+        # collect the stdio ones here so the chatbot's host_file_mounts loop emits them.
+        host_file_mounts = []
+        for srv_cfg in mcp_servers.values():
+            if srv_cfg.get("transport") == "stdio" and srv_cfg.get("path"):
+                for m in srv_cfg.get("host_file_mounts", []) or []:
+                    if isinstance(m, str):
+                        host_file_mounts.append(m)
+        template_vars["host_file_mounts"] = host_file_mounts
+
         compose_template = self.env.get_template(BASE_COMPOSE_TEMPLATE)
         compose_rendered = compose_template.render(**template_vars)
 
