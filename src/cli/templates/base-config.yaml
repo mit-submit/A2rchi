@@ -17,6 +17,9 @@ mcp_servers:
     {%- if server_config.url is defined %}
     url: {{ server_config.url }}
     {%- endif %}
+    {%- if server_config.headers is defined %}
+    headers: {{ server_config.headers | tojson }}
+    {%- endif %}
     {%- if server_config.command is defined %}
     command: {{ server_config.command }}
     {%- endif %}
