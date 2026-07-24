@@ -382,7 +382,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     context TEXT NOT NULL DEFAULT '',
     
     ts TIMESTAMP NOT NULL,
-    
+
     conf_id INTEGER REFERENCES configs(config_id)
 );
 
@@ -575,6 +575,45 @@ GRANT SELECT ON
     migration_state
 TO grafana;
 
+
+-- ============================================================================
+-- PLAYBOOKS (user-authored playbook library) — mirrors src/cli/templates/init.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS playbooks (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    owner_id    VARCHAR(200) NOT NULL,
+    visibility  VARCHAR(10) NOT NULL DEFAULT 'private',
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_playbooks_owner_name ON playbooks(owner_id, name);
+CREATE INDEX IF NOT EXISTS idx_playbooks_owner ON playbooks(owner_id);
+CREATE INDEX IF NOT EXISTS idx_playbooks_public ON playbooks(visibility) WHERE visibility = 'public';
+
+-- ============================================================================
+-- CONVERSATION PLAYBOOK TURNS (per-turn playbook tracking side table)
+-- mirrors src/cli/templates/init.sql
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS conversation_playbook_turns (
+    message_id    INTEGER PRIMARY KEY REFERENCES conversations(message_id) ON DELETE CASCADE,
+    playbook_name VARCHAR(100) NOT NULL,
+    playbook_id   INTEGER,
+    created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_enabled_playbooks (
+    user_id     VARCHAR(200) NOT NULL,
+    playbook_id INTEGER NOT NULL REFERENCES playbooks(id) ON DELETE CASCADE,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, playbook_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_enabled_playbooks_user ON user_enabled_playbooks(user_id);
 
 -- ============================================================================
 -- NOTES

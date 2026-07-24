@@ -277,6 +277,57 @@ archi create [...] --services chatbot,redmine-mailer
 
 ---
 
+## Jira Ticket Responder Service
+
+Polls configured Jira projects for recently updated tickets in the configured eligible statuses, answers tickets that do not already contain a comment from the Jira ticket responder account, and posts the answer as a role-restricted Jira comment for operators to approve.
+
+### Configuration
+
+```yaml
+services:
+  jira_ticket_responder:
+    url: https://its.cern.ch/jira/
+    projects:
+      - CMSTZ
+      - CMSDM
+    visible_to_role: Developers
+    poll_interval_minutes: 1  # Optional; defaults to 1.
+    lookback_days: 7          # Optional; defaults to 7.
+    eligible_statuses:        # Optional; defaults to ["Open", "In Progress"].
+      - Open
+      - In Progress
+```
+
+The `jira_ticket_responder` service uses `services.jira_ticket_responder` only. Do not add `enabled`; process enablement is controlled by `--services jira_ticket_responder`.
+
+### Behavior
+
+- Each poll searches configured projects and `eligible_statuses` with a rolling Jira JQL window of `updated >= "-<lookback_days>d"`, so tickets updated while the service was down are still considered while they remain in the configured lookback window.
+- The service checks Jira comments newest-first by author identity and skips the ticket as soon as it finds a comment from the ticket responder account. Existing comments are not included in the Archi prompt at the moment.
+- There is no per-poll answer cap. This MVP is intended for low-volume projects; Jira, Archi, or provider rate failures are logged per ticket and retried only by a later poll while the ticket remains in the configured lookback window and has no comment from the ticket responder account.
+- Jira comments include the Archi answer and, when Archi returns them, capped Jira wiki-rendered `{panel}` sections for reasoning trace and tool calls. The service uses standard Jira wiki panels and `{noformat}` blocks, not collapsible expand macros.
+- The Jira comment is posted before conversation persistence. If posting fails, nothing is persisted; if persistence fails after posting, the Jira comment remains.
+
+### Secrets
+
+```bash
+JIRA_TICKET_RESPONDER_PAT=...
+PG_PASSWORD=...
+# Add the API key required by the resolved Archi provider, such as OPENAI_API_KEY.
+```
+
+`JIRA_PAT` is used by the Jira data source for read-only ingestion. `JIRA_TICKET_RESPONDER_PAT` is used by the ticket responder service to browse issues and add restricted comments. Use distinct Jira accounts for least privilege, and keep the ticket responder token tied to a dedicated account because any comment from that account is treated as an existing responder answer.
+
+Include any provider key required by the resolved Archi provider in the `.env` passed to `archi create` so it is copied into the deployment. Provider key validation is handled by Archi during agent startup.
+
+### Running
+
+```bash
+archi create [...] --services chatbot,jira_ticket_responder
+```
+
+---
+
 ## Mattermost Interface
 
 Reads posts from a Mattermost forum and posts draft responses to a specified channel.

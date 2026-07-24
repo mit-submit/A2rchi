@@ -103,6 +103,44 @@ Get per-variant aggregate metrics (wins, losses, ties, total comparisons).
 
 ---
 
+## Playbooks
+
+Per-user reusable instruction packs (the chat-side analog of an Agent Skills `SKILL.md`). Invoked in chat with `/name`; managed from **Settings → Playbooks** or via this API. In anonymous mode the caller's `client_id` doubles as the owner credential — pass it as a query parameter (GET) or JSON body field (POST/PUT/DELETE). With SSO enabled the verified session identity is the owner and `client_id` is ignored.
+
+### `GET /api/playbooks`
+
+List the caller's playbooks plus public ones (no bodies). Each item carries `id`, `name`, `description`, `visibility`, `is_mine`, and `is_enabled` (whether a public playbook has been added to the caller's active list).
+
+### `GET /api/playbooks/<id>`
+
+Fetch one playbook, including its body — own or public.
+
+### `POST /api/playbooks`
+
+Create a playbook owned by the caller: `{name, description, body, visibility?, client_id?}`. Names are lowercase slugs (`a-z0-9` with single hyphens, max 64 chars). Returns `409` for a duplicate own name, `400` for validation errors.
+
+### `PUT /api/playbooks/<id>`
+
+Update fields of an owned playbook (same body shape; all fields optional).
+
+### `DELETE /api/playbooks/<id>`
+
+Delete an owned playbook.
+
+### `POST /api/playbooks/<id>/enable` · `POST /api/playbooks/<id>/disable`
+
+Add / remove a public playbook to / from the caller's active list (opt-in). Own playbooks are always active.
+
+### `GET /api/playbooks/export`
+
+Download the caller's **own** playbooks as a zip of `<name>/SKILL.md` folders (the Agent Skills layout, portable to claude.ai). Public playbooks owned by others are excluded.
+
+### `POST /api/playbooks/import`
+
+Import playbooks from a multipart upload (field `file`: a zip of `<name>/SKILL.md` folders or a single SKILL.md) or the legacy JSON body `{playbooks: [...], on_conflict?, client_id?}`. `on_conflict` is `skip` (default) or `overwrite`. Imports are always created **private** (a file's public flag never publishes deployment-wide); per-item validation errors are reported without aborting the batch.
+
+---
+
 ## Authentication
 
 Authentication routes are served at the application root (not under `/api/`).

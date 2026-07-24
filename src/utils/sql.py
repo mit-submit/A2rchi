@@ -58,7 +58,43 @@ SELECT c.sender,
        c.message_id,
        lf.feedback,
        COALESCE(cf.comment_count, 0) AS comment_count,
-       c.model_used
+       c.model_used,
+       cpt.playbook_name
+FROM conversations c
+LEFT JOIN (
+    SELECT DISTINCT ON (mid)
+        mid,
+        feedback,
+        feedback_ts
+    FROM feedback
+    WHERE feedback IN ('like', 'dislike')
+    ORDER BY mid, feedback_ts DESC
+) lf ON lf.mid = c.message_id
+LEFT JOIN (
+    SELECT mid,
+           COUNT(*) AS comment_count
+    FROM feedback
+    WHERE feedback = 'comment'
+    GROUP BY mid
+) cf ON cf.mid = c.message_id
+LEFT JOIN conversation_playbook_turns cpt ON cpt.message_id = c.message_id
+WHERE c.conversation_id = %s
+ORDER BY c.message_id ASC;
+"""
+
+# Fallback for deployments where the conversation_playbook_turns migration
+# failed (PlaybookService.ensure_schema is warn-and-continue at boot): same
+# column shape as SQL_QUERY_CONVO_WITH_FEEDBACK — playbook_name last, NULL —
+# so conversation loads degrade to chip-less instead of erroring. Keep the
+# SELECT lists of the two queries in sync.
+SQL_QUERY_CONVO_WITH_FEEDBACK_NO_PLAYBOOKS = """
+SELECT c.sender,
+       c.content,
+       c.message_id,
+       lf.feedback,
+       COALESCE(cf.comment_count, 0) AS comment_count,
+       c.model_used,
+       NULL AS playbook_name
 FROM conversations c
 LEFT JOIN (
     SELECT DISTINCT ON (mid)
@@ -393,4 +429,38 @@ ORDER BY
 
 SQL_DELETE_ALERT = """
 DELETE FROM service_alerts WHERE id = %s;
+"""
+
+# =============================================================================
+# Playbook Turn Side-Table Queries
+# =============================================================================
+
+SQL_INSERT_PLAYBOOK_TURN = """
+INSERT INTO conversation_playbook_turns (message_id, playbook_name, playbook_id)
+VALUES (%s, %s, %s)
+ON CONFLICT (message_id) DO NOTHING;
+"""
+
+# Unified invocation ledger: one honest row per playbook use, for BOTH the
+# explicit /name path and the model-invoked (auto) Playbook tool, with a status.
+# Distinct from the side table above (which serves only the chip/regenerate for
+# explicit /name turns). No owner_id — owner ids double as access credentials.
+SQL_INSERT_PLAYBOOK_INVOCATION = """
+INSERT INTO playbook_invocations
+    (conversation_id, message_id, playbook_id, playbook_name, source, status, arm)
+VALUES (%s, %s, %s, %s, %s, %s, %s);
+"""
+
+# Refresh/regenerate re-applies the playbook of the conversation's NEWEST sender
+# turn. The LEFT JOIN is load-bearing: it returns that turn's playbook_name, or
+# NULL when the newest turn had none. An INNER JOIN would instead skip past a
+# plain newest turn to an *earlier* turn that did use a playbook, splicing an
+# unrelated playbook into the regenerated answer.
+SQL_LAST_PLAYBOOK_NAME_FOR_SENDER = """
+SELECT cpt.playbook_name
+FROM conversations c
+LEFT JOIN conversation_playbook_turns cpt ON cpt.message_id = c.message_id
+WHERE c.conversation_id = %s AND c.sender = %s
+ORDER BY c.message_id DESC
+LIMIT 1;
 """

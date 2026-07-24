@@ -55,6 +55,7 @@ const CONFIG = {
     LIKE: '/api/like',
     DISLIKE: '/api/dislike',
     TEXT_FEEDBACK: '/api/text_feedback',
+    PLAYBOOKS: '/api/playbooks',
   },
   STREAMING: {
     TIMEOUT: 600000, // 10 minutes
@@ -304,7 +305,13 @@ const API = {
     });
   },
 
-  async *streamResponse(history, conversationId, configName, signal = null, provider = null, model = null) {
+  async *streamResponse(history, conversationId, configName, signal = null, provider = null, model = null, playbookName = undefined) {
+    // A/B mode passes the name explicitly (both arms must get the same input);
+    // otherwise consume the pending one-shot /playbook selection.
+    if (playbookName === undefined) {
+      playbookName = this._pendingPlaybookName;
+      this._pendingPlaybookName = null;
+    }
     const response = await fetch(CONFIG.ENDPOINTS.STREAM, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -319,6 +326,7 @@ const API = {
         include_tool_steps: true,
         provider: provider,
         model: model,
+        playbook_name: playbookName || null,
       }),
       signal: signal,
     });
@@ -391,7 +399,7 @@ const API = {
    * Stream a pool-based A/B comparison. Returns an async iterator of NDJSON events.
    * Each event has an 'arm' field ('a' or 'b') plus 'type', 'content', etc.
    */
-  async *streamABComparison(history, conversationId, configName, signal, provider = null, model = null) {
+  async *streamABComparison(history, conversationId, configName, signal, provider = null, model = null, playbookName = null) {
     const streamOverride = window.__ARCHI_PLAYWRIGHT__?.ab?.streamOverride;
     if (typeof streamOverride === 'function') {
       yield* streamOverride({
@@ -401,6 +409,7 @@ const API = {
         signal,
         provider,
         model,
+        playbookName,
         clientId: this.clientId,
       });
       return;
@@ -415,6 +424,7 @@ const API = {
       client_timeout: CONFIG.STREAMING.TIMEOUT,
       provider,
       model,
+      playbook_name: playbookName || null,
     };
 
     const response = await fetch(CONFIG.ENDPOINTS.AB_COMPARE, {
@@ -507,6 +517,91 @@ const API = {
         client_id: this.clientId,
       }),
     });
+  },
+
+  _pendingPlaybookName: null,
+
+  async getPlaybooksList() {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}?client_id=${encodeURIComponent(this.clientId)}`);
+  },
+
+  async enablePlaybook(id) {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}/${id}/enable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: this.clientId }),
+    });
+  },
+
+  async disablePlaybook(id) {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}/${id}/disable`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: this.clientId }),
+    });
+  },
+
+  async getPlaybook(id) {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}/${id}?client_id=${encodeURIComponent(this.clientId)}`);
+  },
+
+  async createPlaybook(payload) {
+    return this.fetchJson(CONFIG.ENDPOINTS.PLAYBOOKS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, client_id: this.clientId }),
+    });
+  },
+
+  async updatePlaybook(id, payload) {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, client_id: this.clientId }),
+    });
+  },
+
+  async deletePlaybook(id) {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: this.clientId }),
+    });
+  },
+
+  async exportPlaybooks() {
+    // fetch + blob (not a bare link) so the session cookie/client_id path works the
+    // same in SSO and anonymous deployments. The server sends a zip of
+    // <name>/SKILL.md folders — the Agent Skills format claude.ai also accepts.
+    const resp = await fetch(`${CONFIG.ENDPOINTS.PLAYBOOKS}/export?client_id=${encodeURIComponent(this.clientId)}`);
+    if (!resp.ok) throw new Error(`export failed (${resp.status})`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `archi-playbooks-${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  // Legacy JSON import (pre-SKILL.md exports).
+  async importPlaybooks(playbooks, onConflict) {
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: this.clientId, playbooks, on_conflict: onConflict }),
+    });
+  },
+
+  // SKILL.md import: a zip of <name>/SKILL.md folders or a single .md file.
+  async importPlaybookFile(file, onConflict) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('client_id', this.clientId);
+    fd.append('on_conflict', onConflict);
+    return this.fetchJson(`${CONFIG.ENDPOINTS.PLAYBOOKS}/import`, { method: 'POST', body: fd });
   },
 
   async getProviderModels(providerType) {
@@ -802,15 +897,27 @@ const UI = {
     // Send message
     this.elements.sendBtn?.addEventListener('click', () => Chat.handleSendOrStop());
     this.elements.inputField?.addEventListener('keydown', (e) => {
+      // When the playbook menu is open, the keyboard drives it (Tab/Enter complete it).
+      if (PlaybookMenu.open) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); PlaybookMenu.move(1); return; }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); PlaybookMenu.move(-1); return; }
+        if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+          e.preventDefault(); PlaybookMenu.selectActive(); return;
+        }
+        if (e.key === 'Escape')    { e.preventDefault(); PlaybookMenu.hide(); return; }
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         Chat.handleSendOrStop();
       }
     });
-    
+
     // Auto-resize textarea
     this.elements.inputField?.addEventListener('input', () => this.autoResizeInput());
-    
+
+    // Playbook quick-invoke autocomplete
+    this.elements.inputField?.addEventListener('input', () => PlaybookMenu.maybeShow());
+
     // Settings modal
     this.elements.settingsBtn?.addEventListener('click', () => this.openSettings());
     this.elements.settingsBackdrop?.addEventListener('click', () => this.closeSettings());
@@ -899,6 +1006,143 @@ const UI = {
     });
     this.elements.agentSpecSave?.addEventListener('click', () => {
       this.saveAgentSpec();
+    });
+    // Playbooks section bindings (hosted in the Settings modal)
+    document.querySelector('.playbook-cancel')?.addEventListener('click', () => {
+      Chat._editingPlaybookId = null;
+      Chat.setPlaybookEditorReadOnly(false);
+      Chat.showPlaybooksView('list');
+    });
+    document.querySelector('.playbooks-back')?.addEventListener('click', () => {
+      Chat._editingPlaybookId = null;
+      Chat.setPlaybookEditorReadOnly(false);
+      Chat.showPlaybooksView('list');
+    });
+    document.querySelector('.playbook-save')?.addEventListener('click', () => Chat.savePlaybookFromPanel());
+    document.querySelector('.playbooks-new')?.addEventListener('click', () => {
+      Chat._editingPlaybookId = null;
+      Chat.setPlaybookEditorReadOnly(false);
+      Chat.setPlaybookEditorFields();  // empty fields, visibility back to private
+      Chat.showPlaybooksView('editor', 'New playbook');
+    });
+    document.querySelector('.playbooks-export')?.addEventListener('click', async () => {
+      try {
+        await API.exportPlaybooks();
+      } catch (err) {
+        UI.showToast('Export failed: ' + (err?.message || 'error'));
+      }
+    });
+    const playbooksImportInput = document.querySelector('.playbooks-import-file');
+    document.querySelector('.playbooks-import')?.addEventListener('click', () => playbooksImportInput?.click());
+    playbooksImportInput?.addEventListener('change', async () => {
+      const file = playbooksImportInput.files?.[0];
+      playbooksImportInput.value = '';  // allow re-selecting the same file later
+      if (!file) return;
+      const isJson = /\.json$/i.test(file.name || '');
+      let items = null;  // only known up front for legacy JSON files
+      if (isJson) {
+        try {
+          const parsed = JSON.parse(await file.text());
+          items = Array.isArray(parsed) ? parsed : parsed?.playbooks;
+          if (!Array.isArray(items) || !items.length) throw new Error('no playbooks found in the file');
+        } catch (err) {
+          UI.showToast('Import failed: ' + (err?.message || 'invalid file'));
+          return;
+        }
+      }
+      const what = items ? `${items.length} playbook(s)` : 'playbooks';
+      if (!confirm(`Import ${what} from "${file.name}"? Imported playbooks stay private to you.`)) return;
+      const doImport = (onConflict, subset) => (isJson
+        ? API.importPlaybooks(subset || items, onConflict)
+        : API.importPlaybookFile(file, onConflict));
+      try {
+        let res = await doImport('skip');
+        if (res.skipped?.length) {
+          const shown = res.skipped.slice(0, 5).join(', ') + (res.skipped.length > 5 ? '…' : '');
+          if (confirm(`${res.skipped.length} name(s) already exist (${shown}). Overwrite them?`)) {
+            // JSON can retry just the skipped items; a zip is re-sent whole, so
+            // names imported in round one re-overwrite with identical content.
+            const retry = isJson ? items.filter(it => res.skipped.includes(it?.name)) : null;
+            const res2 = await doImport('overwrite', retry);
+            const fresh = res.imported || [];
+            res = {
+              imported: fresh,
+              overwritten: (res2.overwritten || []).filter(n => !fresh.includes(n)),
+              skipped: res2.skipped,
+              errors: isJson ? [...(res.errors || []), ...(res2.errors || [])] : (res2.errors || []),
+              public_flags_ignored: isJson
+                ? (res.public_flags_ignored || 0) + (res2.public_flags_ignored || 0)
+                : (res2.public_flags_ignored || 0),
+            };
+          }
+        }
+        const bits = [];
+        if (res.imported?.length) bits.push(`${res.imported.length} imported`);
+        if (res.overwritten?.length) bits.push(`${res.overwritten.length} overwritten`);
+        if (res.skipped?.length) bits.push(`${res.skipped.length} skipped`);
+        if (res.errors?.length) bits.push(`${res.errors.length} failed`);
+        let note = '';
+        if (res.public_flags_ignored) {
+          const verb = res.public_flags_ignored === 1 ? 'was' : 'were';
+          note = ` — ${res.public_flags_ignored} marked "public" in the file ${verb} kept private (share from the editor)`;
+        }
+        UI.showToast('Import: ' + (bits.join(', ') || 'nothing to do') + note);
+        await Chat.loadPlaybooksPanel();
+        PlaybookMenu.playbooks = [];
+      } catch (err) {
+        UI.showToast('Import failed: ' + (err?.message || 'error'));
+      }
+    });
+    document.querySelector('.playbooks-list')?.addEventListener('click', async (e) => {
+      const editBtn = e.target.closest('.playbook-edit');
+      const delBtn = e.target.closest('.playbook-delete');
+      const viewBtn = e.target.closest('.playbook-view');
+      const addBtn = e.target.closest('.playbook-add');
+      const removeBtn = e.target.closest('.playbook-remove');
+      if (editBtn || viewBtn) {
+        try {
+          const playbook = await API.getPlaybook((editBtn || viewBtn).dataset.id);
+          Chat._editingPlaybookId = editBtn ? playbook.id : null;
+          Chat.setPlaybookEditorFields(playbook);
+          Chat.setPlaybookEditorReadOnly(!editBtn);  // View = read-only
+          Chat.showPlaybooksView('editor', editBtn ? 'Edit playbook' : playbook.name);
+        } catch (err) {
+          UI.showToast('Could not open playbook: ' + (err?.message || 'error'));
+        }
+      } else if (delBtn) {
+        const name = delBtn.dataset.name || 'this playbook';
+        if (!confirm(`Delete ${name}? This can't be undone.`)) return;
+        try {
+          await API.deletePlaybook(delBtn.dataset.id);
+          await Chat.loadPlaybooksPanel();
+          PlaybookMenu.playbooks = [];
+        } catch (err) {
+          UI.showToast('Could not delete playbook: ' + (err?.message || 'error'));
+        }
+      } else if (addBtn) {
+        try {
+          await API.enablePlaybook(addBtn.dataset.id);
+          await Chat.loadPlaybooksPanel();
+          PlaybookMenu.playbooks = [];
+        } catch (err) {
+          UI.showToast('Could not add playbook: ' + (err?.message || 'error'));
+        }
+      } else if (removeBtn) {
+        try {
+          await API.disablePlaybook(removeBtn.dataset.id);
+          await Chat.loadPlaybooksPanel();
+          PlaybookMenu.playbooks = [];
+        } catch (err) {
+          UI.showToast('Could not remove playbook: ' + (err?.message || 'error'));
+        }
+      }
+    });
+    document.querySelector('.playbooks-search')?.addEventListener('input', () => Chat.renderPlaybooksPanel());
+    document.querySelector('.playbooks-tabs')?.addEventListener('click', (e) => {
+      const tabBtn = e.target.closest('.playbooks-tab');
+      if (!tabBtn) return;
+      Chat._panelTab = tabBtn.dataset.tab;
+      Chat.renderPlaybooksPanel();
     });
     // Resize handle for agent spec modal
     this.initAgentSpecResize();
@@ -1080,6 +1324,10 @@ const UI = {
     if (targetSection) {
       targetSection.classList.add('active');
       targetSection.hidden = false;
+    }
+
+    if (sectionId === 'playbooks' && typeof Chat !== 'undefined') {
+      Chat.enterPlaybooksSection();
     }
   },
 
@@ -1523,14 +1771,16 @@ const UI = {
     const currentForm = this.collectAgentSpecForm();
     const selectedTools = currentForm.tools || [];
     const items = tools.map((tool) => {
-      const toolName = tool.name || '';
+      // Tolerate both shapes: an object {name, description} or a bare name string.
+      const toolName = typeof tool === 'string' ? tool : (tool.name || '');
+      const toolDesc = typeof tool === 'string' ? '' : (tool.description || '');
       const checked = selectedTools.includes(toolName) ? 'checked' : '';
       return `
       <label class="agent-spec-tool">
         <input type="checkbox" class="agent-spec-tool-checkbox" value="${Utils.escapeHtml(toolName)}" ${checked} />
         <div class="agent-spec-tool-info">
           <div class="agent-spec-tool-name">${Utils.escapeHtml(toolName)}</div>
-          <div class="agent-spec-tool-desc">${Utils.escapeHtml(tool.description || '')}</div>
+          <div class="agent-spec-tool-desc">${Utils.escapeHtml(toolDesc)}</div>
         </div>
       </label>`;
     });
@@ -2045,6 +2295,12 @@ const UI = {
       labelHtml = `<span class="message-label">${Utils.escapeHtml(msg.label)}</span>`;
     }
 
+    // Chip marking a user turn that applied a saved playbook (live + on reload).
+    let playbookChipHtml = '';
+    if (msg.playbookName) {
+      playbookChipHtml = `<span class="message-playbook-chip" title="Applied playbook">⚡ ${Utils.escapeHtml(msg.playbookName)}</span>`;
+    }
+
     const metaHtml = !isUser && msg.meta
       ? `<div class="message-meta">${Utils.escapeHtml(msg.meta)}</div>`
       : '';
@@ -2064,6 +2320,7 @@ const UI = {
             <div class="message-avatar">${avatar}</div>
             <span class="message-sender">${senderName}</span>
             ${labelHtml}
+            ${playbookChipHtml}
           </div>
           <div class="message-content">${msg.html || ''}</div>
           ${metaHtml}
@@ -3110,6 +3367,48 @@ const UI = {
   // Tool Step Rendering (Timeline Style)
   // =========================================================================
 
+  // A distinct activity step for the playbook that shaped this turn — shown for BOTH
+  // the /name path (body injected server-side, no tool call) and auto-pickup (the
+  // Playbook loader, surfaced here instead of as a generic tool row). Styled apart from
+  // tool steps and NOT counted as a tool: it explains WHY the tools below it ran.
+  renderPlaybookApplied(messageId, event) {
+    this.createTraceContainer(messageId);  // no-op if it already exists
+    const timeline = document.querySelector(`.trace-container[data-message-id="${messageId}"] .step-timeline`);
+    if (!timeline || !event.name) return;
+    // Key on the playbook name, not the tool_call_id: a /name turn emits one applied
+    // step server-side (no id) AND, if the model redundantly re-loads the same playbook,
+    // another via the tool (with an id). Same playbook → one step.
+    // Self-defending sink: build the id from the name reduced to [a-z0-9_-] (server
+    // _NAME_RE already enforces that, but the id/selector/onclick must not rely on it).
+    const stepId = `playbook-${String(event.name).replace(/[^a-z0-9_-]/gi, '')}`;
+    const stepIdAttr = Utils.escapeAttr(stepId);
+    if (timeline.querySelector(`[data-step-id="${stepIdAttr}"]`)) return;  // dedupe
+    // The body (the loaded playbook text) makes the step expandable — same detail the
+    // tool row used to show. Absent it, render a plain, non-clickable pill.
+    const body = event.body != null ? String(event.body).trim() : '';
+    const onclick = body ? ` onclick="UI.toggleStepExpanded('${stepIdAttr}')"` : '';
+    const toggle = body ? '<button class="step-toggle" aria-label="Expand playbook details">&#9654;</button>' : '';
+    const details = body ? `
+          <div class="step-details" style="display: none;">
+            <div class="section-label">Playbook</div>
+            <pre><code>${Utils.escapeHtml(body)}</code></pre>
+          </div>` : '';
+    timeline.insertAdjacentHTML('beforeend', `
+      <div class="step playbook-step" data-step-id="${stepIdAttr}">
+        <div class="step-connector">
+          <span class="step-marker playbook-marker"></span>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-content">
+          <div class="step-header"${onclick}>
+            <span class="step-icon playbook-icon-glyph" aria-hidden="true">📘</span>
+            <span class="step-label">Playbook applied · ${Utils.escapeHtml(event.name)}</span>
+            ${toggle}
+          </div>${details}
+        </div>
+      </div>`);
+  },
+
   renderToolStart(messageId, event) {
     const timeline = document.querySelector(`.trace-container[data-message-id="${messageId}"] .step-timeline`);
     if (!timeline) return;
@@ -3412,6 +3711,10 @@ const UI = {
         const startEvent = toolStartEvents[event.tool_call_id];
         // Update the tool step with output
         this.updateHistoricalToolStep(timeline, event, startEvent);
+      } else if (event.type === 'playbook_applied') {
+        // A persisted auto-pickup step: rebuild the same expandable "Playbook applied"
+        // row (renderPlaybookApplied re-queries this message's live timeline and dedupes).
+        this.renderPlaybookApplied(messageId, event);
       } else if (event.type === 'usage') {
         usageData = event;
       }
@@ -3721,6 +4024,103 @@ const UI = {
 
 // Make UI globally accessible for onclick handlers
 window.UI = UI;
+
+// =============================================================================
+// Playbook Quick-Invoke Menu
+// =============================================================================
+
+const PlaybookMenu = {
+  el: () => document.querySelector('.playbook-menu'),
+  playbooks: [],
+  open: false,
+  locked: null,   // name already autocompleted into the input — don't re-open for it
+
+  async maybeShow() {
+    const field = UI.elements.inputField;
+    if (!field) return;
+    const value = field.value;
+    if (!value.startsWith('/')) {
+      // not a playbook invoke anymore — drop any pending selection so it can't leak
+      if (this.locked) { this.locked = null; API._pendingPlaybookName = null; }
+      this.hide();
+      return;
+    }
+    // already completed to "/name " — leave it in the text, keep the menu closed
+    if (this.locked && value.startsWith(`/${this.locked} `)) { this.hide(); return; }
+    // user edited the name again — unlock and re-filter
+    if (this.locked) { this.locked = null; API._pendingPlaybookName = null; }
+    const query = value.slice(1).split(/\s/)[0].toLowerCase();
+    if (!this.open) {
+      try { this.playbooks = (await API.getPlaybooksList())?.playbooks || []; }
+      catch (e) { this.playbooks = []; }
+    }
+    // Prefix match (like shell/command autocomplete): "/cond" completes names that START with
+    // "cond", not ones that merely contain it mid-string (which would make Tab pick the wrong playbook).
+    // Only your list (own + enabled) appears in the menu; unadded public ones are added from the panel.
+    // NOTE: this.playbooks stays the FULL list — the send-time "Add & run?" guard relies on it.
+    const matches = this.playbooks.filter(s => s.is_enabled !== false && s.name.toLowerCase().startsWith(query));
+    this.render(matches);
+  },
+
+  render(matches) {
+    const menu = this.el();
+    if (!menu) return;
+    if (!matches.length) { this.hide(); return; }
+    menu.innerHTML = matches.map((s, i) => `
+      <div class="playbook-menu-item${i === 0 ? ' active' : ''}" role="option" data-playbook="${Utils.escapeHtml(s.name)}">
+        <span class="playbook-menu-name">/${Utils.escapeHtml(s.name)}${s.is_mine === false ? '<span class="playbook-badge">public</span>' : ''}</span>
+        <span class="playbook-menu-desc">${Utils.escapeHtml(s.description || '')}</span>
+      </div>`).join('');
+    menu.hidden = false;
+    this.open = true;
+    menu.querySelectorAll('.playbook-menu-item').forEach(item => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        this.select(item.dataset.playbook);
+      });
+    });
+  },
+
+  select(name) {
+    API._pendingPlaybookName = name;            // applied by the next stream request
+    const field = UI.elements.inputField;
+    if (field) {
+      // autocomplete the partial "/xyz" to the full "/name " — keep it IN the text box
+      const rest = field.value.replace(/^\/\S*\s?/, '');
+      field.value = `/${name} ${rest}`;
+      field.focus();
+      field.setSelectionRange(field.value.length, field.value.length);
+    }
+    this.locked = name;                      // completed — don't re-open the menu for it
+    this.hide();
+  },
+
+  move(delta) {
+    const menu = this.el();
+    if (!menu) return;
+    const items = [...menu.querySelectorAll('.playbook-menu-item')];
+    if (!items.length) return;
+    let i = items.findIndex(it => it.classList.contains('active'));
+    if (i < 0) i = 0;
+    items[i].classList.remove('active');
+    i = (i + delta + items.length) % items.length;
+    items[i].classList.add('active');
+    items[i].scrollIntoView({ block: 'nearest' });
+  },
+
+  selectActive() {
+    const menu = this.el();
+    if (!menu) return;
+    const active = menu.querySelector('.playbook-menu-item.active') || menu.querySelector('.playbook-menu-item');
+    if (active) this.select(active.dataset.playbook);
+  },
+
+  hide() {
+    const menu = this.el();
+    if (menu) { menu.hidden = true; menu.innerHTML = ''; }
+    this.open = false;
+  },
+};
 
 // =============================================================================
 // Chat Controller
@@ -4273,6 +4673,7 @@ const Chat = {
           meta: isUser ? null : (msg.model_used || this.getEntryMetaLabel()),
           feedback: msg.feedback || null,
           trace: msg.trace || null,  // Include trace data
+          playbookName: msg.playbook_name || null,  // show a chip on /playbook-invoked user turns
         };
       });
 
@@ -4497,7 +4898,7 @@ const Chat = {
   },
 
   async sendMessage() {
-    const text = UI.getInputValue();
+    let text = UI.getInputValue();
     if (!text) return;
     // Only block if THIS conversation is already busy (or an A/B comparison is running); other
     // conversations may be streaming concurrently.
@@ -4516,11 +4917,46 @@ const Chat = {
       return;
     }
 
+    // Guard: if the pending playbook is a public one the user hasn't enabled yet,
+    // confirm "add and run" before proceeding; abort cleanly on decline.
+    {
+      const guardName = API._pendingPlaybookName;
+      if (guardName) {
+        const list = PlaybookMenu.playbooks?.length
+          ? PlaybookMenu.playbooks
+          : ((await API.getPlaybooksList())?.playbooks || []);
+        const pb = list.find(p => p.name === guardName);
+        if (pb && pb.is_mine === false && !pb.is_enabled) {
+          const ok = window.confirm(`"/${guardName}" is a public playbook. Add it to your list and run it?`);
+          if (!ok) {
+            API._pendingPlaybookName = null;
+            return;
+          }
+          try { await API.enablePlaybook(pb.id); PlaybookMenu.playbooks = []; }
+          catch (err) { API._pendingPlaybookName = null; return; }
+        }
+      }
+    }
+
+    // A /playbook invoke leaves "/name " in the input (autocomplete) — strip it so the stored
+    // message, the bubble, and the conversation title stay clean. The playbook still applies via
+    // the separately-sent playbook_name + the chip.
+    const pendingPlaybook = API._pendingPlaybookName || null;
+    if (pendingPlaybook && text.startsWith('/' + pendingPlaybook)) {
+      text = text.slice(1 + pendingPlaybook.length).replace(/^\s+/, '');
+      if (!text) {
+        // Bare "/name": run the playbook with a clean stand-in request so the bubble
+        // and conversation title aren't empty (playbooks that need input will ask for it).
+        text = `Run the ${pendingPlaybook} playbook.`;
+      }
+    }
+
     // Add user message
     const userMsg = {
       id: `${Date.now()}-user`,
       sender: 'User',
       html: Utils.escapeHtml(text),
+      playbookName: pendingPlaybook,  // chip; streamResponse clears _pendingPlaybookName next
     };
     this.state.messages.push(userMsg);
     this.state.history.push(['User', text]);
@@ -4545,7 +4981,7 @@ const Chat = {
     if (isAB) {
       this.state.isStreaming = true;
       const streamId = ++this.state.streamToken;
-      await this.sendABMessage(text, configA, streamId);
+      await this.sendABMessage(text, configA, streamId, pendingPlaybook);
     } else {
       await this.sendSingleMessage(configA, userMsg);
     }
@@ -4593,7 +5029,7 @@ const Chat = {
     }
   },
 
-  async sendABMessage(userText, configA, streamId) {
+  async sendABMessage(userText, configA, streamId, playbookName = null) {
     if (!this.state.abPool) {
       UI.showToast('A/B pool is not configured on the server. Cannot run comparison.');
       this.state.isStreaming = false;
@@ -4601,6 +5037,10 @@ const Chat = {
       UI.setStreamingState(false);
       return;
     }
+
+    // The pending one-shot /playbook selection was captured by sendMessage and is passed in
+    // explicitly so both arms get the same input; clear it so it can't leak into a later send.
+    API._pendingPlaybookName = null;
 
     const msgIdA = `${Date.now()}-ab-a`;
     const msgIdB = `${Date.now()}-ab-b`;
@@ -4632,6 +5072,7 @@ const Chat = {
         this.state.abortController?.signal,
         provider,
         model,
+        playbookName,
       )) {
         // Detached by a conversation switch: keep draining so the server saves, but stop touching the UI/state.
         if (this.state.streamToken !== streamId) continue;
@@ -4874,6 +5315,9 @@ const Chat = {
     const showTrace = UI.isTraceVisibleMode(UI.getTraceModeForMessage(messageId));
     if (!showTrace) return;
     switch (event.type) {
+      case 'playbook_applied':
+        UI.renderPlaybookApplied(messageId, event);
+        break;
       case 'tool_start':
         UI.renderToolStart(messageId, event);
         break;
@@ -5010,6 +5454,9 @@ const Chat = {
           s.trace.events.push(event);
           if (viewing) this._renderStreamEvent(messageId, event);
         } else if (event.type === 'thinking_start' || event.type === 'thinking_end') {
+          s.trace.events.push(event);
+          if (viewing) this._renderStreamEvent(messageId, event);
+        } else if (event.type === 'playbook_applied') {
           s.trace.events.push(event);
           if (viewing) this._renderStreamEvent(messageId, event);
         } else if (event.type === 'chunk') {
@@ -5201,6 +5648,154 @@ const Chat = {
     if (['minimal', 'normal', 'verbose'].includes(mode)) {
       this.state.traceVerboseMode = mode;
       localStorage.setItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE, mode);
+    }
+  },
+
+  showPlaybooksView(view, title) {
+    const panel = document.querySelector('.playbooks-panel');
+    if (panel) panel.dataset.view = view;
+    const back = document.querySelector('.playbooks-back');
+    if (back) back.hidden = (view !== 'editor');
+    const titleEl = document.querySelector('#playbooks-title');
+    if (titleEl) titleEl.textContent = (view === 'editor' ? (title || 'Playbook') : 'Playbooks');
+  },
+
+  enterPlaybooksSection() {
+    // Called whenever Settings switches to the Playbooks section: reset to the
+    // Active tab, unfiltered, list view, and (re)load the catalog.
+    Chat._panelTab = 'mine';
+    const _search = document.querySelector('.playbooks-search');
+    if (_search) _search.value = '';                  // start unfiltered each open
+    Chat.showPlaybooksView('list');
+    this.loadPlaybooksPanel();
+  },
+
+  async loadPlaybooksPanel() {
+    if (!document.querySelector('.playbooks-list')) return;
+    try {
+      const data = await API.getPlaybooksList();
+      Chat._panelPlaybooks = data?.playbooks || [];
+    } catch (e) {
+      Chat._panelPlaybooks = null;  // signals "could not load"
+    }
+    Chat.renderPlaybooksPanel();
+  },
+
+  renderPlaybooksPanel() {
+    const list = document.querySelector('.playbooks-list');
+    const tabsEl = document.querySelector('.playbooks-tabs');
+    if (!list) return;
+    if (Chat._panelPlaybooks === null) {
+      if (tabsEl) tabsEl.innerHTML = '';
+      list.innerHTML = '<div class="playbooks-status">Could not load playbooks.</div>';
+      return;
+    }
+    const all = Chat._panelPlaybooks || [];
+    if (!all.length) {
+      if (tabsEl) tabsEl.innerHTML = '';
+      list.innerHTML = '<div class="playbook-menu-desc">No playbooks yet. Use "New playbook", or ask the agent to save one.</div>';
+      return;
+    }
+    const q = (document.querySelector('.playbooks-search')?.value || '').trim().toLowerCase();
+    const matchesQuery = (s) => !q
+      || s.name.toLowerCase().includes(q)
+      || (s.description || '').toLowerCase().includes(q);
+    const mine = all.filter(s => s.is_enabled !== false).filter(matchesQuery);
+    const pub = all.filter(s => s.is_enabled === false).filter(matchesQuery);
+
+    const tab = Chat._panelTab === 'public' ? 'public' : 'mine';  // default to Active
+    if (tabsEl) {
+      tabsEl.innerHTML =
+        `<button class="playbooks-tab${tab === 'mine' ? ' active' : ''}" data-tab="mine" type="button" role="tab">Active (${mine.length})</button>`
+        + `<button class="playbooks-tab${tab === 'public' ? ' active' : ''}" data-tab="public" type="button" role="tab">Add from public (${pub.length})</button>`;
+    }
+
+    const rowHtml = (s) => {
+      const isMine = s.is_mine !== false;
+      const badge = s.visibility === 'public'
+        ? `<span class="playbook-badge">public${!isMine && s.owner ? ' · ' + Utils.escapeHtml(s.owner) : ''}</span>`
+        : '';
+      const actions = isMine
+        ? `<button class="playbook-edit" data-id="${s.id}" type="button">Edit</button>
+           <button class="playbook-delete" data-id="${s.id}" data-name="${Utils.escapeHtml(s.name)}" type="button">Delete</button>`
+        : (s.is_enabled
+            ? `<button class="playbook-view" data-id="${s.id}" type="button">View</button>
+               <button class="playbook-remove" data-id="${s.id}" type="button">Remove</button>`
+            : `<button class="playbook-view" data-id="${s.id}" type="button">View</button>
+               <button class="playbook-add" data-id="${s.id}" type="button">Add</button>`);
+      return `
+          <div class="playbook-row" data-id="${s.id}">
+            <div><strong>${Utils.escapeHtml(s.name)}</strong>${badge}
+              <div class="playbook-menu-desc">${Utils.escapeHtml(s.description || '')}</div></div>
+            <div class="playbook-row-actions">${actions}</div>
+          </div>`;
+    };
+
+    const items = tab === 'mine' ? mine : pub;
+    const emptyMsg = q ? 'No matches.' : (tab === 'mine' ? 'Nothing here yet.' : 'None to add.');
+    if (!items.length) {
+      list.innerHTML = `<div class="playbook-menu-desc">${emptyMsg}</div>`;
+    } else if (tab === 'mine') {
+      // The Active tab groups what you own and what you added from public.
+      const yours = items.filter(s => s.is_mine !== false);
+      const added = items.filter(s => s.is_mine === false);
+      let html = '';
+      if (yours.length) html += `<div class="playbooks-group-title">Yours</div>` + yours.map(rowHtml).join('');
+      if (added.length) html += `<div class="playbooks-group-title">Added from public</div>` + added.map(rowHtml).join('');
+      list.innerHTML = html;
+    } else {
+      list.innerHTML = items.map(rowHtml).join('');
+    }
+  },
+
+  // The editor's input fields, keyed by selector — the single source used to
+  // populate, reset and (un)lock them, so the call sites cannot drift.
+  playbookEditorFields: {
+    '#playbook-name': 'name',
+    '#playbook-description': 'description',
+    '#playbook-visibility': 'visibility',
+    '#playbook-body': 'body',
+  },
+
+  setPlaybookEditorFields(playbook = {}) {
+    Object.entries(this.playbookEditorFields).forEach(([sel, field]) => {
+      const el = document.querySelector(sel);
+      if (!el) return;
+      if (field === 'visibility') el.value = playbook.visibility || 'private';
+      else el.value = playbook[field] || '';
+    });
+    const status = document.querySelector('#playbooks-status');
+    if (status) status.textContent = '';
+  },
+
+  setPlaybookEditorReadOnly(readOnly) {
+    this._playbookEditorReadOnly = !!readOnly;
+    Object.keys(this.playbookEditorFields).forEach(sel => {
+      const el = document.querySelector(sel);
+      if (el) el.disabled = this._playbookEditorReadOnly;
+    });
+    const save = document.querySelector('.playbook-save');
+    if (save) save.hidden = this._playbookEditorReadOnly;
+  },
+
+  async savePlaybookFromPanel() {
+    if (this._playbookEditorReadOnly) return;  // viewing a public playbook — nothing to save
+    const name = document.querySelector('#playbook-name')?.value.trim();
+    const description = document.querySelector('#playbook-description')?.value.trim();
+    const visibility = document.querySelector('#playbook-visibility')?.value || 'private';
+    const body = document.querySelector('#playbook-body')?.value;
+    const status = document.querySelector('#playbooks-status');
+    const editingId = this._editingPlaybookId || null;
+    try {
+      if (editingId) await API.updatePlaybook(editingId, { name, description, body, visibility });
+      else await API.createPlaybook({ name, description, body, visibility });
+      if (status) { status.textContent = 'Saved.'; }
+      this._editingPlaybookId = null;
+      Chat.showPlaybooksView('list');
+      await this.loadPlaybooksPanel();
+      PlaybookMenu.playbooks = [];
+    } catch (e) {
+      if (status) status.textContent = e.message || 'Could not save playbook.';
     }
   },
 };

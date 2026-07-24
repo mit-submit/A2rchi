@@ -16,6 +16,7 @@ venv
 .vscode
 *secrets/
 *secrets*
+!src/cli/templates/helm/templates/secrets.yaml
 logos/
 docs/site
 setup.sh
@@ -37,3 +38,12 @@ git/
 local_files/
 raw_local_files/
 websites/
+local/
+redo.sh
+
+# Playbook integration + UI tests — kept LOCAL-ONLY (need a Postgres on :5439 /
+# Playwright; excluded from the PR so CI stays unit-only). Run locally with:
+#   pytest tests/smoke/test_playbooks_integration.py -m integration
+#   BASE_URL=http://localhost:7870 npx playwright test tests/ui/playbooks.spec.ts
+tests/smoke/test_playbooks_integration.py
+tests/ui/playbooks.spec.ts

@@ -70,7 +70,7 @@ The remaining steps mirror the Podman flow. NOTE: this has not yet been fully te
 
 </details>
 
-Once these requirements are met, the `archi create [...] --gpu-ids <gpus>` option will deploy Archi across your GPUs.
+Once these requirements are met, the `archi create [...] --gpu-ids <gpus>` option will deploy Archi across your GPUs. For Helm deployments, `archi install [...] --gpu-ids <gpus>` writes the GPU settings into the generated chart. Explicit IDs request the matching `nvidia.com/gpu` count; `all` sets `NVIDIA_VISIBLE_DEVICES=all`, and you can set `gpu.count` in `values.yaml` when your Kubernetes cluster requires an explicit limit.
 
 ## Helpful Notes for Production Deployments
 

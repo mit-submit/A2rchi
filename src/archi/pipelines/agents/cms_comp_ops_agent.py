@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Callable, Dict, List
 
 from src.utils.logging import get_logger
 from src.utils.env import read_secret
 from src.archi.pipelines.agents.base_react import BaseReActAgent
+from src.archi.pipelines.agents.playbook_mixin import SupportsPlaybooks
 from src.data_manager.vectorstore.retrievers import HybridRetriever
 from src.archi.pipelines.agents.tools import (
     create_document_fetch_tool,
     create_file_search_tool,
+    create_ingest_url_tool,
+    create_ingest_indico_event_tool,
     create_metadata_search_tool,
     create_metadata_schema_tool,
     create_retriever_tool,
@@ -24,7 +28,7 @@ from src.archi.pipelines.agents.utils.skill_utils import load_skill
 logger = get_logger(__name__)
 
 
-class CMSCompOpsAgent(BaseReActAgent):
+class CMSCompOpsAgent(SupportsPlaybooks, BaseReActAgent):
     """Agent designed for CMS CompOps operations."""
 
     def __init__(
@@ -39,6 +43,12 @@ class CMSCompOpsAgent(BaseReActAgent):
         self._vector_retrievers = None
         self._vector_tool = None
         self.enable_vector_tools = "search_vectorstore_hybrid" in self.selected_tool_names
+
+        # Shared mount where the Indico MCP container drops authenticated downloads;
+        # the data-manager mounts the same volume read-only. Overridable for tests.
+        self._indico_shared_root = os.environ.get(
+            "INDICO_SHARED_DOWNLOADS_DIR", "/shared/indico-downloads"
+        )
 
         # Initialize MONIT clients (one per datasource proxy)
         self._monit_client = None
@@ -169,6 +179,40 @@ class CMSCompOpsAgent(BaseReActAgent):
                 "builder": self._build_mcp_tools,
                 "description": "Access tools served via configured MCP servers.",
             },
+            "ingest_url": {
+                "builder": self._build_ingest_url_tool,
+                "description": (
+                    "Ingest a NON-Indico URL into the knowledge base so it becomes searchable.\n"
+                    "For Indico event URLs (anything matching `*indico*/event/<id>`), "
+                    "use `ingest_indico_event(event_id=<id>)` instead — `ingest_url` "
+                    "cannot authenticate against CERN SSO and would ingest the login page.\n"
+                    "For other URLs (public docs, READMEs, generic web pages), use this tool.\n"
+                    "Input: url (string). Optional: depth (int).\n"
+                    "After a successful ingest, retrieve the new content "
+                    "DETERMINISTICALLY via search_metadata_index with "
+                    "`url:<the URL you just ingested>`, then fetch_catalog_document by hash. "
+                    "Do NOT loop on search_vectorstore_hybrid to locate a freshly "
+                    "ingested URL — rephrasing the query rarely helps and burns "
+                    "the recursion budget."
+                ),
+            },
+            "ingest_indico_event": {
+                "builder": self._build_ingest_indico_event_tool,
+                "description": (
+                    "Ingest an Indico event's attachments into the knowledge base "
+                    "via the Indico MCP server + shared volume.\n"
+                    "PREREQUISITE: call `INDICO_get_files(event_id, download_files=true)` "
+                    "FIRST — that MCP tool authenticates with CERN and saves files to a "
+                    "shared volume the data-manager can read.\n"
+                    "Then call `ingest_indico_event(event_id=<id>, event_url=<url>)` to "
+                    "chunk + embed + index everything that landed in the shared dir.\n"
+                    "Input: event_id (string, required); event_url (optional, stamped as "
+                    "metadata.url); contribution_id (optional).\n"
+                    "After it returns, retrieve with `search_metadata_index` using "
+                    "`event_id:<id>` then `fetch_catalog_document` by hash. Never call "
+                    "`ingest_url` on an Indico URL — use this tool instead."
+                ),
+            },
         }
 
         # Keep this safe for lightweight introspection paths that call
@@ -193,6 +237,9 @@ class CMSCompOpsAgent(BaseReActAgent):
                 "builder": self._build_condor_opensearch_aggregation_tool,
                 "description": "Run aggregation queries on MONIT OpenSearch for CMS HTCondor job metrics.",
             }
+
+        # Playbook authoring tools (save/update/delete) from the SupportsPlaybooks mixin.
+        defs.update(super()._tool_definitions())
 
         return defs
 
@@ -228,6 +275,48 @@ class CMSCompOpsAgent(BaseReActAgent):
             description=description,
             store_tool_input=getattr(self, "_store_tool_input", None),
         )
+
+    def _build_ingest_url_tool(self) -> Callable:
+        description = self._tool_definitions()["ingest_url"]["description"]
+        data_manager_url, headers = self._data_manager_endpoint()
+        # services.chat_app.tools.ingest_url:
+        #   sso_fallback_enabled: bool        (default false)
+        #   routing_rules: list of {pattern, action, scraper?, message?}
+        #                                     (default: DEFAULT_ROUTING_RULES — Indico refusal)
+        tool_cfg = (self._chat_app_config.get("tools", {}) or {}).get("ingest_url", {}) or {}
+        sso_fallback_enabled = bool(tool_cfg.get("sso_fallback_enabled", False))
+        # `routing_rules` may be omitted (use defaults), an empty list (disable all),
+        # or a list of rule dicts (replace defaults). Pass through verbatim.
+        routing_rules = tool_cfg.get("routing_rules", None)
+        return create_ingest_url_tool(
+            data_manager_url,
+            headers=headers,
+            description=description,
+            store_tool_input=getattr(self, "_store_tool_input", None),
+            routing_rules=routing_rules,
+            sso_fallback_enabled=sso_fallback_enabled,
+        )
+
+    def _build_ingest_indico_event_tool(self) -> Callable:
+        description = self._tool_definitions()["ingest_indico_event"]["description"]
+        data_manager_url, headers = self._data_manager_endpoint()
+        return create_ingest_indico_event_tool(
+            data_manager_url,
+            shared_root=self._indico_shared_root,
+            headers=headers,
+            description=description,
+            store_tool_input=getattr(self, "_store_tool_input", None),
+        )
+
+    def _data_manager_endpoint(self):
+        """Resolve the data-manager base URL + auth headers used by ingest tools."""
+        dm_cfg = self.config.get("services", {}).get("data_manager", {}) or {}
+        dm_host = dm_cfg.get("hostname") or dm_cfg.get("host") or "localhost"
+        dm_port = dm_cfg.get("port", 5001)
+        data_manager_url = f"http://{dm_host}:{dm_port}"
+        dm_token = read_secret("DM_API_TOKEN") or None
+        headers = {"Authorization": f"Bearer {dm_token}"} if dm_token else None
+        return data_manager_url, headers
 
     def _build_vector_tool_placeholder(self) -> List[Callable]:
         return []

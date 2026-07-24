@@ -27,6 +27,8 @@ services:
     trained_on: "My data"
     port: 7868
     external_port: 7868
+    # Uncomment to enable MCP skill injection (needed for the indico mcp_server below)
+    # skills_dir: ./skills
   vectorstore:
     backend: postgres # PostgreSQL with pgvector (only supported backend)
 
@@ -36,3 +38,23 @@ data_manager:
       input_lists:
         - examples/deployments/basic-agent/miscellanea.list
   embedding_name: HuggingFaceEmbeddings
+
+# Optional: live Indico MCP sidecar. See https://github.com/archi-physics/mcp-servers
+# (indico/README.md) for tokens & host_mode caveats. Uncomment this block and pass
+# --env-file with INDICO_BEARER_TOKEN / INDICO_API_KEY / INDICO_API_SECRET.
+#mcp_servers:
+#  indico:
+#    transport: streamable_http
+#    url: http://indico-mcp:8012/mcp        # use http://localhost:8012/mcp under --hostmode
+#    # Build context is pulled fresh from the archi-physics/mcp-servers repo on every
+#    # `archi create` (not vendored or pinned). Set `ref:` to a tag/branch/SHA to pin.
+#    build_context:
+#      repo: https://github.com/archi-physics/mcp-servers
+#      ref: main
+#      subdir: indico
+#    env:
+#      INDICO_BASE_URL: https://indico.cern.ch
+#      BEARER_TOKEN: ${INDICO_BEARER_TOKEN}
+#      API_KEY: ${INDICO_API_KEY}
+#      API_SECRET: ${INDICO_API_SECRET}
+#    skill: indico

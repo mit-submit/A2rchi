@@ -55,6 +55,7 @@ class PipelineEventFormatter:
         self._emitted_start_ids: set[str] = set()   # ids we've yielded tool_start for
         self._pending_ids: list[str] = []            # ids awaiting their output (ordered)
         self._calls: Dict[str, Dict[str, Any]] = {}  # id → {tool_name, tool_args}
+        self._playbook_output_ids: set[str] = set()  # ids surfaced as playbook_applied, not tool steps
         self._synthetic_counter: int = 0
 
         # Public counters for callers
@@ -235,10 +236,46 @@ class PipelineEventFormatter:
         tool_output = self._message_content(msg) if msg else ""
         tc_id = getattr(msg, "tool_call_id", "") if msg else ""
 
+        # A content_and_artifact tool (the Playbook loader) rides a small dict on the
+        # ToolMessage the model never sees, carrying which playbook resolved.
+        artifact = getattr(msg, "artifact", None) if msg else None
+        playbook_name = artifact.get("playbook_name") if isinstance(artifact, dict) else None
+        playbook_id = artifact.get("playbook_id") if isinstance(artifact, dict) else None
+
         if not tc_id and self._pending_ids:
             tc_id = self._pending_ids.pop(0)
         elif tc_id in self._pending_ids:
             self._pending_ids.remove(tc_id)
+
+        # The Playbook loader is not shown as a generic tool call. It's surfaced as a
+        # distinct "playbook applied" step — the same activity marker a /name invocation
+        # emits — so the trace explains WHY the downstream tools ran. Suppress this id's
+        # tool_start/tool_output/tool_end (see _on_tool_end) in favour of that one event.
+        # Require a real tc_id: an id-less artifact message would add "" to
+        # _playbook_output_ids and make _on_tool_end swallow any id-less tool_end.
+        if playbook_name and tc_id:
+            # This row was counted as a tool call at tool_start; since it's hidden in
+            # favour of the playbook_applied step, undo that count so the persisted
+            # total_tool_calls stays honest. Only a counted id is decremented — a
+            # deferred output (no preceding tool_start) never bumped the counter.
+            if tc_id in self._emitted_ids:
+                self.tool_call_count = max(0, self.tool_call_count - 1)
+            self._playbook_output_ids.add(tc_id)
+            self._emitted_start_ids.add(tc_id)
+            # `tool_output` is the loaded playbook body — carry it so the step is
+            # expandable (parity with the tool row it replaces, which showed the body).
+            evt = {
+                "type": "playbook_applied",
+                "name": playbook_name,
+                "tool_call_id": tc_id,
+                "body": tool_output,
+            }
+            # The requesting user's own playbook id (not a credential); the UI ignores
+            # unknown keys and the A/B ledger uses it. Omit when the artifact lacks one.
+            if playbook_id is not None:
+                evt["playbook_id"] = playbook_id
+            yield evt
+            return
 
         # Emit deferred tool_start if not yet sent
         if tc_id and tc_id not in self._emitted_start_ids:
@@ -271,6 +308,10 @@ class PipelineEventFormatter:
         yield evt
 
     def _on_tool_end(self, _output: PipelineOutput, meta: dict) -> Iterator[Dict[str, Any]]:
+        # A playbook-loader call was surfaced as a playbook_applied step, not a tool
+        # step, so it has no tool_end to render.
+        if meta.get("tool_call_id", "") in self._playbook_output_ids:
+            return
         yield {
             "type": "tool_end",
             "tool_call_id": meta.get("tool_call_id", ""),
@@ -320,6 +361,43 @@ class PipelineEventFormatter:
 # ------------------------------------------------------------------
 # Module-level helpers
 # ------------------------------------------------------------------
+
+def build_playbook_applied_events(pending: Optional[dict], arm_labels) -> list:
+    """One ``playbook_applied`` event per arm for a staged ``/name`` playbook.
+
+    A ``/name``-invoked playbook has no in-arm Playbook tool call to surface, and
+    the A/B client drops any event lacking an ``arm`` tag — so the staged step
+    must be emitted once per arm (auto-pickup inside an arm is already arm-tagged).
+    Returns ``[]`` when nothing is staged.
+    """
+    name = pending.get("name") if pending else None
+    if not name:
+        return []
+    body = pending.get("body", "")
+    return [
+        {"type": "playbook_applied", "name": name, "body": body, "arm": arm}
+        for arm in arm_labels
+    ]
+
+
+def playbook_loads_from_events(events) -> list:
+    """The in-arm auto Playbook loads within one A/B arm's event stream.
+
+    A model-invoked (auto) load surfaces as a ``playbook_applied`` event carrying a
+    ``tool_call_id``; the up-front ``/name`` per-arm events (from
+    ``build_playbook_applied_events``) have no ``tool_call_id`` and are recorded as
+    ``explicit`` elsewhere — so only ``tool_call_id``-bearing events are collected
+    here. Returns ``[{"name", "playbook_id", "tool_call_id"}, …]`` in stream order
+    (the id lets the stream path dedupe against rows already persisted from the
+    final output; A/B callers read only name/playbook_id and ignore it).
+    """
+    loads = []
+    for e in events or []:
+        if e.get("type") == "playbook_applied" and e.get("tool_call_id"):
+            loads.append({"name": e.get("name"), "playbook_id": e.get("playbook_id"),
+                          "tool_call_id": e.get("tool_call_id")})
+    return loads
+
 
 def _try_parse_args(raw: Any) -> Any:
     """Attempt to parse raw tool arguments into a dict."""

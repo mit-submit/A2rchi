@@ -182,6 +182,18 @@ See [Benchmarking](benchmarking.md) for full details on query format and evaluat
 
 ---
 
+### `archi install`
+
+Create and optionally install a Helm chart for an Archi deployment.
+
+```bash
+archi install --name <name> --config <config.yaml> --templates-dir <dir> --env-file <secrets.env> --services <services> [OPTIONS]
+```
+
+Supports `--gpu-ids` with the same values as `create`. For explicit IDs such as `0,1`, the generated chart sets `NVIDIA_VISIBLE_DEVICES` and requests the matching `nvidia.com/gpu` count. For `all`, the chart sets `NVIDIA_VISIBLE_DEVICES=all`; adjust `gpu.count` in `values.yaml` if your Kubernetes cluster requires an explicit GPU limit.
+
+---
+
 ## Environment Variables
 
 | Variable | Description |

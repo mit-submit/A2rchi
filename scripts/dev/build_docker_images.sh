@@ -102,12 +102,21 @@ fi
 
 for image in "${IMAGES_TO_BUILD[@]}"; do
   build_context="${IMAGE_DIRS[$image]}"
+  dockerfile="${IMAGE_DOCKERFILES[$image]:-}"
   echo "Building $image:$TAG from $build_context"
+  build_args=(
+    -t "$image:$TAG"
+    -t "$image:latest"
+    -t "localhost/$image:$TAG"
+    -t "localhost/$image:latest"
+  )
+
+  if [[ -n "$dockerfile" ]]; then
+    build_args+=(-f "$dockerfile")
+  fi
+
   "$RUNTIME" build \
-    -t "$image:$TAG" \
-    -t "$image:latest" \
-    -t "localhost/$image:$TAG" \
-    -t "localhost/$image:latest" \
+    "${build_args[@]}" \
     "$build_context"
   echo "Tagged $image:latest"
 done

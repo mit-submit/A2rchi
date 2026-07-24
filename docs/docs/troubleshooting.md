@@ -120,7 +120,7 @@ docker logs -f archi-myapp-chat
 
 **Checks**:
 
-1. Ensure `FLASK_UPLOADER_APP_SECRET_KEY` is set in your `.secrets.env` for stable session behavior.
+1. Session keys are stable by default: when `FLASK_UPLOADER_APP_SECRET_KEY` is not configured, the app generates one and persists it under `DATA_PATH` (mode 0600), so sessions survive restarts. Set the secret explicitly in `.secrets.env` when you want to control rotation — rotating it (or deleting the persisted key file) invalidates all sessions, which is also the lever if you need to force-log-out everyone; a plain restart no longer does that.
 2. Verify postgres is running and accessible.
 3. Check that auth tables were initialized — the chat service creates them on first startup.
 

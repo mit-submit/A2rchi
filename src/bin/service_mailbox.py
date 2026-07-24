@@ -4,12 +4,15 @@ import time
 
 from src.interfaces.redmine_mailer_integration import mailbox, redmine
 from src.utils.env import read_secret
-from src.utils.logging import setup_logging
+from src.utils.logging import setup_logging, get_logger
 from src.utils.postgres_service_factory import PostgresServiceFactory
 from src.utils.config_access import get_services_config
 
 # set basicConfig for logging
 setup_logging()
+
+logger = get_logger(__name__)
+from src.utils.logging import get_logger
 
 # set openai
 os.environ['OPENAI_API_KEY'] = read_secret("OPENAI_API_KEY")
@@ -30,6 +33,17 @@ mailbox_config = get_services_config().get("redmine_mailbox", {})
 redmine_instance = redmine.Redmine('Redmine_Helpdesk_Mail') # this name tells redmine class to not initialize archi() class
 
 while True:
-    mail = mailbox.Mailbox(user = user, password = password)
-    mail.process_messages(redmine_instance)
-    time.sleep(int(mailbox_config["mailbox_update_time"]))
+    try:
+        mail = mailbox.Mailbox(user=user, password=password)
+        mail.process_messages(redmine_instance)
+        time.sleep(int(mailbox_config["mailbox_update_time"]))
+
+    except ConnectionRefusedError as e:
+        logger.error(f"Connection refused: {e}")
+        logger.info("Retrying in 30 seconds...")
+        time.sleep(30)
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        logger.info("Retrying in 30 seconds...")
+        time.sleep(30)
