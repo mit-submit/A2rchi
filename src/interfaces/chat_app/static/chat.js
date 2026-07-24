@@ -1251,19 +1251,29 @@ const UI = {
       window.location.href = '/logout';
     });
 
-    // Close modal on Escape
+    // Close modal on Escape; with no modal open, Escape stops the current
+    // conversation's in-flight response (other conversations keep streaming).
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.elements.settingsModal?.style.display !== 'none') {
+      if (e.key !== 'Escape') return;
+      const modalOpen =
+        this.elements.settingsModal?.style.display !== 'none' ||
+        this.elements.agentSpecModal?.style.display !== 'none' ||
+        (this.elements.agentDropdownMenu && !this.elements.agentDropdownMenu.hidden) ||
+        this.elements.agentInfoModal?.style.display !== 'none';
+      if (this.elements.settingsModal?.style.display !== 'none') {
         this.closeSettings();
       }
-      if (e.key === 'Escape' && this.elements.agentSpecModal?.style.display !== 'none') {
+      if (this.elements.agentSpecModal?.style.display !== 'none') {
         this.closeAgentSpecEditor();
       }
-      if (e.key === 'Escape' && this.elements.agentDropdownMenu && !this.elements.agentDropdownMenu.hidden) {
+      if (this.elements.agentDropdownMenu && !this.elements.agentDropdownMenu.hidden) {
         this.closeAgentDropdown();
       }
-      if (e.key === 'Escape' && this.elements.agentInfoModal?.style.display !== 'none') {
+      if (this.elements.agentInfoModal?.style.display !== 'none') {
         this.closeAgentInfo();
+      }
+      if (!modalOpen && (Chat.currentStream() || Chat.state.isStreaming)) {
+        Chat.cancelStream();
       }
     });
 
@@ -2972,6 +2982,25 @@ const UI = {
     this.updateABArmMeta(armId, modelUsed, showVariant && !!modelUsed);
   },
 
+  // Repoint a normal message's DOM (bubble + trace container + timer) from a temp id to the real
+  // DB id, so live streaming, switch-back and reload all address the same element.
+  rekeyMessage(oldId, newId) {
+    if (oldId == null || newId == null || String(oldId) === String(newId)) return;
+    const el = this.elements.messagesInner?.querySelector(`[data-id="${oldId}"]`);
+    if (el) el.dataset.id = String(newId);
+    const traceContainer = document.querySelector(`.trace-container[data-message-id="${oldId}"]`);
+    if (traceContainer) {
+      traceContainer.dataset.messageId = String(newId);
+      const toggle = traceContainer.querySelector('[data-trace-toggle]');
+      if (toggle) toggle.dataset.traceToggle = String(newId);
+    }
+    const activeInterval = this.traceTimerIntervals.get(String(oldId));
+    if (activeInterval != null) {
+      this.traceTimerIntervals.set(String(newId), activeInterval);
+      this.traceTimerIntervals.delete(String(oldId));
+    }
+  },
+
   rekeyABArm(oldId, newId) {
     if (!oldId || !newId || String(oldId) === String(newId)) return;
 
@@ -4117,9 +4146,14 @@ const Chat = {
     },
     abPreferenceSaveState: null,
     // Trace state
-    activeTrace: null,         // { traceId, events: [], toolCalls: Map<toolCallId, toolData> }
     traceVerboseMode: localStorage.getItem(CONFIG.STORAGE_KEYS.TRACE_VERBOSE_MODE) || 'normal', // 'minimal' | 'normal' | 'verbose'
-    abortController: null,     // AbortController for cancellation
+    abortController: null,     // AbortController for the in-flight A/B comparison (single at a time)
+    streamToken: 0,            // bumped on conversation switch; in-flight A/B streams detach when superseded
+    // Concurrent single-response streams: one descriptor per in-flight conversation. Chat.state holds
+    // the CURRENT view (conversationId/messages/history); each stream is tracked here and the answer
+    // is persisted to the DB, so several conversations can generate at once.
+    activeStreams: [],         // [{ id, conversationId, userMsg, assistantMsg, abortController, trace }]
+    streamSeq: 0,              // unique id generator for stream descriptors
     // Provider state
     providers: [],
     pipelineDefaultModel: null,
@@ -4185,6 +4219,26 @@ const Chat = {
   async init() {
     Markdown.init();
     UI.init();
+
+    // A page refresh/close mid-stream should stop the prompt: tell the server to cancel every
+    // in-flight generation so each freezes its partial answer instead of leaving an orphaned
+    // 'running' trace.
+    window.addEventListener('pagehide', () => {
+      if (!navigator.sendBeacon) return;
+      const convIds = new Set(
+        this.state.activeStreams.map(s => s.conversationId).filter(id => id != null)
+      );
+      if (this.state.isStreaming && this.state.conversationId != null) {
+        convIds.add(this.state.conversationId);  // in-flight A/B comparison
+      }
+      for (const convId of convIds) {
+        const payload = new Blob(
+          [JSON.stringify({ conversation_id: convId, client_id: Storage.getClientId() })],
+          { type: 'application/json' },
+        );
+        navigator.sendBeacon(CONFIG.ENDPOINTS.CANCEL_STREAM, payload);
+      }
+    });
 
     // Load initial data
     await Promise.all([
@@ -4498,7 +4552,8 @@ const Chat = {
   },
 
   handleSendOrStop() {
-    if (this.state.isStreaming) {
+    // The button is a "stop" only when the conversation on screen is the one generating.
+    if (this.currentStream() || this.state.isStreaming) {
       this.cancelStream();
       return;
     }
@@ -4597,6 +4652,11 @@ const Chat = {
 
   async loadConversation(conversationId) {
     try {
+      // Detach any in-flight A/B comparison (those can't be re-attached). Single-response streams
+      // keep running per-conversation in the background; the input/stop state for the conversation
+      // we're opening is set by refreshStreamingUI() once it's loaded.
+      this.state.streamToken++;
+      this.state.isStreaming = false;
       const data = await API.loadConversation(conversationId);
       if (!data) return;
 
@@ -4624,10 +4684,26 @@ const Chat = {
       this.state.abVotePending = false;
 
       UI.renderMessages(this.state.messages);
-      
-      // Render historical trace data for assistant messages
+
+      // Render trace data for assistant messages. A 'running' message is only truly live if THIS
+      // tab still has an active stream for it; otherwise (e.g. after a refresh killed the stream)
+      // the generation is orphaned, so we show the saved partial marked as stopped instead of a
+      // spinner that can never resolve.
+      const liveIds = new Set(
+        this.state.activeStreams
+          .filter(s => this._streamMatchesConversation(s, conversationId))
+          .map(s => String(s.assistantMsg.id))
+      );
       for (const msg of this.state.messages) {
-        if (msg.sender !== 'User' && msg.trace) {
+        if (msg.sender === 'User') continue;
+        const status = msg.trace && msg.trace.status;
+        if (status === 'running' && liveIds.has(String(msg.id))) {
+          this._markMessageInProgress(msg);
+          this._replayLiveTrace(conversationId, msg.id);
+        } else if (status === 'running' || status === 'cancelled') {
+          this._markMessageStopped(msg);
+          if (msg.trace) UI.renderHistoricalTrace(msg.id, msg.trace);
+        } else if (msg.trace) {
           UI.renderHistoricalTrace(msg.id, msg.trace);
         }
       }
@@ -4638,9 +4714,10 @@ const Chat = {
         this.restorePendingABComparisons([data.pending_ab_comparison]);
       } else {
         UI.hideABVoteButtons();
-        UI.setInputDisabled(false);
+        // Reflect whether THIS conversation is currently generating (stop button) or idle (send).
+        this.refreshStreamingUI();
       }
-      
+
       await this.loadConversations(); // Refresh list to show active state
     } catch (e) {
       console.error('Failed to load conversation:', e);
@@ -4739,6 +4816,10 @@ const Chat = {
 
   async newConversation() {
     try {
+      // Switching to a blank chat detaches A/B but leaves other conversations streaming in the
+      // background; their answers keep saving and show when you return to them.
+      this.state.streamToken++;
+      this.state.isStreaming = false;
       await API.newConversation();
       this.state.conversationId = null;
       this.state.messages = [];
@@ -4747,10 +4828,10 @@ const Chat = {
       this.state.pendingABComparisons = [];
       this.state.abVotePending = false;
       Storage.setActiveConversationId(null);
-      
+
       UI.renderMessages([]);
       UI.hideABVoteButtons();
-      UI.setInputDisabled(false);
+      this.refreshStreamingUI();
       await this.loadConversations();
     } catch (e) {
       console.error('Failed to create conversation:', e);
@@ -4759,11 +4840,18 @@ const Chat = {
 
   async deleteConversation(conversationId) {
     if (!confirm('Delete this conversation?')) return;
-    
+
     try {
+      // Stop any in-flight stream belonging to the conversation being deleted.
+      this.state.activeStreams
+        .filter(s => this._streamMatchesConversation(s, conversationId))
+        .forEach(s => s.abortController?.abort());
+
       await API.deleteConversation(conversationId);
-      
+
       if (this.state.conversationId === conversationId) {
+        this.state.streamToken++;
+        this.state.isStreaming = false;
         this.state.conversationId = null;
         this.state.messages = [];
         this.state.history = [];
@@ -4773,18 +4861,49 @@ const Chat = {
         Storage.setActiveConversationId(null);
         UI.renderMessages([]);
         UI.hideABVoteButtons();
-        UI.setInputDisabled(false);
+        this.refreshStreamingUI();
       }
-      
+
       await this.loadConversations();
     } catch (e) {
       console.error('Failed to delete conversation:', e);
     }
   },
 
+  // Is the given conversation already generating an answer? (null = the unsaved "new chat" view.)
+  isConversationStreaming(convId) {
+    return this.state.activeStreams.some(s => this._streamMatchesConversation(s, convId));
+  },
+
+  // The in-flight stream (if any) for the conversation currently on screen.
+  currentStream() {
+    return this.state.activeStreams.find(s => this._streamMatchesConversation(s, this.state.conversationId));
+  },
+
+  _streamMatchesConversation(s, convId) {
+    if (s.conversationId == null) return convId == null;
+    return s.conversationId === convId;
+  },
+
+  // Set the input/stop-button state to reflect whether the CURRENT view is busy. Each conversation
+  // is independent: viewing a streaming one shows "stop", viewing an idle one shows "send" even if
+  // other conversations are still generating.
+  refreshStreamingUI() {
+    const busy = !!this.currentStream() || this.state.isStreaming;
+    UI.setStreamingState(busy);
+    if (busy) {
+      UI.setInputDisabled(true, { disableSend: false });
+    } else {
+      UI.setInputDisabled(false);
+    }
+  },
+
   async sendMessage() {
     let text = UI.getInputValue();
-    if (!text || this.state.isStreaming) return;
+    if (!text) return;
+    // Only block if THIS conversation is already busy (or an A/B comparison is running); other
+    // conversations may be streaming concurrently.
+    if (this.isConversationStreaming(this.state.conversationId) || this.state.isStreaming) return;
 
     const selected = this.getSelectedProviderAndModel();
     if (selected.provider && !selected.model) {
@@ -4847,7 +4966,6 @@ const Chat = {
     UI.clearInput();
     UI.setInputDisabled(true, { disableSend: false });
     UI.setStreamingState(true);
-    this.state.isStreaming = true;
 
     // Determine which config to use
     const configA = UI.getSelectedConfig('A');
@@ -4862,13 +4980,15 @@ const Chat = {
     }
 
     if (isAB) {
-      await this.sendABMessage(text, configA, pendingPlaybook);
+      this.state.isStreaming = true;
+      const streamId = ++this.state.streamToken;
+      await this.sendABMessage(text, configA, streamId, pendingPlaybook);
     } else {
-      await this.sendSingleMessage(configA);
+      await this.sendSingleMessage(configA, userMsg);
     }
   },
 
-  async sendSingleMessage(configName) {
+  async sendSingleMessage(configName, userMsg) {
     const msgId = `${Date.now()}-assistant`;
     const assistantMsg = {
       id: msgId,
@@ -4879,20 +4999,38 @@ const Chat = {
     this.state.messages.push(assistantMsg);
     UI.addMessage(assistantMsg);
 
+    // Register this conversation's in-flight stream. Content is persisted server-side and re-read
+    // from the DB on switch/reload, so the descriptor only needs identity + its own controller/trace.
+    const stream = {
+      id: ++this.state.streamSeq,
+      conversationId: this.state.conversationId,
+      // The view this send happened in (streamToken bumps on every conversation
+      // switch/new/delete). Guards conversation-id adoption below: a stream may
+      // only bind ids into Chat.state while the user is still on that view.
+      viewToken: this.state.streamToken,
+      userMsg,
+      assistantMsg,
+      abortController: null,
+      trace: null,
+    };
+    this.state.activeStreams.push(stream);
+
     try {
-      await this.streamResponse(msgId, configName);
+      await this.streamResponse(msgId, configName, stream);
     } catch (e) {
       console.error('Streaming error:', e);
     } finally {
-      this.state.isStreaming = false;
-      UI.setInputDisabled(false);
-      UI.setStreamingState(false);
-      UI.elements.inputField?.focus();
+      this.state.activeStreams = this.state.activeStreams.filter(s => s !== stream);
+      // Only refresh the input/button if the conversation that just finished is the one on screen.
+      if (this._streamMatchesConversation(stream, this.state.conversationId)) {
+        this.refreshStreamingUI();
+        UI.elements.inputField?.focus();
+      }
       await this.loadConversations();
     }
   },
 
-  async sendABMessage(userText, configA, playbookName = null) {
+  async sendABMessage(userText, configA, streamId, playbookName = null) {
     if (!this.state.abPool) {
       UI.showToast('A/B pool is not configured on the server. Cannot run comparison.');
       this.state.isStreaming = false;
@@ -4937,6 +5075,8 @@ const Chat = {
         model,
         playbookName,
       )) {
+        // Detached by a conversation switch: keep draining so the server saves, but stop touching the UI/state.
+        if (this.state.streamToken !== streamId) continue;
         if (event.type === 'meta' && event.event === 'stream_started') {
           continue; // padding event
         }
@@ -5035,6 +5175,12 @@ const Chat = {
         }
       }
 
+      // If the user switched conversations mid-stream, the server has saved the comparison; leave
+      // it for a reload and don't touch the UI/state, which now belong to another conversation.
+      if (this.state.streamToken !== streamId) {
+        return;
+      }
+
       // Finalize both arms (remove streaming cursor)
       UI.updateABResponse(msgIdA, Markdown.render(armTexts.a), false);
       UI.updateABResponse(msgIdB, Markdown.render(armTexts.b), false);
@@ -5076,21 +5222,25 @@ const Chat = {
 
     } catch (e) {
       console.error('A/B comparison error:', e);
-      UI.stopTraceTimer(msgIdA);
-      UI.stopTraceTimer(msgIdB);
-      UI.showABError(e.message || 'Failed to create comparison');
-      this.state.isStreaming = false;
-      this.syncABPendingState();
-      UI.setStreamingState(false);
-      this.state.abortController = null;
+      if (this.state.streamToken === streamId) {
+        UI.stopTraceTimer(msgIdA);
+        UI.stopTraceTimer(msgIdB);
+        UI.showABError(e.message || 'Failed to create comparison');
+        this.state.isStreaming = false;
+        this.syncABPendingState();
+        UI.setStreamingState(false);
+        this.state.abortController = null;
+      }
       await this.loadConversations();
       return;
     }
 
-    this.state.isStreaming = false;
-    UI.setStreamingState(false);
-    this.state.abortController = null;
-    this.syncABPendingState();
+    if (this.state.streamToken === streamId) {
+      this.state.isStreaming = false;
+      UI.setStreamingState(false);
+      this.state.abortController = null;
+      this.syncABPendingState();
+    }
     await this.loadConversations();
   },
 
@@ -5188,18 +5338,20 @@ const Chat = {
     }
   },
 
-  async streamResponse(messageId, configName) {
+  async streamResponse(messageId, configName, stream) {
     let streamedText = '';
-    
-    // Initialize trace state for this stream
-    this.state.activeTrace = {
+    const s = stream;
+
+    // Per-stream trace state (kept on the descriptor so concurrent streams don't clobber each other).
+    s.trace = {
       traceId: null,
       events: [],
       toolCalls: new Map(), // Map<toolCallId, { name, args, status, output, duration }>
     };
 
-    // Create abort controller for cancellation
-    this.state.abortController = new AbortController();
+    // Per-stream abort controller so each conversation can be stopped independently.
+    s.abortController = new AbortController();
+    const signal = s.abortController.signal;
     let timeoutId = null;
     let timedOut = false;
 
@@ -5210,9 +5362,13 @@ const Chat = {
       }
       timeoutId = setTimeout(() => {
         timedOut = true;
-        this.state.abortController?.abort();
+        s.abortController?.abort();
       }, CONFIG.STREAMING.TIMEOUT);
     };
+
+    // Snapshot the request inputs now (before any switch) — they belong to this stream's conversation.
+    const requestHistory = this.state.history;
+    const requestConversationId = this.state.conversationId;
 
     // Create trace container if in verbose/normal mode
     const showTrace = this.state.traceVerboseMode !== 'minimal';
@@ -5225,49 +5381,85 @@ const Chat = {
       const { provider, model } = this.getSelectedProviderAndModel();
 
       resetTimeout();
-      
+
       for await (const event of API.streamResponse(
-        this.state.history,
-        this.state.conversationId,
+        requestHistory,
+        requestConversationId,
         configName,
-        this.state.abortController.signal,
+        signal,
         provider,
         model
       )) {
         resetTimeout();
+
+        // 'init' carries the conversation id and the real DB message ids. Adopt them so a brand-new
+        // chat becomes switchable mid-stream, and so live updates / switch-back / reload all target
+        // the same rows (the server persists the exchange incrementally under these ids).
+        if (event.type === 'init') {
+          if (event.conversation_id != null && s) {
+            s.conversationId = event.conversation_id;
+            // Adopt into the on-screen state only when the user is still on the
+            // view this stream was sent from; a later New-chat/switch also has
+            // conversationId == null and must not be bound to this stream.
+            if (this.state.conversationId == null
+                && this.state.streamToken === s.viewToken) {
+              this.state.conversationId = event.conversation_id;
+              Storage.setActiveConversationId(event.conversation_id);
+              this.loadConversations();
+            }
+          }
+          if (event.user_message_id != null && s) {
+            UI.rekeyMessage(s.userMsg.id, event.user_message_id);
+            this._adoptMessageId(s.userMsg, event.user_message_id);
+          }
+          if (event.message_id != null && s) {
+            UI.rekeyMessage(messageId, event.message_id);
+            this._adoptMessageId(s.assistantMsg, event.message_id);
+            messageId = event.message_id;
+          }
+          continue;
+        }
+        if (event.type === 'meta' && event.event === 'stream_started') {
+          continue;
+        }
+
+        // Render only when this stream's conversation is the one on screen. When it isn't, the
+        // server keeps persisting, so switching back simply re-reads the partial from the DB.
+        const viewing = this.isStreamVisible(s);
+
         // Handle trace events
         if (event.type === 'tool_start') {
-          this.state.activeTrace.toolCalls.set(event.tool_call_id, {
+          s.trace.toolCalls.set(event.tool_call_id, {
             name: event.tool_name,
             args: event.tool_args,
             status: 'running',
             output: null,
             duration: null,
           });
-          this.state.activeTrace.events.push(event);
-          this._renderStreamEvent(messageId, event);
+          s.trace.events.push(event);
+          if (viewing) this._renderStreamEvent(messageId, event);
         } else if (event.type === 'tool_output') {
-          const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
+          const toolData = s.trace.toolCalls.get(event.tool_call_id);
           if (toolData) {
             toolData.output = event.output;
             toolData.status = 'success';
           }
-          this.state.activeTrace.events.push(event);
-          this._renderStreamEvent(messageId, event);
+          s.trace.events.push(event);
+          if (viewing) this._renderStreamEvent(messageId, event);
         } else if (event.type === 'tool_end') {
-          const toolData = this.state.activeTrace.toolCalls.get(event.tool_call_id);
+          const toolData = s.trace.toolCalls.get(event.tool_call_id);
           if (toolData) {
             toolData.status = event.status;
             toolData.duration = event.duration_ms;
           }
-          this.state.activeTrace.events.push(event);
-          this._renderStreamEvent(messageId, event);
+          s.trace.events.push(event);
+          if (viewing) this._renderStreamEvent(messageId, event);
         } else if (event.type === 'thinking_start' || event.type === 'thinking_end') {
-          this.state.activeTrace.events.push(event);
-          this._renderStreamEvent(messageId, event);
+          s.trace.events.push(event);
+          if (viewing) this._renderStreamEvent(messageId, event);
         } else if (event.type === 'playbook_applied') {
-          this.state.activeTrace.events.push(event);
-          this._renderStreamEvent(messageId, event);
+          s.trace.events.push(event);
+          if (viewing) this._renderStreamEvent(messageId, event);
         } else if (event.type === 'chunk') {
           // Chunks may be accumulated or delta content
           if (event.accumulated) {
@@ -5275,98 +5467,102 @@ const Chat = {
           } else {
             streamedText += event.content || '';
           }
-          UI.updateMessage(messageId, {
-            html: Markdown.render(streamedText),
-            streaming: true,
-          });
-        } else if (event.type === 'step' && event.step_type === 'agent') {
-          // Agent steps may contain full accumulated content
-          const content = event.content || '';
-          if (content) {
-            streamedText = content;
+          if (viewing) {
             UI.updateMessage(messageId, {
               html: Markdown.render(streamedText),
               streaming: true,
             });
           }
+        } else if (event.type === 'step' && event.step_type === 'agent') {
+          // Agent steps may contain full accumulated content
+          const content = event.content || '';
+          if (content) {
+            streamedText = content;
+            if (viewing) {
+              UI.updateMessage(messageId, {
+                html: Markdown.render(streamedText),
+                streaming: true,
+              });
+            }
+          }
         } else if (event.type === 'final') {
           const finalText = event.response || streamedText;
-          
+
           // Store trace ID
           if (event.trace_id) {
-            this.state.activeTrace.traceId = event.trace_id;
+            s.trace.traceId = event.trace_id;
           }
-          
-          // Finalize trace display with usage data
-          if (showTrace) {
-            UI.finalizeTrace(messageId, this.state.activeTrace, event);
-          }
-          
-          UI.updateMessage(messageId, {
-            html: Markdown.render(finalText),
-            streaming: false,
-          });
-          
-          // Update model label from actual model used
-          if (event.model_used) {
-            const msg = this.state.messages.find(m => m.id === messageId);
-            if (msg) msg.meta = event.model_used;
-            UI.updateMessage(messageId, { meta: event.model_used });
-          }
+          if (event.model_used && s) s.assistantMsg.meta = event.model_used;
 
-          // Update message ID from backend so feedback works
-          if (event.message_id != null) {
-            const msg = this.state.messages.find(m => m.id === messageId);
-            if (msg) msg.id = event.message_id;
-            const msgEl = document.querySelector(`[data-id="${messageId}"]`);
-            if (msgEl) msgEl.dataset.id = event.message_id;
-          }
-
-          if (event.conversation_id != null) {
-            this.state.conversationId = event.conversation_id;
-            Storage.setActiveConversationId(event.conversation_id);
-          }
-          
-          this.state.history.push(['archi', finalText]);
-          
-          // Re-highlight code blocks
-          if (typeof hljs !== 'undefined') {
-            setTimeout(() => hljs.highlightAll(), 0);
+          if (viewing) {
+            if (showTrace) {
+              UI.finalizeTrace(messageId, s.trace, event);
+            }
+            UI.updateMessage(messageId, {
+              html: Markdown.render(finalText),
+              streaming: false,
+            });
+            if (event.model_used) {
+              const msg = this.state.messages.find(m => m.id === messageId);
+              if (msg) msg.meta = event.model_used;
+              UI.updateMessage(messageId, { meta: event.model_used });
+            }
+            // History may already hold the partial answer (re-read from the DB after a switch-back);
+            // replace it, otherwise append.
+            const h = this.state.history;
+            if (h.length && h[h.length - 1][0] !== 'User') {
+              h[h.length - 1][1] = finalText;
+            } else {
+              h.push(['archi', finalText]);
+            }
+            // Re-highlight code blocks
+            if (typeof hljs !== 'undefined') {
+              setTimeout(() => hljs.highlightAll(), 0);
+            }
           }
           return;
         } else if (event.type === 'error') {
-          UI.updateMessage(messageId, {
-            html: `<p style="color: var(--error-text);">${Utils.escapeHtml(event.message || 'An error occurred')}</p>`,
-            streaming: false,
-          });
+          if (viewing) {
+            UI.updateMessage(messageId, {
+              html: `<p style="color: var(--error-text);">${Utils.escapeHtml(event.message || 'An error occurred')}</p>`,
+              streaming: false,
+            });
+          }
           return;
         } else if (event.type === 'cancelled') {
-          UI.updateMessage(messageId, {
-            html: streamedText 
-              ? Markdown.render(streamedText) + '<p class="cancelled-notice"><em>Response cancelled</em></p>'
-              : '<p class="cancelled-notice"><em>Response cancelled</em></p>',
-            streaming: false,
-          });
+          if (viewing) {
+            UI.updateMessage(messageId, {
+              html: streamedText
+                ? Markdown.render(streamedText) + '<p class="cancelled-notice"><em>Response cancelled</em></p>'
+                : '<p class="cancelled-notice"><em>Response cancelled</em></p>',
+              streaming: false,
+            });
+          }
           return;
         }
       }
     } catch (e) {
+      const viewing = this.isStreamVisible(s);
       if (e.name === 'AbortError') {
-        UI.updateMessage(messageId, {
-          html: timedOut
-            ? `<p class="cancelled-notice"><em>${Utils.escapeHtml(CONFIG.MESSAGES.CLIENT_TIMEOUT)}</em></p>`
-            : streamedText 
-              ? Markdown.render(streamedText) + '<p class="cancelled-notice"><em>Response cancelled</em></p>'
-              : '<p class="cancelled-notice"><em>Response cancelled</em></p>',
-          streaming: false,
-        });
+        if (viewing) {
+          UI.updateMessage(messageId, {
+            html: timedOut
+              ? `<p class="cancelled-notice"><em>${Utils.escapeHtml(CONFIG.MESSAGES.CLIENT_TIMEOUT)}</em></p>`
+              : streamedText
+                ? Markdown.render(streamedText) + '<p class="cancelled-notice"><em>Response cancelled</em></p>'
+                : '<p class="cancelled-notice"><em>Response cancelled</em></p>',
+            streaming: false,
+          });
+        }
         return;
       }
       console.error('Stream error:', e);
-      UI.updateMessage(messageId, {
-        html: `<p style="color: var(--error-text);">${Utils.escapeHtml(e.message || 'Streaming failed')}</p>`,
-        streaming: false,
-      });
+      if (viewing) {
+        UI.updateMessage(messageId, {
+          html: `<p style="color: var(--error-text);">${Utils.escapeHtml(e.message || 'Streaming failed')}</p>`,
+          streaming: false,
+        });
+      }
     } finally {
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -5374,34 +5570,94 @@ const Chat = {
       if (showTrace) {
         UI.stopTraceTimer(messageId);
       }
-      this.state.abortController = null;
-      this.state.activeTrace = null;
+      // The descriptor (with its abortController/trace) is removed from activeStreams by the caller.
+    }
+  },
+
+  isStreamVisible(s) {
+    if (!s || !this.state.activeStreams.includes(s)) return false;
+    return this._streamMatchesConversation(s, this.state.conversationId);
+  },
+
+  // Point an in-flight message object (and its state.messages entry) at the real DB id so live
+  // updates, switch-back and reload all address the same row.
+  _adoptMessageId(msgObj, newId) {
+    if (newId == null) return;
+    const oldId = msgObj?.id;
+    if (msgObj) msgObj.id = newId;
+    const m = this.state.messages.find(x => x.id === oldId);
+    if (m) m.id = newId;
+  },
+
+  // Render a stopped/interrupted answer (explicit Stop, or a refresh that killed the stream): show
+  // whatever was generated plus a "stopped" note, with no streaming cursor or live timer.
+  _markMessageStopped(msg) {
+    const notice = '<p class="cancelled-notice"><em>Response interrupted</em></p>';
+    UI.updateMessage(msg.id, { html: (msg.html || '') + notice, streaming: false });
+  },
+
+  // Render a still-generating message (its trace is 'running') restored from the DB as in-progress:
+  // streaming cursor + a live elapsed timer counting from when generation started.
+  _markMessageInProgress(msg) {
+    UI.updateMessage(msg.id, { html: msg.html, streaming: true });
+    const showTrace = this.state.traceVerboseMode !== 'minimal';
+    if (!showTrace) return;
+    UI.createTraceContainer(msg.id);
+    const startedAt = msg.trace && msg.trace.started_at ? Date.parse(msg.trace.started_at) : NaN;
+    const timerEl = UI.getTraceTimerElement(msg.id);
+    if (timerEl && Number.isFinite(startedAt)) {
+      timerEl.dataset.start = String(startedAt);
+      UI.startTraceTimer(msg.id);
+    }
+  },
+
+  // On switch-back to a conversation whose stream ran in the background, the trace events it
+  // accumulated while off-screen were never rendered (viewing was false) and loadConversation
+  // rebuilt the DOM with an empty activity container. Replay the stream's in-memory events into
+  // that fresh container so the activity tab is caught up before live events resume appending.
+  _replayLiveTrace(conversationId, messageId) {
+    const stream = this.state.activeStreams.find(
+      s => this._streamMatchesConversation(s, conversationId)
+        && String(s.assistantMsg.id) === String(messageId)
+    );
+    const events = stream && stream.trace && stream.trace.events;
+    if (!events || !events.length) return;
+    for (const event of events) {
+      this._renderStreamEvent(messageId, event);
     }
   },
 
   async cancelStream() {
-    if (this.state.abortController) {
+    // Stop only the conversation currently on screen, leaving other conversations streaming.
+    const stream = this.currentStream();
+    if (stream) {
+      stream.abortController?.abort();  // triggers AbortError → streamResponse finally removes it
+      this.refreshStreamingUI();
+      await this._notifyServerCancel(stream.conversationId);
+      return;
+    }
+
+    // Fallback: an A/B comparison (global, single at a time).
+    if (this.state.isStreaming && this.state.abortController) {
       this.state.abortController.abort();
       this.state.isStreaming = false;
       UI.setInputDisabled(false);
       UI.setStreamingState(false);
       this.state.abortController = null;
-      
-      // Also notify server
-      if (this.state.conversationId) {
-        try {
-          await fetch(CONFIG.ENDPOINTS.CANCEL_STREAM, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              conversation_id: this.state.conversationId,
-              client_id: Storage.getClientId(),
-            }),
-          });
-        } catch (e) {
-          console.error('Failed to notify server of cancellation:', e);
-        }
-      }
+      await this._notifyServerCancel(this.state.conversationId);
+    }
+  },
+
+  async _notifyServerCancel(conversationId) {
+    if (conversationId == null) return;
+    try {
+      await fetch(CONFIG.ENDPOINTS.CANCEL_STREAM, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_id: conversationId, client_id: Storage.getClientId() }),
+      });
+    } catch (e) {
+      console.error('Failed to notify server of cancellation:', e);
     }
   },
 

@@ -13,6 +13,19 @@ VALUES %s
 RETURNING message_id;
 """
 
+# Incremental persistence for streamed responses: a placeholder assistant row is inserted at
+# stream start (via SQL_INSERT_CONVO) and updated as tokens arrive, so the exchange is durable
+# and visible after a conversation switch or reload even before the answer finishes.
+SQL_UPDATE_MESSAGE_CONTENT = """
+UPDATE conversations SET content = %s WHERE message_id = %s;
+"""
+
+SQL_FINALIZE_MESSAGE = """
+UPDATE conversations
+SET content = %s, link = %s, context = %s, model_used = %s, pipeline_used = %s, ts = %s
+WHERE message_id = %s;
+"""
+
 SQL_INSERT_FEEDBACK = """
 INSERT INTO feedback (
     mid, feedback_ts, feedback, feedback_msg, incorrect, unhelpful, inappropriate

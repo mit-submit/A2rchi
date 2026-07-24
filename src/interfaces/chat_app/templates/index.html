@@ -18,7 +18,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@9.0.0/marked.min.js"></script>
   
   <!-- App styles -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='chat.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='chat.css') }}?v={{ asset_version }}">
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/archi_notext.png') }}">
 </head>
 <body>
@@ -420,9 +420,9 @@
   </div>
 
   <!-- Theme init (must load before page renders) -->
-  <script src="{{ url_for('static', filename='modules/theme-init.js') }}"></script>
+  <script src="{{ url_for('static', filename='modules/theme-init.js') }}?v={{ asset_version }}"></script>
   
   <!-- App script -->
-  <script src="{{ url_for('static', filename='chat.js') }}"></script>
+  <script src="{{ url_for('static', filename='chat.js') }}?v={{ asset_version }}"></script>
 </body>
 </html>
