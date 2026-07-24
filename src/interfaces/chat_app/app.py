@@ -2617,10 +2617,10 @@ class ChatWrapper:
             # Playbook loads that happened mid-stream never reached the unified ledger.
             # Recover them from the trace events, skipping any tool-call id the finalize
             # already wrote (dedupe for pipelines whose final output does carry messages).
-            if message_ids:
+            if archi_message_id:
                 recorded_ids = {tc.get("id") for tc in last_output.extract_tool_calls()}
                 self._record_stream_playbook_loads(
-                    context.conversation_id, message_ids[-1], trace_events, recorded_ids)
+                    context.conversation_id, archi_message_id, trace_events, recorded_ids)
 
             timestamps["finish_call_ts"] = datetime.now(timezone.utc)
             timestamps["server_received_msg_ts"] = server_received_msg_ts

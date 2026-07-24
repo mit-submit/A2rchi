@@ -4699,6 +4699,7 @@ const Chat = {
         const status = msg.trace && msg.trace.status;
         if (status === 'running' && liveIds.has(String(msg.id))) {
           this._markMessageInProgress(msg);
+          this._replayLiveTrace(conversationId, msg.id);
         } else if (status === 'running' || status === 'cancelled') {
           this._markMessageStopped(msg);
           if (msg.trace) UI.renderHistoricalTrace(msg.id, msg.trace);
@@ -5607,6 +5608,22 @@ const Chat = {
     if (timerEl && Number.isFinite(startedAt)) {
       timerEl.dataset.start = String(startedAt);
       UI.startTraceTimer(msg.id);
+    }
+  },
+
+  // On switch-back to a conversation whose stream ran in the background, the trace events it
+  // accumulated while off-screen were never rendered (viewing was false) and loadConversation
+  // rebuilt the DOM with an empty activity container. Replay the stream's in-memory events into
+  // that fresh container so the activity tab is caught up before live events resume appending.
+  _replayLiveTrace(conversationId, messageId) {
+    const stream = this.state.activeStreams.find(
+      s => this._streamMatchesConversation(s, conversationId)
+        && String(s.assistantMsg.id) === String(messageId)
+    );
+    const events = stream && stream.trace && stream.trace.events;
+    if (!events || !events.length) return;
+    for (const event of events) {
+      this._renderStreamEvent(messageId, event);
     }
   },
 
