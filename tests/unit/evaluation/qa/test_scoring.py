@@ -71,7 +71,7 @@ class TestSummaryScoring:
         summary = build_summary([{"status": "prepared"}], prepared, results)
 
         assert summary["item_lifecycle_counts"] == {
-            "skipped_live": 0,
+            "skipped_time_sensitive": 0,
             "preparation_failed": 0,
             "prepared": 1,
         }

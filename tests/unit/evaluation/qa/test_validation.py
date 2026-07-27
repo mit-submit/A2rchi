@@ -9,12 +9,18 @@ from src.evaluation.qa.validation import (
 
 
 class TestDatasetValidation:
+    def test_rejects_empty_dataset(self):
+        with pytest.raises(ValueError, match="at least one row"):
+            validate_dataset_rows([])
+
     def test_accepts_strict_row_and_derives_stable_id(self):
         rows = [
             {
                 "question": "What is the quota?\r\n",
-                "expected_answer": "2.8 TB\r",
-                "freshness": "static",
+                "answer": "2.8 TB\r",
+                "time_sensitive": False,
+                "category": "storage",
+                "answer_source": "static_docs_tickets",
                 "expected_atoms": [
                     {"id": "quota", "text": "The quota is 2.8 TB", "required": True}
                 ],
@@ -26,7 +32,9 @@ class TestDatasetValidation:
 
         assert first.id == second.id
         assert first.question == "What is the quota?\n"
-        assert first.expected_answer == "2.8 TB\n"
+        assert first.answer == "2.8 TB\n"
+        assert first.category == "storage"
+        assert first.answer_source == "static_docs_tickets"
         assert first.expected_atoms == [
             Atom(id="quota", text="The quota is 2.8 TB", required=True)
         ]
@@ -36,8 +44,8 @@ class TestDatasetValidation:
             [
                 {
                     "question": "Q",
-                    "expected_answer": "A",
-                    "freshness": "static",
+                    "answer": "A",
+                    "time_sensitive": False,
                     "expected_atoms": [
                         {"id": "g1", "text": "line one\r\nline two", "required": True}
                     ],
@@ -53,21 +61,25 @@ class TestDatasetValidation:
             (
                 {
                     "question": "Q",
-                    "expected_answer": "A",
-                    "freshness": "static",
-                    "category": "forbidden",
+                    "answer": "A",
+                    "time_sensitive": "false",
                 },
-                r"unknown field\(s\): category",
-            ),
-            (
-                {"question": "Q", "expected_answer": "A", "freshness": "recent"},
-                "freshness must be one of",
+                "time_sensitive must be a boolean",
             ),
             (
                 {
                     "question": "Q",
-                    "expected_answer": "A",
-                    "freshness": "static",
+                    "answer": "A",
+                    "time_sensitive": False,
+                    "expected_answer": "legacy",
+                },
+                r"unknown field\(s\): expected_answer",
+            ),
+            (
+                {
+                    "question": "Q",
+                    "answer": "A",
+                    "time_sensitive": False,
                     "expected_atoms": [
                         {"id": "optional", "text": "A", "required": False}
                     ],
@@ -81,7 +93,7 @@ class TestDatasetValidation:
             validate_dataset_rows([row])
 
     def test_rejects_duplicate_derived_ids(self):
-        row = {"question": "Q", "expected_answer": "A", "freshness": "static"}
+        row = {"question": "Q", "answer": "A", "time_sensitive": False}
         with pytest.raises(ValueError, match="duplicate or colliding id"):
             validate_dataset_rows([row, row])
 

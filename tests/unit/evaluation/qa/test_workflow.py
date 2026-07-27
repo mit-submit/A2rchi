@@ -17,11 +17,11 @@ class _EvaluatorFactory:
         factory = self
 
         class Evaluator:
-            def extract_gold(self, question, expected_answer):
+            def extract_gold(self, question, answer):
                 factory.calls["gold"] += 1
                 return {
                     "atoms": [
-                        {"id": "required", "text": expected_answer, "required": True},
+                        {"id": "required", "text": answer, "required": True},
                         {
                             "id": "optional",
                             "text": "Optional detail",
@@ -102,14 +102,14 @@ def _dataset(path):
                 {
                     "id": "inferred",
                     "question": "inferred question",
-                    "expected_answer": "expected",
-                    "freshness": "static",
+                    "answer": "expected",
+                    "time_sensitive": False,
                 },
                 {
                     "id": "supplied",
                     "question": "supplied question",
-                    "expected_answer": "supplied expected",
-                    "freshness": "static",
+                    "answer": "supplied expected",
+                    "time_sensitive": False,
                     "expected_atoms": [
                         {
                             "id": "required",
@@ -126,8 +126,8 @@ def _dataset(path):
                 {
                     "id": "live",
                     "question": "live question",
-                    "expected_answer": "current",
-                    "freshness": "live",
+                    "answer": "current",
+                    "time_sensitive": True,
                 },
             ]
         )
@@ -180,7 +180,7 @@ def test_composite_and_staged_workflows_are_equivalent_at_four_attempts(
     assert summary["item_lifecycle_counts"] == {
         "prepared": 2,
         "preparation_failed": 0,
-        "skipped_live": 1,
+        "skipped_time_sensitive": 1,
     }
     assert summary["attempt_lifecycle_counts"] == {
         "execution_failed": 0,
@@ -225,8 +225,8 @@ def test_failure_accounting_preserves_slots_and_denominators(agent_inputs, tmp_p
                 {
                     "id": "item",
                     "question": "question",
-                    "expected_answer": "expected",
-                    "freshness": "static",
+                    "answer": "expected",
+                    "time_sensitive": False,
                     "expected_atoms": [
                         {"id": "required", "text": "expected", "required": True}
                     ],
@@ -234,8 +234,8 @@ def test_failure_accounting_preserves_slots_and_denominators(agent_inputs, tmp_p
                 {
                     "id": "bad-eval",
                     "question": "bad eval",
-                    "expected_answer": "expected",
-                    "freshness": "static",
+                    "answer": "expected",
+                    "time_sensitive": False,
                     "expected_atoms": [
                         {"id": "required", "text": "expected", "required": True}
                     ],
@@ -271,8 +271,8 @@ def test_score_does_not_initialize_evaluator_when_all_executions_failed(
                 {
                     "id": "item",
                     "question": "question",
-                    "expected_answer": "expected",
-                    "freshness": "static",
+                    "answer": "expected",
+                    "time_sensitive": False,
                     "expected_atoms": [
                         {"id": "required", "text": "expected", "required": True}
                     ],
@@ -366,21 +366,21 @@ def test_prepare_validates_all_rows_before_evaluator_calls(tmp_path):
             [
                 {
                     "question": "valid",
-                    "expected_answer": "valid",
-                    "freshness": "static",
+                    "answer": "valid",
+                    "time_sensitive": False,
                 },
                 {
                     "question": "invalid",
-                    "expected_answer": "invalid",
-                    "freshness": "static",
-                    "category": "not allowed",
+                    "answer": "invalid",
+                    "time_sensitive": False,
+                    "unexpected": "not allowed",
                 },
             ]
         )
     )
     evaluator = _EvaluatorFactory()
 
-    with pytest.raises(ValueError, match="unknown field.*category"):
+    with pytest.raises(ValueError, match="unknown field.*unexpected"):
         QAWorkflow(evaluator, _AgentFactory()).prepare(dataset, tmp_path / "run")
 
     assert evaluator.calls == Counter()

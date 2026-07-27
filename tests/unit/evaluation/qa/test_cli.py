@@ -58,8 +58,8 @@ def test_composite_cli_runs_local_dataset_to_report_with_four_attempts(
 ):
     dataset = tmp_path / "dataset.json"
     dataset.write_text(
-        '[{"id":"item","question":"Q","expected_answer":"A",'
-        '"freshness":"static","expected_atoms":[{"id":"g1",'
+        '[{"id":"item","question":"Q","answer":"A",'
+        '"time_sensitive":false,"expected_atoms":[{"id":"g1",'
         '"text":"A","required":true}]}]'
     )
 

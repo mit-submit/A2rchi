@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archi · QA evaluations</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/archi_notext.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='evaluations.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/chat" aria-label="Back to Archi chat">
+        <img class="brand-mark" src="{{ url_for('static', filename='images/archi_notext.png') }}" alt="">
+        <span><strong>Archi</strong><small>QA evaluation</small></span>
+      </a>
+      <nav aria-label="Evaluation console">
+        <button class="nav-item active" data-view="runs"><span>01</span>Runs</button>
+        <button class="nav-item" data-view="datasets"><span>02</span>Datasets <b id="dataset-count">0</b></button>
+        <button class="nav-item" data-view="profiles"><span>03</span>Profiles <b id="profile-count">0</b></button>
+        <button class="nav-item" data-view="new"><span>04</span>New evaluation</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="runtime"><i></i><span><strong id="runtime-label">Ready</strong><small>single-flight executor</small></span></div>
+        <a href="/chat">← Return to chat</a>
+      </div>
+    </aside>
+
+    <main>
+      <div id="job-banner" class="job-banner" hidden aria-live="polite"></div>
+
+      <section class="view active" id="view-runs">
+        <header class="page-head">
+          <div><p class="eyebrow">Evaluation history</p><h1>Evidence, not dashboard theatre.</h1><p>Every result below is reconstructed from persisted QA artifacts.</p></div>
+          <button class="button primary" data-go="new">Run an evaluation</button>
+        </header>
+        <div class="metrics">
+          <article><small>Persisted runs</small><strong id="metric-runs">—</strong><span>valid and inspectable</span></article>
+          <article><small>Latest pass rate</small><strong id="metric-pass">—</strong><span>quality-accounted attempts</span></article>
+          <article><small>Datasets</small><strong id="metric-datasets">—</strong><span>immutable snapshots</span></article>
+          <article><small>Active provider job</small><strong id="metric-job">No</strong><span>one at a time</span></article>
+        </div>
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Artifact index</p><h2>Past evaluations</h2></div><button class="button quiet" id="refresh-runs">Refresh</button></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Evaluation</th><th>Dataset</th><th>Agent</th><th>Attempts</th><th>Pass rate</th><th>Status</th></tr></thead>
+              <tbody id="runs-body"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="runs-empty" hidden><strong>No evaluation runs yet.</strong><span>Import a dataset, choose an agent, and create the first evidence set.</span></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-datasets">
+        <header class="page-head">
+          <div><p class="eyebrow">Golden-set library</p><h1>Review the gold before trusting the score.</h1><p>Imports are immutable. Atom reviews always save as a separate child dataset.</p></div>
+        </header>
+        <div class="split">
+          <div>
+            <form class="panel import-panel" id="dataset-import-form">
+              <div><p class="eyebrow">Import</p><h2>Add a JSON or JSONL dataset</h2></div>
+              <label>Name<input name="name" placeholder="Golden Set v2" autocomplete="off" required></label>
+              <label class="file-field">Dataset file<input name="file" type="file" accept=".json,.jsonl,application/json" required></label>
+              <button class="button primary" type="submit">Validate and import</button>
+            </form>
+            <section class="panel catalog-panel">
+              <div class="panel-head"><div><p class="eyebrow">Immutable catalog</p><h2>Datasets</h2></div><input id="dataset-search" class="search" type="search" placeholder="Filter datasets"></div>
+              <div class="catalog-list" id="dataset-list"></div>
+              <div class="empty" id="datasets-empty" hidden><strong>No datasets imported.</strong></div>
+            </section>
+          </div>
+          <aside class="panel detail-panel" id="dataset-detail">
+            <p class="eyebrow">Selected dataset</p>
+            <h2>Select a dataset</h2>
+            <p class="muted">Its non-sensitive metadata and atom workflow will appear here.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-profiles">
+        <header class="page-head">
+          <div><p class="eyebrow">Evaluator library</p><h1>Make the judge reproducible.</h1><p>Profiles pin the extractor and comparator providers, models, and optional timeouts.</p></div>
+        </header>
+        <div class="split">
+          <form class="panel import-panel" id="profile-import-form">
+            <div><p class="eyebrow">Import</p><h2>Add a YAML profile</h2></div>
+            <label>Name<input name="name" placeholder="Local QA judge" autocomplete="off" required></label>
+            <label class="file-field">Profile file<input name="file" type="file" accept=".yaml,.yml,text/yaml" required></label>
+            <button class="button primary" type="submit">Validate and import</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Resolved profiles</p><h2>Available judges</h2></div></div>
+            <div class="profile-grid" id="profile-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-new">
+        <header class="page-head">
+          <div><p class="eyebrow">New evaluation</p><h1>Choose exact inputs. Preserve exact outputs.</h1><p>The dataset, profile, agent config, and agent spec are snapshotted into the run.</p></div>
+        </header>
+        <form class="launch-grid" id="evaluation-form">
+          <section class="panel form-card">
+            <span class="step">01</span><h2>Identity</h2>
+            <label>Evaluation name<input name="name" placeholder="ops-readiness · reviewed atoms" autocomplete="off" required></label>
+            <label>Attempts per eligible question<input name="attempts" type="number" min="1" value="1" required></label>
+          </section>
+          <section class="panel form-card">
+            <span class="step">02</span><h2>Gold and judge</h2>
+            <label>Dataset<select name="dataset_id" id="launch-dataset" required></select></label>
+            <label>Evaluator profile<select name="profile_id" id="launch-profile" required></select></label>
+          </section>
+          <section class="panel form-card">
+            <span class="step">03</span><h2>Agent under test</h2>
+            <label>Agent spec<select name="agent_spec" id="launch-agent" required></select></label>
+            <p class="callout">The deployment’s resolved agent YAML is used. The selected Markdown spec is copied into the run.</p>
+          </section>
+          <section class="panel launch-card">
+            <p class="eyebrow">Execution contract</p>
+            <h2>Run serially in the background</h2>
+            <ul><li>HTTP request returns immediately</li><li>Inputs become immutable snapshots</li><li>Progress is persisted as a job</li><li>History is derived from artifacts</li></ul>
+            <button class="button primary large" type="submit">Start evaluation</button>
+          </section>
+        </form>
+      </section>
+
+      <section class="view" id="view-run-detail">
+        <header class="page-head">
+          <div><button class="text-button" data-go="runs">← All runs</button><p class="eyebrow">Evaluation evidence</p><h1 id="run-title">Run detail</h1><p id="run-subtitle"></p></div>
+          <a class="button quiet" id="report-link" target="_blank" rel="noopener">Open report</a>
+        </header>
+        <div id="run-detail-content"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="atom-dialog" aria-labelledby="atom-dialog-title" aria-describedby="atom-dialog-description">
+    <div class="dialog-shell">
+      <header><div><p class="eyebrow">Golden atom review</p><h2 id="atom-dialog-title">Review atoms</h2><p id="atom-dialog-description">Expected answers and atoms are visible only in this protected review surface.</p></div><button class="close" type="button" data-close-atom-dialog aria-label="Close">×</button></header>
+      <div class="atom-editor" id="atom-editor"></div>
+      <footer>
+        <label>New dataset name<input id="reviewed-dataset-name" autocomplete="off" required></label>
+        <button class="button quiet" type="button" data-close-atom-dialog>Cancel</button>
+        <button class="button primary" type="button" id="save-reviewed-dataset">Save as new dataset</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><strong id="toast-title"></strong><span id="toast-message"></span></div>
+  <script src="{{ url_for('static', filename='evaluations.js') }}" defer></script>
+</body>
+</html>

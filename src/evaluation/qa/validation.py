@@ -9,15 +9,14 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 DATASET_FIELDS = {
     "id",
     "question",
-    "expected_answer",
-    "freshness",
+    "answer",
+    "time_sensitive",
+    "category",
     "answer_mode",
     "answer_source",
     "expected_atoms",
 }
-FRESHNESS_VALUES = {"static", "live"}
 ANSWER_MODE_VALUES = {"direct_answer", "needs_information", "escalate", "refuse"}
-ANSWER_SOURCE_VALUES = {"rucio", "okg", "document", "external_system", "composite"}
 OUTCOME_VALUES = {"entailed", "not_mentioned", "contradicted", "unjudgeable"}
 
 
@@ -35,8 +34,9 @@ class Atom:
 class DatasetItem:
     id: str
     question: str
-    expected_answer: str
-    freshness: str
+    answer: str
+    time_sensitive: bool
+    category: Optional[str]
     answer_mode: Optional[str]
     answer_source: Optional[str]
     expected_atoms: Optional[List[Atom]]
@@ -78,6 +78,12 @@ def _optional_enum(value: Any, allowed: set, context: str) -> Optional[str]:
     return value
 
 
+def _optional_nonempty_string(value: Any, context: str) -> Optional[str]:
+    if value is None:
+        return None
+    return _nonempty_string(value, context)
+
+
 def validate_atoms(
     raw_atoms: Any,
     *,
@@ -110,9 +116,9 @@ def validate_atoms(
     return atoms
 
 
-def derive_item_id(question: str, expected_answer: str) -> str:
+def derive_item_id(question: str, answer: str) -> str:
     canonical = json.dumps(
-        {"question": question, "expected_answer": expected_answer},
+        {"answer": answer, "question": question},
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -123,6 +129,8 @@ def derive_item_id(question: str, expected_answer: str) -> str:
 def validate_dataset_rows(raw_rows: Any) -> List[DatasetItem]:
     if not isinstance(raw_rows, list):
         raise ValueError("dataset JSON must contain an array")
+    if not raw_rows:
+        raise ValueError("dataset must contain at least one row")
     items: List[DatasetItem] = []
     seen_ids = set()
     for index, raw in enumerate(raw_rows):
@@ -133,21 +141,19 @@ def validate_dataset_rows(raw_rows: Any) -> List[DatasetItem]:
         question = _nonempty_string(
             raw.get("question"), f"{context}.question", normalize_newlines=True
         )
-        expected_answer = _nonempty_string(
-            raw.get("expected_answer"),
-            f"{context}.expected_answer",
+        answer = _nonempty_string(
+            raw.get("answer"),
+            f"{context}.answer",
             normalize_newlines=True,
         )
-        freshness = raw.get("freshness")
-        if freshness not in FRESHNESS_VALUES:
-            raise ValueError(
-                f"{context}.freshness must be one of: {', '.join(sorted(FRESHNESS_VALUES))}"
-            )
+        time_sensitive = raw.get("time_sensitive")
+        if not isinstance(time_sensitive, bool):
+            raise ValueError(f"{context}.time_sensitive must be a boolean")
         explicit_id = raw.get("id")
         item_id = (
             _nonempty_string(explicit_id, f"{context}.id")
             if explicit_id is not None
-            else derive_item_id(question, expected_answer)
+            else derive_item_id(question, answer)
         )
         if item_id in seen_ids:
             raise ValueError(f"dataset contains duplicate or colliding id '{item_id}'")
@@ -164,15 +170,16 @@ def validate_dataset_rows(raw_rows: Any) -> List[DatasetItem]:
             DatasetItem(
                 id=item_id,
                 question=question,
-                expected_answer=expected_answer,
-                freshness=freshness,
+                answer=answer,
+                time_sensitive=time_sensitive,
+                category=_optional_nonempty_string(
+                    raw.get("category"), f"{context}.category"
+                ),
                 answer_mode=_optional_enum(
                     raw.get("answer_mode"), ANSWER_MODE_VALUES, f"{context}.answer_mode"
                 ),
-                answer_source=_optional_enum(
-                    raw.get("answer_source"),
-                    ANSWER_SOURCE_VALUES,
-                    f"{context}.answer_source",
+                answer_source=_optional_nonempty_string(
+                    raw.get("answer_source"), f"{context}.answer_source"
                 ),
                 expected_atoms=expected_atoms,
             )
@@ -180,14 +187,13 @@ def validate_dataset_rows(raw_rows: Any) -> List[DatasetItem]:
     return items
 
 
-def load_dataset(path: Path) -> Tuple[str, List[DatasetItem], bytes]:
-    if not path.exists() or not path.is_file():
-        raise ValueError(f"dataset must be an existing file: {path}")
-    suffix = path.suffix.lower()
+def load_dataset_bytes(
+    filename: str, raw_bytes: bytes
+) -> Tuple[str, List[DatasetItem], bytes]:
+    suffix = Path(filename).suffix.lower()
     if suffix not in {".json", ".jsonl"}:
         raise ValueError("dataset must use .json or .jsonl")
     try:
-        raw_bytes = path.read_bytes()
         text = raw_bytes.decode("utf-8")
         if suffix == ".json":
             rows = json.loads(text)
@@ -207,6 +213,12 @@ def load_dataset(path: Path) -> Tuple[str, List[DatasetItem], bytes]:
     except json.JSONDecodeError as exc:
         raise ValueError(f"invalid JSON dataset: {exc.msg}") from exc
     return suffix[1:], validate_dataset_rows(rows), raw_bytes
+
+
+def load_dataset(path: Path) -> Tuple[str, List[DatasetItem], bytes]:
+    if not path.exists() or not path.is_file():
+        raise ValueError(f"dataset must be an existing file: {path}")
+    return load_dataset_bytes(path.name, path.read_bytes())
 
 
 def validate_gold_output(raw: Any, *, context: str) -> List[Atom]:

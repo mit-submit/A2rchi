@@ -60,7 +60,7 @@ def qa_cli(
     attempts: int,
     overwrite: bool,
 ) -> None:
-    """Evaluate agent answers against hidden expected answers."""
+    """Evaluate agent answers against hidden canonical answers."""
     if ctx.invoked_subcommand is not None:
         return
     missing = [

@@ -29,14 +29,10 @@ from .constants import (  # isort: skip
     SCORING_VERSION,
 )
 from .profile import EvaluatorProfile, load_profile
+from .preparation import prepare_dataset_items
 from .runtime import ArchiAgentRuntime, LangChainEvaluatorRuntime, load_agent_inputs
 from .scoring import build_summary, render_report, score_attempt
-from .validation import (  # isort: skip
-    Atom,
-    load_dataset,
-    validate_gold_output,
-    validate_judgments,
-)
+from .validation import Atom, load_dataset, validate_judgments  # isort: skip
 
 
 class QAWorkflow:
@@ -124,50 +120,7 @@ class QAWorkflow:
         write_bytes(output_dir / snapshot_name, dataset_bytes)
         write_yaml(output_dir / "evaluator_profile.resolved.yaml", profile.to_dict())
 
-        prepared_rows: List[Dict[str, Any]] = []
-        result_rows: List[Dict[str, Any]] = []
-        for item in items:
-            metadata = {
-                "answer_mode": item.answer_mode,
-                "answer_source": item.answer_source,
-            }
-            if item.freshness == "live":
-                result_rows.append(
-                    {"item_id": item.id, "status": "skipped_live", **metadata}
-                )
-                continue
-            try:
-                if item.expected_atoms is not None:
-                    gold_atoms = item.expected_atoms
-                    atom_source = "supplied"
-                else:
-                    gold_atoms = validate_gold_output(
-                        evaluator.extract_gold(item.question, item.expected_answer),
-                        context=f"gold extraction for item {item.id}",
-                    )
-                    atom_source = "inferred"
-            except Exception as exc:
-                result_rows.append(
-                    {
-                        "item_id": item.id,
-                        "status": "preparation_failed",
-                        "error": str(exc),
-                        **metadata,
-                    }
-                )
-                continue
-            prepared_rows.append(
-                {
-                    "item_id": item.id,
-                    "question": item.question,
-                    "expected_answer": item.expected_answer,
-                    "freshness": item.freshness,
-                    **metadata,
-                    "atom_source": atom_source,
-                    "gold_atoms": [atom.to_dict() for atom in gold_atoms],
-                }
-            )
-            result_rows.append({"item_id": item.id, "status": "prepared", **metadata})
+        prepared_rows, result_rows = prepare_dataset_items(items, evaluator)
 
         write_jsonl(output_dir / "prepared_items.jsonl", prepared_rows)
         write_jsonl(output_dir / "preparation_results.jsonl", result_rows)
@@ -443,9 +396,7 @@ class QAWorkflow:
             iter_jsonl(run_dir / "evaluation_results.jsonl"),
         )
         summary["provenance"] = {
-            "agent_config_sha256": manifest["artifacts"][
-                "agent_config.resolved.yaml"
-            ],
+            "agent_config_sha256": manifest["artifacts"]["agent_config.resolved.yaml"],
             "agent_spec_sha256": manifest["artifacts"]["agent_spec.resolved.md"],
             "evaluator_profile_sha256": manifest["artifacts"][
                 "evaluator_profile.resolved.yaml"

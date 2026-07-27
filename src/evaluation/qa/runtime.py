@@ -107,12 +107,12 @@ class LangChainEvaluatorRuntime:
             raise ValueError("structured evaluator returned a non-object")
         return result
 
-    def extract_gold(self, question: str, expected_answer: str) -> Dict[str, Any]:
+    def extract_gold(self, question: str, answer: str) -> Dict[str, Any]:
         return self._structured(
             self._models["atoms_extractor"],
             GOLD_ATOM_SCHEMA,
             GOLD_SYSTEM_PROMPT,
-            {"question": question, "expected_answer": expected_answer},
+            {"question": question, "answer": answer},
         )
 
     def compare(
@@ -152,6 +152,7 @@ def load_agent_inputs(
         AgentSpecError,
         load_agent_spec_from_text,
     )
+
     resolved_config_path = _validate_local_file(
         config_path, {".yaml", ".yml"}, "agent config"
     )
