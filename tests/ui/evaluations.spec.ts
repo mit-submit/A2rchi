@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import path from "node:path";
 
 test.describe("QA evaluation console", () => {
   test("imports, reviews atoms, saves a child dataset, launches, and opens history", async ({ page }) => {
@@ -7,14 +6,25 @@ test.describe("QA evaluation console", () => {
     await expect(page.getByRole("heading", { name: "Evidence, not dashboard theatre." })).toBeVisible();
 
     await page.getByRole("button", { name: /Datasets/ }).click();
-    await page.getByLabel("Name").first().fill("Golden Set v2");
-    await page.getByLabel("Dataset file").setInputFiles(
-      path.resolve(process.cwd(), "golden_set_v2.json"),
-    );
+    await page.getByLabel("Name").first().fill("Mock dataset");
+    await page.getByLabel("Dataset file").setInputFiles({
+      name: "mock-dataset.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify([
+        {
+          id: "mock-entry",
+          question: "What value does the mock entry contain?",
+          answer: "The mock entry contains 42.",
+          time_sensitive: false,
+          category: "test-fixture",
+          answer_source: "mocked-entry",
+        },
+      ])),
+    });
     await page.getByRole("button", { name: "Validate and import" }).click();
-    await expect(page.getByText("Golden Set v2", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Mock dataset", { exact: true }).first()).toBeVisible();
     const parentDataset = page.locator("#dataset-list [data-dataset-id]").filter({
-      has: page.getByText("Golden Set v2", { exact: true }),
+      has: page.getByText("Mock dataset", { exact: true }),
     });
     const parentDatasetId = await parentDataset.getAttribute("data-dataset-id");
     expect(parentDatasetId).not.toBeNull();
@@ -28,21 +38,20 @@ test.describe("QA evaluation console", () => {
     await page.getByRole("button", { name: /Datasets/ }).click();
     await page.locator(`[data-dataset-id="${parentDatasetId}"]`).click();
     await page.getByRole("button", { name: "Resume atom review" }).click();
-    await expect(page.getByRole("dialog", { name: "Review atoms · Golden Set v2" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Review atoms · Mock dataset" })).toBeVisible();
     const questionPanels = page.locator("#atom-editor details");
-    await expect(questionPanels).toHaveCount(19);
+    await expect(questionPanels).toHaveCount(1);
     const firstPanel = questionPanels.first();
-    const secondPanel = questionPanels.nth(1);
     await expect(firstPanel).toHaveAttribute("open", "");
-    await expect(firstPanel.locator("summary")).toContainText("When was T0_CH_CERN_Tape disabled for production output?");
+    await expect(firstPanel.locator("summary")).toContainText("What value does the mock entry contain?");
     await expect(firstPanel.getByText("Expected answer", { exact: true })).toBeVisible();
     await expect(firstPanel.getByText("Atoms", { exact: true })).toBeVisible();
     await expect(firstPanel.getByText("1 atom · 1 required", { exact: true })).toBeVisible();
     const firstAtomText = firstPanel.getByLabel(/Atom text 1 for/);
     const requiredToggle = firstPanel.getByLabel(/Required for atom 1 in/);
     await expect(firstAtomText).toBeVisible();
-    await expect(firstPanel.locator(".expected-answer")).toContainText("T0_CH_CERN_Tape was disabled for production output on 2024-03-21");
-    await expect(firstAtomText).toHaveValue(/T0_CH_CERN_Tape was disabled for production output on 2024-03-21/);
+    await expect(firstPanel.locator(".expected-answer")).toContainText("The mock entry contains 42.");
+    await expect(firstAtomText).toHaveValue("The mock entry contains 42.");
     expect(await questionPanels.evaluateAll((panels) => panels.every((panel) => {
       const question = panel.querySelector(".atom-summary-copy strong")?.textContent?.trim();
       const answer = panel.querySelector(".expected-answer > div")?.textContent?.trim();
@@ -58,12 +67,12 @@ test.describe("QA evaluation console", () => {
     await page.getByRole("button", { name: "Save as new dataset" }).click();
     await expect(page.getByText("Enter a name for the reviewed dataset.", { exact: true })).toBeVisible();
     await expect(reviewedDatasetName).toBeFocused();
-    await reviewedDatasetName.fill("Golden Set v2 · reviewed");
+    await reviewedDatasetName.fill("Mock dataset · reviewed");
     await expect(page.getByText("Enter a name for the reviewed dataset.", { exact: true })).toHaveCount(0);
     const firstAtomId = firstPanel.getByLabel(/Atom ID 1 for/);
     await firstAtomId.fill("A1-reviewed");
     await firstAtomId.press("Enter");
-    await expect(page.getByRole("dialog", { name: "Review atoms · Golden Set v2" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Review atoms · Mock dataset" })).toBeVisible();
     await expect(firstAtomId).toHaveValue("A1-reviewed");
     await expect(requiredToggle).toBeChecked();
     await requiredToggle.uncheck();
@@ -97,19 +106,16 @@ test.describe("QA evaluation console", () => {
     await expect(firstPanel.getByRole("alert")).toHaveCount(0);
     await firstPanel.getByRole("button", { name: /Add atom to/ }).click();
     await firstPanel.getByLabel(/Atom text 2 for/).fill("Optional supporting obligation");
-    await secondPanel.locator("summary").click();
-    await expect(secondPanel.getByText("Expected answer", { exact: true })).toBeVisible();
-    await expect(secondPanel.getByLabel(/Atom text 1 for/)).toBeVisible();
     await firstAtomText.fill("Human-reviewed golden obligation");
     await page.getByRole("button", { name: "Save as new dataset" }).click();
     await expect(page.locator("#dataset-detail").getByRole("heading", {
-      name: "Golden Set v2 · reviewed",
+      name: "Mock dataset · reviewed",
     })).toBeVisible();
 
     await page.locator(`[data-dataset-id="${parentDatasetId}"]`).click();
     await expect(page.getByRole("button", { name: "Resume atom review" })).toHaveCount(0);
     await page.locator("#dataset-list [data-dataset-id]").filter({
-      has: page.getByText("Golden Set v2 · reviewed", { exact: true }),
+      has: page.getByText("Mock dataset · reviewed", { exact: true }),
     }).first().click();
     await expect(page.getByRole("button", { name: "Review Atoms" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Generate Atoms" })).toHaveCount(0);

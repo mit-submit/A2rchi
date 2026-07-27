@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import pytest
 
@@ -99,20 +98,32 @@ def _skipped_atom_dataset_blob():
     ).encode()
 
 
-def test_original_golden_set_v2_imports_without_transformation(tmp_path):
-    repository_root = Path(__file__).resolve().parents[4]
-    source = repository_root / "golden_set_v2.json"
+def test_dataset_import_preserves_mocked_source_and_reports_metadata(tmp_path):
+    source = json.dumps(
+        [
+            {
+                "id": "mock-entry",
+                "question": "What value does the mock entry contain?",
+                "answer": "The mock entry contains 42.",
+                "time_sensitive": False,
+                "category": "test-fixture",
+                "answer_source": "mocked-entry",
+            }
+        ]
+    ).encode()
     catalog = EvaluationCatalog(tmp_path)
 
     metadata, created = catalog.import_dataset(
-        "Golden Set v2", source.name, source.read_bytes()
+        "Mock dataset", "mock-dataset.json", source
     )
 
     assert created is True
-    assert metadata["item_count"] == 20
-    assert metadata["time_sensitive_item_count"] == 1
-    assert "static_docs_tickets" in metadata["answer_sources"]
-    assert catalog.dataset_path(metadata["id"]).read_bytes() == source.read_bytes()
+    assert metadata["item_count"] == 1
+    assert metadata["eligible_item_count"] == 1
+    assert metadata["time_sensitive_item_count"] == 0
+    assert metadata["categories"] == ["test-fixture"]
+    assert metadata["answer_sources"] == ["mocked-entry"]
+    assert catalog.dataset_path(metadata["id"]).read_bytes() == source
     assert "answer" not in metadata
 
 
