@@ -195,6 +195,198 @@ test.describe("QA evaluation console", () => {
     expect(requests.some((url) => url.endsWith("/review-atoms"))).toBe(true);
   });
 
+  test("groups result evidence by question with readable scores, answers, and atom judgments", async ({ page }) => {
+    const historyId = "human-readable-results";
+    const question = "How does Archi preserve evidence across evaluation attempts?";
+    const atoms = [
+      { id: "A1", text: "The run stores immutable input snapshots.", required: true },
+      { id: "A2", text: "Each attempt retains its full model answer.", required: true },
+      { id: "A3", text: "Evaluator judgments remain inspectable per atom.", required: false },
+    ];
+    const results = [
+      {
+        item_id: "q-human",
+        attempt_id: "q-human-attempt-1",
+        ordinal: 1,
+        status: "scored",
+        passed: true,
+        atom_score: 1,
+        judgments: atoms.map((atom) => ({
+          atom_id: atom.id,
+          outcome: "entailed",
+          rationale: "The first response contains this expected content.",
+        })),
+      },
+      {
+        item_id: "q-human",
+        attempt_id: "q-human-attempt-2",
+        ordinal: 2,
+        status: "scored",
+        passed: false,
+        atom_score: 0.25,
+        judgments: [
+          {
+            atom_id: "A1",
+            outcome: "entailed",
+            rationale: "The immutable snapshot is described.",
+          },
+          {
+            atom_id: "A2",
+            outcome: "not_mentioned",
+            rationale: "The answer does not mention preserving the full model response.",
+          },
+          {
+            atom_id: "A3",
+            outcome: "contradicted",
+            rationale: "The answer incorrectly says atom judgments are discarded.",
+          },
+        ],
+      },
+    ];
+
+    await page.route(`**/api/evaluations/runs/${historyId}`, async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          run: {
+            manifest: {
+              run_id: "readable-run",
+              schema_version: "qa-v0",
+              status: "scored",
+            },
+            metadata: {
+              name: "Readable evidence run",
+              dataset_name: "Human review set",
+              agent_spec: "qa-agent.md",
+            },
+            summary: {
+              overall_attempt_pass_rate: 0.5,
+              passed_attempts: 1,
+              quality_accounted_attempts: 2,
+              macro_mean_scored_attempt_required_atom_recall: 0.75,
+              attempt_lifecycle_counts: {
+                scored: 2,
+                execution_failed: 0,
+                evaluation_failed: 0,
+              },
+            },
+            prepared_items: [{
+              item_id: "q-human",
+              question,
+              gold_atoms: atoms,
+            }],
+            answers: [
+              {
+                attempt_id: "q-human-attempt-1",
+                item_id: "q-human",
+                answer: "Archi stores immutable snapshots, full answers, and per-atom judgments.",
+              },
+              {
+                attempt_id: "q-human-attempt-2",
+                item_id: "q-human",
+                answer: "Archi stores snapshots but discards detailed atom judgments.",
+              },
+            ],
+            evaluation_results: results,
+            report_available: false,
+          },
+        }),
+      });
+    });
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          runs: [{
+            id: historyId,
+            valid: true,
+            name: "Readable evidence run",
+            status: "scored",
+            attempts: 2,
+            overall_attempt_pass_rate: 0.5,
+          }],
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+    await page.locator(`[data-run-id="${historyId}"]`).click();
+    await expect(page.getByRole("heading", { name: "Readable evidence run" })).toBeVisible();
+    await expect(page.getByText("Atoms recall", { exact: true })).toBeVisible();
+    await expect(page.getByText("Scored attempts", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("66.7%", { exact: true })).toBeVisible();
+    const atomRecallInfo = page.getByRole("button", { name: "About atoms recall" });
+    await atomRecallInfo.hover();
+    const atomRecallHelp = page.getByRole("tooltip", { name: /all atoms marked as entailed/ });
+    await expect(atomRecallHelp).toBeVisible();
+    await expect(atomRecallHelp).toContainText("including required and optional atoms");
+    await expect(atomRecallHelp).toContainText("contradictions also reduce the separate atom score");
+
+    await expect(page.getByText("Required atoms recall", { exact: true })).toBeVisible();
+    const recallInfo = page.getByRole("button", { name: "About required atoms recall" });
+    await recallInfo.hover();
+    const recallHelp = page.getByRole("tooltip", { name: /required atoms marked as entailed/ });
+    await expect(recallHelp).toBeVisible();
+    await expect(recallHelp).toContainText("required atoms marked as entailed ÷ all required atoms");
+    await expect(recallHelp).toContainText("Aim for 100%");
+
+    const questionGroup = page.locator(".question-result");
+    await expect(questionGroup).toHaveCount(1);
+    const questionSummary = questionGroup.locator(":scope > summary");
+    await expect(questionSummary).toContainText("q-human");
+    await expect(questionSummary).toContainText(question);
+    await expect(questionSummary).toContainText("Average score");
+    await expect(questionSummary).toContainText("62.5%");
+    await expect(questionSummary).toContainText("Best A1 100.0% · Worst A2 25.0%");
+    await expect(page.getByLabel("Average atom score for q-human")).toHaveAttribute(
+      "value",
+      "0.625",
+    );
+
+    await questionSummary.click();
+    const userQuestion = questionGroup.locator(".user-question");
+    await expect(userQuestion).toHaveAttribute("open", "");
+    await expect(userQuestion.locator(".evidence-copy")).toHaveText(question);
+
+    const attempts = questionGroup.locator(".attempt-result");
+    await expect(attempts).toHaveCount(2);
+    await expect(attempts.nth(0).locator(":scope > summary")).toContainText("Attempt 1");
+    await expect(attempts.nth(0).locator(":scope > summary")).toContainText("100.0%");
+    await expect(attempts.nth(1).locator(":scope > summary")).toContainText("Attempt 2");
+    await expect(attempts.nth(1).locator(":scope > summary")).toContainText("25.0%");
+
+    await attempts.nth(1).locator(":scope > summary").click();
+    const answer = attempts.nth(1).locator(".model-answer");
+    await expect(answer).toHaveAttribute("open", "");
+    await expect(answer.locator(".evidence-copy")).toContainText(
+      "discards detailed atom judgments",
+    );
+
+    const judgments = attempts.nth(1).locator(".atom-judgment");
+    await expect(judgments).toHaveCount(3);
+    await expect(judgments.nth(0).locator(".atom-outcome")).toHaveText("Passed");
+    await expect(judgments.nth(0)).toHaveClass(/outcome-passed/);
+    await expect(judgments.nth(1).locator(".atom-outcome")).toHaveText("Not mentioned");
+    await expect(judgments.nth(1)).toHaveClass(/outcome-not-mentioned/);
+    await expect(judgments.nth(2).locator(".atom-outcome")).toHaveText("Contradicted");
+    await expect(judgments.nth(2)).toHaveClass(/outcome-contradicted/);
+    await expect(judgments.nth(2).getByText("Expected content", { exact: true })).toBeVisible();
+    await expect(judgments.nth(2).getByText("Evaluator judgment", { exact: true })).toBeVisible();
+
+    await answer.locator(":scope > summary").click();
+    await expect(answer).not.toHaveAttribute("open", "");
+    await userQuestion.locator(":scope > summary").click();
+    await expect(userQuestion).not.toHaveAttribute("open", "");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await atomRecallInfo.focus();
+    await expect(atomRecallHelp).toBeVisible();
+    const tooltipBounds = await atomRecallHelp.boundingBox();
+    expect(tooltipBounds).not.toBeNull();
+    expect(tooltipBounds!.x).toBeGreaterThanOrEqual(0);
+    expect(tooltipBounds!.x + tooltipBounds!.width).toBeLessThanOrEqual(390);
+  });
+
   test("retries only failed atoms and opens a complete evaluation successor", async ({ page }) => {
     await page.goto("/evaluations");
     await page.getByRole("button", { name: /Datasets/ }).click();
@@ -277,11 +469,20 @@ test.describe("QA evaluation console", () => {
     await expect(page.getByRole("button", {
       name: "Retry failed attempts (2)",
     })).toBeVisible();
-    await expect(page.locator(".result-item .status")).toHaveText([
+    await expect(page.locator(".attempt-result .status")).toHaveText([
       "scored",
       "execution_failed",
       "evaluation_failed",
     ]);
+    const executionFailure = page.locator('.question-result[data-question-id="retry-execution"]');
+    await expect(executionFailure.locator(":scope > summary")).toContainText(
+      "No scored attempts",
+    );
+    await expect(executionFailure.locator(":scope > summary")).toContainText(
+      "1 attempt · awaiting scores",
+    );
+    await executionFailure.locator(":scope > summary").click();
+    await expect(executionFailure.locator(".attempt-score")).toHaveText("Not scored");
 
     await page.getByRole("button", {
       name: "Retry failed attempts (2)",
@@ -293,7 +494,7 @@ test.describe("QA evaluation console", () => {
     await expect(page.locator(".lineage-callout")).toContainText(
       "retried from Failure-only evaluation",
     );
-    await expect(page.locator(".result-item .status")).toHaveText([
+    await expect(page.locator(".attempt-result .status")).toHaveText([
       "scored",
       "scored",
       "scored",

@@ -8,6 +8,12 @@
   const shortHash = (value) => value ? `${value.slice(0, 8)}…${value.slice(-5)}` : "built-in";
   const percent = (value) => value == null ? "—" : `${(value * 100).toFixed(1)}%`;
   const when = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
+  const scoreValue = (value) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+  const outcomePresentation = {
+    entailed: { label: "Passed", className: "passed" },
+    not_mentioned: { label: "Not mentioned", className: "not-mentioned" },
+    contradicted: { label: "Contradicted", className: "contradicted" }
+  };
 
   async function api(url, options = {}) {
     const response = await fetch(url, options);
@@ -526,6 +532,136 @@
     } catch (error) { toast("Could not run evaluation", error.message); }
   }
 
+  function groupQuestionResults(preparedItems, evaluationResults) {
+    const groups = [];
+    const byId = new Map();
+    (preparedItems || []).forEach((prepared) => {
+      const group = { itemId: prepared.item_id, prepared, attempts: [] };
+      groups.push(group);
+      byId.set(prepared.item_id, group);
+    });
+    (evaluationResults || []).forEach((result) => {
+      let group = byId.get(result.item_id);
+      if (!group) {
+        group = { itemId: result.item_id, prepared: {}, attempts: [] };
+        groups.push(group);
+        byId.set(result.item_id, group);
+      }
+      group.attempts.push(result);
+    });
+    groups.forEach((group) => group.attempts.sort((left, right) => (left.ordinal || 0) - (right.ordinal || 0)));
+    return groups;
+  }
+
+  function questionScoreSummary(attempts) {
+    const scored = attempts
+      .map((attempt) => ({ attempt, score: scoreValue(attempt.atom_score) }))
+      .filter((entry) => entry.score !== null);
+    if (!scored.length) return { average: null, best: null, worst: null };
+    return {
+      average: scored.reduce((total, entry) => total + entry.score, 0) / scored.length,
+      best: scored.reduce((best, entry) => entry.score > best.score ? entry : best),
+      worst: scored.reduce((worst, entry) => entry.score < worst.score ? entry : worst)
+    };
+  }
+
+  function macroMeanScoredAttemptAtomRecall(evaluationResults) {
+    const recalls = (evaluationResults || [])
+      .filter((result) => result.status === "scored" && Array.isArray(result.judgments) && result.judgments.length)
+      .map((result) => result.judgments.filter((judgment) => judgment.outcome === "entailed").length / result.judgments.length);
+    if (!recalls.length) return null;
+    return recalls.reduce((total, recall) => total + recall, 0) / recalls.length;
+  }
+
+  function readableError(error) {
+    if (!error) return "";
+    if (typeof error === "string") return error;
+    if (typeof error.message === "string") return error.message;
+    return JSON.stringify(error);
+  }
+
+  function renderAtomJudgment(atom, judgment, atomIndex) {
+    const outcome = outcomePresentation[judgment?.outcome] || {
+      label: judgment?.outcome ? judgment.outcome.replaceAll("_", " ") : "Not judged",
+      className: "unscored"
+    };
+    return `<details class="atom-judgment outcome-${esc(outcome.className)}" open>
+      <summary>
+        <span class="atom-judgment-title"><code>${esc(atom.id || `Atom ${atomIndex + 1}`)}</code>${atom.required ? `<span class="required-chip">Required</span>` : ""}</span>
+        <span class="atom-outcome ${esc(outcome.className)}" aria-label="Evaluator outcome: ${esc(judgment?.outcome || "not judged")}">${esc(outcome.label)}</span>
+      </summary>
+      <div class="atom-judgment-body">
+        <section>
+          <p class="field-label">Expected content</p>
+          <div class="evidence-copy">${esc(atom.text || "Expected atom content is unavailable.")}</div>
+        </section>
+        <section class="judgment-copy">
+          <p class="field-label">Evaluator judgment</p>
+          <p>${esc(judgment?.rationale || "No evaluator judgment is available for this atom.")}</p>
+        </section>
+      </div>
+    </details>`;
+  }
+
+  function renderAttempt(result, prepared, answer) {
+    const score = scoreValue(result.atom_score);
+    const statusClass = result.status === "scored" ? (result.passed ? "good" : "bad") : "bad";
+    const atoms = prepared.gold_atoms || prepared.expected_atoms || [];
+    const judgmentsByAtom = new Map((result.judgments || []).map((judgment) => [judgment.atom_id, judgment]));
+    const displayedAtoms = atoms.length
+      ? atoms
+      : (result.judgments || []).map((judgment) => ({ id: judgment.atom_id, text: "", required: false }));
+    const modelAnswer = answer.answer || result.answer;
+    return `<details class="attempt-result" data-attempt-id="${esc(result.attempt_id || "")}">
+      <summary>
+        <span class="attempt-title">
+          <strong>Attempt ${esc(result.ordinal ?? "—")}</strong>
+          <span class="status ${statusClass}">${esc(result.status || "unknown")}</span>
+        </span>
+        <span class="attempt-score ${score === null ? "unscored" : (result.passed ? "passed" : "failed")}">${score === null ? "Not scored" : percent(score)}</span>
+      </summary>
+      <div class="attempt-body">
+        ${modelAnswer ? `<details class="readable-disclosure model-answer" open>
+          <summary><span>Model answer</span><small>Full response</small></summary>
+          <div class="evidence-copy">${esc(modelAnswer)}</div>
+        </details>` : ""}
+        ${result.error ? `<section class="attempt-error"><p class="field-label">Attempt error</p><p>${esc(readableError(result.error))}</p></section>` : ""}
+        ${displayedAtoms.length ? `<section class="atom-evidence" aria-label="Atom judgments">
+          <div class="atom-evidence-head"><div><p class="eyebrow">Atom evidence</p><h3>Expected content and evaluator judgment</h3></div><span>${displayedAtoms.length} atom${displayedAtoms.length === 1 ? "" : "s"}</span></div>
+          <div class="atom-judgment-list">${displayedAtoms.map((atom, index) => renderAtomJudgment(atom, judgmentsByAtom.get(atom.id), index)).join("")}</div>
+        </section>` : `<div class="empty compact"><strong>No atom judgments are available for this attempt.</strong></div>`}
+      </div>
+    </details>`;
+  }
+
+  function renderQuestionGroup(group, answersByAttempt) {
+    const question = group.prepared.question || "Question text unavailable";
+    const score = questionScoreSummary(group.attempts);
+    const scoreLabel = score.average === null ? "No scored attempts" : percent(score.average);
+    const bestWorst = score.average === null
+      ? `${group.attempts.length} attempt${group.attempts.length === 1 ? "" : "s"} · awaiting scores`
+      : `Best A${score.best.attempt.ordinal} ${percent(score.best.score)} · Worst A${score.worst.attempt.ordinal} ${percent(score.worst.score)}`;
+    return `<details class="question-result" data-question-id="${esc(group.itemId)}">
+      <summary>
+        <span class="question-summary-copy"><code>${esc(group.itemId)}</code><strong>${esc(question)}</strong></span>
+        <span class="question-summary-score">
+          <span><small>Average score</small><strong>${scoreLabel}</strong></span>
+          <meter min="0" max="1" value="${score.average ?? 0}" aria-label="Average atom score for ${esc(group.itemId)}" aria-valuetext="${esc(scoreLabel)}">${scoreLabel}</meter>
+          <small>${esc(bestWorst)}</small>
+        </span>
+      </summary>
+      <div class="question-result-body">
+        <details class="readable-disclosure user-question" open>
+          <summary><span>User question</span><small>Full prompt</small></summary>
+          <div class="evidence-copy">${esc(question)}</div>
+        </details>
+        <div class="attempt-list">
+          ${group.attempts.map((result) => renderAttempt(result, group.prepared, answersByAttempt[result.attempt_id] || {})).join("") || `<div class="empty compact"><strong>No attempts are available for this question.</strong></div>`}
+        </div>
+      </div>
+    </details>`;
+  }
+
   async function openRun(id) {
     try {
       const { run } = await api(`/api/evaluations/runs/${encodeURIComponent(id)}`);
@@ -542,26 +678,39 @@
       retryButton.disabled = false;
       retryButton.textContent = `Retry failed attempts (${retryableCount})`;
       const parent = state.runs.find((item) => item.id === meta.retry_of_history_id);
-      const preparedById = Object.fromEntries((run.prepared_items || []).map((item) => [item.item_id, item]));
       const answersByAttempt = Object.fromEntries((run.answers || []).map((item) => [item.attempt_id, item]));
+      const questionGroups = groupQuestionResults(run.prepared_items || [], run.evaluation_results || []);
+      const atomRecall = macroMeanScoredAttemptAtomRecall(run.evaluation_results);
       $("#run-detail-content").innerHTML = `
         ${meta.retry_of_history_id ? `<div class="lineage-callout"><strong>Successor run ${esc(meta.retry_number || "")}</strong> · retried from ${esc(parent?.name || meta.retry_of_history_id)}. Scored attempts were carried forward unchanged.</div>` : ""}
         <div class="evidence-grid">
           <article class="evidence-card"><span>Overall pass rate</span><strong>${percent(summary.overall_attempt_pass_rate)}</strong><small>${summary.passed_attempts ?? 0} / ${summary.quality_accounted_attempts ?? 0} accounted</small></article>
-          <article class="evidence-card"><span>Scored attempts</span><strong>${counts.scored ?? 0}</strong><small>${counts.execution_failed ?? 0} execution · ${counts.evaluation_failed ?? 0} evaluation failures</small></article>
-          <article class="evidence-card"><span>Required recall</span><strong>${percent(summary.macro_mean_scored_attempt_required_atom_recall)}</strong><small>macro mean, scored only</small></article>
+          <article class="evidence-card">
+            <div class="metric-label">
+              <span>Atoms recall</span>
+              <button class="metric-info" type="button" aria-label="About atoms recall" aria-describedby="atoms-recall-help">i</button>
+              <span class="metric-tooltip" id="atoms-recall-help" role="tooltip">
+                For each scored attempt: all atoms marked as entailed ÷ all atoms, including required and optional atoms. This card shows the unweighted average across scored attempts; technical failures are excluded. 100% means every expected fact was covered, and 90% or more is strong overall. Unlike required atoms recall, missing an optional atom lowers this metric but does not by itself fail the attempt. Not-mentioned and contradicted atoms both count as not recalled; contradictions also reduce the separate atom score.
+              </span>
+            </div>
+            <strong>${percent(atomRecall)}</strong>
+            <small>macro mean, scored only</small>
+          </article>
+          <article class="evidence-card">
+            <div class="metric-label">
+              <span>Required atoms recall</span>
+              <button class="metric-info" type="button" aria-label="About required atoms recall" aria-describedby="required-atoms-recall-help">i</button>
+              <span class="metric-tooltip" id="required-atoms-recall-help" role="tooltip">
+                For each scored attempt: required atoms marked as entailed ÷ all required atoms. This card shows the unweighted average across scored attempts; optional atoms and technical failures are excluded. Aim for 100% because every required atom is a pass condition. 90% or more is strong overall, while anything below 100% means at least one required fact was missed—inspect the attempt evidence to see whether misses are isolated or recurring.
+              </span>
+            </div>
+            <strong>${percent(summary.macro_mean_scored_attempt_required_atom_recall)}</strong>
+            <small>macro mean, scored only</small>
+          </article>
           <article class="evidence-card"><span>Artifact schema</span><strong>${esc(manifest.schema_version || "—")}</strong><small>${esc(manifest.status || "unknown")}</small></article>
         </div>
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Attempt evidence</p><h2>Answers and judgments</h2></div></div>
-          <div class="result-list">${(run.evaluation_results || []).map((result) => {
-            const prepared = preparedById[result.item_id] || {}, answer = answersByAttempt[result.attempt_id] || {};
-            return `<details class="result-item"><summary>${esc(result.item_id)} · attempt ${result.ordinal} <span class="status ${result.status === "scored" ? (result.passed ? "good" : "bad") : "bad"}">${esc(result.status)}</span></summary>
-              <div class="result-body"><strong>${esc(prepared.question || "")}</strong>
-              ${answer.answer ? `<div class="answer-box">${esc(answer.answer)}</div>` : ""}
-              ${result.error ? `<div class="answer-box">${esc(typeof result.error === "string" ? result.error : JSON.stringify(result.error))}</div>` : ""}
-              ${(result.judgments || []).map((judgment) => `<div><code>${esc(judgment.atom_id)} · ${esc(judgment.outcome)}</code><p>${esc(judgment.rationale)}</p></div>`).join("")}
-              </div></details>`;
-          }).join("") || `<div class="empty"><strong>No attempt results are available.</strong></div>`}</div>
+          <div class="result-list">${questionGroups.map((group) => renderQuestionGroup(group, answersByAttempt)).join("") || `<div class="empty"><strong>No question results are available.</strong></div>`}</div>
         </section>`;
       showView("run-detail");
     } catch (error) { toast("Could not open run", error.message); }
