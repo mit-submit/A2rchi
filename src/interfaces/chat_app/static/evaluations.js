@@ -7,6 +7,11 @@
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
   const shortHash = (value) => value ? `${value.slice(0, 8)}…${value.slice(-5)}` : "built-in";
   const percent = (value) => value == null ? "—" : `${(value * 100).toFixed(1)}%`;
+  const formatDuration = (value) => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "—";
+    if (value < 1000) return `${Math.round(value)} ms`;
+    return `${(value / 1000).toFixed(value < 10000 ? 2 : 1)} s`;
+  };
   const when = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
   const scoreValue = (value) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
   const outcomePresentation = {
@@ -573,6 +578,58 @@
     return recalls.reduce((total, recall) => total + recall, 0) / recalls.length;
   }
 
+  function questionLatencySummaries(preparedItems, answers) {
+    const groups = new Map((preparedItems || []).map((item) => [
+      item.item_id,
+      { itemId: item.item_id, question: item.question || "Question text unavailable", durations: [] }
+    ]));
+    (answers || []).forEach((answer) => {
+      if (typeof answer.duration_ms !== "number" || !Number.isFinite(answer.duration_ms) || answer.duration_ms < 0) return;
+      if (!groups.has(answer.item_id)) {
+        groups.set(answer.item_id, {
+          itemId: answer.item_id,
+          question: "Question text unavailable",
+          durations: []
+        });
+      }
+      groups.get(answer.item_id).durations.push(answer.duration_ms);
+    });
+    return [...groups.values()]
+      .filter((group) => group.durations.length)
+      .map((group) => ({
+        ...group,
+        average: group.durations.reduce((total, duration) => total + duration, 0) / group.durations.length,
+        minimum: Math.min(...group.durations),
+        maximum: Math.max(...group.durations)
+      }));
+  }
+
+  function renderLatencyChart(preparedItems, answers) {
+    const rows = questionLatencySummaries(preparedItems, answers);
+    const maximumAverage = rows.length ? Math.max(...rows.map((row) => row.average)) : 0;
+    return `<section class="panel latency-panel" aria-labelledby="latency-chart-title">
+      <div class="latency-head">
+        <div><p class="eyebrow">Execution timing</p><h2 id="latency-chart-title">Latency per question</h2></div>
+        <p>Tested-agent wall time only · successful and execution-failed attempts</p>
+      </div>
+      ${rows.length ? `<div class="latency-chart" role="list">
+        ${rows.map((row) => {
+          const width = maximumAverage > 0 ? (row.average / maximumAverage) * 100 : 0;
+          const attemptLabel = `${row.durations.length} timed attempt${row.durations.length === 1 ? "" : "s"}`;
+          return `<div class="latency-row" role="listitem">
+            <div class="latency-question"><code>${esc(row.itemId)}</code><span title="${esc(row.question)}">${esc(row.question)}</span></div>
+            <div class="latency-measure">
+              <div class="latency-track" role="img" aria-label="Average agent latency for ${esc(row.itemId)}: ${esc(formatDuration(row.average))}">
+                <span style="width:${width.toFixed(2)}%"></span>
+              </div>
+              <div class="latency-values"><strong>${formatDuration(row.average)} average</strong><small>${formatDuration(row.minimum)}–${formatDuration(row.maximum)} · ${attemptLabel}</small></div>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>` : `<div class="latency-unavailable"><strong>Latency unavailable for this run.</strong><span>This historical run has no authoritative per-attempt timings.</span></div>`}
+    </section>`;
+  }
+
   function readableError(error) {
     if (!error) return "";
     if (typeof error === "string") return error;
@@ -683,6 +740,7 @@
       const atomRecall = macroMeanScoredAttemptAtomRecall(run.evaluation_results);
       $("#run-detail-content").innerHTML = `
         ${meta.retry_of_history_id ? `<div class="lineage-callout"><strong>Successor run ${esc(meta.retry_number || "")}</strong> · retried from ${esc(parent?.name || meta.retry_of_history_id)}. Scored attempts were carried forward unchanged.</div>` : ""}
+        ${renderLatencyChart(run.prepared_items || [], run.answers || [])}
         <div class="evidence-grid">
           <article class="evidence-card"><span>Overall pass rate</span><strong>${percent(summary.overall_attempt_pass_rate)}</strong><small>${summary.passed_attempts ?? 0} / ${summary.quality_accounted_attempts ?? 0} accounted</small></article>
           <article class="evidence-card">

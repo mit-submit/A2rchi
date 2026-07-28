@@ -279,11 +279,13 @@ test.describe("QA evaluation console", () => {
               {
                 attempt_id: "q-human-attempt-1",
                 item_id: "q-human",
+                duration_ms: 1200,
                 answer: "Archi stores immutable snapshots, full answers, and per-atom judgments.",
               },
               {
                 attempt_id: "q-human-attempt-2",
                 item_id: "q-human",
+                duration_ms: 2800,
                 answer: "Archi stores snapshots but discards detailed atom judgments.",
               },
             ],
@@ -312,6 +314,13 @@ test.describe("QA evaluation console", () => {
     await page.goto("/evaluations");
     await page.locator(`[data-run-id="${historyId}"]`).click();
     await expect(page.getByRole("heading", { name: "Readable evidence run" })).toBeVisible();
+    const latencyPanel = page.locator(".latency-panel");
+    await expect(latencyPanel.getByRole("heading", { name: "Latency per question" })).toBeVisible();
+    await expect(latencyPanel.getByRole("listitem")).toHaveCount(1);
+    await expect(latencyPanel).toContainText("2.00 s average");
+    await expect(latencyPanel).toContainText("1.20 s–2.80 s · 2 timed attempts");
+    await expect(latencyPanel).toContainText(question);
+    await expect(page.locator("#run-detail-content > :first-child")).toHaveClass(/latency-panel/);
     await expect(page.getByText("Atoms recall", { exact: true })).toBeVisible();
     await expect(page.getByText("Scored attempts", { exact: true })).toHaveCount(0);
     await expect(page.getByText("66.7%", { exact: true })).toBeVisible();
@@ -385,6 +394,91 @@ test.describe("QA evaluation console", () => {
     expect(tooltipBounds).not.toBeNull();
     expect(tooltipBounds!.x).toBeGreaterThanOrEqual(0);
     expect(tooltipBounds!.x + tooltipBounds!.width).toBeLessThanOrEqual(390);
+  });
+
+  test("does not synthesize latency for a legacy run without attempt timings", async ({ page }) => {
+    const historyId = "legacy-without-latency";
+    await page.route(`**/api/evaluations/runs/${historyId}`, async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          run: {
+            manifest: {
+              run_id: "legacy-run",
+              schema_version: "qa-v0",
+              status: "scored",
+            },
+            metadata: {
+              name: "Legacy run",
+              dataset_name: "Historical dataset",
+              agent_spec: "qa-agent.md",
+            },
+            summary: {
+              overall_attempt_pass_rate: 1,
+              passed_attempts: 1,
+              quality_accounted_attempts: 1,
+              macro_mean_scored_attempt_required_atom_recall: 1,
+              attempt_lifecycle_counts: {
+                scored: 1,
+                execution_failed: 0,
+                evaluation_failed: 0,
+              },
+            },
+            prepared_items: [{
+              item_id: "legacy-question",
+              question: "How was this historical answer produced?",
+              gold_atoms: [{ id: "A1", text: "It predates timing capture.", required: true }],
+            }],
+            answers: [{
+              item_id: "legacy-question",
+              attempt_id: "legacy-question-attempt-1",
+              ordinal: 1,
+              status: "answer_ready",
+              answer: "This answer predates timing capture.",
+            }],
+            evaluation_results: [{
+              item_id: "legacy-question",
+              attempt_id: "legacy-question-attempt-1",
+              ordinal: 1,
+              status: "scored",
+              passed: true,
+              atom_score: 1,
+              judgments: [{
+                atom_id: "A1",
+                outcome: "entailed",
+                rationale: "The answer provides the expected fact.",
+              }],
+            }],
+            report_available: false,
+          },
+        }),
+      });
+    });
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          runs: [{
+            id: historyId,
+            valid: true,
+            name: "Legacy run",
+            status: "scored",
+            attempts: 1,
+            overall_attempt_pass_rate: 1,
+          }],
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+    await page.locator(`[data-run-id="${historyId}"]`).click();
+
+    const latencyPanel = page.locator(".latency-panel");
+    await expect(latencyPanel).toContainText("Latency unavailable for this run.");
+    await expect(latencyPanel).toContainText(
+      "This historical run has no authoritative per-attempt timings.",
+    );
+    await expect(latencyPanel.getByRole("listitem")).toHaveCount(0);
   });
 
   test("retries only failed atoms and opens a complete evaluation successor", async ({ page }) => {

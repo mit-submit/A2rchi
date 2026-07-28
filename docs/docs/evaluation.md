@@ -580,6 +580,16 @@ Atom retries require `evaluations:manage`; evaluation retries require
 `evaluations:run`. A draft or run without retryable technical failures creates
 neither a job nor a new artifact.
 
+### Inspect per-question latency
+
+Run detail displays tested-agent latency per question before the aggregate
+quality metrics. Each row derives its average, minimum, maximum, and timed
+attempt count exclusively from authoritative `answers.jsonl` `duration_ms`
+values, including successful and execution-failed attempts.
+
+Historical runs without per-attempt timings show an explicit unavailable state.
+The console does not infer latency from phase timestamps.
+
 ## Understand states
 
 There are two independent state machines.
