@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .artifacts import (  # isort: skip
@@ -51,6 +52,10 @@ class QAWorkflow:
     def _require_positive_attempts(attempts: int) -> None:
         if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts <= 0:
             raise ValueError("attempts must be a positive integer")
+
+    @staticmethod
+    def _duration_ms(started_at: float) -> int:
+        return max(0, int(round((perf_counter() - started_at) * 1000)))
 
     @staticmethod
     def _remove_owned(run_dir: Path, names: set) -> None:
@@ -399,19 +404,28 @@ class QAWorkflow:
                         "agent_config_sha256": config_hash,
                         "agent_spec_sha256": spec_hash,
                     }
+                    attempt_started_at = perf_counter()
                     try:
                         answer = runtime.run(prepared["question"])
+                    except Exception as exc:
+                        duration_ms = self._duration_ms(attempt_started_at)
+                        error = {"type": type(exc).__name__, "message": str(exc)}
+                        answer_writer.write(
+                            {
+                                **base,
+                                "status": "execution_failed",
+                                "duration_ms": duration_ms,
+                                "error": error,
+                            }
+                        )
+                    else:
                         answer_writer.write(
                             {
                                 **base,
                                 "status": "answer_ready",
+                                "duration_ms": self._duration_ms(attempt_started_at),
                                 "answer": answer,
                             }
-                        )
-                    except Exception as exc:
-                        error = {"type": type(exc).__name__, "message": str(exc)}
-                        answer_writer.write(
-                            {**base, "status": "execution_failed", "error": error}
                         )
         manifest["attempts"] = attempts
         manifest["agent"] = {
@@ -634,24 +648,28 @@ class QAWorkflow:
             assert runtime is not None
             base = self._attempt_base(parent_answer)
             prepared = prepared_by_id[parent_result["item_id"]]
+            attempt_started_at = perf_counter()
             try:
                 answer = runtime.run(prepared["question"])
-                successor_answers.append(
-                    {
-                        **base,
-                        "status": "answer_ready",
-                        "answer": answer,
-                    }
-                )
             except Exception as exc:
                 successor_answers.append(
                     {
                         **base,
                         "status": "execution_failed",
+                        "duration_ms": self._duration_ms(attempt_started_at),
                         "error": {
                             "type": type(exc).__name__,
                             "message": str(exc),
                         },
+                    }
+                )
+            else:
+                successor_answers.append(
+                    {
+                        **base,
+                        "status": "answer_ready",
+                        "duration_ms": self._duration_ms(attempt_started_at),
+                        "answer": answer,
                     }
                 )
         write_jsonl(output_dir / "answers.jsonl", successor_answers)

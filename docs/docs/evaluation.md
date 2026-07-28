@@ -439,7 +439,8 @@ less evaluation-run/answers.jsonl
 The command reads questions from the prepared workspace; it does not take the
 original dataset again. Every attempt creates a fresh selected pipeline
 instance. When all attempt slots are terminal, the manifest becomes
-`run_completed`.
+`run_completed`. Each terminal answer row also records non-negative
+`duration_ms` measured only around the tested-agent execution.
 
 ### 3. Score
 
@@ -645,7 +646,7 @@ evaluator failures are not mistaken for good quality.
 | `preparation_results.jsonl`         | Prepare               | One lifecycle record for every input item                                                       |
 | `agent_config.resolved.yaml`        | Run                   | Exact tested Archi config                                                                       |
 | `agent_spec.resolved.md`            | Run                   | Exact tested agent spec and prompt                                                              |
-| `answers.jsonl`                     | Run                   | One terminal`answer_ready` or `execution_failed` row per attempt slot                       |
+| `answers.jsonl`                     | Run                   | One terminal `answer_ready` or `execution_failed` row per attempt slot, including tested-agent `duration_ms` |
 | `evaluation_results.jsonl`          | Score                 | Answers, atom judgments, rationales, metrics, or terminal failures                              |
 | `summary.json`                      | Score                 | Machine-readable aggregate and per-item metrics plus provenance hashes                          |
 | `report.md`                         | Score                 | Human-readable result summary                                                                   |
@@ -653,9 +654,9 @@ evaluator failures are not mistaken for good quality.
 | `console_metadata.json`             | Console only          | Display name and selected catalog IDs/spec                                                      |
 
 The workspace is the reproducibility record. Keep it intact when comparing
-runs, and archive it with any external version identifiers you need; the
-current artifacts do not record source-control commits, release gates, token
-usage, latency, or full agent traces.
+runs, and archive it with any external version identifiers you need. The
+current artifacts record tested-agent execution latency but do not record
+source-control commits, release gates, token usage, or full agent traces.
 
 ## Rerunning and integrity protection
 

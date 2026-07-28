@@ -144,7 +144,7 @@ def _dataset(path):
 
 
 def _semantic_artifacts(run_dir):
-    return {
+    artifacts = {
         name: read_jsonl(run_dir / name)
         for name in (
             "prepared_items.jsonl",
@@ -152,7 +152,12 @@ def _semantic_artifacts(run_dir):
             "answers.jsonl",
             "evaluation_results.jsonl",
         )
-    } | {"summary.json": read_json(run_dir / "summary.json")}
+    }
+    artifacts["answers.jsonl"] = [
+        {key: value for key, value in row.items() if key != "duration_ms"}
+        for row in artifacts["answers.jsonl"]
+    ]
+    return artifacts | {"summary.json": read_json(run_dir / "summary.json")}
 
 
 def test_composite_and_staged_workflows_are_equivalent_at_four_attempts(
@@ -197,6 +202,10 @@ def test_composite_and_staged_workflows_are_equivalent_at_four_attempts(
         "scored": 8,
     }
     assert summary["overall_attempt_pass_rate"] == 1.0
+    assert all(
+        isinstance(row["duration_ms"], int) and row["duration_ms"] >= 0
+        for row in read_jsonl(staged / "answers.jsonl")
+    )
     assert set(summary["provenance"]) == {
         "agent_config_sha256",
         "agent_spec_sha256",
@@ -268,6 +277,108 @@ def test_failure_accounting_preserves_slots_and_denominators(agent_inputs, tmp_p
     assert summary["quality_accounted_attempts"] == 2
     assert summary["overall_attempt_pass_rate"] == 0.5
     assert summary["item_macro_exclusion_count"] == 1
+
+
+def test_run_persists_agent_duration_for_success_and_failure(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "latency-dataset.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "success",
+                    "question": "successful question",
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                },
+                {
+                    "id": "failure",
+                    "question": "failing question",
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                },
+            ]
+        )
+    )
+    ticks = iter((10.0, 10.125, 20.0, 20.5))
+    monkeypatch.setattr(
+        workflow_module, "perf_counter", lambda: next(ticks), raising=False
+    )
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow(
+        _EvaluatorFactory(),
+        _AgentFactory(failures={("failing question", 1)}),
+    )
+    workflow.prepare(dataset, run_dir)
+
+    workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
+
+    answers = {
+        row["item_id"]: row for row in read_jsonl(run_dir / "answers.jsonl")
+    }
+    assert answers["success"]["status"] == "answer_ready"
+    assert answers["success"]["duration_ms"] == 125
+    assert answers["failure"]["status"] == "execution_failed"
+    assert answers["failure"]["duration_ms"] == 500
+
+
+def test_run_stops_failure_timer_before_formatting_the_exception(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "latency-dataset.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "failure",
+                    "question": "failing question",
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                }
+            ]
+        )
+    )
+    clock = {"now": 20.0}
+    monkeypatch.setattr(
+        workflow_module, "perf_counter", lambda: clock["now"], raising=False
+    )
+
+    class SlowStringError(RuntimeError):
+        def __str__(self):
+            clock["now"] = 21.5
+            return "agent failed"
+
+    class FailingAgentFactory:
+        def __call__(self, config, spec, pipeline_class):
+            class Agent:
+                def run(self, question):
+                    clock["now"] = 20.5
+                    raise SlowStringError()
+
+            return Agent()
+
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow(_EvaluatorFactory(), FailingAgentFactory())
+    workflow.prepare(dataset, run_dir)
+
+    workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
+
+    [answer] = read_jsonl(run_dir / "answers.jsonl")
+    assert answer["duration_ms"] == 500
+    assert answer["error"] == {
+        "type": "SlowStringError",
+        "message": "agent failed",
+    }
 
 
 def test_score_does_not_initialize_evaluator_when_all_executions_failed(
@@ -537,7 +648,7 @@ def test_run_persists_admin_visible_answer_without_redaction(agent_inputs, tmp_p
 
 
 def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
-    agent_inputs, tmp_path
+    agent_inputs, monkeypatch, tmp_path
 ):
     dataset = tmp_path / "retry-dataset.json"
     dataset.write_text(
@@ -612,6 +723,10 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
     retry_evaluator = RecoveringEvaluatorFactory()
     successor = tmp_path / "successor"
     retry_workflow = QAWorkflow(retry_evaluator, retry_agent)
+    ticks = iter((30.0, 30.4))
+    monkeypatch.setattr(
+        workflow_module, "perf_counter", lambda: next(ticks), raising=False
+    )
 
     manifest = retry_workflow.retry(parent, successor)
 
@@ -636,7 +751,7 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
     assert successor_answers["evaluation-attempt-1"] == parent_answers[
         "evaluation-attempt-1"
     ]
-    assert successor_answers["execution-attempt-1"]["status"] == "answer_ready"
+    assert successor_answers["execution-attempt-1"]["duration_ms"] == 400
     assert {row["status"] for row in successor_results.values()} == {"scored"}
     assert manifest["retry"] == {
         "parent_run_id": read_json(parent / "manifest.json")["run_id"],
