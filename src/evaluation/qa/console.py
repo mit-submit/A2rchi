@@ -101,6 +101,30 @@ class EvaluationConsoleService:
             context={"dataset_id": dataset_id, "profile_id": profile_id},
         )
 
+    def start_atom_retry(self, draft_id: str) -> Dict[str, Any]:
+        details = self.catalog.atom_retry_details(draft_id)
+        profile_path = self.catalog.profile_path(details["profile_id"])
+
+        def work() -> Dict[str, Any]:
+            workflow = self.workflow_factory()
+            evaluator = workflow.evaluator_factory(load_profile(profile_path))
+            draft = self.catalog.retry_failed_atom_items(draft_id, evaluator)
+            return {
+                "draft_id": draft["id"],
+                "retried_item_ids": details["item_ids"],
+            }
+
+        return self.jobs.start(
+            "generate_atoms",
+            work,
+            context={
+                "dataset_id": details["dataset_id"],
+                "draft_id": details["draft_id"],
+                "profile_id": details["profile_id"],
+                "retry": True,
+            },
+        )
+
     def start_evaluation(
         self,
         *,
@@ -163,6 +187,59 @@ class EvaluationConsoleService:
                 "profile_id": profile_id,
                 "agent_spec": agent_spec,
                 "attempts": attempts,
+                "workspace_id": run_dir.name,
+            },
+        )
+
+    def start_evaluation_retry(self, history_id: str) -> Dict[str, Any]:
+        parent_path = self.history.run_path(history_id)
+        parent = self.history.get_run(history_id)
+        workflow = self.workflow_factory()
+        plan = workflow.retry_plan(parent_path)
+        parent_metadata = parent["metadata"]
+        parent_name = parent_metadata.get("name") or parent["manifest"]["run_id"]
+        retry_root_name = parent_metadata.get("retry_root_name") or parent_name
+        previous_retry_number = parent_metadata.get("retry_number")
+        retry_number = (
+            previous_retry_number + 1
+            if isinstance(previous_retry_number, int)
+            and not isinstance(previous_retry_number, bool)
+            and previous_retry_number > 0
+            else 1
+        )
+        run_dir = self.catalog.runs_dir / str(uuid.uuid4())
+        metadata = dict(parent_metadata)
+        metadata.update(
+            {
+                "name": f"{retry_root_name} · retry {retry_number}",
+                "created_at": utc_now(),
+                "retry_of_history_id": history_id,
+                "retry_number": retry_number,
+                "retry_root_name": retry_root_name,
+            }
+        )
+
+        def work() -> Dict[str, Any]:
+            run_dir.mkdir()
+            write_json(run_dir / "console_metadata.json", metadata)
+            manifest = self.workflow_factory().retry(parent_path, run_dir)
+            manifest["artifacts"]["console_metadata.json"] = sha256_file(
+                run_dir / "console_metadata.json"
+            )
+            write_json(run_dir / "manifest.json", manifest)
+            return {
+                "run_id": manifest["run_id"],
+                "history_id": self.history.id_for_path(run_dir),
+                "retry_of_history_id": history_id,
+            }
+
+        return self.jobs.start(
+            "evaluation",
+            work,
+            context={
+                "name": metadata["name"],
+                "retry_of_history_id": history_id,
+                "retry_attempt_ids": plan["retry_attempt_ids"],
                 "workspace_id": run_dir.name,
             },
         )

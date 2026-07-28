@@ -33,10 +33,16 @@ def _service():
 def _authorize():
     if request.path.startswith("/api/evaluations/atom-drafts"):
         permission = Permission.Evaluations.MANAGE
+    elif request.method == "POST" and (
+        request.path == "/api/evaluations/runs"
+        or (
+            request.path.startswith("/api/evaluations/runs/")
+            and request.path.endswith("/retry-failed")
+        )
+    ):
+        permission = Permission.Evaluations.RUN
     elif request.method == "GET":
         permission = Permission.Evaluations.VIEW
-    elif request.path == "/api/evaluations/runs":
-        permission = Permission.Evaluations.RUN
     else:
         permission = Permission.Evaluations.MANAGE
     sentinel = object()
@@ -155,6 +161,18 @@ def atom_draft(draft_id):
         return _error(exc)
 
 
+@evaluations_bp.route(
+    "/api/evaluations/atom-drafts/<draft_id>/retry-failed",
+    methods=["POST"],
+)
+def retry_failed_atoms(draft_id):
+    try:
+        job = _service().start_atom_retry(draft_id)
+        return jsonify({"job": job}), 202
+    except Exception as exc:
+        return _error(exc)
+
+
 @evaluations_bp.route("/api/evaluations/atom-drafts/<draft_id>/save", methods=["POST"])
 def save_atom_draft(draft_id):
     try:
@@ -219,6 +237,18 @@ def runs():
 def run_detail(history_id):
     try:
         return jsonify({"run": _service().history.get_run(history_id)})
+    except Exception as exc:
+        return _error(exc)
+
+
+@evaluations_bp.route(
+    "/api/evaluations/runs/<history_id>/retry-failed",
+    methods=["POST"],
+)
+def retry_failed_evaluation(history_id):
+    try:
+        job = _service().start_evaluation_retry(history_id)
+        return jsonify({"job": job}), 202
     except Exception as exc:
         return _error(exc)
 

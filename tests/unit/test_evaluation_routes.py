@@ -39,9 +39,17 @@ class _Service:
         self.started.append(("atoms", dataset_id, profile_id))
         return {"id": "job-atoms", "status": "queued"}
 
+    def start_atom_retry(self, draft_id):
+        self.started.append(("atom-retry", draft_id))
+        return {"id": "job-atom-retry", "status": "queued"}
+
     def start_evaluation(self, **kwargs):
         self.started.append(("evaluation", kwargs))
         return {"id": "job-run", "status": "queued"}
+
+    def start_evaluation_retry(self, history_id):
+        self.started.append(("evaluation-retry", history_id))
+        return {"id": "job-evaluation-retry", "status": "queued"}
 
 
 def _app(tmp_path, denied_permissions=None):
@@ -110,6 +118,9 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
     reviewed = client.post(
         f"/api/evaluations/datasets/{review_dataset['id']}/review-atoms",
     )
+    atom_retry = client.post(
+        "/api/evaluations/atom-drafts/draft-id/retry-failed",
+    )
     launched = client.post(
         "/api/evaluations/runs",
         json={
@@ -120,23 +131,33 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
             "attempts": 2,
         },
     )
+    evaluation_retry = client.post(
+        "/api/evaluations/runs/history-id/retry-failed",
+    )
 
     assert imported.status_code == 201
     assert listed.status_code == 200
     assert generated.status_code == 202
     assert reviewed.status_code == 201
+    assert atom_retry.status_code == 202
     assert reviewed.get_json()["draft"]["items"][0]["atoms"] == [
         {"id": "A1", "text": "A", "required": True}
     ]
     assert launched.status_code == 202
+    assert evaluation_retry.status_code == 202
     assert permissions == [
         Permission.Evaluations.MANAGE,
         Permission.Evaluations.VIEW,
         Permission.Evaluations.MANAGE,
         Permission.Evaluations.MANAGE,
+        Permission.Evaluations.MANAGE,
+        Permission.Evaluations.RUN,
         Permission.Evaluations.RUN,
     ]
-    assert service.started[-1][1]["attempts"] == 2
+    launched_call = next(
+        entry for entry in service.started if entry[0] == "evaluation"
+    )
+    assert launched_call[1]["attempts"] == 2
 
 
 def test_partial_dataset_review_never_starts_generation_or_provider(tmp_path):
@@ -240,3 +261,28 @@ def test_view_only_user_cannot_import_a_dataset(tmp_path):
     assert response.status_code == 403
     assert service.catalog.list_datasets() == []
     assert permissions == [Permission.Evaluations.MANAGE]
+
+
+def test_retry_routes_enforce_manage_and_run_permissions(tmp_path):
+    atom_app, atom_service, atom_permissions = _app(
+        tmp_path / "atoms",
+        denied_permissions={Permission.Evaluations.MANAGE},
+    )
+    atom_response = atom_app.test_client().post(
+        "/api/evaluations/atom-drafts/draft-id/retry-failed"
+    )
+
+    run_app, run_service, run_permissions = _app(
+        tmp_path / "runs",
+        denied_permissions={Permission.Evaluations.RUN},
+    )
+    run_response = run_app.test_client().post(
+        "/api/evaluations/runs/history-id/retry-failed"
+    )
+
+    assert atom_response.status_code == 403
+    assert run_response.status_code == 403
+    assert atom_service.started == []
+    assert run_service.started == []
+    assert atom_permissions == [Permission.Evaluations.MANAGE]
+    assert run_permissions == [Permission.Evaluations.RUN]

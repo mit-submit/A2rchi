@@ -42,6 +42,9 @@ class EvaluationHistory:
             raise ValueError("run path is outside the evaluation history")
         return _history_id(resolved)
 
+    def run_path(self, history_id: str) -> Path:
+        return self._resolve(history_id)
+
     @staticmethod
     def _load(path: Path) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         manifest = read_json(path / "manifest.json")
@@ -156,6 +159,8 @@ class EvaluationHistory:
                         "profile_name": metadata.get("profile_name"),
                         "agent_spec": metadata.get("agent_spec"),
                         "attempts": manifest.get("attempts"),
+                        "retry_of_history_id": metadata.get("retry_of_history_id"),
+                        "retry_number": metadata.get("retry_number"),
                         "overall_attempt_pass_rate": (
                             summary.get("overall_attempt_pass_rate")
                             if isinstance(summary, dict)

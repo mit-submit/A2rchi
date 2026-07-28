@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const state = { datasets: [], profiles: [], agents: [], runs: [], jobs: [], selectedDataset: null, draft: null, pollingJobId: null, reviewValidationActive: false };
+  const state = { datasets: [], profiles: [], agents: [], runs: [], jobs: [], selectedDataset: null, draft: null, openRunId: null, pollingJobId: null, reviewValidationActive: false };
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
@@ -232,8 +232,12 @@
 
   function openAtomEditor() {
     const eligible = state.draft.items.filter((item) => !item.time_sensitive);
+    const failed = eligible.filter((item) => item.status === "preparation_failed");
     const isNewDraft = $("#atom-editor").dataset.draftId !== state.draft.id;
     $("#atom-dialog-title").textContent = `Review atoms · ${state.draft.dataset_name}`;
+    $("#retry-failed-atoms").hidden = failed.length === 0;
+    $("#retry-failed-atoms").disabled = false;
+    $("#retry-failed-atoms").textContent = `Retry failed atoms (${failed.length})`;
     if (isNewDraft) {
       state.reviewValidationActive = false;
       $("#reviewed-dataset-name").value = `${state.draft.dataset_name} · reviewed`;
@@ -267,6 +271,60 @@
     bindAtomEditor();
     if (state.reviewValidationActive) validateReviewedItems(false);
     if (!$("#atom-dialog").open) $("#atom-dialog").showModal();
+  }
+
+  async function retryFailedAtoms() {
+    if (!state.draft) return;
+    syncAtomsFromDom();
+    const retryIds = new Set(
+      state.draft.items
+        .filter((item) => item.status === "preparation_failed")
+        .map((item) => item.item_id)
+    );
+    if (!retryIds.size) return;
+    const localById = new Map(state.draft.items.map((item) => [
+      item.item_id,
+      {
+        atoms: (item.atoms || []).map((atom) => ({ ...atom })),
+        review_open: item.review_open
+      }
+    ]));
+    const button = $("#retry-failed-atoms");
+    button.disabled = true;
+    button.textContent = `Retrying ${retryIds.size} failed atom${retryIds.size === 1 ? "" : "s"}…`;
+    try {
+      const payload = await api(`/api/evaluations/atom-drafts/${encodeURIComponent(state.draft.id)}/retry-failed`, {
+        method: "POST"
+      });
+      state.jobs.unshift(payload.job);
+      renderRuntime();
+      const result = await pollJob(payload.job.id);
+      syncAtomsFromDom();
+      state.draft.items.forEach((item) => {
+        localById.set(item.item_id, {
+          atoms: (item.atoms || []).map((atom) => ({ ...atom })),
+          review_open: item.review_open
+        });
+      });
+      const draftPayload = await api(`/api/evaluations/atom-drafts/${encodeURIComponent(result.draft_id)}`);
+      draftPayload.draft.items = draftPayload.draft.items.map((item) => {
+        const local = localById.get(item.item_id);
+        if (!local) return item;
+        if (retryIds.has(item.item_id)) return { ...item, review_open: local.review_open };
+        return { ...item, atoms: local.atoms, review_open: local.review_open };
+      });
+      state.draft = draftPayload.draft;
+      openAtomEditor();
+      const remaining = state.draft.items.filter((item) => item.status === "preparation_failed").length;
+      toast(
+        remaining ? "Atom retry completed with failures" : "Failed atoms recovered",
+        remaining ? `${remaining} item${remaining === 1 ? "" : "s"} still need attention.` : "Generated candidates are ready for review."
+      );
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = `Retry failed atoms (${retryIds.size})`;
+      toast("Could not retry failed atoms", error.message);
+    }
   }
 
   function atomRow(itemIndex, atomIndex, atom, itemId) {
@@ -472,17 +530,25 @@
     try {
       const { run } = await api(`/api/evaluations/runs/${encodeURIComponent(id)}`);
       const meta = run.metadata || {}, manifest = run.manifest || {}, summary = run.summary || {};
+      state.openRunId = id;
       $("#run-title").textContent = meta.name || manifest.run_id || "Evaluation run";
       $("#run-subtitle").textContent = `${meta.dataset_name || "CLI dataset snapshot"} · ${meta.agent_spec || manifest.agent?.agent_class || "resolved agent"}`;
       $("#report-link").href = `/api/evaluations/runs/${encodeURIComponent(id)}/report`;
       $("#report-link").hidden = !run.report_available;
       const counts = summary.attempt_lifecycle_counts || {};
+      const retryableCount = (counts.execution_failed || 0) + (counts.evaluation_failed || 0);
+      const retryButton = $("#retry-failed-evaluation");
+      retryButton.hidden = retryableCount === 0;
+      retryButton.disabled = false;
+      retryButton.textContent = `Retry failed attempts (${retryableCount})`;
+      const parent = state.runs.find((item) => item.id === meta.retry_of_history_id);
       const preparedById = Object.fromEntries((run.prepared_items || []).map((item) => [item.item_id, item]));
       const answersByAttempt = Object.fromEntries((run.answers || []).map((item) => [item.attempt_id, item]));
       $("#run-detail-content").innerHTML = `
+        ${meta.retry_of_history_id ? `<div class="lineage-callout"><strong>Successor run ${esc(meta.retry_number || "")}</strong> · retried from ${esc(parent?.name || meta.retry_of_history_id)}. Scored attempts were carried forward unchanged.</div>` : ""}
         <div class="evidence-grid">
           <article class="evidence-card"><span>Overall pass rate</span><strong>${percent(summary.overall_attempt_pass_rate)}</strong><small>${summary.passed_attempts ?? 0} / ${summary.quality_accounted_attempts ?? 0} accounted</small></article>
-          <article class="evidence-card"><span>Scored attempts</span><strong>${counts.scored ?? 0}</strong><small>${counts.execution_failed ?? 0} execution failures</small></article>
+          <article class="evidence-card"><span>Scored attempts</span><strong>${counts.scored ?? 0}</strong><small>${counts.execution_failed ?? 0} execution · ${counts.evaluation_failed ?? 0} evaluation failures</small></article>
           <article class="evidence-card"><span>Required recall</span><strong>${percent(summary.macro_mean_scored_attempt_required_atom_recall)}</strong><small>macro mean, scored only</small></article>
           <article class="evidence-card"><span>Artifact schema</span><strong>${esc(manifest.schema_version || "—")}</strong><small>${esc(manifest.status || "unknown")}</small></article>
         </div>
@@ -501,6 +567,29 @@
     } catch (error) { toast("Could not open run", error.message); }
   }
 
+  async function retryFailedEvaluation() {
+    if (!state.openRunId) return;
+    const button = $("#retry-failed-evaluation");
+    const idleLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = "Retrying failed attempts…";
+    try {
+      const payload = await api(`/api/evaluations/runs/${encodeURIComponent(state.openRunId)}/retry-failed`, {
+        method: "POST"
+      });
+      state.jobs.unshift(payload.job);
+      renderRuntime();
+      toast("Evaluation retry queued", "Only technically failed attempts will invoke providers.");
+      const result = await pollJob(payload.job.id);
+      await loadRuns();
+      await openRun(result.history_id);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = idleLabel;
+      toast("Could not retry evaluation", error.message);
+    }
+  }
+
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
   $$("[data-go]").forEach((item) => item.addEventListener("click", () => showView(item.dataset.go)));
   $("#dataset-search").addEventListener("input", renderDatasets);
@@ -508,6 +597,8 @@
   $("#dataset-import-form").addEventListener("submit", (event) => { event.preventDefault(); submitImport(event.currentTarget, "/api/evaluations/datasets", "Dataset"); });
   $("#profile-import-form").addEventListener("submit", (event) => { event.preventDefault(); submitImport(event.currentTarget, "/api/evaluations/profiles", "Profile"); });
   $("#evaluation-form").addEventListener("submit", launchEvaluation);
+  $("#retry-failed-atoms").addEventListener("click", retryFailedAtoms);
+  $("#retry-failed-evaluation").addEventListener("click", retryFailedEvaluation);
   $("#save-reviewed-dataset").addEventListener("click", saveReviewedDataset);
   $("#reviewed-dataset-name").addEventListener("input", () => {
     if ($("#reviewed-dataset-name-error")) validateReviewedDatasetName(false);

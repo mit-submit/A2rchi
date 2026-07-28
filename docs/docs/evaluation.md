@@ -558,6 +558,27 @@ The Runs page is reconstructed from persisted artifacts. A malformed,
 unsupported, missing, or hash-mismatched workspace appears as an isolated
 `invalid` entry instead of breaking the history list.
 
+### Retry technical failures
+
+The console exposes retry actions only for provider or runtime failures:
+
+- an open generated atom draft with `preparation_failed` rows can retry those
+  rows in place without regenerating successful candidates or modifying the
+  imported parent dataset;
+- a scored run with `execution_failed` or `evaluation_failed` attempts can
+  create a complete successor run. Execution failures rerun Archi and the
+  comparator, while evaluation failures reuse the verified terminal answer and
+  rerun only the comparator.
+
+Successful scored attempts are carried forward unchanged. The parent run
+remains immutable, the successor records its direct parent and retry selection,
+and both runs remain visible in history. Scored attempts that merely fail the
+quality threshold are not retryable.
+
+Atom retries require `evaluations:manage`; evaluation retries require
+`evaluations:run`. A draft or run without retryable technical failures creates
+neither a job nor a new artifact.
+
 ## Understand states
 
 There are two independent state machines.

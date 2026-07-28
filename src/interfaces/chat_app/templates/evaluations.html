@@ -128,7 +128,10 @@
       <section class="view" id="view-run-detail">
         <header class="page-head">
           <div><button class="text-button" data-go="runs">← All runs</button><p class="eyebrow">Evaluation evidence</p><h1 id="run-title">Run detail</h1><p id="run-subtitle"></p></div>
-          <a class="button quiet" id="report-link" target="_blank" rel="noopener">Open report</a>
+          <div class="page-actions">
+            <button class="button primary" id="retry-failed-evaluation" type="button" hidden>Retry failed attempts</button>
+            <a class="button quiet" id="report-link" target="_blank" rel="noopener">Open report</a>
+          </div>
         </header>
         <div id="run-detail-content"></div>
       </section>
@@ -141,6 +144,7 @@
       <div class="atom-editor" id="atom-editor"></div>
       <footer>
         <label>New dataset name<input id="reviewed-dataset-name" autocomplete="off" required></label>
+        <button class="button quiet" type="button" id="retry-failed-atoms" hidden>Retry failed atoms</button>
         <button class="button quiet" type="button" data-close-atom-dialog>Cancel</button>
         <button class="button primary" type="button" id="save-reviewed-dataset">Save as new dataset</button>
       </footer>

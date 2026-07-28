@@ -19,6 +19,26 @@ class _Evaluator:
         }
 
 
+class _SelectiveEvaluator:
+    def __init__(self, failing_answers=None):
+        self.failing_answers = set(failing_answers or [])
+        self.calls = []
+
+    def extract_gold(self, question, answer):
+        self.calls.append((question, answer))
+        if answer in self.failing_answers:
+            raise RuntimeError(f"cannot extract {answer}")
+        return {
+            "atoms": [
+                {
+                    "id": "A1",
+                    "text": f"Generated: {answer}",
+                    "required": True,
+                }
+            ]
+        }
+
+
 def _dataset_blob():
     return json.dumps(
         [
@@ -93,6 +113,25 @@ def _skipped_atom_dataset_blob():
                         "required": True,
                     }
                 ],
+            },
+        ]
+    ).encode()
+
+
+def _two_item_dataset_blob():
+    return json.dumps(
+        [
+            {
+                "id": "first",
+                "question": "First?",
+                "answer": "First answer",
+                "time_sensitive": False,
+            },
+            {
+                "id": "second",
+                "question": "Second?",
+                "answer": "Second answer",
+                "time_sensitive": False,
             },
         ]
     ).encode()
@@ -265,6 +304,58 @@ def test_review_is_rejected_when_dataset_contains_zero_atoms(tmp_path):
         ValueError, match="atom review requires a dataset with at least one atom"
     ):
         catalog.create_atom_review_draft(dataset["id"])
+
+
+def test_atom_retry_updates_only_failed_rows_in_the_same_open_draft(tmp_path):
+    catalog = EvaluationCatalog(tmp_path)
+    dataset, _ = catalog.import_dataset(
+        "Two items", "two.json", _two_item_dataset_blob()
+    )
+    parent_bytes = catalog.dataset_path(dataset["id"]).read_bytes()
+    initial = _SelectiveEvaluator(failing_answers={"Second answer"})
+    draft = catalog.create_atom_draft(dataset["id"], "builtin", initial)
+    first_before = draft["items"][0]
+    retry = _SelectiveEvaluator()
+
+    retried = catalog.retry_failed_atom_items(draft["id"], retry)
+
+    assert retried["id"] == draft["id"]
+    assert retried["items"][0] == first_before
+    assert retried["items"][1] == {
+        "item_id": "second",
+        "question": "Second?",
+        "answer": "Second answer",
+        "time_sensitive": False,
+        "status": "prepared",
+        "atom_source": "inferred",
+        "atoms": [
+            {
+                "id": "A1",
+                "text": "Generated: Second answer",
+                "required": True,
+            }
+        ],
+    }
+    assert retry.calls == [("Second?", "Second answer")]
+    assert catalog.dataset_path(dataset["id"]).read_bytes() == parent_bytes
+
+
+def test_atom_retry_rejects_drafts_without_retryable_generation_failures(tmp_path):
+    catalog = EvaluationCatalog(tmp_path)
+    dataset, _ = catalog.import_dataset(
+        "Two items", "two.json", _two_item_dataset_blob()
+    )
+    generated = catalog.create_atom_draft(dataset["id"], "builtin", _Evaluator())
+
+    with pytest.raises(ValueError, match="no failed items"):
+        catalog.atom_retry_details(generated["id"])
+
+    reviewed_parent, _ = catalog.import_dataset(
+        "Reviewed", "reviewed.json", _partially_atomized_dataset_blob()
+    )
+    reviewed = catalog.create_atom_review_draft(reviewed_parent["id"])
+    with pytest.raises(ValueError, match="only generated atom drafts"):
+        catalog.atom_retry_details(reviewed["id"])
 
 
 def test_each_saved_review_has_its_own_parent_lineage(tmp_path):

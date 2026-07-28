@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("QA evaluation console", () => {
+  test.describe.configure({ mode: "serial" });
+
   test("imports, reviews atoms, saves a child dataset, launches, and opens history", async ({ page }) => {
     await page.goto("/evaluations");
     await expect(page.getByRole("heading", { name: "Evidence, not dashboard theatre." })).toBeVisible();
@@ -191,5 +193,127 @@ test.describe("QA evaluation console", () => {
     await expect(panels.nth(1).getByLabel("Atom text 1 for without-atom")).toHaveValue("");
     expect(requests.some((url) => url.endsWith("/generate-atoms"))).toBe(false);
     expect(requests.some((url) => url.endsWith("/review-atoms"))).toBe(true);
+  });
+
+  test("retries only failed atoms and opens a complete evaluation successor", async ({ page }) => {
+    await page.goto("/evaluations");
+    await page.getByRole("button", { name: /Datasets/ }).click();
+    await page.getByLabel("Name").first().fill("Failure retry dataset");
+    await page.getByLabel("Dataset file").setInputFiles({
+      name: "failure-retry.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify([
+        {
+          id: "retry-scored",
+          question: "Keep this successful atom?",
+          answer: "Keep this generated atom.",
+          time_sensitive: false,
+        },
+        {
+          id: "retry-execution",
+          question: "Recover this atom?",
+          answer: "Recover this generated atom.",
+          time_sensitive: false,
+        },
+        {
+          id: "retry-evaluation",
+          question: "Score this answer again?",
+          answer: "Reuse this terminal answer.",
+          time_sensitive: false,
+        },
+      ])),
+    });
+    await page.getByRole("button", { name: "Validate and import" }).click();
+    await page.locator("#dataset-list [data-dataset-id]").filter({
+      has: page.getByText("Failure retry dataset", { exact: true }),
+    }).click();
+    await page.getByRole("button", { name: "Generate Atoms" }).click();
+
+    const dialog = page.getByRole("dialog", {
+      name: "Review atoms · Failure retry dataset",
+    });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByText("Generation failed:", { exact: false })).toHaveCount(1);
+    const retryAtoms = dialog.getByRole("button", {
+      name: "Retry failed atoms (1)",
+    });
+    await expect(retryAtoms).toBeVisible();
+    const preservedPanel = dialog.locator("details").filter({
+      hasText: "Keep this successful atom?",
+    });
+    if ((await preservedPanel.getAttribute("open")) === null) {
+      await preservedPanel.locator("summary").click();
+    }
+    const preservedAtom = preservedPanel.getByLabel(
+      "Atom text 1 for retry-scored",
+    );
+    await preservedAtom.fill("Unsaved reviewer edit remains visible.");
+
+    await retryAtoms.click();
+    await preservedAtom.fill("Edit made while retry was running.");
+
+    await expect(dialog.getByText("Generation failed:", { exact: false })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      dialog.getByRole("button", { name: /Retry failed atoms/ }),
+    ).toHaveCount(0);
+    await expect(preservedAtom).toHaveValue("Edit made while retry was running.");
+    await dialog.getByLabel("New dataset name").fill(
+      "Failure retry dataset · reviewed",
+    );
+    await dialog.getByRole("button", { name: "Save as new dataset" }).click();
+
+    await expect(page.locator("#dataset-detail").getByRole("heading", {
+      name: "Failure retry dataset · reviewed",
+    })).toBeVisible();
+    await page.getByRole("button", { name: "Evaluate" }).click();
+    await page.getByLabel("Evaluation name").fill("Failure-only evaluation");
+    await page.getByRole("button", { name: "Start evaluation" }).click();
+
+    await expect(page.getByRole("heading", {
+      name: "Failure-only evaluation",
+    })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", {
+      name: "Retry failed attempts (2)",
+    })).toBeVisible();
+    await expect(page.locator(".result-item .status")).toHaveText([
+      "scored",
+      "execution_failed",
+      "evaluation_failed",
+    ]);
+
+    await page.getByRole("button", {
+      name: "Retry failed attempts (2)",
+    }).click();
+
+    await expect(page.getByRole("heading", {
+      name: "Failure-only evaluation · retry 1",
+    })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".lineage-callout")).toContainText(
+      "retried from Failure-only evaluation",
+    );
+    await expect(page.locator(".result-item .status")).toHaveText([
+      "scored",
+      "scored",
+      "scored",
+    ]);
+    await expect(page.getByRole("button", {
+      name: /Retry failed attempts/,
+    })).toHaveCount(0);
+    await expect(page.locator(".evidence-card").getByText(
+      "100.0%",
+      { exact: true },
+    ).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "← All runs" }).click();
+    await expect(page.locator("#runs-body").getByText(
+      "Failure-only evaluation",
+      { exact: true },
+    )).toBeVisible();
+    await expect(page.locator("#runs-body").getByText(
+      "Failure-only evaluation · retry 1",
+      { exact: true },
+    )).toBeVisible();
   });
 });

@@ -4,10 +4,32 @@ import uuid
 
 import pytest
 
-from src.evaluation.qa.artifacts import artifact_hashes, write_json
+from src.evaluation.qa.artifacts import artifact_hashes, read_json, write_json
 from src.evaluation.qa.console import EvaluationConsoleService
 from src.evaluation.qa.history import EvaluationHistory
 from src.evaluation.qa.jobs import EvaluationJobManager, JobConflictError
+
+
+class _RetryWorkflow:
+    def retry_plan(self, _parent_path):
+        return {"retry_attempt_ids": ["item-1::attempt-1"]}
+
+    def retry(self, _parent_path, output_dir):
+        write_json(output_dir / "summary.json", {"overall_attempt_pass_rate": 1.0})
+        (output_dir / "report.md").write_text("# Retry report\n")
+        return {
+            "schema_version": "qa-v0",
+            "run_id": "retry-run",
+            "status": "scored",
+            "artifacts": artifact_hashes(
+                output_dir, {"summary.json", "report.md"}
+            ),
+        }
+
+
+class _NoRetryWorkflow:
+    def retry_plan(self, _parent_path):
+        raise ValueError("evaluation run has no failed attempts to retry")
 
 
 def test_console_job_exposes_current_atom_draft_status(tmp_path):
@@ -78,13 +100,24 @@ def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
     )
     (valid / "report.md").write_text("# Report\n")
     write_json(
+        valid / "console_metadata.json",
+        {
+            "name": "Retry run",
+            "retry_of_history_id": "a" * 24,
+            "retry_number": 2,
+        },
+    )
+    write_json(
         valid / "manifest.json",
         {
             "schema_version": "qa-v0",
             "run_id": "run-1",
             "status": "scored",
             "attempts": 2,
-            "artifacts": artifact_hashes(valid, {"summary.json", "report.md"}),
+            "artifacts": artifact_hashes(
+                valid,
+                {"summary.json", "report.md", "console_metadata.json"},
+            ),
             "phases": {
                 "prepare": {"status": "completed"},
                 "run": {"status": "completed"},
@@ -106,6 +139,8 @@ def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
     valid_row = next(row for row in rows if row["valid"])
     invalid_row = next(row for row in rows if not row["valid"])
     assert valid_row["overall_attempt_pass_rate"] == 0.75
+    assert valid_row["retry_of_history_id"] == "a" * 24
+    assert valid_row["retry_number"] == 2
     assert history.get_report(valid_row["id"]) == "# Report\n"
     assert "unsupported run schema" in invalid_row["error"]
 
@@ -137,6 +172,93 @@ def test_history_rejects_tampered_declared_artifacts(tmp_path):
 
     assert row["valid"] is False
     assert "hash mismatch" in row["error"]
+
+
+def test_console_retry_keeps_root_name_across_retry_generations(tmp_path):
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+        workflow_factory=_RetryWorkflow,
+    )
+    parent = service.catalog.runs_dir / "parent"
+    parent.mkdir()
+    write_json(parent / "summary.json", {"overall_attempt_pass_rate": 0.5})
+    (parent / "report.md").write_text("# Parent report\n")
+    write_json(
+        parent / "console_metadata.json",
+        {
+            "name": "Original run · retry 1",
+            "retry_number": 1,
+            "retry_root_name": "Original run",
+        },
+    )
+    write_json(
+        parent / "manifest.json",
+        {
+            "schema_version": "qa-v0",
+            "run_id": "parent-run",
+            "status": "scored",
+            "attempts": 1,
+            "artifacts": artifact_hashes(
+                parent,
+                {"summary.json", "report.md", "console_metadata.json"},
+            ),
+            "phases": {
+                "prepare": {"status": "completed"},
+                "run": {"status": "completed"},
+                "score": {"status": "completed"},
+            },
+        },
+    )
+    history_id = service.history.id_for_path(parent)
+
+    job = service.start_evaluation_retry(history_id)
+    completed = service.jobs.wait(job["id"], timeout=2)
+
+    assert completed["status"] == "completed"
+    successor = service.history.run_path(completed["result"]["history_id"])
+    metadata = read_json(successor / "console_metadata.json")
+    assert metadata["name"] == "Original run · retry 2"
+    assert metadata["retry_root_name"] == "Original run"
+    assert metadata["retry_number"] == 2
+    service.jobs.close()
+
+
+def test_console_retry_without_failures_creates_no_job_or_successor(tmp_path):
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+        workflow_factory=_NoRetryWorkflow,
+    )
+    parent = service.catalog.runs_dir / "parent"
+    parent.mkdir()
+    write_json(parent / "summary.json", {"overall_attempt_pass_rate": 1.0})
+    (parent / "report.md").write_text("# Complete report\n")
+    write_json(
+        parent / "manifest.json",
+        {
+            "schema_version": "qa-v0",
+            "run_id": "complete-run",
+            "status": "scored",
+            "attempts": 1,
+            "artifacts": artifact_hashes(parent, {"summary.json", "report.md"}),
+            "phases": {
+                "prepare": {"status": "completed"},
+                "run": {"status": "completed"},
+                "score": {"status": "completed"},
+            },
+        },
+    )
+    history_id = service.history.id_for_path(parent)
+
+    with pytest.raises(ValueError, match="no failed attempts"):
+        service.start_evaluation_retry(history_id)
+
+    assert service.jobs.list() == []
+    assert list(service.catalog.runs_dir.iterdir()) == [parent]
+    service.jobs.close()
 
 
 def test_history_rejects_missing_declared_artifact(tmp_path):

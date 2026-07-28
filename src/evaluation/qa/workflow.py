@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -94,6 +95,179 @@ class QAWorkflow:
             or (phases.get(phase) or {}).get("status") != "completed"
         ):
             raise ValueError(f"run workspace {phase} phase is not complete")
+
+    @staticmethod
+    def _attempt_base(row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            key: row[key]
+            for key in (
+                "item_id",
+                "attempt_id",
+                "ordinal",
+                "agent_config_sha256",
+                "agent_spec_sha256",
+            )
+        }
+
+    @staticmethod
+    def _score_answer(
+        answer_row: Dict[str, Any],
+        prepared: Dict[str, Any],
+        evaluator: Any,
+    ) -> Dict[str, Any]:
+        base = QAWorkflow._attempt_base(answer_row)
+        gold_atoms = [Atom(**atom) for atom in prepared["gold_atoms"]]
+        try:
+            judgments = validate_judgments(
+                evaluator.compare(
+                    prepared["question"], gold_atoms, answer_row["answer"]
+                ),
+                gold_atoms=gold_atoms,
+                context=f"comparison for attempt {answer_row['attempt_id']}",
+            )
+            if any(judgment.outcome == "unjudgeable" for judgment in judgments):
+                raise ValueError("comparator returned an unjudgeable outcome")
+            metrics = score_attempt(gold_atoms, judgments)
+            return {
+                **base,
+                "status": "scored",
+                "answer": answer_row["answer"],
+                "judgments": [judgment.to_dict() for judgment in judgments],
+                **metrics,
+            }
+        except Exception as exc:
+            return {
+                **base,
+                "status": "evaluation_failed",
+                "error": str(exc),
+            }
+
+    def _load_retry_parent(
+        self, run_dir: Path
+    ) -> Tuple[
+        Dict[str, Any],
+        List[Dict[str, Any]],
+        List[Dict[str, Any]],
+        Dict[str, Dict[str, Any]],
+        List[Dict[str, Any]],
+    ]:
+        manifest = self._load_manifest(run_dir)
+        if manifest.get("status") != "scored":
+            raise ValueError("evaluation retry requires a complete scored run")
+        for phase in ("prepare", "run", "score"):
+            self._phase_complete(manifest, phase)
+        if manifest.get("versions") != {
+            "scoring": SCORING_VERSION,
+            "prompts": PROMPT_VERSIONS,
+        }:
+            raise ValueError("evaluation retry requires current QA artifact versions")
+        snapshot = manifest["input"]["snapshot"]
+        required_artifacts = {
+            snapshot,
+            "prepared_items.jsonl",
+            "preparation_results.jsonl",
+            "evaluator_profile.resolved.yaml",
+            "agent_config.resolved.yaml",
+            "agent_spec.resolved.md",
+            "answers.jsonl",
+            "evaluation_results.jsonl",
+            "summary.json",
+            "report.md",
+        }
+        verify_hashes(run_dir, manifest, required_artifacts)
+        prepared_rows = read_jsonl(run_dir / "prepared_items.jsonl")
+        preparation_results = read_jsonl(run_dir / "preparation_results.jsonl")
+        answers = read_jsonl(run_dir / "answers.jsonl")
+        results = read_jsonl(run_dir / "evaluation_results.jsonl")
+        attempts = manifest.get("attempts")
+        self._require_positive_attempts(attempts)
+        expected_identities = {
+            (prepared["item_id"], ordinal, f"{prepared['item_id']}-attempt-{ordinal}")
+            for prepared in prepared_rows
+            for ordinal in range(1, attempts + 1)
+        }
+        answer_identities = {
+            (row.get("item_id"), row.get("ordinal"), row.get("attempt_id"))
+            for row in answers
+        }
+        result_identities = {
+            (row.get("item_id"), row.get("ordinal"), row.get("attempt_id"))
+            for row in results
+        }
+        if (
+            len(answers) != len(expected_identities)
+            or len(results) != len(expected_identities)
+            or answer_identities != expected_identities
+            or result_identities != expected_identities
+        ):
+            raise ValueError(
+                "parent run attempt identities do not match the prepared workspace"
+            )
+        answers_by_id = {row["attempt_id"]: row for row in answers}
+        if len(answers_by_id) != len(answers):
+            raise ValueError("parent run contains duplicate attempt answers")
+        config_hash = manifest["artifacts"]["agent_config.resolved.yaml"]
+        spec_hash = manifest["artifacts"]["agent_spec.resolved.md"]
+        for result in results:
+            answer = answers_by_id[result["attempt_id"]]
+            status = result.get("status")
+            if status not in {"scored", "execution_failed", "evaluation_failed"}:
+                raise ValueError("parent run contains an unsupported result status")
+            expected_answer_status = (
+                "execution_failed" if status == "execution_failed" else "answer_ready"
+            )
+            if answer.get("status") != expected_answer_status:
+                raise ValueError(
+                    "parent run answer and evaluation result statuses disagree"
+                )
+            for row in (answer, result):
+                if (
+                    row.get("agent_config_sha256") != config_hash
+                    or row.get("agent_spec_sha256") != spec_hash
+                ):
+                    raise ValueError("parent run attempt provenance is inconsistent")
+        return (
+            manifest,
+            prepared_rows,
+            preparation_results,
+            answers_by_id,
+            results,
+        )
+
+    @staticmethod
+    def _retry_plan(
+        manifest: Dict[str, Any], results: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        retryable = [
+            row
+            for row in results
+            if row["status"] in {"execution_failed", "evaluation_failed"}
+        ]
+        if not retryable:
+            raise ValueError("evaluation run has no failed attempts to retry")
+        return {
+            "parent_run_id": manifest["run_id"],
+            "retry_attempt_ids": [row["attempt_id"] for row in retryable],
+            "execution_attempt_ids": [
+                row["attempt_id"]
+                for row in retryable
+                if row["status"] == "execution_failed"
+            ],
+            "evaluation_attempt_ids": [
+                row["attempt_id"]
+                for row in retryable
+                if row["status"] == "evaluation_failed"
+            ],
+            "carried_forward_attempt_ids": [
+                row["attempt_id"] for row in results if row["status"] == "scored"
+            ],
+        }
+
+    def retry_plan(self, run_dir: Path) -> Dict[str, Any]:
+        manifest, _prepared, _preparation, _answers, results = (
+            self._load_retry_parent(run_dir)
+        )
+        return self._retry_plan(manifest, results)
 
     def prepare(
         self,
@@ -339,16 +513,7 @@ class QAWorkflow:
         started_at = utc_now()
         with AtomicJsonlWriter(run_dir / "evaluation_results.jsonl") as result_writer:
             for answer_row in iter_jsonl(run_dir / "answers.jsonl"):
-                base = {
-                    key: answer_row[key]
-                    for key in (
-                        "item_id",
-                        "attempt_id",
-                        "ordinal",
-                        "agent_config_sha256",
-                        "agent_spec_sha256",
-                    )
-                }
+                base = self._attempt_base(answer_row)
                 if answer_row["status"] == "execution_failed":
                     result_writer.write(
                         {
@@ -359,36 +524,10 @@ class QAWorkflow:
                     )
                     continue
                 prepared = prepared_by_id[answer_row["item_id"]]
-                gold_atoms = [Atom(**atom) for atom in prepared["gold_atoms"]]
-                try:
-                    assert evaluator is not None
-                    judgments = validate_judgments(
-                        evaluator.compare(
-                            prepared["question"], gold_atoms, answer_row["answer"]
-                        ),
-                        gold_atoms=gold_atoms,
-                        context=f"comparison for attempt {answer_row['attempt_id']}",
-                    )
-                    if any(judgment.outcome == "unjudgeable" for judgment in judgments):
-                        raise ValueError("comparator returned an unjudgeable outcome")
-                    metrics = score_attempt(gold_atoms, judgments)
-                    result_writer.write(
-                        {
-                            **base,
-                            "status": "scored",
-                            "answer": answer_row["answer"],
-                            "judgments": [judgment.to_dict() for judgment in judgments],
-                            **metrics,
-                        }
-                    )
-                except Exception as exc:
-                    result_writer.write(
-                        {
-                            **base,
-                            "status": "evaluation_failed",
-                            "error": str(exc),
-                        }
-                    )
+                assert evaluator is not None
+                result_writer.write(
+                    self._score_answer(answer_row, prepared, evaluator)
+                )
 
         summary = build_summary(
             preparation_results,
@@ -416,6 +555,176 @@ class QAWorkflow:
         write_text(run_dir / "report.md", render_report(summary, manifest))
         manifest["artifacts"]["report.md"] = sha256_file(run_dir / "report.md")
         write_json(run_dir / "manifest.json", manifest)
+        return manifest
+
+    def retry(self, parent_run_dir: Path, output_dir: Path) -> Dict[str, Any]:
+        (
+            parent_manifest,
+            prepared_rows,
+            preparation_results,
+            parent_answers,
+            parent_results,
+        ) = self._load_retry_parent(parent_run_dir)
+        plan = self._retry_plan(parent_manifest, parent_results)
+        existing = self._existing_owned(output_dir, OWNED_FILES)
+        if existing:
+            raise ValueError(
+                "retry output directory already contains QA artifacts: "
+                + ", ".join(existing)
+            )
+        retry_ids = set(plan["retry_attempt_ids"])
+        execution_ids = set(plan["execution_attempt_ids"])
+        prepared_by_id = {row["item_id"]: row for row in prepared_rows}
+        runtime = None
+        if execution_ids:
+            config, spec, _spec_text, pipeline_class = load_agent_inputs(
+                parent_run_dir / "agent_config.resolved.yaml",
+                parent_run_dir / "agent_spec.resolved.md",
+            )
+            runtime = self.agent_factory(config, spec, pipeline_class)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        snapshot = parent_manifest["input"]["snapshot"]
+        copied_artifacts = {
+            snapshot,
+            "prepared_items.jsonl",
+            "preparation_results.jsonl",
+            "evaluator_profile.resolved.yaml",
+            "agent_config.resolved.yaml",
+            "agent_spec.resolved.md",
+        }
+        for name in copied_artifacts:
+            write_bytes(output_dir / name, (parent_run_dir / name).read_bytes())
+        manifest = {
+            "schema_version": parent_manifest["schema_version"],
+            "run_id": str(uuid.uuid4()),
+            "status": "prepared",
+            "versions": deepcopy(parent_manifest["versions"]),
+            "input": deepcopy(parent_manifest["input"]),
+            "evaluator_profile": deepcopy(parent_manifest["evaluator_profile"]),
+            "attempts": parent_manifest["attempts"],
+            "agent": deepcopy(parent_manifest["agent"]),
+            "artifacts": artifact_hashes(
+                output_dir,
+                {
+                    snapshot,
+                    "prepared_items.jsonl",
+                    "preparation_results.jsonl",
+                    "evaluator_profile.resolved.yaml",
+                },
+            ),
+            "phases": {
+                "prepare": {
+                    **deepcopy(parent_manifest["phases"]["prepare"]),
+                    "source": "carried_forward",
+                }
+            },
+            "retry": plan,
+        }
+        write_json(output_dir / "manifest.json", manifest)
+
+        started_at = utc_now()
+        successor_answers: List[Dict[str, Any]] = []
+        for parent_result in parent_results:
+            attempt_id = parent_result["attempt_id"]
+            parent_answer = parent_answers[attempt_id]
+            if attempt_id not in execution_ids:
+                successor_answers.append(parent_answer)
+                continue
+            assert runtime is not None
+            base = self._attempt_base(parent_answer)
+            prepared = prepared_by_id[parent_result["item_id"]]
+            try:
+                answer = runtime.run(prepared["question"])
+                successor_answers.append(
+                    {
+                        **base,
+                        "status": "answer_ready",
+                        "answer": answer,
+                    }
+                )
+            except Exception as exc:
+                successor_answers.append(
+                    {
+                        **base,
+                        "status": "execution_failed",
+                        "error": {
+                            "type": type(exc).__name__,
+                            "message": str(exc),
+                        },
+                    }
+                )
+        write_jsonl(output_dir / "answers.jsonl", successor_answers)
+        manifest["artifacts"].update(artifact_hashes(output_dir, RUN_FILES))
+        manifest["phases"]["run"] = {
+            "status": "completed",
+            "started_at": started_at,
+            "completed_at": utc_now(),
+            "attempt_slots": len(successor_answers),
+            "retried_attempts": len(execution_ids),
+        }
+        manifest["status"] = "run_completed"
+        write_json(output_dir / "manifest.json", manifest)
+
+        evaluator = None
+        profile = load_profile(output_dir / "evaluator_profile.resolved.yaml")
+        successor_answers_by_id = {
+            row["attempt_id"]: row for row in successor_answers
+        }
+        successor_results: List[Dict[str, Any]] = []
+        started_at = utc_now()
+        for parent_result in parent_results:
+            attempt_id = parent_result["attempt_id"]
+            if attempt_id not in retry_ids:
+                successor_results.append(parent_result)
+                continue
+            answer_row = successor_answers_by_id[attempt_id]
+            if answer_row["status"] == "execution_failed":
+                successor_results.append(
+                    {
+                        **self._attempt_base(answer_row),
+                        "status": "execution_failed",
+                        "error": answer_row["error"],
+                    }
+                )
+                continue
+            if evaluator is None:
+                evaluator = self.evaluator_factory(profile)
+            successor_results.append(
+                self._score_answer(
+                    answer_row,
+                    prepared_by_id[answer_row["item_id"]],
+                    evaluator,
+                )
+            )
+        write_jsonl(output_dir / "evaluation_results.jsonl", successor_results)
+        summary = build_summary(
+            preparation_results,
+            prepared_rows,
+            successor_results,
+        )
+        summary["provenance"] = {
+            "agent_config_sha256": manifest["artifacts"]["agent_config.resolved.yaml"],
+            "agent_spec_sha256": manifest["artifacts"]["agent_spec.resolved.md"],
+            "evaluator_profile_sha256": manifest["artifacts"][
+                "evaluator_profile.resolved.yaml"
+            ],
+        }
+        write_json(output_dir / "summary.json", summary)
+        manifest["status"] = "scored"
+        manifest["phases"]["score"] = {
+            "status": "completed",
+            "started_at": started_at,
+            "completed_at": utc_now(),
+            "scored_attempts": summary["attempt_lifecycle_counts"]["scored"],
+            "retried_attempts": len(retry_ids),
+        }
+        manifest["artifacts"].update(
+            artifact_hashes(output_dir, SCORE_FILES - {"report.md"})
+        )
+        write_text(output_dir / "report.md", render_report(summary, manifest))
+        manifest["artifacts"]["report.md"] = sha256_file(output_dir / "report.md")
+        write_json(output_dir / "manifest.json", manifest)
         return manifest
 
     def composite(

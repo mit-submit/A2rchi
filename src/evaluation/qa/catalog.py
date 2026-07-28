@@ -68,6 +68,29 @@ def _dataset_row(
     return row
 
 
+def _generated_draft_row(
+    item: DatasetItem,
+    result: Dict[str, Any],
+    prepared_by_id: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    row: Dict[str, Any] = {
+        "item_id": item.id,
+        "question": item.question,
+        "answer": item.answer,
+        "time_sensitive": item.time_sensitive,
+        "status": result["status"],
+    }
+    if item.answer_source is not None:
+        row["answer_source"] = item.answer_source
+    if result["status"] == "prepared":
+        candidate = prepared_by_id[item.id]
+        row["atom_source"] = candidate["atom_source"]
+        row["atoms"] = candidate["gold_atoms"]
+    elif "error" in result:
+        row["error"] = result["error"]
+    return row
+
+
 class EvaluationCatalog:
     """Immutable dataset/profile catalogs plus mutable atom-review drafts."""
 
@@ -292,25 +315,10 @@ class EvaluationCatalog:
         prepared, results = prepare_dataset_items(items, evaluator)
         prepared_by_id = {row["item_id"]: row for row in prepared}
         result_by_id = {row["item_id"]: row for row in results}
-        draft_items = []
-        for item in items:
-            result = result_by_id[item.id]
-            row: Dict[str, Any] = {
-                "item_id": item.id,
-                "question": item.question,
-                "answer": item.answer,
-                "time_sensitive": item.time_sensitive,
-                "status": result["status"],
-            }
-            if item.answer_source is not None:
-                row["answer_source"] = item.answer_source
-            if result["status"] == "prepared":
-                candidate = prepared_by_id[item.id]
-                row["atom_source"] = candidate["atom_source"]
-                row["atoms"] = candidate["gold_atoms"]
-            elif "error" in result:
-                row["error"] = result["error"]
-            draft_items.append(row)
+        draft_items = [
+            _generated_draft_row(item, result_by_id[item.id], prepared_by_id)
+            for item in items
+        ]
         return self._persist_atom_draft(dataset, profile_id, draft_items)
 
     def create_atom_review_draft(self, dataset_id: str) -> Dict[str, Any]:
@@ -374,6 +382,72 @@ class EvaluationCatalog:
         if not path.is_file():
             raise LookupError("atom draft not found")
         return read_json(path)
+
+    def atom_retry_details(self, draft_id: str) -> Dict[str, Any]:
+        with self._lock:
+            draft = self.get_atom_draft(draft_id)
+            if draft.get("status") != "open":
+                raise ValueError("atom draft has already been saved")
+            profile_id = draft.get("profile_id")
+            if not isinstance(profile_id, str):
+                raise ValueError("only generated atom drafts can retry failed items")
+            self.get_profile(profile_id)
+            item_ids = [
+                row["item_id"]
+                for row in draft["items"]
+                if row.get("status") == "preparation_failed"
+            ]
+            if not item_ids:
+                raise ValueError("atom draft has no failed items to retry")
+            return {
+                "draft_id": draft["id"],
+                "dataset_id": draft["dataset_id"],
+                "profile_id": profile_id,
+                "item_ids": item_ids,
+            }
+
+    def retry_failed_atom_items(
+        self, draft_id: str, evaluator: Any
+    ) -> Dict[str, Any]:
+        details = self.atom_retry_details(draft_id)
+        items_by_id = {
+            item.id: item for item in self.dataset_items(details["dataset_id"])
+        }
+        missing = sorted(set(details["item_ids"]) - set(items_by_id))
+        if missing:
+            raise ValueError(
+                "atom draft references missing dataset item(s): " + ", ".join(missing)
+            )
+        selected_items = [items_by_id[item_id] for item_id in details["item_ids"]]
+        prepared, results = prepare_dataset_items(selected_items, evaluator)
+        prepared_by_id = {row["item_id"]: row for row in prepared}
+        result_by_id = {row["item_id"]: row for row in results}
+        replacements = {
+            item.id: _generated_draft_row(
+                item, result_by_id[item.id], prepared_by_id
+            )
+            for item in selected_items
+        }
+
+        with self._lock:
+            draft = self.get_atom_draft(draft_id)
+            if draft.get("status") != "open":
+                raise ValueError("atom draft has already been saved")
+            current_failed_ids = {
+                row["item_id"]
+                for row in draft["items"]
+                if row.get("status") == "preparation_failed"
+            }
+            if not set(details["item_ids"]).issubset(current_failed_ids):
+                raise ValueError("atom draft changed while failed items were retried")
+            draft["items"] = [
+                replacements.get(row["item_id"], row) for row in draft["items"]
+            ]
+            write_json(
+                self.drafts_dir / details["draft_id"] / "draft.json",
+                draft,
+            )
+            return draft
 
     def save_reviewed_dataset(
         self, draft_id: str, name: str, reviewed_items: Any

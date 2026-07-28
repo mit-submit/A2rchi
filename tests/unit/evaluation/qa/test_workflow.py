@@ -10,8 +10,9 @@ from src.evaluation.qa.workflow import QAWorkflow
 
 
 class _EvaluatorFactory:
-    def __init__(self):
+    def __init__(self, not_mentioned_questions=None):
         self.calls = Counter()
+        self.not_mentioned_questions = set(not_mentioned_questions or [])
 
     def __call__(self, profile):
         factory = self
@@ -38,7 +39,15 @@ class _EvaluatorFactory:
                     "judgments": [
                         {
                             "atom_id": atom.id,
-                            "outcome": "entailed" if atom.required else "not_mentioned",
+                            "outcome": (
+                                "not_mentioned"
+                                if question in factory.not_mentioned_questions
+                                else (
+                                    "entailed"
+                                    if atom.required
+                                    else "not_mentioned"
+                                )
+                            ),
                             "rationale": "deterministic fake",
                         }
                         for atom in gold_atoms
@@ -525,6 +534,182 @@ def test_run_persists_admin_visible_answer_without_redaction(agent_inputs, tmp_p
 
     answers = read_jsonl(run_dir / "answers.jsonl")
     assert {row["answer"] for row in answers} == {"answer configured-secret-value"}
+
+
+def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
+    agent_inputs, tmp_path
+):
+    dataset = tmp_path / "retry-dataset.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": item_id,
+                    "question": question,
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                }
+                for item_id, question in (
+                    ("scored", "scored question"),
+                    ("execution", "execution question"),
+                    ("evaluation", "evaluation question"),
+                )
+            ]
+        )
+    )
+    parent = tmp_path / "parent"
+    parent_agent = _AgentFactory(
+        failures={("execution question", 1)},
+        malformed_questions={"evaluation question"},
+    )
+    QAWorkflow(
+        _EvaluatorFactory(not_mentioned_questions={"scored question"}),
+        parent_agent,
+    ).composite(
+        dataset,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        parent,
+    )
+    parent_bytes = {
+        path.name: path.read_bytes() for path in parent.iterdir() if path.is_file()
+    }
+    parent_answers = {
+        row["attempt_id"]: row for row in read_jsonl(parent / "answers.jsonl")
+    }
+    parent_results = {
+        row["attempt_id"]: row
+        for row in read_jsonl(parent / "evaluation_results.jsonl")
+    }
+    retry_agent = _AgentFactory()
+
+    class RecoveringEvaluatorFactory:
+        def __init__(self):
+            self.calls = Counter()
+
+        def __call__(self, profile):
+            factory = self
+
+            class Evaluator:
+                def compare(self, question, gold_atoms, answer):
+                    factory.calls[question] += 1
+                    return {
+                        "judgments": [
+                            {
+                                "atom_id": atom.id,
+                                "outcome": "entailed",
+                                "rationale": "retry succeeded",
+                            }
+                            for atom in gold_atoms
+                        ]
+                    }
+
+            return Evaluator()
+
+    retry_evaluator = RecoveringEvaluatorFactory()
+    successor = tmp_path / "successor"
+    retry_workflow = QAWorkflow(retry_evaluator, retry_agent)
+
+    manifest = retry_workflow.retry(parent, successor)
+
+    successor_answers = {
+        row["attempt_id"]: row for row in read_jsonl(successor / "answers.jsonl")
+    }
+    successor_results = {
+        row["attempt_id"]: row
+        for row in read_jsonl(successor / "evaluation_results.jsonl")
+    }
+    assert retry_agent.calls == Counter({"execution question": 1})
+    assert retry_evaluator.calls == Counter(
+        {"execution question": 1, "evaluation question": 1}
+    )
+    assert parent_results["scored-attempt-1"]["passed"] is False
+    assert successor_answers["scored-attempt-1"] == parent_answers[
+        "scored-attempt-1"
+    ]
+    assert successor_results["scored-attempt-1"] == parent_results[
+        "scored-attempt-1"
+    ]
+    assert successor_answers["evaluation-attempt-1"] == parent_answers[
+        "evaluation-attempt-1"
+    ]
+    assert successor_answers["execution-attempt-1"]["status"] == "answer_ready"
+    assert {row["status"] for row in successor_results.values()} == {"scored"}
+    assert manifest["retry"] == {
+        "parent_run_id": read_json(parent / "manifest.json")["run_id"],
+        "retry_attempt_ids": [
+            "execution-attempt-1",
+            "evaluation-attempt-1",
+        ],
+        "execution_attempt_ids": ["execution-attempt-1"],
+        "evaluation_attempt_ids": ["evaluation-attempt-1"],
+        "carried_forward_attempt_ids": ["scored-attempt-1"],
+    }
+    assert read_json(successor / "summary.json")["attempt_lifecycle_counts"] == {
+        "execution_failed": 0,
+        "evaluation_failed": 0,
+        "scored": 3,
+    }
+    for artifact in (
+        "input.snapshot.json",
+        "prepared_items.jsonl",
+        "preparation_results.jsonl",
+        "evaluator_profile.resolved.yaml",
+        "agent_config.resolved.yaml",
+        "agent_spec.resolved.md",
+    ):
+        assert (successor / artifact).read_bytes() == (parent / artifact).read_bytes()
+    assert {
+        path.name: path.read_bytes() for path in parent.iterdir() if path.is_file()
+    } == parent_bytes
+    with pytest.raises(ValueError, match="no failed attempts"):
+        retry_workflow.retry_plan(successor)
+
+
+def test_retry_rejects_tampered_parent_before_provider_or_output(
+    agent_inputs, tmp_path
+):
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "item",
+                    "question": "question",
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                }
+            ]
+        )
+    )
+    parent = tmp_path / "parent"
+    QAWorkflow(
+        _EvaluatorFactory(),
+        _AgentFactory(failures={("question", 1)}),
+    ).composite(
+        dataset,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        parent,
+    )
+    with (parent / "evaluation_results.jsonl").open("a") as handle:
+        handle.write("{}\n")
+    evaluator = _EvaluatorFactory()
+    agent = _AgentFactory()
+    successor = tmp_path / "successor"
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        QAWorkflow(evaluator, agent).retry(parent, successor)
+
+    assert evaluator.calls == Counter()
+    assert agent.calls == Counter()
+    assert not successor.exists()
 
 
 def test_composite_validates_selected_agent_inputs_before_gold_provider_call(
