@@ -375,8 +375,8 @@ An evaluator profile is optional. The built-in profile is equivalent to:
 ```yaml
 version: 1
 qa:
-  atoms_extractor: {provider: openai, model: gpt-5.5}
-  evaluator: {provider: openai, model: gpt-5.5}
+  atoms_extractor: {provider: openai, model: gpt-5.6-terra}
+  evaluator: {provider: openai, model: gpt-5.6-terra}
 ```
 
 Use `--evaluator-profile profile.yaml` on the composite command or `prepare`.

@@ -238,10 +238,10 @@ version: 1
 qa:
   atoms_extractor:
     provider: openai
-    model: gpt-5.5
+    model: gpt-5.6-terra
   evaluator:
     provider: openai
-    model: gpt-5.5
+    model: gpt-5.6-terra
 ```
 
 The CLI loads the profile supplied during preparation and stores the resolved

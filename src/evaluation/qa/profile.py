@@ -52,7 +52,7 @@ class EvaluatorProfile:
         }
 
 
-DEFAULT_DESCRIPTOR = ModelDescriptor(provider="openai", model="gpt-5.5")
+DEFAULT_DESCRIPTOR = ModelDescriptor(provider="openai", model="gpt-5.6-terra")
 DEFAULT_PROFILE = EvaluatorProfile(
     version=1,
     atoms_extractor=DEFAULT_DESCRIPTOR,
