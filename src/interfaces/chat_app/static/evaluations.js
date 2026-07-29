@@ -578,10 +578,10 @@
     return recalls.reduce((total, recall) => total + recall, 0) / recalls.length;
   }
 
-  function questionLatencySummaries(preparedItems, answers) {
+  function questionLatencyAttempts(preparedItems, answers) {
     const groups = new Map((preparedItems || []).map((item) => [
       item.item_id,
-      { itemId: item.item_id, question: item.question || "Question text unavailable", durations: [] }
+      { itemId: item.item_id, question: item.question || "Question text unavailable", attempts: [] }
     ]));
     (answers || []).forEach((answer) => {
       if (typeof answer.duration_ms !== "number" || !Number.isFinite(answer.duration_ms) || answer.duration_ms < 0) return;
@@ -589,45 +589,108 @@
         groups.set(answer.item_id, {
           itemId: answer.item_id,
           question: "Question text unavailable",
-          durations: []
+          attempts: []
         });
       }
-      groups.get(answer.item_id).durations.push(answer.duration_ms);
+      const toolCalls = Array.isArray(answer.tool_calls)
+        ? answer.tool_calls.filter((call) => typeof call.duration_ms === "number" && Number.isFinite(call.duration_ms) && call.duration_ms >= 0)
+        : null;
+      groups.get(answer.item_id).attempts.push({
+        attemptId: answer.attempt_id,
+        ordinal: answer.ordinal,
+        total: answer.duration_ms,
+        toolTotal: toolCalls === null ? null : toolCalls.reduce((total, call) => total + call.duration_ms, 0),
+        toolCount: toolCalls === null ? null : toolCalls.length
+      });
     });
     return [...groups.values()]
-      .filter((group) => group.durations.length)
-      .map((group) => ({
-        ...group,
-        average: group.durations.reduce((total, duration) => total + duration, 0) / group.durations.length,
-        minimum: Math.min(...group.durations),
-        maximum: Math.max(...group.durations)
-      }));
+      .filter((group) => group.attempts.length)
+      .map((group) => {
+        group.attempts.sort((left, right) => (left.ordinal || 0) - (right.ordinal || 0));
+        return group;
+      });
   }
 
   function renderLatencyChart(preparedItems, answers) {
-    const rows = questionLatencySummaries(preparedItems, answers);
-    const maximumAverage = rows.length ? Math.max(...rows.map((row) => row.average)) : 0;
-    return `<section class="panel latency-panel" aria-labelledby="latency-chart-title">
+    const rows = questionLatencyAttempts(preparedItems, answers);
+    const maximumDuration = rows.length
+      ? Math.max(...rows.flatMap((row) => row.attempts.map((attempt) => attempt.total)))
+      : 0;
+    return `<section class="panel latency-panel" aria-labelledby="latency-chart-title" data-maximum-duration="${maximumDuration}">
       <div class="latency-head">
         <div><p class="eyebrow">Execution timing</p><h2 id="latency-chart-title">Latency per question</h2></div>
-        <p>Tested-agent wall time only · successful and execution-failed attempts</p>
+        <div class="latency-legend" aria-label="Latency legend"><span><i class="tool"></i>Tool calls</span><span><i class="other"></i>Other agent time</span></div>
       </div>
-      ${rows.length ? `<div class="latency-chart" role="list">
+      ${rows.length ? `<div class="latency-histogram" role="list">
         ${rows.map((row) => {
-          const width = maximumAverage > 0 ? (row.average / maximumAverage) * 100 : 0;
-          const attemptLabel = `${row.durations.length} timed attempt${row.durations.length === 1 ? "" : "s"}`;
-          return `<div class="latency-row" role="listitem">
+          const first = row.attempts[0];
+          return `<article class="latency-item" role="listitem" data-question-id="${esc(row.itemId)}">
             <div class="latency-question"><code>${esc(row.itemId)}</code><span title="${esc(row.question)}">${esc(row.question)}</span></div>
-            <div class="latency-measure">
-              <div class="latency-track" role="img" aria-label="Average agent latency for ${esc(row.itemId)}: ${esc(formatDuration(row.average))}">
-                <span style="width:${width.toFixed(2)}%"></span>
+            <label class="latency-attempt"><span>Attempt</span><select aria-label="Attempt for ${esc(row.itemId)}">
+              ${row.attempts.map((attempt) => `<option value="${esc(attempt.attemptId)}" data-total="${attempt.total}" data-tool="${attempt.toolTotal === null ? "" : attempt.toolTotal}" data-tool-count="${attempt.toolCount === null ? "" : attempt.toolCount}">Attempt ${esc(attempt.ordinal ?? "—")}</option>`).join("")}
+            </select></label>
+            <div class="latency-plot">
+              <div class="latency-bar" role="img" aria-label="Latency for ${esc(row.itemId)}, attempt ${esc(first.ordinal ?? "—")}">
+                <span class="latency-other-segment"></span>
+                <span class="latency-tool-segment"></span>
+                <span class="latency-unknown-segment"></span>
               </div>
-              <div class="latency-values"><strong>${formatDuration(row.average)} average</strong><small>${formatDuration(row.minimum)}–${formatDuration(row.maximum)} · ${attemptLabel}</small></div>
             </div>
-          </div>`;
+            <div class="latency-values">
+              <strong class="latency-total-value"></strong>
+              <span class="latency-tool-value"></span>
+              <span class="latency-other-value"></span>
+              <small class="latency-tool-count"></small>
+            </div>
+          </article>`;
         }).join("")}
       </div>` : `<div class="latency-unavailable"><strong>Latency unavailable for this run.</strong><span>This historical run has no authoritative per-attempt timings.</span></div>`}
     </section>`;
+  }
+
+  function bindLatencyChart() {
+    const panel = $(".latency-panel");
+    if (!panel) return;
+    const maximumDuration = Number(panel.dataset.maximumDuration);
+    $$(".latency-item").forEach((item) => {
+      const select = item.querySelector("select");
+      const bar = item.querySelector(".latency-bar");
+      const toolSegment = item.querySelector(".latency-tool-segment");
+      const otherSegment = item.querySelector(".latency-other-segment");
+      const unknownSegment = item.querySelector(".latency-unknown-segment");
+      const update = () => {
+        const option = select.selectedOptions[0];
+        const total = Number(option.dataset.total);
+        const toolAvailable = option.dataset.tool !== "";
+        const toolTotal = toolAvailable ? Number(option.dataset.tool) : null;
+        const representedTool = toolAvailable ? Math.min(toolTotal, total) : 0;
+        const other = toolAvailable ? Math.max(0, total - representedTool) : null;
+        const barHeight = maximumDuration > 0 ? (total / maximumDuration) * 100 : 0;
+        const toolHeight = total > 0 ? (representedTool / total) * 100 : 0;
+        const otherHeight = toolAvailable ? 100 - toolHeight : 0;
+
+        bar.style.height = `${barHeight.toFixed(2)}%`;
+        toolSegment.style.height = `${toolHeight.toFixed(2)}%`;
+        otherSegment.style.height = `${otherHeight.toFixed(2)}%`;
+        unknownSegment.style.height = toolAvailable ? "0.00%" : "100.00%";
+        item.querySelector(".latency-total-value").textContent = `${formatDuration(total)} total`;
+        item.querySelector(".latency-tool-value").textContent = toolAvailable
+          ? `${formatDuration(toolTotal)} tools`
+          : "Tool timing unavailable";
+        item.querySelector(".latency-other-value").textContent = toolAvailable
+          ? `${formatDuration(other)} other agent time`
+          : "Remaining time unavailable";
+        item.querySelector(".latency-tool-count").textContent = toolAvailable
+          ? `${option.dataset.toolCount} tool call${option.dataset.toolCount === "1" ? "" : "s"}`
+          : "";
+        bar.setAttribute(
+          "aria-label",
+          `${item.dataset.questionId}, ${option.textContent}: ${formatDuration(total)} total; ${toolAvailable ? `${formatDuration(toolTotal)} in tools and ${formatDuration(other)} in other agent time` : "tool timing unavailable"}`
+        );
+      };
+      select.addEventListener("change", update);
+      requestAnimationFrame(update);
+    });
   }
 
   function readableError(error) {
@@ -770,6 +833,7 @@
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Attempt evidence</p><h2>Answers and judgments</h2></div></div>
           <div class="result-list">${questionGroups.map((group) => renderQuestionGroup(group, answersByAttempt)).join("") || `<div class="empty"><strong>No question results are available.</strong></div>`}</div>
         </section>`;
+      bindLatencyChart();
       showView("run-detail");
     } catch (error) { toast("Could not open run", error.message); }
   }

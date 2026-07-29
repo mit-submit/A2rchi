@@ -190,19 +190,29 @@ dialog::backdrop { background:rgba(4,12,9,.72); backdrop-filter:blur(4px); }
 .latency-panel { margin-bottom:16px; }
 .latency-head { min-height:72px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid var(--line); }
 .latency-head h2,.latency-head p { margin-bottom:0; }
-.latency-head > p { max-width:420px;color:var(--muted);font:10px/1.5 var(--mono);text-align:right;text-transform:uppercase;letter-spacing:.04em; }
-.latency-chart { max-height:380px;overflow:auto;padding:8px 18px; }
-.latency-row { display:grid;grid-template-columns:minmax(180px,.8fr) minmax(260px,1.2fr);gap:20px;align-items:center;padding:12px 0;border-top:1px solid var(--line); }
-.latency-row:first-child { border-top:0; }
+.latency-legend { display:flex;align-items:center;gap:14px;color:var(--muted);font:9px var(--mono);text-transform:uppercase;letter-spacing:.04em; }
+.latency-legend span { display:flex;align-items:center;gap:6px;white-space:nowrap; }
+.latency-legend i { width:10px;height:10px;border-radius:3px; }
+.latency-legend .tool { background:var(--green); }.latency-legend .other { background:var(--blue); }
+.latency-histogram { min-height:360px;display:flex;align-items:stretch;gap:12px;overflow-x:auto;padding:18px; }
+.latency-item { min-width:190px;max-width:230px;flex:1;display:grid;grid-template-rows:auto auto 190px auto;gap:10px;padding:13px;border:1px solid var(--line);border-radius:10px;background:#faf9f5; }
 .latency-question { min-width:0;display:grid;gap:3px; }
 .latency-question code { color:var(--green);font:700 9px var(--mono); }
-.latency-question span { overflow:hidden;color:var(--ink);font-size:12px;text-overflow:ellipsis;white-space:nowrap; }
-.latency-measure { min-width:0;display:grid;gap:6px; }
-.latency-track { height:9px;overflow:hidden;border-radius:999px;background:#e1e2dc; }
-.latency-track > span { display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#9edfc8,var(--green)); }
-.latency-values { display:flex;align-items:baseline;justify-content:space-between;gap:16px; }
-.latency-values strong { font:700 11px var(--mono); }
-.latency-values small { color:var(--muted);font:9px var(--mono);text-align:right; }
+.latency-question span { min-height:34px;overflow:hidden;color:var(--ink);font-size:12px;line-height:1.4;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2; }
+.latency-attempt { display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;color:var(--muted);font:9px var(--mono);text-transform:uppercase;letter-spacing:.04em; }
+.latency-attempt select { width:100%;min-height:32px;padding:5px 26px 5px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font:10px var(--mono); }
+.latency-attempt select:hover { border-color:#aab3ae; }.latency-attempt select:focus-visible { outline:2px solid rgba(8,113,83,.24);outline-offset:2px;border-color:var(--green); }
+.latency-plot { min-height:0;display:flex;align-items:flex-end;justify-content:center;padding:8px 22px 0;border-bottom:1px solid #aeb6b1;background:repeating-linear-gradient(to top,transparent 0,transparent 46px,rgba(11,21,17,.06) 47px); }
+.latency-bar { width:min(72px,70%);height:0;overflow:hidden;display:flex;flex-direction:column;border-radius:7px 7px 2px 2px;background:#dfe3e0;box-shadow:0 0 0 1px rgba(11,21,17,.08);transition:height .36s cubic-bezier(.22,.8,.24,1); }
+.latency-bar > span { display:block;width:100%;height:0;transition:height .36s cubic-bezier(.22,.8,.24,1); }
+.latency-other-segment { background:linear-gradient(180deg,#79a7d7,var(--blue)); }
+.latency-tool-segment { background:linear-gradient(180deg,#67d9b1,var(--green)); }
+.latency-unknown-segment { background:repeating-linear-gradient(135deg,#d6dad7 0,#d6dad7 7px,#c4cac6 7px,#c4cac6 14px); }
+.latency-values { min-width:0;display:grid;gap:3px; }
+.latency-values strong { color:var(--ink);font:700 11px var(--mono); }
+.latency-values span,.latency-values small { color:var(--muted);font:9px/1.35 var(--mono); }
+.latency-tool-value::before,.latency-other-value::before { content:"";display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:2px; }
+.latency-tool-value::before { background:var(--green); }.latency-other-value::before { background:var(--blue); }
 .latency-unavailable { padding:22px 18px;color:var(--muted); }
 .latency-unavailable strong,.latency-unavailable span { display:block; }
 .latency-unavailable strong { margin-bottom:3px;color:var(--ink); }
@@ -312,11 +322,14 @@ dialog::backdrop { background:rgba(4,12,9,.72); backdrop-filter:blur(4px); }
   .atom-row { grid-template-columns:90px minmax(0,1fr); }.atom-row .required-toggle { grid-column:1/2; }.atom-row button { grid-column:2/3;justify-self:end; }
   .dialog-shell > footer { flex-wrap:wrap; }.dialog-shell > footer label { width:100%;min-width:0;margin:0; }
   .result-list { padding:10px; }.question-result > summary { min-height:0;grid-template-columns:1fr;gap:15px;padding:16px 42px 16px 15px; }
-  .latency-head { display:block; }.latency-head > p { margin-top:8px;text-align:left; }.latency-chart { padding-inline:15px; }
-  .latency-row { grid-template-columns:1fr;gap:8px; }.latency-values { align-items:start;flex-direction:column;gap:2px; }.latency-values small { text-align:left; }
+  .latency-head { display:block; }.latency-legend { margin-top:10px;flex-wrap:wrap; }.latency-histogram { min-height:340px;padding:14px; }
+  .latency-item { min-width:180px;grid-template-rows:auto auto 170px auto; }
   .question-summary-score > small { text-align:left; }.question-result-body { padding:10px; }
   .attempt-result > summary { grid-template-columns:minmax(0,1fr) auto;padding-left:13px; }.attempt-score { min-width:70px; }
   .atom-evidence-head { align-items:start; }.atom-judgment > summary { grid-template-columns:1fr;gap:8px;padding-right:42px; }
   .atom-outcome { width:max-content;min-width:0; }.atom-judgment-body { grid-template-columns:1fr; }
   .atom-judgment-body > section + section { border-left:0;border-top:1px solid var(--line); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .latency-bar,.latency-bar > span { transition:none; }
 }

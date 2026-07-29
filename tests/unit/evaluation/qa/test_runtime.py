@@ -4,7 +4,11 @@ from types import SimpleNamespace
 import pytest
 
 from src.evaluation.qa import runtime
-from src.evaluation.qa.runtime import ArchiAgentRuntime, LangChainEvaluatorRuntime
+from src.evaluation.qa.runtime import (
+    ArchiAgentRuntime,
+    LangChainEvaluatorRuntime,
+    ToolTimingCallback,
+)
 from src.evaluation.qa.profile import load_profile
 from src.evaluation.qa.validation import Atom
 
@@ -161,6 +165,56 @@ class _Output:
         self.answer = answer
 
 
+def test_tool_timing_callback_records_success_and_error(monkeypatch):
+    from uuid import UUID
+
+    clock = {"now": 10.0}
+    monkeypatch.setattr(runtime, "perf_counter", lambda: clock["now"])
+    callback = ToolTimingCallback()
+    first_run = UUID("00000000-0000-0000-0000-000000000001")
+    second_run = UUID("00000000-0000-0000-0000-000000000002")
+
+    callback.on_tool_start({"name": "search"}, "query", run_id=first_run)
+    clock["now"] = 10.125
+    callback.on_tool_end("result", run_id=first_run)
+    callback.on_tool_start({"name": "lookup"}, "id", run_id=second_run)
+    clock["now"] = 10.5
+    callback.on_tool_error(RuntimeError("failed"), run_id=second_run)
+
+    assert callback.timings == [
+        {
+            "ordinal": 1,
+            "name": "search",
+            "status": "success",
+            "duration_ms": 125,
+        },
+        {
+            "ordinal": 2,
+            "name": "lookup",
+            "status": "error",
+            "duration_ms": 375,
+        },
+    ]
+
+
+def test_tool_timing_callback_integrates_with_langchain_tool():
+    from langchain_core.tools import tool
+
+    @tool
+    def double(value: int) -> int:
+        """Double one integer."""
+        return value * 2
+
+    callback = ToolTimingCallback()
+
+    assert double.invoke({"value": 4}, config={"callbacks": [callback]}) == 8
+    assert callback.timings[0]["ordinal"] == 1
+    assert callback.timings[0]["name"] == "double"
+    assert callback.timings[0]["status"] == "success"
+    assert isinstance(callback.timings[0]["duration_ms"], int)
+    assert callback.timings[0]["duration_ms"] >= 0
+
+
 def _config():
     return {
         "services": {
@@ -223,10 +277,40 @@ def test_archi_runtime_uses_normal_pipeline_invocation(monkeypatch):
 
     assert answer == "final answer"
     assert "strict_tool_loading" not in observed["init"]
-    assert observed["invoke"] == {
-        "history": [("User", "question")],
-        "vectorstore": vectorstore,
-    }
+    assert observed["invoke"]["history"] == [("User", "question")]
+    assert observed["invoke"]["vectorstore"] is vectorstore
+    assert len(observed["invoke"]["callbacks"]) == 1
+    assert isinstance(observed["invoke"]["callbacks"][0], ToolTimingCallback)
+
+
+def test_archi_runtime_collects_tool_timings(monkeypatch):
+    from uuid import UUID
+
+    ticks = iter((3.0, 3.125))
+    monkeypatch.setattr(runtime, "perf_counter", lambda: next(ticks))
+
+    class Pipeline:
+        def __init__(self, **kwargs):
+            pass
+
+        def invoke(self, **kwargs):
+            callback = kwargs["callbacks"][0]
+            run_id = UUID("00000000-0000-0000-0000-000000000003")
+            callback.on_tool_start({"name": "search"}, "query", run_id=run_id)
+            callback.on_tool_end("result", run_id=run_id)
+            return _Output("final answer")
+
+    agent = ArchiAgentRuntime(_config(), SimpleNamespace(tools=[]), Pipeline)
+
+    assert agent.run("question") == "final answer"
+    assert agent.tool_calls == [
+        {
+            "ordinal": 1,
+            "name": "search",
+            "status": "success",
+            "duration_ms": 125,
+        }
+    ]
 
 
 def test_archi_runtime_fails_before_model_when_selected_mcp_tools_did_not_load():

@@ -279,13 +279,23 @@ test.describe("QA evaluation console", () => {
               {
                 attempt_id: "q-human-attempt-1",
                 item_id: "q-human",
+                ordinal: 1,
                 duration_ms: 1200,
+                tool_calls: [
+                  { ordinal: 1, name: "search", status: "success", duration_ms: 200 },
+                  { ordinal: 2, name: "lookup", status: "success", duration_ms: 100 },
+                ],
                 answer: "Archi stores immutable snapshots, full answers, and per-atom judgments.",
               },
               {
                 attempt_id: "q-human-attempt-2",
                 item_id: "q-human",
+                ordinal: 2,
                 duration_ms: 2800,
+                tool_calls: [
+                  { ordinal: 1, name: "search", status: "success", duration_ms: 1900 },
+                  { ordinal: 2, name: "lookup", status: "error", duration_ms: 1400 },
+                ],
                 answer: "Archi stores snapshots but discards detailed atom judgments.",
               },
             ],
@@ -317,9 +327,33 @@ test.describe("QA evaluation console", () => {
     const latencyPanel = page.locator(".latency-panel");
     await expect(latencyPanel.getByRole("heading", { name: "Latency per question" })).toBeVisible();
     await expect(latencyPanel.getByRole("listitem")).toHaveCount(1);
-    await expect(latencyPanel).toContainText("2.00 s average");
-    await expect(latencyPanel).toContainText("1.20 s–2.80 s · 2 timed attempts");
     await expect(latencyPanel).toContainText(question);
+    const latencyItem = latencyPanel.locator(".latency-item");
+    const attemptSelector = latencyItem.getByLabel("Attempt for q-human");
+    await expect(attemptSelector).toHaveValue("q-human-attempt-1");
+    await expect(latencyItem.locator(".latency-total-value")).toHaveText("1.20 s total");
+    await expect(latencyItem.locator(".latency-tool-value")).toHaveText("300 ms tools");
+    await expect(latencyItem.locator(".latency-other-value")).toHaveText("900 ms other agent time");
+    await expect(latencyItem).toContainText("2 tool calls");
+    const latencyBar = latencyItem.locator(".latency-bar");
+    await expect(latencyBar).toHaveAttribute("style", /height:\s*42\.86%/);
+    await expect(latencyItem.locator(".latency-tool-segment")).toHaveAttribute(
+      "style",
+      /height:\s*25(\.00)?%/,
+    );
+    expect(await latencyBar.evaluate((bar) => getComputedStyle(bar).transitionProperty)).toContain(
+      "height",
+    );
+
+    await attemptSelector.selectOption("q-human-attempt-2");
+    await expect(latencyItem.locator(".latency-total-value")).toHaveText("2.80 s total");
+    await expect(latencyItem.locator(".latency-tool-value")).toHaveText("3.30 s tools");
+    await expect(latencyItem.locator(".latency-other-value")).toHaveText("0 ms other agent time");
+    await expect(latencyBar).toHaveAttribute("style", /height:\s*100(\.00)?%/);
+    await expect(latencyItem.locator(".latency-tool-segment")).toHaveAttribute(
+      "style",
+      /height:\s*100(\.00)?%/,
+    );
     await expect(page.locator("#run-detail-content > :first-child")).toHaveClass(/latency-panel/);
     await expect(page.getByText("Atoms recall", { exact: true })).toBeVisible();
     await expect(page.getByText("Scored attempts", { exact: true })).toHaveCount(0);
@@ -394,6 +428,98 @@ test.describe("QA evaluation console", () => {
     expect(tooltipBounds).not.toBeNull();
     expect(tooltipBounds!.x).toBeGreaterThanOrEqual(0);
     expect(tooltipBounds!.x + tooltipBounds!.width).toBeLessThanOrEqual(390);
+  });
+
+  test("marks tool latency unavailable for a historical total-only attempt", async ({ page }) => {
+    const historyId = "legacy-total-only";
+    await page.route(`**/api/evaluations/runs/${historyId}`, async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          run: {
+            manifest: {
+              run_id: "legacy-total-run",
+              schema_version: "qa-v0",
+              status: "scored",
+            },
+            metadata: {
+              name: "Legacy total-only run",
+              dataset_name: "Historical dataset",
+              agent_spec: "qa-agent.md",
+            },
+            summary: {
+              overall_attempt_pass_rate: 1,
+              passed_attempts: 1,
+              quality_accounted_attempts: 1,
+              macro_mean_scored_attempt_required_atom_recall: 1,
+              attempt_lifecycle_counts: {
+                scored: 1,
+                execution_failed: 0,
+                evaluation_failed: 0,
+              },
+            },
+            prepared_items: [{
+              item_id: "legacy-question",
+              question: "How long did this historical attempt take?",
+              gold_atoms: [{ id: "A1", text: "It took 1.50 seconds.", required: true }],
+            }],
+            answers: [{
+              item_id: "legacy-question",
+              attempt_id: "legacy-question-attempt-1",
+              ordinal: 1,
+              status: "answer_ready",
+              duration_ms: 1500,
+              answer: "It took 1.50 seconds.",
+            }],
+            evaluation_results: [{
+              item_id: "legacy-question",
+              attempt_id: "legacy-question-attempt-1",
+              ordinal: 1,
+              status: "scored",
+              passed: true,
+              atom_score: 1,
+              judgments: [{
+                atom_id: "A1",
+                outcome: "entailed",
+                rationale: "The answer provides the expected duration.",
+              }],
+            }],
+            report_available: false,
+          },
+        }),
+      });
+    });
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          runs: [{
+            id: historyId,
+            valid: true,
+            name: "Legacy total-only run",
+            status: "scored",
+            attempts: 1,
+            overall_attempt_pass_rate: 1,
+          }],
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+    await page.locator(`[data-run-id="${historyId}"]`).click();
+
+    const latencyItem = page.locator(".latency-item");
+    await expect(latencyItem.locator(".latency-total-value")).toHaveText("1.50 s total");
+    await expect(latencyItem.locator(".latency-tool-value")).toHaveText(
+      "Tool timing unavailable",
+    );
+    await expect(latencyItem.locator(".latency-other-value")).toHaveText(
+      "Remaining time unavailable",
+    );
+    await expect(latencyItem.locator(".latency-unknown-segment")).toHaveAttribute(
+      "style",
+      /height:\s*100(\.00)?%/,
+    );
   });
 
   test("does not synthesize latency for a legacy run without attempt timings", async ({ page }) => {

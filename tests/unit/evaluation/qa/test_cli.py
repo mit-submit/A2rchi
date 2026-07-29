@@ -76,6 +76,8 @@ def test_composite_cli_runs_local_dataset_to_report_with_four_attempts(
             }
 
     class Agent:
+        tool_calls = []
+
         def run(self, question):
             return "A"
 

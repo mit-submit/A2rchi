@@ -82,6 +82,14 @@ class FakeWorkflow:
                             **base,
                             "status": "execution_failed",
                             "duration_ms": 450 + ordinal,
+                            "tool_calls": [
+                                {
+                                    "ordinal": 1,
+                                    "name": "mock_lookup",
+                                    "status": "error",
+                                    "duration_ms": 125 + ordinal,
+                                }
+                            ],
                             "error": {
                                 "type": "RuntimeError",
                                 "message": "Deterministic execution failure.",
@@ -104,6 +112,14 @@ class FakeWorkflow:
                         **base,
                         "status": "answer_ready",
                         "duration_ms": 450 + ordinal,
+                        "tool_calls": [
+                            {
+                                "ordinal": 1,
+                                "name": "mock_lookup",
+                                "status": "success",
+                                "duration_ms": 125 + ordinal,
+                            }
+                        ],
                         "answer": item.answer,
                     }
                 )
@@ -248,6 +264,14 @@ class FakeWorkflow:
                 "ordinal": result["ordinal"],
                 "status": "answer_ready",
                 "duration_ms": 325 + result["ordinal"],
+                "tool_calls": [
+                    {
+                        "ordinal": 1,
+                        "name": "mock_retry",
+                        "status": "success",
+                        "duration_ms": 100 + result["ordinal"],
+                    }
+                ],
                 "answer": answers[attempt_id].get(
                     "answer", f"Recovered answer for {result['item_id']}"
                 ),

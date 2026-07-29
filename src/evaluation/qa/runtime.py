@@ -6,9 +6,12 @@ from copy import deepcopy
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple
+from time import perf_counter
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from uuid import UUID
 
 import yaml
+from langchain_core.callbacks import BaseCallbackHandler
 
 from .constants import (  # isort: skip
     COMPARATOR_SYSTEM_PROMPT,
@@ -68,6 +71,64 @@ JUDGMENT_SCHEMA = {
     },
     "required": ["judgments"],
 }
+
+
+class ToolTimingCallback(BaseCallbackHandler):
+    """Collect timing-only metadata for tool calls in one agent attempt."""
+
+    run_inline = True
+
+    def __init__(self) -> None:
+        self._active: Dict[UUID, Tuple[int, str, float]] = {}
+        self._next_ordinal = 1
+        self.timings: List[Dict[str, Any]] = []
+
+    def on_tool_start(
+        self,
+        serialized: Dict[str, Any],
+        input_str: str,
+        *,
+        run_id: UUID,
+        **kwargs: Any,
+    ) -> None:
+        self._active[run_id] = (
+            self._next_ordinal,
+            serialized["name"],
+            perf_counter(),
+        )
+        self._next_ordinal += 1
+
+    def _finish(self, run_id: UUID, status: str) -> None:
+        ordinal, name, started_at = self._active.pop(run_id)
+        self.timings.append(
+            {
+                "ordinal": ordinal,
+                "name": name,
+                "status": status,
+                "duration_ms": max(
+                    0,
+                    int(round((perf_counter() - started_at) * 1000)),
+                ),
+            }
+        )
+
+    def on_tool_end(
+        self,
+        output: Any,
+        *,
+        run_id: UUID,
+        **kwargs: Any,
+    ) -> None:
+        self._finish(run_id, "success")
+
+    def on_tool_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: UUID,
+        **kwargs: Any,
+    ) -> None:
+        self._finish(run_id, "error")
 
 
 class LangChainEvaluatorRuntime:
@@ -203,6 +264,7 @@ class ArchiAgentRuntime:
         self.config = config
         self.spec = spec
         self.pipeline_class = pipeline_class
+        self.tool_calls: List[Dict[str, Any]] = []
 
     def _load_vectorstore(self) -> Any:
         from src.archi.utils.vectorstore_connector import VectorstoreConnector
@@ -210,6 +272,8 @@ class ArchiAgentRuntime:
         return VectorstoreConnector(self.config).get_vectorstore()
 
     def run(self, question: str) -> str:
+        self.tool_calls = []
+        timing_callback = ToolTimingCallback()
         chat = self.config["services"]["chat_app"]
         selected_tool_names = set(getattr(self.spec, "tools", []) or [])
         vectorstore = (
@@ -227,10 +291,17 @@ class ArchiAgentRuntime:
             raise RuntimeError(
                 "agent spec selected 'mcp', but no MCP tools were loaded"
             )
-        output = pipeline.invoke(
-            history=[("User", question)],
-            vectorstore=vectorstore,
-        )
+        try:
+            output = pipeline.invoke(
+                history=[("User", question)],
+                vectorstore=vectorstore,
+                callbacks=[timing_callback],
+            )
+        finally:
+            self.tool_calls = sorted(
+                timing_callback.timings,
+                key=lambda timing: timing["ordinal"],
+            )
         answer = output.answer
         if not isinstance(answer, str) or not answer.strip():
             raise ValueError("Archi produced no usable terminal answer")

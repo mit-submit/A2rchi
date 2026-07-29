@@ -58,16 +58,21 @@ class _EvaluatorFactory:
 
 
 class _AgentFactory:
-    def __init__(self, failures=None, malformed_questions=None):
+    def __init__(self, failures=None, malformed_questions=None, tool_calls=None):
         self.calls = Counter()
         self.failures = failures or set()
         self.malformed_questions = malformed_questions or set()
+        self.tool_calls = tool_calls or []
 
     def __call__(self, config, spec, pipeline_class):
         factory = self
 
         class Agent:
+            def __init__(self):
+                self.tool_calls = []
+
             def run(self, question):
+                self.tool_calls = [dict(call) for call in factory.tool_calls]
                 factory.calls[question] += 1
                 ordinal = factory.calls[question]
                 if (question, ordinal) in factory.failures:
@@ -314,7 +319,17 @@ def test_run_persists_agent_duration_for_success_and_failure(
     run_dir = tmp_path / "run"
     workflow = QAWorkflow(
         _EvaluatorFactory(),
-        _AgentFactory(failures={("failing question", 1)}),
+        _AgentFactory(
+            failures={("failing question", 1)},
+            tool_calls=[
+                {
+                    "ordinal": 1,
+                    "name": "search",
+                    "status": "success",
+                    "duration_ms": 75,
+                }
+            ],
+        ),
     )
     workflow.prepare(dataset, run_dir)
 
@@ -325,8 +340,17 @@ def test_run_persists_agent_duration_for_success_and_failure(
     }
     assert answers["success"]["status"] == "answer_ready"
     assert answers["success"]["duration_ms"] == 125
+    assert answers["success"]["tool_calls"] == [
+        {
+            "ordinal": 1,
+            "name": "search",
+            "status": "success",
+            "duration_ms": 75,
+        }
+    ]
     assert answers["failure"]["status"] == "execution_failed"
     assert answers["failure"]["duration_ms"] == 500
+    assert answers["failure"]["tool_calls"] == answers["success"]["tool_calls"]
 
 
 def test_run_stops_failure_timer_before_formatting_the_exception(
@@ -361,6 +385,9 @@ def test_run_stops_failure_timer_before_formatting_the_exception(
     class FailingAgentFactory:
         def __call__(self, config, spec, pipeline_class):
             class Agent:
+                def __init__(self):
+                    self.tool_calls = []
+
                 def run(self, question):
                     clock["now"] = 20.5
                     raise SlowStringError()
@@ -634,6 +661,8 @@ def test_run_persists_admin_visible_answer_without_redaction(agent_inputs, tmp_p
     class SecretAgentFactory:
         def __call__(self, config, spec, pipeline_class):
             class Agent:
+                tool_calls = []
+
                 def run(self, question):
                     return "answer configured-secret-value"
 
@@ -675,6 +704,14 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
     parent_agent = _AgentFactory(
         failures={("execution question", 1)},
         malformed_questions={"evaluation question"},
+        tool_calls=[
+            {
+                "ordinal": 1,
+                "name": "parent-tool",
+                "status": "success",
+                "duration_ms": 25,
+            }
+        ],
     )
     QAWorkflow(
         _EvaluatorFactory(not_mentioned_questions={"scored question"}),
@@ -695,7 +732,16 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
         row["attempt_id"]: row
         for row in read_jsonl(parent / "evaluation_results.jsonl")
     }
-    retry_agent = _AgentFactory()
+    retry_agent = _AgentFactory(
+        tool_calls=[
+            {
+                "ordinal": 1,
+                "name": "retry-tool",
+                "status": "success",
+                "duration_ms": 40,
+            }
+        ]
+    )
 
     class RecoveringEvaluatorFactory:
         def __init__(self):
@@ -752,6 +798,17 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
         "evaluation-attempt-1"
     ]
     assert successor_answers["execution-attempt-1"]["duration_ms"] == 400
+    assert parent_answers["execution-attempt-1"]["tool_calls"][0]["name"] == (
+        "parent-tool"
+    )
+    assert successor_answers["execution-attempt-1"]["tool_calls"] == [
+        {
+            "ordinal": 1,
+            "name": "retry-tool",
+            "status": "success",
+            "duration_ms": 40,
+        }
+    ]
     assert {row["status"] for row in successor_results.values()} == {"scored"}
     assert manifest["retry"] == {
         "parent_run_id": read_json(parent / "manifest.json")["run_id"],

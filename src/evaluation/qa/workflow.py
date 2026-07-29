@@ -58,6 +58,10 @@ class QAWorkflow:
         return max(0, int(round((perf_counter() - started_at) * 1000)))
 
     @staticmethod
+    def _tool_calls(runtime: Any) -> List[Dict[str, Any]]:
+        return [dict(call) for call in runtime.tool_calls]
+
+    @staticmethod
     def _remove_owned(run_dir: Path, names: set) -> None:
         directories = sorted(
             name
@@ -415,6 +419,7 @@ class QAWorkflow:
                                 **base,
                                 "status": "execution_failed",
                                 "duration_ms": duration_ms,
+                                "tool_calls": self._tool_calls(runtime),
                                 "error": error,
                             }
                         )
@@ -424,6 +429,7 @@ class QAWorkflow:
                                 **base,
                                 "status": "answer_ready",
                                 "duration_ms": self._duration_ms(attempt_started_at),
+                                "tool_calls": self._tool_calls(runtime),
                                 "answer": answer,
                             }
                         )
@@ -657,6 +663,7 @@ class QAWorkflow:
                         **base,
                         "status": "execution_failed",
                         "duration_ms": self._duration_ms(attempt_started_at),
+                        "tool_calls": self._tool_calls(runtime),
                         "error": {
                             "type": type(exc).__name__,
                             "message": str(exc),
@@ -669,6 +676,7 @@ class QAWorkflow:
                         **base,
                         "status": "answer_ready",
                         "duration_ms": self._duration_ms(attempt_started_at),
+                        "tool_calls": self._tool_calls(runtime),
                         "answer": answer,
                     }
                 )
