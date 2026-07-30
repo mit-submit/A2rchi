@@ -88,12 +88,10 @@ def validate_atoms(
     raw_atoms: Any,
     *,
     context: str,
-    require_one: bool,
-    require_required: bool,
 ) -> List[Atom]:
     if not isinstance(raw_atoms, list):
         raise ValueError(f"{context} must be a list")
-    if require_one and not raw_atoms:
+    if not raw_atoms:
         raise ValueError(f"{context} must contain at least one atom")
     atoms: List[Atom] = []
     seen = set()
@@ -111,7 +109,7 @@ def validate_atoms(
             raise ValueError(f"{context} contains duplicate atom id '{atom_id}'")
         seen.add(atom_id)
         atoms.append(Atom(id=atom_id, text=text, required=required))
-    if require_required and not any(atom.required for atom in atoms):
+    if not any(atom.required for atom in atoms):
         raise ValueError(f"{context} must contain at least one required atom")
     return atoms
 
@@ -163,8 +161,6 @@ def validate_dataset_rows(raw_rows: Any) -> List[DatasetItem]:
             expected_atoms = validate_atoms(
                 raw["expected_atoms"],
                 context=f"{context}.expected_atoms",
-                require_one=True,
-                require_required=True,
             )
         items.append(
             DatasetItem(
@@ -228,8 +224,6 @@ def validate_gold_output(raw: Any, *, context: str) -> List[Atom]:
     return validate_atoms(
         raw.get("atoms"),
         context=f"{context}.atoms",
-        require_one=True,
-        require_required=True,
     )
 
 

@@ -80,6 +80,15 @@ class TestDatasetValidation:
                     "question": "Q",
                     "answer": "A",
                     "time_sensitive": False,
+                    "expected_atoms": [],
+                },
+                "at least one atom",
+            ),
+            (
+                {
+                    "question": "Q",
+                    "answer": "A",
+                    "time_sensitive": False,
                     "expected_atoms": [
                         {"id": "optional", "text": "A", "required": False}
                     ],

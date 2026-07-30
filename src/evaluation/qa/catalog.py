@@ -470,8 +470,6 @@ class EvaluationCatalog:
                 atoms = validate_atoms(
                     row["atoms"],
                     context=f"reviewed_items[{index}].atoms",
-                    require_one=True,
-                    require_required=True,
                 )
                 supplied[item_id] = [atom.to_dict() for atom in atoms]
 
