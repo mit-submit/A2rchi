@@ -251,7 +251,7 @@ test.describe("QA evaluation console", () => {
           run: {
             manifest: {
               run_id: "readable-run",
-              schema_version: "qa-v0",
+              schema_version: "qa-v1",
               status: "scored",
             },
             metadata: {
@@ -439,7 +439,7 @@ test.describe("QA evaluation console", () => {
           run: {
             manifest: {
               run_id: "legacy-total-run",
-              schema_version: "qa-v0",
+              schema_version: "qa-v1",
               status: "scored",
             },
             metadata: {
@@ -531,7 +531,7 @@ test.describe("QA evaluation console", () => {
           run: {
             manifest: {
               run_id: "legacy-run",
-              schema_version: "qa-v0",
+              schema_version: "qa-v1",
               status: "scored",
             },
             metadata: {

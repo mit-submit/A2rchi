@@ -11,6 +11,7 @@ from .catalog import EvaluationCatalog
 from .history import EvaluationHistory
 from .jobs import EvaluationJobManager
 from .profile import load_profile
+from .runtime import LangChainEvaluatorRuntime
 from .workflow import QAWorkflow
 
 
@@ -90,8 +91,7 @@ class EvaluationConsoleService:
         profile_path = self.catalog.profile_path(profile_id)
 
         def work() -> Dict[str, Any]:
-            workflow = self.workflow_factory()
-            evaluator = workflow.evaluator_factory(load_profile(profile_path))
+            evaluator = LangChainEvaluatorRuntime(load_profile(profile_path))
             draft = self.catalog.create_atom_draft(dataset_id, profile_id, evaluator)
             return {"draft_id": draft["id"]}
 
@@ -106,8 +106,7 @@ class EvaluationConsoleService:
         profile_path = self.catalog.profile_path(details["profile_id"])
 
         def work() -> Dict[str, Any]:
-            workflow = self.workflow_factory()
-            evaluator = workflow.evaluator_factory(load_profile(profile_path))
+            evaluator = LangChainEvaluatorRuntime(load_profile(profile_path))
             draft = self.catalog.retry_failed_atom_items(draft_id, evaluator)
             return {
                 "draft_id": draft["id"],

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from flask import Flask
 
+import src.evaluation.qa.console as console_module
 from src.evaluation.qa.artifacts import (
     artifact_hashes,
     read_json,
@@ -41,8 +42,6 @@ class FakeEvaluator:
 
 
 class FakeWorkflow:
-    evaluator_factory = staticmethod(lambda profile: FakeEvaluator())
-
     def composite(
         self,
         dataset,
@@ -55,17 +54,49 @@ class FakeWorkflow:
     ):
         from src.evaluation.qa.validation import load_dataset
 
-        items = [item for item in load_dataset(dataset)[1] if not item.time_sensitive]
+        all_items = load_dataset(dataset)[1]
+        items = [item for item in all_items if not item.time_sensitive]
         run_id = "browser-e2e-run"
-        prepared = [
-            {
+        preparation = []
+        for item in all_items:
+            row = {
                 "item_id": item.id,
-                "question": item.question,
-                "answer": item.answer,
-                "gold_atoms": [atom.to_dict() for atom in item.expected_atoms],
+                "category": item.category,
+                "answer_mode": item.answer_mode,
+                "answer_source": item.answer_source,
             }
-            for item in items
-        ]
+            if item.time_sensitive:
+                preparation.append(
+                    {
+                        **row,
+                        "status": "skipped_time_sensitive",
+                    }
+                )
+                continue
+            atoms = item.expected_atoms
+            atom_source = "supplied"
+            if atoms is None:
+                gold_atoms = [
+                    {
+                        "id": "A1",
+                        "text": item.answer.strip().splitlines()[0][:240],
+                        "required": True,
+                    }
+                ]
+                atom_source = "inferred"
+            else:
+                gold_atoms = [atom.to_dict() for atom in atoms]
+            preparation.append(
+                {
+                    **row,
+                    "status": "prepared",
+                    "question": item.question,
+                    "answer": item.answer,
+                    "time_sensitive": item.time_sensitive,
+                    "atom_source": atom_source,
+                    "gold_atoms": gold_atoms,
+                }
+            )
         answers = []
         results = []
         for item in items:
@@ -150,11 +181,8 @@ class FakeWorkflow:
                         ],
                     }
                 )
-        write_jsonl(output_dir / "prepared_items.jsonl", prepared)
-        write_jsonl(
-            output_dir / "preparation_results.jsonl",
-            [{"item_id": item.id, "status": "prepared"} for item in items],
-        )
+        (output_dir / "input.snapshot.json").write_bytes(dataset.read_bytes())
+        write_jsonl(output_dir / "preparation.jsonl", preparation)
         write_jsonl(output_dir / "answers.jsonl", answers)
         write_jsonl(output_dir / "evaluation_results.jsonl", results)
         scored_count = sum(result["status"] == "scored" for result in results)
@@ -182,18 +210,19 @@ class FakeWorkflow:
         write_json(output_dir / "summary.json", summary)
         write_text(output_dir / "report.md", "# Browser E2E report\n")
         artifact_names = {
-            "prepared_items.jsonl",
-            "preparation_results.jsonl",
+            "input.snapshot.json",
+            "preparation.jsonl",
             "answers.jsonl",
             "evaluation_results.jsonl",
             "summary.json",
             "report.md",
         }
         manifest = {
-            "schema_version": "qa-v0",
+            "schema_version": "qa-v1",
             "run_id": run_id,
             "status": "scored",
             "attempts": attempts,
+            "input": {"snapshot": "input.snapshot.json"},
             "artifacts": artifact_hashes(output_dir, artifact_names),
             "phases": {
                 "prepare": {"status": "completed"},
@@ -240,8 +269,10 @@ class FakeWorkflow:
     def retry(self, parent_run_dir, output_dir):
         parent_manifest = read_json(parent_run_dir / "manifest.json")
         plan = self.retry_plan(parent_run_dir)
-        prepared = read_jsonl(parent_run_dir / "prepared_items.jsonl")
-        preparation = read_jsonl(parent_run_dir / "preparation_results.jsonl")
+        preparation = read_jsonl(parent_run_dir / "preparation.jsonl")
+        prepared = [
+            row for row in preparation if row["status"] == "prepared"
+        ]
         answers = {
             row["attempt_id"]: row
             for row in read_jsonl(parent_run_dir / "answers.jsonl")
@@ -297,8 +328,10 @@ class FakeWorkflow:
                     ],
                 }
             )
-        write_jsonl(output_dir / "prepared_items.jsonl", prepared)
-        write_jsonl(output_dir / "preparation_results.jsonl", preparation)
+        (output_dir / "input.snapshot.json").write_bytes(
+            (parent_run_dir / "input.snapshot.json").read_bytes()
+        )
+        write_jsonl(output_dir / "preparation.jsonl", preparation)
         write_jsonl(output_dir / "answers.jsonl", successor_answers)
         write_jsonl(output_dir / "evaluation_results.jsonl", successor_results)
         summary = {
@@ -316,18 +349,19 @@ class FakeWorkflow:
         write_json(output_dir / "summary.json", summary)
         write_text(output_dir / "report.md", "# Browser E2E retry report\n")
         artifact_names = {
-            "prepared_items.jsonl",
-            "preparation_results.jsonl",
+            "input.snapshot.json",
+            "preparation.jsonl",
             "answers.jsonl",
             "evaluation_results.jsonl",
             "summary.json",
             "report.md",
         }
         manifest = {
-            "schema_version": "qa-v0",
+            "schema_version": "qa-v1",
             "run_id": "browser-e2e-retry-run",
             "status": "scored",
             "attempts": parent_manifest["attempts"],
+            "input": {"snapshot": "input.snapshot.json"},
             "artifacts": artifact_hashes(output_dir, artifact_names),
             "phases": {
                 "prepare": {"status": "completed"},
@@ -357,6 +391,7 @@ def create_app():
         "services:\n  chat_app:\n    agent_class: FakeAgent\n"
         "    default_provider: fake\n    default_model: fake-model\n",
     )
+    console_module.LangChainEvaluatorRuntime = lambda profile: FakeEvaluator()
     service = EvaluationConsoleService(
         root,
         agent_config_path=config_path,

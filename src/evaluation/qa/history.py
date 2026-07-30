@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Tuple
 
 from .artifacts import read_json, read_jsonl, verify_hashes
 from .constants import SCHEMA_VERSION
+from .preparation import load_preparation_records
+from .validation import load_dataset
 
 
 def _history_id(path: Path) -> str:
@@ -91,6 +93,14 @@ class EvaluationHistory:
             for name, digest in artifacts.items()
         ):
             raise ValueError("manifest contains an invalid artifact entry")
+        input_details = manifest.get("input")
+        if not isinstance(input_details, dict):
+            raise ValueError("manifest input must be an object")
+        snapshot = input_details.get("snapshot")
+        if not isinstance(snapshot, str) or Path(snapshot).name != snapshot:
+            raise ValueError("manifest input snapshot is invalid")
+        if not {snapshot, "preparation.jsonl"}.issubset(artifacts):
+            raise ValueError("manifest is missing preparation artifacts")
         if status == "scored" and not {
             "summary.json",
             "report.md",
@@ -185,13 +195,14 @@ class EvaluationHistory:
     def get_run(self, history_id: str) -> Dict[str, Any]:
         path = self._resolve(history_id)
         manifest, metadata = self._load(path)
+        snapshot = manifest["input"]["snapshot"]
         self._verify_present(
             path,
             manifest,
             [
+                snapshot,
                 "summary.json",
-                "preparation_results.jsonl",
-                "prepared_items.jsonl",
+                "preparation.jsonl",
                 "answers.jsonl",
                 "evaluation_results.jsonl",
                 "report.md",
@@ -202,10 +213,17 @@ class EvaluationHistory:
             "manifest": manifest,
             "metadata": metadata,
         }
+        preparation_path = path / "preparation.jsonl"
+        _dataset_format, items, _dataset_bytes = load_dataset(path / snapshot)
+        preparation = load_preparation_records(preparation_path, items)
+        payload["preparation"] = [record.to_dict() for record in preparation]
+        payload["prepared_items"] = [
+            record.to_dict()
+            for record in preparation
+            if record.status == "prepared"
+        ]
         for filename, key in (
             ("summary.json", "summary"),
-            ("preparation_results.jsonl", "preparation_results"),
-            ("prepared_items.jsonl", "prepared_items"),
             ("answers.jsonl", "answers"),
             ("evaluation_results.jsonl", "evaluation_results"),
         ):

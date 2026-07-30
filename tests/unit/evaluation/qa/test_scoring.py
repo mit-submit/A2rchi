@@ -1,5 +1,6 @@
+from src.evaluation.qa.preparation import PreparationRecord
 from src.evaluation.qa.scoring import build_summary, score_attempt
-from src.evaluation.qa.validation import Atom, Judgment
+from src.evaluation.qa.validation import Atom, DatasetItem, Judgment
 
 
 def _judgment(atom_id, outcome):
@@ -49,11 +50,23 @@ class TestAttemptScoring:
 
 class TestSummaryScoring:
     def test_execution_failures_count_and_evaluation_failures_are_excluded(self):
-        prepared = [
-            {
-                "item_id": "item",
-                "gold_atoms": [{"id": "g1", "text": "gold", "required": True}],
-            }
+        gold = Atom(id="g1", text="gold", required=True)
+        preparation = [
+            PreparationRecord(
+                item=DatasetItem(
+                    id="item",
+                    question="question",
+                    answer="answer",
+                    time_sensitive=False,
+                    category=None,
+                    answer_mode=None,
+                    answer_source=None,
+                    expected_atoms=None,
+                ),
+                status="prepared",
+                gold_atoms=(gold,),
+                atom_source="inferred",
+            )
         ]
         results = [
             {
@@ -68,7 +81,7 @@ class TestSummaryScoring:
             {"item_id": "item", "status": "evaluation_failed"},
         ]
 
-        summary = build_summary([{"status": "prepared"}], prepared, results)
+        summary = build_summary(preparation, results)
 
         assert summary["item_lifecycle_counts"] == {
             "skipped_time_sensitive": 0,

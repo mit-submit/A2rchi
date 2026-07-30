@@ -5,7 +5,7 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .artifacts import (  # isort: skip
     AtomicJsonlWriter,
@@ -30,24 +30,19 @@ from .constants import (  # isort: skip
     SCORE_FILES,
     SCORING_VERSION,
 )
-from .profile import EvaluatorProfile, load_profile
-from .preparation import prepare_dataset_items
+from .profile import load_profile
+from .preparation import (
+    AnswerComparator,
+    PreparationRecord,
+    load_preparation_records,
+    prepare_dataset_items,
+)
 from .runtime import ArchiAgentRuntime, LangChainEvaluatorRuntime, load_agent_inputs
 from .scoring import build_summary, render_report, score_attempt
-from .validation import Atom, load_dataset, validate_judgments  # isort: skip
+from .validation import load_dataset, validate_judgments  # isort: skip
 
 
 class QAWorkflow:
-    def __init__(
-        self,
-        evaluator_factory: Callable[
-            [EvaluatorProfile], Any
-        ] = LangChainEvaluatorRuntime,
-        agent_factory: Callable[[Dict[str, Any], Any, type], Any] = ArchiAgentRuntime,
-    ):
-        self.evaluator_factory = evaluator_factory
-        self.agent_factory = agent_factory
-
     @staticmethod
     def _require_positive_attempts(attempts: int) -> None:
         if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts <= 0:
@@ -106,6 +101,14 @@ class QAWorkflow:
             raise ValueError(f"run workspace {phase} phase is not complete")
 
     @staticmethod
+    def _load_preparation(
+        run_dir: Path, manifest: Dict[str, Any]
+    ) -> List[PreparationRecord]:
+        snapshot = manifest["input"]["snapshot"]
+        _dataset_format, items, _dataset_bytes = load_dataset(run_dir / snapshot)
+        return load_preparation_records(run_dir / "preparation.jsonl", items)
+
+    @staticmethod
     def _attempt_base(row: Dict[str, Any]) -> Dict[str, Any]:
         return {
             key: row[key]
@@ -121,15 +124,15 @@ class QAWorkflow:
     @staticmethod
     def _score_answer(
         answer_row: Dict[str, Any],
-        prepared: Dict[str, Any],
-        evaluator: Any,
+        prepared: PreparationRecord,
+        evaluator: AnswerComparator,
     ) -> Dict[str, Any]:
         base = QAWorkflow._attempt_base(answer_row)
-        gold_atoms = [Atom(**atom) for atom in prepared["gold_atoms"]]
+        gold_atoms = prepared.prepared_gold_atoms
         try:
             judgments = validate_judgments(
                 evaluator.compare(
-                    prepared["question"], gold_atoms, answer_row["answer"]
+                    prepared.item.question, gold_atoms, answer_row["answer"]
                 ),
                 gold_atoms=gold_atoms,
                 context=f"comparison for attempt {answer_row['attempt_id']}",
@@ -155,8 +158,7 @@ class QAWorkflow:
         self, run_dir: Path
     ) -> Tuple[
         Dict[str, Any],
-        List[Dict[str, Any]],
-        List[Dict[str, Any]],
+        List[PreparationRecord],
         Dict[str, Dict[str, Any]],
         List[Dict[str, Any]],
     ]:
@@ -173,8 +175,7 @@ class QAWorkflow:
         snapshot = manifest["input"]["snapshot"]
         required_artifacts = {
             snapshot,
-            "prepared_items.jsonl",
-            "preparation_results.jsonl",
+            "preparation.jsonl",
             "evaluator_profile.resolved.yaml",
             "agent_config.resolved.yaml",
             "agent_spec.resolved.md",
@@ -184,15 +185,21 @@ class QAWorkflow:
             "report.md",
         }
         verify_hashes(run_dir, manifest, required_artifacts)
-        prepared_rows = read_jsonl(run_dir / "prepared_items.jsonl")
-        preparation_results = read_jsonl(run_dir / "preparation_results.jsonl")
+        preparation = self._load_preparation(run_dir, manifest)
+        prepared_records = [
+            record for record in preparation if record.status == "prepared"
+        ]
         answers = read_jsonl(run_dir / "answers.jsonl")
         results = read_jsonl(run_dir / "evaluation_results.jsonl")
         attempts = manifest.get("attempts")
         self._require_positive_attempts(attempts)
         expected_identities = {
-            (prepared["item_id"], ordinal, f"{prepared['item_id']}-attempt-{ordinal}")
-            for prepared in prepared_rows
+            (
+                prepared.item.id,
+                ordinal,
+                f"{prepared.item.id}-attempt-{ordinal}",
+            )
+            for prepared in prepared_records
             for ordinal in range(1, attempts + 1)
         }
         answer_identities = {
@@ -237,8 +244,7 @@ class QAWorkflow:
                     raise ValueError("parent run attempt provenance is inconsistent")
         return (
             manifest,
-            prepared_rows,
-            preparation_results,
+            preparation,
             answers_by_id,
             results,
         )
@@ -273,9 +279,7 @@ class QAWorkflow:
         }
 
     def retry_plan(self, run_dir: Path) -> Dict[str, Any]:
-        manifest, _prepared, _preparation, _answers, results = (
-            self._load_retry_parent(run_dir)
-        )
+        manifest, _preparation, _answers, results = self._load_retry_parent(run_dir)
         return self._retry_plan(manifest, results)
 
     def prepare(
@@ -294,7 +298,7 @@ class QAWorkflow:
                 + ", ".join(existing)
                 + "; use --overwrite"
             )
-        evaluator = self.evaluator_factory(profile)
+        evaluator = LangChainEvaluatorRuntime(profile)
         output_dir.mkdir(parents=True, exist_ok=True)
         if overwrite:
             self._remove_owned(output_dir, OWNED_FILES)
@@ -303,14 +307,15 @@ class QAWorkflow:
         write_bytes(output_dir / snapshot_name, dataset_bytes)
         write_yaml(output_dir / "evaluator_profile.resolved.yaml", profile.to_dict())
 
-        prepared_rows, result_rows = prepare_dataset_items(items, evaluator)
+        preparation = prepare_dataset_items(items, evaluator)
 
-        write_jsonl(output_dir / "prepared_items.jsonl", prepared_rows)
-        write_jsonl(output_dir / "preparation_results.jsonl", result_rows)
+        write_jsonl(
+            output_dir / "preparation.jsonl",
+            (record.to_dict() for record in preparation),
+        )
         prep_names = {
             snapshot_name,
-            "prepared_items.jsonl",
-            "preparation_results.jsonl",
+            "preparation.jsonl",
             "evaluator_profile.resolved.yaml",
         }
         manifest = {
@@ -335,7 +340,9 @@ class QAWorkflow:
                     "started_at": started_at,
                     "completed_at": utc_now(),
                     "input_items": len(items),
-                    "prepared_items": len(prepared_rows),
+                    "prepared_items": sum(
+                        record.status == "prepared" for record in preparation
+                    ),
                 }
             },
         }
@@ -360,8 +367,7 @@ class QAWorkflow:
             manifest,
             {
                 snapshot,
-                "prepared_items.jsonl",
-                "preparation_results.jsonl",
+                "preparation.jsonl",
                 "evaluator_profile.resolved.yaml",
             },
         )
@@ -377,8 +383,11 @@ class QAWorkflow:
             if _resolved_agent_inputs is not None
             else load_agent_inputs(agent_config, agent_spec)
         )
-        prepared_rows = read_jsonl(run_dir / "prepared_items.jsonl")
-        if not prepared_rows:
+        preparation = self._load_preparation(run_dir, manifest)
+        prepared_records = [
+            record for record in preparation if record.status == "prepared"
+        ]
+        if not prepared_records:
             raise ValueError("run requires at least one prepared item")
         if overwrite:
             self._remove_owned(run_dir, RUN_FILES | SCORE_FILES)
@@ -393,16 +402,16 @@ class QAWorkflow:
         config_hash = sha256_file(run_dir / "agent_config.resolved.yaml")
         spec_hash = sha256_file(run_dir / "agent_spec.resolved.md")
         chat = config["services"]["chat_app"]
-        runtime = self.agent_factory(config, spec, pipeline_class)
+        runtime = ArchiAgentRuntime(config, spec, pipeline_class)
         started_at = utc_now()
         attempt_slots = 0
         with AtomicJsonlWriter(run_dir / "answers.jsonl") as answer_writer:
-            for prepared in prepared_rows:
+            for prepared in prepared_records:
                 for ordinal in range(1, attempts + 1):
                     attempt_slots += 1
-                    attempt_id = f"{prepared['item_id']}-attempt-{ordinal}"
+                    attempt_id = f"{prepared.item.id}-attempt-{ordinal}"
                     base = {
-                        "item_id": prepared["item_id"],
+                        "item_id": prepared.item.id,
                         "attempt_id": attempt_id,
                         "ordinal": ordinal,
                         "agent_config_sha256": config_hash,
@@ -410,7 +419,7 @@ class QAWorkflow:
                     }
                     attempt_started_at = perf_counter()
                     try:
-                        answer = runtime.run(prepared["question"])
+                        answer = runtime.run(prepared.item.question)
                     except Exception as exc:
                         duration_ms = self._duration_ms(attempt_started_at)
                         error = {"type": type(exc).__name__, "message": str(exc)}
@@ -466,8 +475,7 @@ class QAWorkflow:
             manifest,
             {
                 manifest["input"]["snapshot"],
-                "prepared_items.jsonl",
-                "preparation_results.jsonl",
+                "preparation.jsonl",
                 "evaluator_profile.resolved.yaml",
                 "agent_config.resolved.yaml",
                 "agent_spec.resolved.md",
@@ -489,9 +497,11 @@ class QAWorkflow:
                     "supplied evaluator profile does not match the prepared profile"
                 )
         profile = stored_profile
-        prepared_rows = read_jsonl(run_dir / "prepared_items.jsonl")
-        preparation_results = read_jsonl(run_dir / "preparation_results.jsonl")
-        expected_slots = len(prepared_rows) * manifest["attempts"]
+        preparation = self._load_preparation(run_dir, manifest)
+        prepared_records = [
+            record for record in preparation if record.status == "prepared"
+        ]
+        expected_slots = len(prepared_records) * manifest["attempts"]
         answer_count = 0
         actual_identities = set()
         has_answer_ready = False
@@ -512,8 +522,12 @@ class QAWorkflow:
                 f"run has {answer_count} terminal slots; expected exactly {expected_slots}"
             )
         expected_identities = {
-            (prepared["item_id"], ordinal, f"{prepared['item_id']}-attempt-{ordinal}")
-            for prepared in prepared_rows
+            (
+                prepared.item.id,
+                ordinal,
+                f"{prepared.item.id}-attempt-{ordinal}",
+            )
+            for prepared in prepared_records
             for ordinal in range(1, manifest["attempts"] + 1)
         }
         if (
@@ -523,13 +537,15 @@ class QAWorkflow:
             raise ValueError(
                 "run attempt slot identities do not match the prepared workspace"
             )
-        evaluator = self.evaluator_factory(profile) if has_answer_ready else None
+        evaluator = LangChainEvaluatorRuntime(profile) if has_answer_ready else None
         if overwrite:
             self._remove_owned(run_dir, SCORE_FILES)
             manifest["phases"].pop("score", None)
             for name in SCORE_FILES:
                 manifest["artifacts"].pop(name, None)
-        prepared_by_id = {row["item_id"]: row for row in prepared_rows}
+        prepared_by_id = {
+            record.item.id: record for record in prepared_records
+        }
         started_at = utc_now()
         with AtomicJsonlWriter(run_dir / "evaluation_results.jsonl") as result_writer:
             for answer_row in iter_jsonl(run_dir / "answers.jsonl"):
@@ -550,8 +566,7 @@ class QAWorkflow:
                 )
 
         summary = build_summary(
-            preparation_results,
-            prepared_rows,
+            preparation,
             iter_jsonl(run_dir / "evaluation_results.jsonl"),
         )
         summary["provenance"] = {
@@ -580,8 +595,7 @@ class QAWorkflow:
     def retry(self, parent_run_dir: Path, output_dir: Path) -> Dict[str, Any]:
         (
             parent_manifest,
-            prepared_rows,
-            preparation_results,
+            preparation,
             parent_answers,
             parent_results,
         ) = self._load_retry_parent(parent_run_dir)
@@ -594,21 +608,24 @@ class QAWorkflow:
             )
         retry_ids = set(plan["retry_attempt_ids"])
         execution_ids = set(plan["execution_attempt_ids"])
-        prepared_by_id = {row["item_id"]: row for row in prepared_rows}
+        prepared_by_id = {
+            record.item.id: record
+            for record in preparation
+            if record.status == "prepared"
+        }
         runtime = None
         if execution_ids:
             config, spec, _spec_text, pipeline_class = load_agent_inputs(
                 parent_run_dir / "agent_config.resolved.yaml",
                 parent_run_dir / "agent_spec.resolved.md",
             )
-            runtime = self.agent_factory(config, spec, pipeline_class)
+            runtime = ArchiAgentRuntime(config, spec, pipeline_class)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         snapshot = parent_manifest["input"]["snapshot"]
         copied_artifacts = {
             snapshot,
-            "prepared_items.jsonl",
-            "preparation_results.jsonl",
+            "preparation.jsonl",
             "evaluator_profile.resolved.yaml",
             "agent_config.resolved.yaml",
             "agent_spec.resolved.md",
@@ -628,8 +645,7 @@ class QAWorkflow:
                 output_dir,
                 {
                     snapshot,
-                    "prepared_items.jsonl",
-                    "preparation_results.jsonl",
+                    "preparation.jsonl",
                     "evaluator_profile.resolved.yaml",
                 },
             ),
@@ -656,7 +672,7 @@ class QAWorkflow:
             prepared = prepared_by_id[parent_result["item_id"]]
             attempt_started_at = perf_counter()
             try:
-                answer = runtime.run(prepared["question"])
+                answer = runtime.run(prepared.item.question)
             except Exception as exc:
                 successor_answers.append(
                     {
@@ -715,7 +731,7 @@ class QAWorkflow:
                 )
                 continue
             if evaluator is None:
-                evaluator = self.evaluator_factory(profile)
+                evaluator = LangChainEvaluatorRuntime(profile)
             successor_results.append(
                 self._score_answer(
                     answer_row,
@@ -725,8 +741,7 @@ class QAWorkflow:
             )
         write_jsonl(output_dir / "evaluation_results.jsonl", successor_results)
         summary = build_summary(
-            preparation_results,
-            prepared_rows,
+            preparation,
             successor_results,
         )
         summary["provenance"] = {

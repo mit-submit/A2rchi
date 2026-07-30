@@ -4,7 +4,6 @@ import src.cli.qa_eval as qa_cli_module
 import src.evaluation.qa.workflow as workflow_module
 from src.cli.qa_eval import eval_cli
 from src.evaluation.qa.artifacts import read_json
-from src.evaluation.qa.workflow import QAWorkflow
 
 
 class _Workflow:
@@ -101,10 +100,9 @@ def test_composite_cli_runs_local_dataset_to_report_with_four_attempts(
         ),
     )
     monkeypatch.setattr(
-        qa_cli_module,
-        "QAWorkflow",
-        lambda: QAWorkflow(lambda profile: Evaluator(), lambda *args: Agent()),
+        workflow_module, "LangChainEvaluatorRuntime", lambda profile: Evaluator()
     )
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", lambda *args: Agent())
     run_dir = tmp_path / "run"
 
     result = CliRunner().invoke(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "qa-v0"
+SCHEMA_VERSION = "qa-v1"
 SCORING_VERSION = "1"
 
 ITEM_LIFECYCLE_STATUSES = (
@@ -63,8 +63,7 @@ PROMPT_VERSIONS = {
 PREPARATION_FILES = {
     "input.snapshot.json",
     "input.snapshot.jsonl",
-    "prepared_items.jsonl",
-    "preparation_results.jsonl",
+    "preparation.jsonl",
     "evaluator_profile.resolved.yaml",
 }
 RUN_FILES = {

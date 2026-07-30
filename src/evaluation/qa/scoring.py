@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Any, Dict, Iterable, Optional, Sequence
 
 from .constants import ATTEMPT_LIFECYCLE_STATUSES, ITEM_LIFECYCLE_STATUSES
+from .preparation import PreparationRecord
 from .validation import Atom, Judgment
 
 OUTCOME_VALUES = {"entailed": 1, "not_mentioned": 0, "contradicted": -1}
@@ -28,13 +29,16 @@ def score_attempt(
 
 
 def build_summary(
-    preparation_results: Sequence[Dict[str, Any]],
-    prepared_items: Sequence[Dict[str, Any]],
+    preparation: Sequence[PreparationRecord],
     evaluation_results: Iterable[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    item_lifecycle = Counter(row["status"] for row in preparation_results)
+    item_lifecycle = Counter(record.status for record in preparation)
     attempt_lifecycle = Counter()
-    prepared_by_id = {row["item_id"]: row for row in prepared_items}
+    prepared_by_id = {
+        record.item.id: record
+        for record in preparation
+        if record.status == "prepared"
+    }
     item_totals = {
         item_id: {
             "requested": 0,
@@ -97,14 +101,14 @@ def build_summary(
                 "item_pass_rate": totals["passed"] / k if k else None,
                 "gold_atom_pass_rates": [
                     {
-                        "atom_id": atom["id"],
-                        "atom_pass_count": totals["entailed_atoms"][atom["id"]],
+                        "atom_id": atom.id,
+                        "atom_pass_count": totals["entailed_atoms"][atom.id],
                         "k": k,
                         "atom_pass_rate": (
-                            totals["entailed_atoms"][atom["id"]] / k if k else None
+                            totals["entailed_atoms"][atom.id] / k if k else None
                         ),
                     }
-                    for atom in prepared["gold_atoms"]
+                    for atom in prepared.prepared_gold_atoms
                 ],
             }
         )

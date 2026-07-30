@@ -106,6 +106,10 @@ def agent_inputs(monkeypatch):
             object,
         ),
     )
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", _AgentFactory())
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", _EvaluatorFactory()
+    )
     return config
 
 
@@ -152,8 +156,7 @@ def _semantic_artifacts(run_dir):
     artifacts = {
         name: read_jsonl(run_dir / name)
         for name in (
-            "prepared_items.jsonl",
-            "preparation_results.jsonl",
+            "preparation.jsonl",
             "answers.jsonl",
             "evaluation_results.jsonl",
         )
@@ -166,7 +169,7 @@ def _semantic_artifacts(run_dir):
 
 
 def test_composite_and_staged_workflows_are_equivalent_at_four_attempts(
-    agent_inputs, tmp_path
+    agent_inputs, monkeypatch, tmp_path
 ):
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
@@ -175,14 +178,20 @@ def test_composite_and_staged_workflows_are_equivalent_at_four_attempts(
 
     staged_evaluator = _EvaluatorFactory()
     staged_agent = _AgentFactory()
-    staged_workflow = QAWorkflow(staged_evaluator, staged_agent)
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", staged_agent)
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", staged_evaluator)
+    staged_workflow = QAWorkflow()
     staged_workflow.prepare(dataset, staged)
     staged_workflow.run(staged, tmp_path / "agent.yaml", tmp_path / "agent.md", 4)
     staged_workflow.score(staged)
 
     composite_evaluator = _EvaluatorFactory()
     composite_agent = _AgentFactory()
-    QAWorkflow(composite_evaluator, composite_agent).composite(
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", composite_agent)
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", composite_evaluator
+    )
+    QAWorkflow().composite(
         dataset,
         tmp_path / "agent.yaml",
         tmp_path / "agent.md",
@@ -240,7 +249,9 @@ def test_composite_and_staged_workflows_are_equivalent_at_four_attempts(
     assert "fake-model" not in report
 
 
-def test_failure_accounting_preserves_slots_and_denominators(agent_inputs, tmp_path):
+def test_failure_accounting_preserves_slots_and_denominators(
+    agent_inputs, monkeypatch, tmp_path
+):
     dataset = tmp_path / "dataset.json"
     dataset.write_text(
         json.dumps(
@@ -270,7 +281,9 @@ def test_failure_accounting_preserves_slots_and_denominators(agent_inputs, tmp_p
     agent = _AgentFactory(failures={("question", 2)}, malformed_questions={"bad eval"})
     run_dir = tmp_path / "run"
 
-    QAWorkflow(evaluator, agent).composite(
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", agent)
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
+    QAWorkflow().composite(
         dataset, tmp_path / "agent.yaml", tmp_path / "agent.md", run_dir, attempts=2
     )
 
@@ -317,20 +330,19 @@ def test_run_persists_agent_duration_for_success_and_failure(
         workflow_module, "perf_counter", lambda: next(ticks), raising=False
     )
     run_dir = tmp_path / "run"
-    workflow = QAWorkflow(
-        _EvaluatorFactory(),
-        _AgentFactory(
-            failures={("failing question", 1)},
-            tool_calls=[
-                {
-                    "ordinal": 1,
-                    "name": "search",
-                    "status": "success",
-                    "duration_ms": 75,
-                }
-            ],
-        ),
+    agent = _AgentFactory(
+        failures={("failing question", 1)},
+        tool_calls=[
+            {
+                "ordinal": 1,
+                "name": "search",
+                "status": "success",
+                "duration_ms": 75,
+            }
+        ],
     )
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", agent)
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
 
     workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
@@ -395,7 +407,8 @@ def test_run_stops_failure_timer_before_formatting_the_exception(
             return Agent()
 
     run_dir = tmp_path / "run"
-    workflow = QAWorkflow(_EvaluatorFactory(), FailingAgentFactory())
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", FailingAgentFactory())
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
 
     workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
@@ -409,7 +422,7 @@ def test_run_stops_failure_timer_before_formatting_the_exception(
 
 
 def test_score_does_not_initialize_evaluator_when_all_executions_failed(
-    agent_inputs, tmp_path
+    agent_inputs, monkeypatch, tmp_path
 ):
     dataset = tmp_path / "dataset.json"
     dataset.write_text(
@@ -428,9 +441,12 @@ def test_score_does_not_initialize_evaluator_when_all_executions_failed(
         )
     )
     run_dir = tmp_path / "run"
-    setup_workflow = QAWorkflow(
-        _EvaluatorFactory(), _AgentFactory(failures={("question", 1)})
+    monkeypatch.setattr(
+        workflow_module,
+        "ArchiAgentRuntime",
+        _AgentFactory(failures={("question", 1)}),
     )
+    setup_workflow = QAWorkflow()
     setup_workflow.prepare(dataset, run_dir)
     setup_workflow.run(
         run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md", attempts=1
@@ -439,18 +455,23 @@ def test_score_does_not_initialize_evaluator_when_all_executions_failed(
     def unexpected_evaluator(profile):
         raise AssertionError("evaluator must not be initialized")
 
-    QAWorkflow(unexpected_evaluator, _AgentFactory()).score(run_dir)
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", unexpected_evaluator
+    )
+    QAWorkflow().score(run_dir)
 
     assert read_jsonl(run_dir / "evaluation_results.jsonl")[0]["status"] == (
         "execution_failed"
     )
 
 
-def test_score_model_initialization_failure_aborts_phase(agent_inputs, tmp_path):
+def test_score_model_initialization_failure_aborts_phase(
+    agent_inputs, monkeypatch, tmp_path
+):
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
-    setup_workflow = QAWorkflow(_EvaluatorFactory(), _AgentFactory())
+    setup_workflow = QAWorkflow()
     setup_workflow.prepare(dataset, run_dir)
     setup_workflow.run(
         run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md", attempts=1
@@ -459,8 +480,9 @@ def test_score_model_initialization_failure_aborts_phase(agent_inputs, tmp_path)
     def failing_evaluator(profile):
         raise TypeError("temperature is not accepted")
 
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", failing_evaluator)
     with pytest.raises(TypeError, match="temperature is not accepted"):
-        QAWorkflow(failing_evaluator, _AgentFactory()).score(run_dir)
+        QAWorkflow().score(run_dir)
 
     for name in (
         "evaluation_results.jsonl",
@@ -471,17 +493,19 @@ def test_score_model_initialization_failure_aborts_phase(agent_inputs, tmp_path)
 
 
 def test_run_runtime_construction_failure_aborts_without_attempt_artifacts(
-    agent_inputs, tmp_path
+    agent_inputs, monkeypatch, tmp_path
 ):
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
-    workflow = QAWorkflow(
-        _EvaluatorFactory(),
+    monkeypatch.setattr(
+        workflow_module,
+        "ArchiAgentRuntime",
         lambda config, spec, pipeline_class: (_ for _ in ()).throw(
             RuntimeError("agent runtime failed to initialize")
         ),
     )
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
 
     with pytest.raises(RuntimeError, match="runtime failed to initialize"):
@@ -490,14 +514,15 @@ def test_run_runtime_construction_failure_aborts_without_attempt_artifacts(
     assert not (run_dir / "answers.jsonl").exists()
 
 
-def test_hash_tamper_fails_before_agent_call(agent_inputs, tmp_path):
+def test_hash_tamper_fails_before_agent_call(agent_inputs, monkeypatch, tmp_path):
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
     agent = _AgentFactory()
-    workflow = QAWorkflow(_EvaluatorFactory(), agent)
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", agent)
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
-    with (run_dir / "prepared_items.jsonl").open("a") as handle:
+    with (run_dir / "preparation.jsonl").open("a") as handle:
         handle.write("{}\n")
 
     with pytest.raises(ValueError, match="hash mismatch"):
@@ -506,7 +531,7 @@ def test_hash_tamper_fails_before_agent_call(agent_inputs, tmp_path):
     assert agent.calls == Counter()
 
 
-def test_prepare_validates_all_rows_before_evaluator_calls(tmp_path):
+def test_prepare_validates_all_rows_before_evaluator_calls(monkeypatch, tmp_path):
     dataset = tmp_path / "invalid.json"
     dataset.write_text(
         json.dumps(
@@ -526,9 +551,10 @@ def test_prepare_validates_all_rows_before_evaluator_calls(tmp_path):
         )
     )
     evaluator = _EvaluatorFactory()
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
 
     with pytest.raises(ValueError, match="unknown field.*unexpected"):
-        QAWorkflow(evaluator, _AgentFactory()).prepare(dataset, tmp_path / "run")
+        QAWorkflow().prepare(dataset, tmp_path / "run")
 
     assert evaluator.calls == Counter()
     assert not (tmp_path / "run").exists()
@@ -540,7 +566,7 @@ def test_prepare_overwrite_preserves_unknown_files_and_removes_downstream(
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
-    workflow = QAWorkflow(_EvaluatorFactory(), _AgentFactory())
+    workflow = QAWorkflow()
     workflow.composite(dataset, tmp_path / "agent.yaml", tmp_path / "agent.md", run_dir)
     unknown = run_dir / "operator-notes.txt"
     unknown.write_text("keep me")
@@ -560,10 +586,12 @@ def test_prepare_rejects_any_existing_owned_artifact_without_overwrite(tmp_path)
     (run_dir / "report.md").write_text("stale score output")
 
     with pytest.raises(ValueError, match="report.md.*--overwrite"):
-        QAWorkflow(_EvaluatorFactory(), _AgentFactory()).prepare(dataset, run_dir)
+        QAWorkflow().prepare(dataset, run_dir)
 
 
-def test_prepare_does_not_recursively_delete_directory_at_artifact_path(tmp_path):
+def test_prepare_does_not_recursively_delete_directory_at_artifact_path(
+    monkeypatch, tmp_path
+):
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
@@ -571,16 +599,19 @@ def test_prepare_does_not_recursively_delete_directory_at_artifact_path(tmp_path
     nested.mkdir(parents=True)
     marker = nested / "operator-data"
     marker.write_text("keep me")
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", _EvaluatorFactory()
+    )
 
     with pytest.raises(ValueError, match="artifact path.*directories"):
-        QAWorkflow(_EvaluatorFactory(), _AgentFactory()).prepare(
-            dataset, run_dir, overwrite=True
-        )
+        QAWorkflow().prepare(dataset, run_dir, overwrite=True)
 
     assert marker.read_text() == "keep me"
 
 
-def test_prepare_preflight_failure_preserves_overwritten_workspace(tmp_path):
+def test_prepare_preflight_failure_preserves_overwritten_workspace(
+    monkeypatch, tmp_path
+):
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
@@ -591,10 +622,9 @@ def test_prepare_preflight_failure_preserves_overwritten_workspace(tmp_path):
     def failing_evaluator(profile):
         raise RuntimeError("provider configuration failed")
 
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", failing_evaluator)
     with pytest.raises(RuntimeError, match="provider configuration failed"):
-        QAWorkflow(failing_evaluator, _AgentFactory()).prepare(
-            dataset, run_dir, overwrite=True
-        )
+        QAWorkflow().prepare(dataset, run_dir, overwrite=True)
 
     assert report.read_text() == "previous report"
 
@@ -605,7 +635,7 @@ def test_run_rejects_downstream_score_artifact_without_overwrite(
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
-    workflow = QAWorkflow(_EvaluatorFactory(), _AgentFactory())
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
     (run_dir / "report.md").write_text("stale score output")
 
@@ -619,7 +649,7 @@ def test_score_rejects_any_existing_score_artifact_without_overwrite(
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
-    workflow = QAWorkflow(_EvaluatorFactory(), _AgentFactory())
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
     workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
     (run_dir / "report.md").write_text("stale score output")
@@ -632,7 +662,7 @@ def test_score_preflight_failure_preserves_overwritten_report(agent_inputs, tmp_
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
-    workflow = QAWorkflow(_EvaluatorFactory(), _AgentFactory())
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
     workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
     answers_path = run_dir / "answers.jsonl"
@@ -653,7 +683,9 @@ def test_score_preflight_failure_preserves_overwritten_report(agent_inputs, tmp_
     assert report.read_text() == "previous report"
 
 
-def test_run_persists_admin_visible_answer_without_redaction(agent_inputs, tmp_path):
+def test_run_persists_admin_visible_answer_without_redaction(
+    agent_inputs, monkeypatch, tmp_path
+):
     dataset = tmp_path / "dataset.json"
     _dataset(dataset)
     run_dir = tmp_path / "run"
@@ -668,7 +700,8 @@ def test_run_persists_admin_visible_answer_without_redaction(agent_inputs, tmp_p
 
             return Agent()
 
-    workflow = QAWorkflow(_EvaluatorFactory(), SecretAgentFactory())
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", SecretAgentFactory())
+    workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
     workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
 
@@ -713,10 +746,13 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
             }
         ],
     )
-    QAWorkflow(
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", parent_agent)
+    monkeypatch.setattr(
+        workflow_module,
+        "LangChainEvaluatorRuntime",
         _EvaluatorFactory(not_mentioned_questions={"scored question"}),
-        parent_agent,
-    ).composite(
+    )
+    QAWorkflow().composite(
         dataset,
         tmp_path / "agent.yaml",
         tmp_path / "agent.md",
@@ -768,7 +804,9 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
 
     retry_evaluator = RecoveringEvaluatorFactory()
     successor = tmp_path / "successor"
-    retry_workflow = QAWorkflow(retry_evaluator, retry_agent)
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", retry_agent)
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", retry_evaluator)
+    retry_workflow = QAWorkflow()
     ticks = iter((30.0, 30.4))
     monkeypatch.setattr(
         workflow_module, "perf_counter", lambda: next(ticks), raising=False
@@ -827,8 +865,7 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
     }
     for artifact in (
         "input.snapshot.json",
-        "prepared_items.jsonl",
-        "preparation_results.jsonl",
+        "preparation.jsonl",
         "evaluator_profile.resolved.yaml",
         "agent_config.resolved.yaml",
         "agent_spec.resolved.md",
@@ -842,7 +879,7 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
 
 
 def test_retry_rejects_tampered_parent_before_provider_or_output(
-    agent_inputs, tmp_path
+    agent_inputs, monkeypatch, tmp_path
 ):
     dataset = tmp_path / "dataset.json"
     dataset.write_text(
@@ -861,10 +898,12 @@ def test_retry_rejects_tampered_parent_before_provider_or_output(
         )
     )
     parent = tmp_path / "parent"
-    QAWorkflow(
-        _EvaluatorFactory(),
+    monkeypatch.setattr(
+        workflow_module,
+        "ArchiAgentRuntime",
         _AgentFactory(failures={("question", 1)}),
-    ).composite(
+    )
+    QAWorkflow().composite(
         dataset,
         tmp_path / "agent.yaml",
         tmp_path / "agent.md",
@@ -875,9 +914,11 @@ def test_retry_rejects_tampered_parent_before_provider_or_output(
     evaluator = _EvaluatorFactory()
     agent = _AgentFactory()
     successor = tmp_path / "successor"
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", agent)
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
 
     with pytest.raises(ValueError, match="hash mismatch"):
-        QAWorkflow(evaluator, agent).retry(parent, successor)
+        QAWorkflow().retry(parent, successor)
 
     assert evaluator.calls == Counter()
     assert agent.calls == Counter()
@@ -898,8 +939,9 @@ def test_composite_validates_selected_agent_inputs_before_gold_provider_call(
         ),
     )
 
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
     with pytest.raises(ValueError, match="invalid agent"):
-        QAWorkflow(evaluator, _AgentFactory()).composite(
+        QAWorkflow().composite(
             dataset,
             tmp_path / "agent.yaml",
             tmp_path / "agent.md",

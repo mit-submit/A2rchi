@@ -254,6 +254,11 @@ def load_agent_inputs(
     return config, spec, spec_text, pipeline_class
 
 
+# TODO: Remove this evaluation-specific runtime once the generic `archi`
+# runtime is refactored to initialize vector-store connections and other tool
+# dependencies only when they are selected by the resolved agent config/spec.
+# Until then, this adapter avoids creating dependencies that QA attempts do not
+# need.
 class ArchiAgentRuntime:
     def __init__(
         self,
