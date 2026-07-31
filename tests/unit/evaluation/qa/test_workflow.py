@@ -1,5 +1,6 @@
 import json
 from collections import Counter
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -42,11 +43,7 @@ class _EvaluatorFactory:
                             "outcome": (
                                 "not_mentioned"
                                 if question in factory.not_mentioned_questions
-                                else (
-                                    "entailed"
-                                    if atom.required
-                                    else "not_mentioned"
-                                )
+                                else ("entailed" if atom.required else "not_mentioned")
                             ),
                             "rationale": "deterministic fake",
                         }
@@ -347,9 +344,7 @@ def test_run_persists_agent_duration_for_success_and_failure(
 
     workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
 
-    answers = {
-        row["item_id"]: row for row in read_jsonl(run_dir / "answers.jsonl")
-    }
+    answers = {row["item_id"]: row for row in read_jsonl(run_dir / "answers.jsonl")}
     assert answers["success"]["status"] == "answer_ready"
     assert answers["success"]["duration_ms"] == 125
     assert answers["success"]["tool_calls"] == [
@@ -550,14 +545,218 @@ def test_prepare_validates_all_rows_before_evaluator_calls(monkeypatch, tmp_path
             ]
         )
     )
-    evaluator = _EvaluatorFactory()
-    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
+
+    def unexpected_evaluator(profile):
+        raise AssertionError(
+            "invalid snapshots must fail before evaluator construction"
+        )
+
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", unexpected_evaluator
+    )
 
     with pytest.raises(ValueError, match="unknown field.*unexpected"):
         QAWorkflow().prepare(dataset, tmp_path / "run")
 
-    assert evaluator.calls == Counter()
     assert not (tmp_path / "run").exists()
+
+
+@pytest.mark.parametrize("dataset_format", ["json", "jsonl"])
+def test_prepare_streams_snapshot_and_preparation(
+    dataset_format, monkeypatch, tmp_path
+):
+    rows = [
+        {
+            "id": "inferred",
+            "question": "inferred question",
+            "answer": "expected",
+            "time_sensitive": False,
+        },
+        {
+            "id": "supplied",
+            "question": "supplied question",
+            "answer": "supplied expected",
+            "time_sensitive": False,
+            "expected_atoms": [
+                {
+                    "id": "required",
+                    "text": "supplied expected",
+                    "required": True,
+                }
+            ],
+        },
+    ]
+    dataset = tmp_path / f"dataset.{dataset_format}"
+    dataset_bytes = (
+        json.dumps(rows, indent=2).encode("utf-8")
+        if dataset_format == "json"
+        else ("\n".join(json.dumps(row) for row in rows) + "\n\n").encode("utf-8")
+    )
+    dataset.write_bytes(dataset_bytes)
+    run_dir = tmp_path / "run"
+    evaluator = _EvaluatorFactory()
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
+    real_iter_dataset_items = workflow_module.iter_dataset_items
+    real_prepare_dataset_item = workflow_module.prepare_dataset_item
+    iteration = {"count": 0, "awaiting_preparation": None}
+
+    def guarded_items(path):
+        iteration["count"] += 1
+        for item in real_iter_dataset_items(path):
+            if iteration["count"] == 2:
+                if iteration["awaiting_preparation"] is not None:
+                    raise AssertionError(
+                        "preparation must consume each item before loading the next"
+                    )
+                iteration["awaiting_preparation"] = item.id
+            yield item
+
+    def tracked_preparation(item, extractor):
+        assert iteration["awaiting_preparation"] == item.id
+        iteration["awaiting_preparation"] = None
+        return real_prepare_dataset_item(item, extractor)
+
+    monkeypatch.setattr(workflow_module, "iter_dataset_items", guarded_items)
+    monkeypatch.setattr(workflow_module, "prepare_dataset_item", tracked_preparation)
+    monkeypatch.setattr(
+        workflow_module,
+        "load_dataset",
+        lambda path: (_ for _ in ()).throw(
+            AssertionError("preparation must not use the list-returning loader")
+        ),
+    )
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda path: (_ for _ in ()).throw(
+            AssertionError("preparation must not read complete file bytes")
+        ),
+    )
+
+    manifest = QAWorkflow().prepare(dataset, run_dir)
+
+    with (run_dir / f"input.snapshot.{dataset_format}").open("rb") as snapshot:
+        assert snapshot.read() == dataset_bytes
+    assert [row["item_id"] for row in read_jsonl(run_dir / "preparation.jsonl")] == [
+        "inferred",
+        "supplied",
+    ]
+    assert manifest["phases"]["prepare"]["input_items"] == 2
+    assert manifest["phases"]["prepare"]["prepared_items"] == 2
+    assert evaluator.calls == Counter({"gold": 1})
+    assert iteration == {"count": 2, "awaiting_preparation": None}
+
+
+@pytest.mark.parametrize("dataset_format", ["json", "jsonl"])
+def test_prepare_validates_complete_source_before_evaluator_calls(
+    dataset_format, monkeypatch, tmp_path
+):
+    dataset = tmp_path / f"invalid.{dataset_format}"
+    rows = [
+        {
+            "id": "valid",
+            "question": "valid",
+            "answer": "valid",
+            "time_sensitive": False,
+        },
+        {
+            "id": "invalid",
+            "question": "invalid",
+            "answer": "invalid",
+            "time_sensitive": False,
+            "unexpected": "not allowed",
+        },
+    ]
+    dataset.write_text(
+        (
+            json.dumps(rows)
+            if dataset_format == "json"
+            else "\n".join(json.dumps(row) for row in rows) + "\n"
+        ),
+        encoding="utf-8",
+    )
+
+    def unexpected_evaluator(profile):
+        raise AssertionError(
+            "invalid snapshots must fail before evaluator construction"
+        )
+
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", unexpected_evaluator
+    )
+
+    with pytest.raises(ValueError, match="unknown field.*unexpected"):
+        QAWorkflow().prepare(dataset, tmp_path / "run")
+
+    assert not (tmp_path / "run").exists()
+
+
+@pytest.mark.parametrize("dataset_format", ["json", "jsonl"])
+def test_prepare_validates_complete_snapshot_before_provider_calls(
+    dataset_format, monkeypatch, tmp_path
+):
+    dataset = tmp_path / f"dataset.{dataset_format}"
+    row = {
+        "id": "valid",
+        "question": "valid",
+        "answer": "valid",
+        "time_sensitive": False,
+    }
+    dataset.write_text(
+        json.dumps([row]) if dataset_format == "json" else json.dumps(row) + "\n",
+        encoding="utf-8",
+    )
+
+    def unexpected_evaluator(profile):
+        raise AssertionError(
+            "invalid snapshots must fail before evaluator construction"
+        )
+
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", unexpected_evaluator
+    )
+
+    def copy_invalid_snapshot(source, target):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source.read_text() + " invalid", encoding="utf-8")
+
+    monkeypatch.setattr(
+        workflow_module,
+        "copy_file_atomic",
+        copy_invalid_snapshot,
+    )
+
+    with pytest.raises(ValueError, match="invalid JSON"):
+        QAWorkflow().prepare(dataset, tmp_path / "run")
+
+    assert not (tmp_path / "run").exists()
+
+
+@pytest.mark.parametrize("dataset_format", ["json", "jsonl"])
+def test_prepare_invalid_source_preserves_overwritten_workspace(
+    dataset_format, tmp_path
+):
+    dataset = tmp_path / f"invalid.{dataset_format}"
+    dataset.write_text(
+        (
+            '[{"id":"valid","question":"Q","answer":"A",'
+            '"time_sensitive":false},{"invalid":true}]'
+            if dataset_format == "json"
+            else '{"id":"valid","question":"Q","answer":"A",'
+            '"time_sensitive":false}\n{"invalid":true}\n'
+        ),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    report = run_dir / "report.md"
+    report.write_text("previous report", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unknown field.*invalid"):
+        QAWorkflow().prepare(dataset, run_dir, overwrite=True)
+
+    assert report.read_text(encoding="utf-8") == "previous report"
+    assert sorted(path.name for path in run_dir.iterdir()) == ["report.md"]
 
 
 def test_prepare_overwrite_preserves_unknown_files_and_removes_downstream(
@@ -826,15 +1025,12 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
         {"execution question": 1, "evaluation question": 1}
     )
     assert parent_results["scored-attempt-1"]["passed"] is False
-    assert successor_answers["scored-attempt-1"] == parent_answers[
-        "scored-attempt-1"
-    ]
-    assert successor_results["scored-attempt-1"] == parent_results[
-        "scored-attempt-1"
-    ]
-    assert successor_answers["evaluation-attempt-1"] == parent_answers[
-        "evaluation-attempt-1"
-    ]
+    assert successor_answers["scored-attempt-1"] == parent_answers["scored-attempt-1"]
+    assert successor_results["scored-attempt-1"] == parent_results["scored-attempt-1"]
+    assert (
+        successor_answers["evaluation-attempt-1"]
+        == parent_answers["evaluation-attempt-1"]
+    )
     assert successor_answers["execution-attempt-1"]["duration_ms"] == 400
     assert parent_answers["execution-attempt-1"]["tool_calls"][0]["name"] == (
         "parent-tool"

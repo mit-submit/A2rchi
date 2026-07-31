@@ -250,12 +250,13 @@ judgeable obligations, marks each one as required or optional, and assigns it
 an ID. If `--evaluator-profile` is omitted, the built-in evaluator profile is
 used.
 
-The command snapshots the input dataset and writes the normalized rows and
-their fixed atoms to `prepared_items.jsonl`. It also records skipped
-time-sensitive rows
-and atom-extraction failures in `preparation_results.jsonl`, and stores the
-resolved evaluator profile in the run workspace. It does not run Archi or
-generate answers.
+The command snapshots the input dataset and writes exactly one terminal record
+per input item to `preparation.jsonl`. Prepared records contain the normalized
+question, hidden canonical answer, fixed atoms, and atom source; other records
+contain a time-sensitive skip or item-scoped atom-extraction failure. The same
+artifact determines both run eligibility and preparation lifecycle counts. The
+command also stores the resolved evaluator profile in the run workspace. It
+does not run Archi or generate answers.
 
 #### 2. Run Archi
 
@@ -273,6 +274,8 @@ instance of the selected Archi pipeline and asks the same question once per
 requested attempt. The canonical answer and gold atoms are not passed to Archi.
 The command stores the resolved agent configuration and spec, then writes each
 verbatim terminal answer—or an `execution_failed` record—to `answers.jsonl`.
+Each row includes total tested-agent latency and timing-only tool-call records
+with ordinal, name, status, and duration.
 
 #### 3. Score the answers
 
@@ -281,8 +284,8 @@ archi eval qa score evaluation-run/
 ```
 
 The positional `evaluation-run/` argument is the same workspace directory used by the
-previous stages. `score` reads both `prepared_items.jsonl` and `answers.jsonl`
-from it. The evaluator selected by `qa.evaluator` compares each complete Archi
+previous stages. `score` reads `preparation.jsonl` and `answers.jsonl` from it.
+The evaluator selected by `qa.evaluator` compares each complete Archi
 answer directly with every fixed gold atom and classifies the atom as
 `entailed`, `not_mentioned`, or `contradicted`. Entailed atoms contribute `1`,
 unmentioned atoms `0`, and contradicted atoms `-1`; their mean, floored at zero,
@@ -295,6 +298,10 @@ The command writes the per-atom judgments and per-attempt scores to
 summary to `report.md`. It does not invoke Archi again.
 
 #### Understanding the output
+
+Current commands write workspace schema `qa-v1`. Earlier `qa-v0` workspaces
+that used separate preparation files are left unchanged and are not accepted
+by current run or history readers.
 
 At the end of a successful evaluation, the main result for a person to inspect
 is `report.md` in the selected output directory:
@@ -312,15 +319,14 @@ more detailed analysis or automation, the same workspace contains:
 |------|----------|
 | `summary.json` | Machine-readable aggregate and per-item metrics, lifecycle counts, atom pass rates, and configuration provenance hashes. |
 | `evaluation_results.jsonl` | One terminal scoring record per attempt: the Archi answer, each atom's outcome and evaluator rationale, numeric scores and pass result, or an evaluation/execution failure. |
-| `answers.jsonl` | The verbatim answer produced by Archi for every attempt, or its terminal execution error, before evaluator scoring. |
-| `prepared_items.jsonl` | The normalized prepared questions, canonical answers, fixed gold atoms, and whether each atom set was supplied or inferred. |
-| `preparation_results.jsonl` | The preparation status of every input item, including prepared items, time-sensitive skips, and atom-extraction failures. |
+| `answers.jsonl` | The verbatim answer produced by Archi for every attempt, or its terminal execution error, plus total attempt and timing-only tool-call latency before evaluator scoring. |
+| `preparation.jsonl` | Exactly one terminal record per input item: normalized prepared questions with canonical answers and fixed gold atoms, time-sensitive skips, or atom-extraction failures. |
 | `input.snapshot.json` or `input.snapshot.jsonl` | An exact snapshot of the input dataset used for the evaluation. |
 | `agent_config.resolved.yaml` and `agent_spec.resolved.md` | The resolved Archi configuration and exact agent spec used to generate the answers. |
 | `evaluator_profile.resolved.yaml` | The resolved atoms-extractor and scoring-evaluator configuration. |
 | `manifest.json` | The run ID, phase states, attempt count, artifact names, versions, and SHA-256 hashes used to detect changes to completed-phase inputs. |
 
-The snapshot and `prepared_items.jsonl` contain the hidden canonical answers or
+The snapshot and prepared records in `preparation.jsonl` contain the hidden canonical answers or
 gold atoms, and evaluator rationales may reveal the same information. Keep the
 output directory private when those evaluation references are sensitive.
 
@@ -357,8 +363,9 @@ Across all three stages, `manifest.json` records phase state and SHA-256 hashes.
 Editing an artifact from a completed phase makes the next phase fail closed.
 
 `run` uses the selected Archi pipeline through its normal production interface.
-The evaluation runner does not add tool-schema preflight, trace capture, secret
-redaction, retry observation, or evaluation-specific changes to agent behavior.
+The evaluation runner does not add tool-schema preflight, tool argument/output
+trace capture, secret redaction, retry observation, or evaluation-specific
+changes to agent behavior.
 When the selected agent spec enables `mcp` but normal pipeline construction
 loads no MCP tools, that attempt is recorded as `execution_failed` before the
 model is invoked.

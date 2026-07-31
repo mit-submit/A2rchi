@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, TextIO
 
 import yaml
 
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -63,6 +64,27 @@ def write_bytes(path: Path, value: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, path)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
+def copy_file_atomic(source: Path, target: Path) -> None:
+    """Copy a file in bounded chunks and atomically replace the target."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", dir=str(target.parent)
+    )
+    try:
+        with (
+            os.fdopen(descriptor, "wb") as target_handle,
+            source.open("rb") as source_handle,
+        ):
+            for chunk in iter(lambda: source_handle.read(1024 * 1024), b""):
+                target_handle.write(chunk)
+            target_handle.flush()
+            os.fsync(target_handle.fileno())
+        os.replace(temp_name, target)
     finally:
         if os.path.exists(temp_name):
             os.unlink(temp_name)

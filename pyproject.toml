@@ -27,7 +27,8 @@ dependencies = [
     "isort==6.0.1",
     "pre-commit>=4",
     "psycopg2-binary==2.9.10",
-    "markitdown[pdf,pptx]>=0.1.0"
+    "markitdown[pdf,pptx]>=0.1.0",
+    "ijson==3.5.1",
 ]
 
 [project.scripts]

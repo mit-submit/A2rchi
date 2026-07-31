@@ -1,10 +1,16 @@
+# isort: off
 import pytest
 
 from src.evaluation.qa.artifacts import write_jsonl
-from src.evaluation.qa.preparation import (PreparationRecord,
-                                           load_preparation_records,
-                                           prepare_dataset_items)
+from src.evaluation.qa.preparation import (
+    PreparationRecord,
+    load_preparation_records,
+    prepare_dataset_item,
+    prepare_dataset_items,
+)
 from src.evaluation.qa.validation import Atom, DatasetItem
+
+# isort: on
 
 
 def _item(
@@ -88,9 +94,7 @@ class TestPreparationRecord:
                 lambda: PreparationRecord(
                     item=_item(
                         "supplied",
-                        expected_atoms=[
-                            Atom(id="A1", text="answer", required=True)
-                        ],
+                        expected_atoms=[Atom(id="A1", text="answer", required=True)],
                     ),
                     status="prepared",
                     gold_atoms=(Atom(id="A1", text="answer", required=True),),
@@ -102,9 +106,7 @@ class TestPreparationRecord:
                 lambda: PreparationRecord(
                     item=_item(
                         "supplied",
-                        expected_atoms=[
-                            Atom(id="A1", text="answer", required=True)
-                        ],
+                        expected_atoms=[Atom(id="A1", text="answer", required=True)],
                     ),
                     status="preparation_failed",
                     error="unexpected",
@@ -145,6 +147,13 @@ class TestPreparationRecord:
             "answer_source": "source",
         }
         assert records[3].error == "extraction failed"
+
+    def test_prepares_one_item_without_accumulating_a_collection(self):
+        record = prepare_dataset_item(_item("inferred"), _Extractor())
+
+        assert record.status == "prepared"
+        assert record.item.id == "inferred"
+        assert record.atom_source == "inferred"
 
 
 class TestPreparationArtifact:

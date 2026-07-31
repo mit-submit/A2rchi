@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+# isort: off
 from dataclasses import dataclass
 from pathlib import Path
-from typing import (Any, Dict, List, Literal, Optional, Protocol, Sequence,
-                    Set, Tuple)
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from .artifacts import read_jsonl
 from .validation import Atom, DatasetItem, validate_atoms, validate_gold_output
+
+# isort: on
 
 PreparationStatus = Literal[
     "prepared",
@@ -17,8 +29,7 @@ AtomSource = Literal["supplied", "inferred"]
 
 
 class GoldExtractor(Protocol):
-    def extract_gold(self, question: str, answer: str) -> object:
-        ...
+    def extract_gold(self, question: str, answer: str) -> object: ...
 
 
 class AnswerComparator(Protocol):
@@ -27,8 +38,7 @@ class AnswerComparator(Protocol):
         question: str,
         gold_atoms: Sequence[Atom],
         answer: str,
-    ) -> object:
-        ...
+    ) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -108,9 +118,7 @@ class PreparationRecord:
                     "answer": self.item.answer,
                     "time_sensitive": self.item.time_sensitive,
                     "atom_source": self.atom_source,
-                    "gold_atoms": [
-                        atom.to_dict() for atom in self.prepared_gold_atoms
-                    ],
+                    "gold_atoms": [atom.to_dict() for atom in self.prepared_gold_atoms],
                 }
             )
         elif self.status == "preparation_failed":
@@ -122,41 +130,37 @@ def prepare_dataset_items(
     items: Sequence[DatasetItem], extractor: GoldExtractor
 ) -> List[PreparationRecord]:
     """Prepare one immutable terminal record for every validated dataset item."""
-    records: List[PreparationRecord] = []
-    for item in items:
-        if item.time_sensitive:
-            records.append(
-                PreparationRecord(item=item, status="skipped_time_sensitive")
+    return [prepare_dataset_item(item, extractor) for item in items]
+
+
+def prepare_dataset_item(
+    item: DatasetItem, extractor: GoldExtractor
+) -> PreparationRecord:
+    """Prepare one validated dataset item into one terminal record."""
+    if item.time_sensitive:
+        return PreparationRecord(item=item, status="skipped_time_sensitive")
+    try:
+        if item.expected_atoms is not None:
+            gold_atoms = item.expected_atoms
+            atom_source: AtomSource = "supplied"
+        else:
+            gold_atoms = validate_gold_output(
+                extractor.extract_gold(item.question, item.answer),
+                context=f"gold extraction for item {item.id}",
             )
-            continue
-        try:
-            if item.expected_atoms is not None:
-                gold_atoms = item.expected_atoms
-                atom_source: AtomSource = "supplied"
-            else:
-                gold_atoms = validate_gold_output(
-                    extractor.extract_gold(item.question, item.answer),
-                    context=f"gold extraction for item {item.id}",
-                )
-                atom_source = "inferred"
-        except Exception as exc:
-            records.append(
-                PreparationRecord(
-                    item=item,
-                    status="preparation_failed",
-                    error=str(exc),
-                )
-            )
-            continue
-        records.append(
-            PreparationRecord(
-                item=item,
-                status="prepared",
-                gold_atoms=tuple(gold_atoms),
-                atom_source=atom_source,
-            )
+            atom_source = "inferred"
+    except Exception as exc:
+        return PreparationRecord(
+            item=item,
+            status="preparation_failed",
+            error=str(exc),
         )
-    return records
+    return PreparationRecord(
+        item=item,
+        status="prepared",
+        gold_atoms=tuple(gold_atoms),
+        atom_source=atom_source,
+    )
 
 
 def _require_exact_keys(

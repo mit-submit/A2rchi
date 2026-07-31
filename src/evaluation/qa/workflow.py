@@ -4,12 +4,14 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
 
 from .artifacts import (  # isort: skip
     AtomicJsonlWriter,
     artifact_hashes,
+    copy_file_atomic,
     iter_jsonl,
     read_json,
     read_jsonl,
@@ -35,11 +37,16 @@ from .preparation import (
     AnswerComparator,
     PreparationRecord,
     load_preparation_records,
-    prepare_dataset_items,
+    prepare_dataset_item,
 )
 from .runtime import ArchiAgentRuntime, LangChainEvaluatorRuntime, load_agent_inputs
 from .scoring import build_summary, render_report, score_attempt
-from .validation import load_dataset, validate_judgments  # isort: skip
+from .validation import (  # isort: skip
+    dataset_source_format,
+    iter_dataset_items,
+    load_dataset,
+    validate_judgments,
+)
 
 
 class QAWorkflow:
@@ -154,9 +161,7 @@ class QAWorkflow:
                 "error": str(exc),
             }
 
-    def _load_retry_parent(
-        self, run_dir: Path
-    ) -> Tuple[
+    def _load_retry_parent(self, run_dir: Path) -> Tuple[
         Dict[str, Any],
         List[PreparationRecord],
         Dict[str, Dict[str, Any]],
@@ -289,7 +294,7 @@ class QAWorkflow:
         evaluator_profile_path: Optional[Path] = None,
         overwrite: bool = False,
     ) -> Dict[str, Any]:
-        dataset_format, items, dataset_bytes = load_dataset(dataset)
+        dataset_format = dataset_source_format(dataset)
         profile = load_profile(evaluator_profile_path)
         existing = self._existing_owned(output_dir, OWNED_FILES)
         if existing and not overwrite:
@@ -298,21 +303,31 @@ class QAWorkflow:
                 + ", ".join(existing)
                 + "; use --overwrite"
             )
-        evaluator = LangChainEvaluatorRuntime(profile)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        if overwrite:
-            self._remove_owned(output_dir, OWNED_FILES)
         started_at = utc_now()
         snapshot_name = f"input.snapshot.{dataset_format}"
-        write_bytes(output_dir / snapshot_name, dataset_bytes)
+        snapshot_path = output_dir / snapshot_name
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(
+            prefix=f".{output_dir.name}-prepare-", dir=str(output_dir.parent)
+        ) as staging_dir:
+            staged_snapshot = Path(staging_dir) / snapshot_name
+            copy_file_atomic(dataset, staged_snapshot)
+            snapshot_item_count = sum(
+                1 for _item in iter_dataset_items(staged_snapshot)
+            )
+            evaluator = LangChainEvaluatorRuntime(profile)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            if overwrite:
+                self._remove_owned(output_dir, OWNED_FILES)
+            staged_snapshot.replace(snapshot_path)
         write_yaml(output_dir / "evaluator_profile.resolved.yaml", profile.to_dict())
 
-        preparation = prepare_dataset_items(items, evaluator)
-
-        write_jsonl(
-            output_dir / "preparation.jsonl",
-            (record.to_dict() for record in preparation),
-        )
+        prepared_item_count = 0
+        with AtomicJsonlWriter(output_dir / "preparation.jsonl") as preparation_writer:
+            for item in iter_dataset_items(snapshot_path):
+                record = prepare_dataset_item(item, evaluator)
+                preparation_writer.write(record.to_dict())
+                prepared_item_count += record.status == "prepared"
         prep_names = {
             snapshot_name,
             "preparation.jsonl",
@@ -339,10 +354,8 @@ class QAWorkflow:
                     "status": "completed",
                     "started_at": started_at,
                     "completed_at": utc_now(),
-                    "input_items": len(items),
-                    "prepared_items": sum(
-                        record.status == "prepared" for record in preparation
-                    ),
+                    "input_items": snapshot_item_count,
+                    "prepared_items": prepared_item_count,
                 }
             },
         }
@@ -543,9 +556,7 @@ class QAWorkflow:
             manifest["phases"].pop("score", None)
             for name in SCORE_FILES:
                 manifest["artifacts"].pop(name, None)
-        prepared_by_id = {
-            record.item.id: record for record in prepared_records
-        }
+        prepared_by_id = {record.item.id: record for record in prepared_records}
         started_at = utc_now()
         with AtomicJsonlWriter(run_dir / "evaluation_results.jsonl") as result_writer:
             for answer_row in iter_jsonl(run_dir / "answers.jsonl"):
@@ -561,9 +572,7 @@ class QAWorkflow:
                     continue
                 prepared = prepared_by_id[answer_row["item_id"]]
                 assert evaluator is not None
-                result_writer.write(
-                    self._score_answer(answer_row, prepared, evaluator)
-                )
+                result_writer.write(self._score_answer(answer_row, prepared, evaluator))
 
         summary = build_summary(
             preparation,
@@ -710,9 +719,7 @@ class QAWorkflow:
 
         evaluator = None
         profile = load_profile(output_dir / "evaluator_profile.resolved.yaml")
-        successor_answers_by_id = {
-            row["attempt_id"]: row for row in successor_answers
-        }
+        successor_answers_by_id = {row["attempt_id"]: row for row in successor_answers}
         successor_results: List[Dict[str, Any]] = []
         started_at = utc_now()
         for parent_result in parent_results:
