@@ -29,3 +29,43 @@ def test_invoke_forwards_callbacks_to_agent_graph():
         "inputs": {"messages": ["question"]},
         "config": {"recursion_limit": 17, "callbacks": [callback]},
     }
+
+
+def test_start_run_memory_replaces_attempt_state():
+    pipeline = BaseReActAgent.__new__(BaseReActAgent)
+    pipeline._active_memory = None
+
+    first = pipeline.start_run_memory()
+    first.note("first attempt")
+    second = pipeline.start_run_memory()
+
+    assert first is not second
+    assert pipeline.active_memory is second
+    assert first.notes == ("first attempt",)
+    assert second.notes == ()
+
+
+def test_refresh_agent_discovers_mcp_tools_once():
+    pipeline = BaseReActAgent.__new__(BaseReActAgent)
+    pipeline.selected_tool_names = ["mcp"]
+    pipeline._static_tools = []
+    pipeline._static_middleware = []
+    pipeline._mcp_tools = None
+    pipeline._active_tools = []
+    pipeline._active_middleware = []
+    pipeline.agent = None
+    builds = []
+    graph = object()
+    mcp_tool = object()
+
+    def build_mcp_tools():
+        builds.append(True)
+        return [mcp_tool]
+
+    pipeline._build_mcp_tools = build_mcp_tools
+    pipeline._create_agent = lambda tools, middleware: graph
+
+    assert pipeline.refresh_agent() is graph
+    assert pipeline.refresh_agent() is graph
+    assert builds == [True]
+    assert pipeline._mcp_tools == [mcp_tool]

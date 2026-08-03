@@ -270,20 +270,23 @@ class ArchiAgentRuntime:
         self.spec = spec
         self.pipeline_class = pipeline_class
         self.tool_calls: List[Dict[str, Any]] = []
+        self._pipeline: Optional[Any] = None
+        self._vectorstore: Optional[Any] = None
+        self._selected_tool_names = set(getattr(self.spec, "tools", []) or [])
 
     def _load_vectorstore(self) -> Any:
         from src.archi.utils.vectorstore_connector import VectorstoreConnector
 
         return VectorstoreConnector(self.config).get_vectorstore()
 
-    def run(self, question: str) -> str:
-        self.tool_calls = []
-        timing_callback = ToolTimingCallback()
+    def _runtime_for_attempt(self) -> Tuple[Any, Optional[Any]]:
+        if self._pipeline is not None:
+            return self._pipeline, self._vectorstore
+
         chat = self.config["services"]["chat_app"]
-        selected_tool_names = set(getattr(self.spec, "tools", []) or [])
         vectorstore = (
             self._load_vectorstore()
-            if "search_vectorstore_hybrid" in selected_tool_names
+            if "search_vectorstore_hybrid" in self._selected_tool_names
             else None
         )
         pipeline = self.pipeline_class(
@@ -292,10 +295,21 @@ class ArchiAgentRuntime:
             default_provider=chat["default_provider"],
             default_model=chat["default_model"],
         )
-        if "mcp" in selected_tool_names and not pipeline.loaded_mcp_tools:
+        if "mcp" in self._selected_tool_names and not pipeline.loaded_mcp_tools:
             raise RuntimeError(
                 "agent spec selected 'mcp', but no MCP tools were loaded"
             )
+
+        # Cache only a completely initialized runtime. A failed initialization
+        # remains retryable by the next independently accounted attempt.
+        self._pipeline = pipeline
+        self._vectorstore = vectorstore
+        return pipeline, vectorstore
+
+    def run(self, question: str) -> str:
+        self.tool_calls = []
+        timing_callback = ToolTimingCallback()
+        pipeline, vectorstore = self._runtime_for_attempt()
         try:
             output = pipeline.invoke(
                 history=[("User", question)],

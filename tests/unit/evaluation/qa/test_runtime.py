@@ -223,7 +223,68 @@ def _config():
     }
 
 
-def test_archi_runtime_creates_fresh_pipeline_per_attempt():
+def test_archi_runtime_reuses_pipeline_with_fresh_attempt_history():
+    class Pipeline:
+        instances = 0
+        histories = []
+
+        def __init__(self, **kwargs):
+            Pipeline.instances += 1
+
+        def invoke(self, **kwargs):
+            Pipeline.histories.append(kwargs["history"])
+            return _Output("final answer")
+
+    agent = ArchiAgentRuntime(_config(), SimpleNamespace(tools=[]), Pipeline)
+
+    assert agent.run("first question") == "final answer"
+    assert agent.run("second question") == "final answer"
+    assert Pipeline.instances == 1
+    assert Pipeline.histories == [
+        [("User", "first question")],
+        [("User", "second question")],
+    ]
+
+
+def test_archi_runtime_reuses_vectorstore_with_cached_pipeline(monkeypatch):
+    vectorstore = object()
+    loads = []
+    received_vectorstores = []
+
+    class Pipeline:
+        def __init__(self, **kwargs):
+            pass
+
+        def invoke(self, **kwargs):
+            received_vectorstores.append(kwargs["vectorstore"])
+            return _Output("final answer")
+
+    def load_vectorstore(self):
+        loads.append(True)
+        return vectorstore
+
+    monkeypatch.setattr(
+        ArchiAgentRuntime,
+        "_load_vectorstore",
+        load_vectorstore,
+    )
+    agent = ArchiAgentRuntime(
+        _config(),
+        SimpleNamespace(tools=["search_vectorstore_hybrid"]),
+        Pipeline,
+    )
+
+    agent.run("first question")
+    agent.run("second question")
+
+    assert loads == [True]
+    assert received_vectorstores == [vectorstore, vectorstore]
+
+
+def test_archi_runtime_does_not_cache_failed_initialization(monkeypatch):
+    vectorstore = object()
+    loads = []
+
     class Pipeline:
         instances = 0
 
@@ -233,11 +294,29 @@ def test_archi_runtime_creates_fresh_pipeline_per_attempt():
         def invoke(self, **kwargs):
             return _Output("final answer")
 
-    agent = ArchiAgentRuntime(_config(), SimpleNamespace(tools=[]), Pipeline)
+    def load_vectorstore(self):
+        loads.append(True)
+        if len(loads) == 1:
+            raise RuntimeError("vector store is starting")
+        return vectorstore
 
-    assert agent.run("question") == "final answer"
-    assert agent.run("question") == "final answer"
-    assert Pipeline.instances == 2
+    monkeypatch.setattr(
+        ArchiAgentRuntime,
+        "_load_vectorstore",
+        load_vectorstore,
+    )
+    agent = ArchiAgentRuntime(
+        _config(),
+        SimpleNamespace(tools=["search_vectorstore_hybrid"]),
+        Pipeline,
+    )
+
+    with pytest.raises(RuntimeError, match="vector store is starting"):
+        agent.run("first question")
+
+    assert agent.run("second question") == "final answer"
+    assert loads == [True, True]
+    assert Pipeline.instances == 1
 
 
 def test_archi_runtime_reports_vectorstore_failure_from_attempt(monkeypatch):
@@ -329,17 +408,41 @@ def test_archi_runtime_fails_before_model_when_selected_mcp_tools_did_not_load()
 
 def test_archi_runtime_invokes_model_when_selected_mcp_tools_loaded():
     class Pipeline:
+        instances = 0
+
         def __init__(self, **kwargs):
+            Pipeline.instances += 1
             self.loaded_mcp_tools = [SimpleNamespace(name="search")]
 
         def invoke(self, **kwargs):
             return _Output("grounded answer")
 
-    answer = ArchiAgentRuntime(_config(), SimpleNamespace(tools=["mcp"]), Pipeline).run(
-        "question"
-    )
+    agent = ArchiAgentRuntime(_config(), SimpleNamespace(tools=["mcp"]), Pipeline)
 
-    assert answer == "grounded answer"
+    assert agent.run("first question") == "grounded answer"
+    assert agent.run("second question") == "grounded answer"
+    assert Pipeline.instances == 1
+
+
+def test_archi_runtime_does_not_cache_pipeline_with_missing_mcp_tools():
+    class Pipeline:
+        instances = 0
+
+        def __init__(self, **kwargs):
+            Pipeline.instances += 1
+            self.loaded_mcp_tools = []
+
+        def invoke(self, **kwargs):
+            raise AssertionError("model must not run without selected MCP tools")
+
+    agent = ArchiAgentRuntime(_config(), SimpleNamespace(tools=["mcp"]), Pipeline)
+
+    with pytest.raises(RuntimeError, match="selected 'mcp'.*no MCP tools"):
+        agent.run("first question")
+    with pytest.raises(RuntimeError, match="selected 'mcp'.*no MCP tools"):
+        agent.run("second question")
+
+    assert Pipeline.instances == 2
 
 
 def test_archi_runtime_rejects_empty_answer():
