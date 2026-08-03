@@ -619,13 +619,6 @@ def test_prepare_streams_snapshot_and_preparation(
     monkeypatch.setattr(workflow_module, "iter_dataset_items", guarded_items)
     monkeypatch.setattr(workflow_module, "prepare_dataset_item", tracked_preparation)
     monkeypatch.setattr(
-        workflow_module,
-        "load_dataset",
-        lambda path: (_ for _ in ()).throw(
-            AssertionError("preparation must not use the list-returning loader")
-        ),
-    )
-    monkeypatch.setattr(
         Path,
         "read_bytes",
         lambda path: (_ for _ in ()).throw(
@@ -1005,6 +998,21 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
     successor = tmp_path / "successor"
     monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", retry_agent)
     monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", retry_evaluator)
+
+    def unexpected_dataset_load(*_args, **_kwargs):
+        raise AssertionError("retry must consume preparation.jsonl directly")
+
+    monkeypatch.setattr(
+        workflow_module,
+        "load_dataset",
+        unexpected_dataset_load,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        workflow_module,
+        "iter_dataset_items",
+        unexpected_dataset_load,
+    )
     retry_workflow = QAWorkflow()
     ticks = iter((30.0, 30.4))
     monkeypatch.setattr(
@@ -1119,6 +1127,36 @@ def test_retry_rejects_tampered_parent_before_provider_or_output(
     assert evaluator.calls == Counter()
     assert agent.calls == Counter()
     assert not successor.exists()
+
+
+def test_run_and_score_do_not_decode_the_input_snapshot(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "dataset.json"
+    _dataset(dataset)
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow()
+    workflow.prepare(dataset, run_dir)
+
+    def unexpected_dataset_load(*_args, **_kwargs):
+        raise AssertionError("downstream phases must consume preparation.jsonl directly")
+
+    monkeypatch.setattr(
+        workflow_module,
+        "load_dataset",
+        unexpected_dataset_load,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        workflow_module,
+        "iter_dataset_items",
+        unexpected_dataset_load,
+    )
+
+    workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
+    workflow.score(run_dir)
+
+    assert read_json(run_dir / "manifest.json")["status"] == "scored"
 
 
 def test_composite_validates_selected_agent_inputs_before_gold_provider_call(

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import (
     Any,
     Dict,
+    Iterator,
     List,
     Literal,
     Optional,
@@ -15,8 +16,17 @@ from typing import (
     Tuple,
 )
 
-from .artifacts import read_jsonl
-from .validation import Atom, DatasetItem, validate_atoms, validate_gold_output
+from .artifacts import iter_jsonl
+from .validation import (
+    ANSWER_MODE_VALUES,
+    Atom,
+    DatasetItem,
+    validate_atoms,
+    validate_gold_output,
+    validate_nonempty_string,
+    validate_optional_enum,
+    validate_optional_nonempty_string,
+)
 
 # isort: on
 
@@ -43,13 +53,33 @@ class AnswerComparator(Protocol):
 
 @dataclass(frozen=True)
 class PreparationRecord:
-    item: DatasetItem
+    item_id: str
     status: PreparationStatus
+    category: Optional[str] = None
+    answer_mode: Optional[str] = None
+    answer_source: Optional[str] = None
+    question: Optional[str] = None
+    answer: Optional[str] = None
+    time_sensitive: Optional[bool] = None
     gold_atoms: Optional[Tuple[Atom, ...]] = None
     atom_source: Optional[AtomSource] = None
     error: Optional[str] = None
 
     def __post_init__(self) -> None:
+        validate_nonempty_string(self.item_id, "preparation item_id")
+        validate_optional_nonempty_string(
+            self.category,
+            "preparation category",
+        )
+        validate_optional_enum(
+            self.answer_mode,
+            ANSWER_MODE_VALUES,
+            "preparation answer_mode",
+        )
+        validate_optional_nonempty_string(
+            self.answer_source,
+            "preparation answer_source",
+        )
         if self.status not in {
             "prepared",
             "skipped_time_sensitive",
@@ -57,41 +87,46 @@ class PreparationRecord:
         }:
             raise ValueError("unsupported preparation status")
         if self.status == "prepared":
-            if self.item.time_sensitive:
+            normalized_question = validate_nonempty_string(
+                self.question,
+                "prepared record question",
+                normalize_newlines=True,
+            )
+            normalized_answer = validate_nonempty_string(
+                self.answer,
+                "prepared record answer",
+                normalize_newlines=True,
+            )
+            if normalized_question != self.question or normalized_answer != self.answer:
+                raise ValueError("prepared record text must use normalized newlines")
+            if self.time_sensitive is not False:
                 raise ValueError("time-sensitive item cannot be prepared")
             if not self.gold_atoms:
                 raise ValueError("prepared record requires gold atoms")
             if self.atom_source not in {"supplied", "inferred"}:
                 raise ValueError("prepared record requires an atom source")
-            expected_source = (
-                "supplied" if self.item.expected_atoms is not None else "inferred"
-            )
-            if self.atom_source != expected_source:
-                raise ValueError("prepared record atom source does not match its item")
-            if (
-                self.atom_source == "supplied"
-                and tuple(self.item.expected_atoms or ()) != self.gold_atoms
-            ):
-                raise ValueError("prepared record atoms do not match supplied atoms")
             if self.error is not None:
                 raise ValueError("prepared record cannot contain an error")
             return
         if self.status == "preparation_failed":
-            if self.item.time_sensitive:
-                raise ValueError("time-sensitive item cannot fail preparation")
-            if self.item.expected_atoms is not None:
-                raise ValueError("item with supplied atoms cannot fail preparation")
             if self.error is None:
                 raise ValueError("failed preparation requires an error")
             if not isinstance(self.error, str):
                 raise ValueError("failed preparation error must be a string")
-            if self.gold_atoms is not None or self.atom_source is not None:
+            if (
+                self.question is not None
+                or self.answer is not None
+                or self.time_sensitive is not None
+                or self.gold_atoms is not None
+                or self.atom_source is not None
+            ):
                 raise ValueError("failed preparation cannot contain prepared output")
             return
-        if not self.item.time_sensitive:
-            raise ValueError("only a time-sensitive item can be skipped")
         if (
-            self.gold_atoms is not None
+            self.question is not None
+            or self.answer is not None
+            or self.time_sensitive is not None
+            or self.gold_atoms is not None
             or self.atom_source is not None
             or self.error is not None
         ):
@@ -103,20 +138,32 @@ class PreparationRecord:
             raise ValueError("preparation record is not prepared")
         return self.gold_atoms
 
+    @property
+    def prepared_question(self) -> str:
+        if self.status != "prepared" or self.question is None:
+            raise ValueError("preparation record is not prepared")
+        return self.question
+
+    @property
+    def prepared_answer(self) -> str:
+        if self.status != "prepared" or self.answer is None:
+            raise ValueError("preparation record is not prepared")
+        return self.answer
+
     def to_dict(self) -> Dict[str, Any]:
         row: Dict[str, Any] = {
-            "item_id": self.item.id,
+            "item_id": self.item_id,
             "status": self.status,
-            "category": self.item.category,
-            "answer_mode": self.item.answer_mode,
-            "answer_source": self.item.answer_source,
+            "category": self.category,
+            "answer_mode": self.answer_mode,
+            "answer_source": self.answer_source,
         }
         if self.status == "prepared":
             row.update(
                 {
-                    "question": self.item.question,
-                    "answer": self.item.answer,
-                    "time_sensitive": self.item.time_sensitive,
+                    "question": self.prepared_question,
+                    "answer": self.prepared_answer,
+                    "time_sensitive": self.time_sensitive,
                     "atom_source": self.atom_source,
                     "gold_atoms": [atom.to_dict() for atom in self.prepared_gold_atoms],
                 }
@@ -138,7 +185,13 @@ def prepare_dataset_item(
 ) -> PreparationRecord:
     """Prepare one validated dataset item into one terminal record."""
     if item.time_sensitive:
-        return PreparationRecord(item=item, status="skipped_time_sensitive")
+        return PreparationRecord(
+            item_id=item.id,
+            status="skipped_time_sensitive",
+            category=item.category,
+            answer_mode=item.answer_mode,
+            answer_source=item.answer_source,
+        )
     try:
         if item.expected_atoms is not None:
             gold_atoms = item.expected_atoms
@@ -151,13 +204,22 @@ def prepare_dataset_item(
             atom_source = "inferred"
     except Exception as exc:
         return PreparationRecord(
-            item=item,
+            item_id=item.id,
             status="preparation_failed",
+            category=item.category,
+            answer_mode=item.answer_mode,
+            answer_source=item.answer_source,
             error=str(exc),
         )
     return PreparationRecord(
-        item=item,
+        item_id=item.id,
         status="prepared",
+        category=item.category,
+        answer_mode=item.answer_mode,
+        answer_source=item.answer_source,
+        question=item.question,
+        answer=item.answer,
+        time_sensitive=item.time_sensitive,
         gold_atoms=tuple(gold_atoms),
         atom_source=atom_source,
     )
@@ -177,9 +239,7 @@ def _require_exact_keys(
         raise ValueError(f"{context} has invalid fields ({'; '.join(details)})")
 
 
-def _record_from_row(
-    row: Dict[str, Any], item: DatasetItem, *, index: int
-) -> PreparationRecord:
+def _record_from_row(row: Dict[str, Any], *, index: int) -> PreparationRecord:
     context = f"preparation row {index}"
     status = row.get("status")
     if status not in {
@@ -207,69 +267,63 @@ def _record_from_row(
         "skipped_time_sensitive": set(),
     }[status]
     _require_exact_keys(row, base_fields | status_fields, context=context)
-    if row["item_id"] != item.id:
-        raise ValueError(f"{context} item ID does not match the input snapshot")
-    for field in ("category", "answer_mode", "answer_source"):
-        if row[field] != getattr(item, field):
-            raise ValueError(f"{context} {field} does not match the input snapshot")
+    common = {
+        "item_id": row["item_id"],
+        "category": row["category"],
+        "answer_mode": row["answer_mode"],
+        "answer_source": row["answer_source"],
+    }
 
     if status == "prepared":
-        if (
-            row["question"] != item.question
-            or row["answer"] != item.answer
-            or row["time_sensitive"] is not item.time_sensitive
-        ):
-            raise ValueError(f"{context} does not match the input snapshot")
         atom_source = row["atom_source"]
         gold_atoms = tuple(
             validate_atoms(row["gold_atoms"], context=f"{context}.gold_atoms")
         )
         return PreparationRecord(
-            item=item,
+            **common,
             status="prepared",
+            question=row["question"],
+            answer=row["answer"],
+            time_sensitive=row["time_sensitive"],
             gold_atoms=gold_atoms,
             atom_source=atom_source,
         )
 
     if status == "preparation_failed":
         return PreparationRecord(
-            item=item,
+            **common,
             status="preparation_failed",
             error=row["error"],
         )
-    return PreparationRecord(item=item, status="skipped_time_sensitive")
+    return PreparationRecord(**common, status="skipped_time_sensitive")
+
+
+def iter_preparation_records(path: Path) -> Iterator[PreparationRecord]:
+    """Validate and yield the authoritative preparation artifact incrementally."""
+    seen_ids: Set[str] = set()
+    record_count = 0
+    for record_count, row in enumerate(iter_jsonl(path), 1):
+        record = _record_from_row(row, index=record_count)
+        if record.item_id in seen_ids:
+            raise ValueError("preparation artifact contains duplicate item IDs")
+        seen_ids.add(record.item_id)
+        yield record
+    if record_count == 0:
+        raise ValueError("preparation artifact must contain at least one row")
 
 
 def load_preparation_records(
-    path: Path, items: Sequence[DatasetItem]
+    path: Path, *, expected_count: Optional[int] = None
 ) -> List[PreparationRecord]:
-    rows = read_jsonl(path)
-    if len(rows) != len(items):
+    if expected_count is not None and (
+        isinstance(expected_count, bool)
+        or not isinstance(expected_count, int)
+        or expected_count <= 0
+    ):
+        raise ValueError("preparation input item count must be a positive integer")
+    records = list(iter_preparation_records(path))
+    if expected_count is not None and len(records) != expected_count:
         raise ValueError(
             "preparation artifact must contain exactly one row per input item"
         )
-    item_ids = [item.id for item in items]
-    row_ids = [row.get("item_id") for row in rows]
-    if any(not isinstance(item_id, str) for item_id in row_ids):
-        raise ValueError("preparation artifact contains an invalid item ID")
-    if len(set(row_ids)) != len(row_ids):
-        raise ValueError("preparation artifact contains duplicate item IDs")
-    missing = sorted(set(item_ids) - set(row_ids))
-    unknown = sorted(set(row_ids) - set(item_ids))
-    if missing or unknown:
-        details = []
-        if missing:
-            details.append("missing: " + ", ".join(missing))
-        if unknown:
-            details.append("unknown: " + ", ".join(unknown))
-        raise ValueError(
-            "preparation artifact does not match the input snapshot ("
-            + "; ".join(details)
-            + ")"
-        )
-    if row_ids != item_ids:
-        raise ValueError("preparation artifact item order does not match the input")
-    return [
-        _record_from_row(row, item, index=index)
-        for index, (row, item) in enumerate(zip(rows, items), 1)
-    ]
+    return records

@@ -4,6 +4,7 @@ import pytest
 from src.evaluation.qa.artifacts import write_jsonl
 from src.evaluation.qa.preparation import (
     PreparationRecord,
+    iter_preparation_records,
     load_preparation_records,
     prepare_dataset_item,
     prepare_dataset_items,
@@ -46,13 +47,31 @@ class _Extractor:
         }
 
 
+def _record_fields(item, *, prepared=False):
+    fields = {
+        "item_id": item.id,
+        "category": item.category,
+        "answer_mode": item.answer_mode,
+        "answer_source": item.answer_source,
+    }
+    if prepared:
+        fields.update(
+            {
+                "question": item.question,
+                "answer": item.answer,
+                "time_sensitive": False,
+            }
+        )
+    return fields
+
+
 class TestPreparationRecord:
     @pytest.mark.parametrize(
         "record, message",
         [
             (
                 lambda: PreparationRecord(
-                    item=_item("prepared"),
+                    **_record_fields(_item("prepared"), prepared=True),
                     status="prepared",
                     gold_atoms=None,
                     atom_source="inferred",
@@ -61,14 +80,14 @@ class TestPreparationRecord:
             ),
             (
                 lambda: PreparationRecord(
-                    item=_item("failed"),
+                    **_record_fields(_item("failed")),
                     status="preparation_failed",
                 ),
                 "requires an error",
             ),
             (
                 lambda: PreparationRecord(
-                    item=_item("skipped", time_sensitive=True),
+                    **_record_fields(_item("skipped", time_sensitive=True)),
                     status="skipped_time_sensitive",
                     error="unexpected",
                 ),
@@ -76,14 +95,14 @@ class TestPreparationRecord:
             ),
             (
                 lambda: PreparationRecord(
-                    item=_item("unknown", time_sensitive=True),
+                    **_record_fields(_item("unknown", time_sensitive=True)),
                     status="unknown",
                 ),
                 "unsupported preparation status",
             ),
             (
                 lambda: PreparationRecord(
-                    item=_item("prepared"),
+                    **_record_fields(_item("prepared"), prepared=True),
                     status="prepared",
                     gold_atoms=(Atom(id="A1", text="answer", required=True),),
                     atom_source="unknown",
@@ -92,26 +111,22 @@ class TestPreparationRecord:
             ),
             (
                 lambda: PreparationRecord(
-                    item=_item(
-                        "supplied",
-                        expected_atoms=[Atom(id="A1", text="answer", required=True)],
-                    ),
+                    **_record_fields(_item("prepared"), prepared=True),
                     status="prepared",
                     gold_atoms=(Atom(id="A1", text="answer", required=True),),
                     atom_source="inferred",
+                    error="unexpected",
                 ),
-                "atom source does not match",
+                "cannot contain an error",
             ),
             (
                 lambda: PreparationRecord(
-                    item=_item(
-                        "supplied",
-                        expected_atoms=[Atom(id="A1", text="answer", required=True)],
-                    ),
+                    **_record_fields(_item("failed")),
                     status="preparation_failed",
+                    question="unexpected",
                     error="unexpected",
                 ),
-                "supplied atoms cannot fail",
+                "cannot contain prepared output",
             ),
         ],
     )
@@ -152,12 +167,12 @@ class TestPreparationRecord:
         record = prepare_dataset_item(_item("inferred"), _Extractor())
 
         assert record.status == "prepared"
-        assert record.item.id == "inferred"
+        assert record.item_id == "inferred"
         assert record.atom_source == "inferred"
 
 
 class TestPreparationArtifact:
-    def test_round_trips_records_against_the_input_snapshot(self, tmp_path):
+    def test_round_trips_records_without_loading_the_input_snapshot(self, tmp_path):
         supplied_atom = Atom(id="S1", text="supplied", required=True)
         items = [
             _item("supplied", expected_atoms=[supplied_atom]),
@@ -167,27 +182,26 @@ class TestPreparationArtifact:
         path = tmp_path / "preparation.jsonl"
         write_jsonl(path, (record.to_dict() for record in records))
 
-        loaded = load_preparation_records(path, items)
+        loaded = load_preparation_records(path, expected_count=2)
 
         assert loaded == records
 
     def test_rejects_duplicate_item_records(self, tmp_path):
         item = _item("item", time_sensitive=True)
-        other = _item("other", time_sensitive=True)
         row = PreparationRecord(
-            item=item,
+            **_record_fields(item),
             status="skipped_time_sensitive",
         ).to_dict()
         path = tmp_path / "preparation.jsonl"
         write_jsonl(path, [row, row])
 
         with pytest.raises(ValueError, match="duplicate item IDs"):
-            load_preparation_records(path, [item, other])
+            load_preparation_records(path, expected_count=2)
 
     def test_rejects_fields_inconsistent_with_status(self, tmp_path):
         item = _item("item", time_sensitive=True)
         row = PreparationRecord(
-            item=item,
+            **_record_fields(item),
             status="skipped_time_sensitive",
         ).to_dict()
         row["error"] = "not allowed"
@@ -195,26 +209,35 @@ class TestPreparationArtifact:
         write_jsonl(path, [row])
 
         with pytest.raises(ValueError, match="invalid fields"):
-            load_preparation_records(path, [item])
+            load_preparation_records(path, expected_count=1)
 
-    def test_rejects_missing_or_unknown_item_records(self, tmp_path):
+    def test_rejects_non_normalized_prepared_text(self, tmp_path):
+        record = prepare_dataset_item(_item("item"), _Extractor())
+        row = record.to_dict()
+        row["question"] = "Question\r\nitem"
+        path = tmp_path / "preparation.jsonl"
+        write_jsonl(path, [row])
+
+        with pytest.raises(ValueError, match="normalized newlines"):
+            load_preparation_records(path, expected_count=1)
+
+    def test_rejects_record_count_that_disagrees_with_manifest(self, tmp_path):
         item = _item("item", time_sensitive=True)
-        unknown = _item("unknown", time_sensitive=True)
         path = tmp_path / "preparation.jsonl"
         write_jsonl(
             path,
             [
                 PreparationRecord(
-                    item=unknown,
+                    **_record_fields(item),
                     status="skipped_time_sensitive",
                 ).to_dict()
             ],
         )
 
-        with pytest.raises(ValueError, match="does not match the input snapshot"):
-            load_preparation_records(path, [item])
+        with pytest.raises(ValueError, match="exactly one row per input item"):
+            load_preparation_records(path, expected_count=2)
 
-    def test_rejects_reordered_item_records(self, tmp_path):
+    def test_preserves_authoritative_artifact_order(self, tmp_path):
         first = _item("first", time_sensitive=True)
         second = _item("second", time_sensitive=True)
         path = tmp_path / "preparation.jsonl"
@@ -222,15 +245,29 @@ class TestPreparationArtifact:
             path,
             [
                 PreparationRecord(
-                    item=second,
+                    **_record_fields(second),
                     status="skipped_time_sensitive",
                 ).to_dict(),
                 PreparationRecord(
-                    item=first,
+                    **_record_fields(first),
                     status="skipped_time_sensitive",
                 ).to_dict(),
             ],
         )
 
-        with pytest.raises(ValueError, match="item order"):
-            load_preparation_records(path, [first, second])
+        records = load_preparation_records(path, expected_count=2)
+
+        assert [record.item_id for record in records] == ["second", "first"]
+
+    def test_iterates_records_lazily(self, tmp_path):
+        first = prepare_dataset_item(_item("first"), _Extractor())
+        second = prepare_dataset_item(_item("second"), _Extractor())
+        path = tmp_path / "preparation.jsonl"
+        write_jsonl(path, [first.to_dict(), second.to_dict()])
+
+        records = iter_preparation_records(path)
+
+        assert next(records) == first
+        assert next(records) == second
+        with pytest.raises(StopIteration):
+            next(records)

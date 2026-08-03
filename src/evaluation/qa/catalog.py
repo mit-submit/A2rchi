@@ -311,7 +311,7 @@ class EvaluationCatalog:
         self.get_profile(profile_id)
         items = self.dataset_items(dataset_id)
         records = prepare_dataset_items(items, evaluator)
-        records_by_id = {record.item.id: record for record in records}
+        records_by_id = {record.item_id: record for record in records}
         draft_items = [
             _generated_draft_row(item, records_by_id[item.id])
             for item in items
@@ -417,7 +417,7 @@ class EvaluationCatalog:
             )
         selected_items = [items_by_id[item_id] for item_id in details["item_ids"]]
         records = prepare_dataset_items(selected_items, evaluator)
-        records_by_id = {record.item.id: record for record in records}
+        records_by_id = {record.item_id: record for record in records}
         replacements = {
             item.id: _generated_draft_row(item, records_by_id[item.id])
             for item in selected_items

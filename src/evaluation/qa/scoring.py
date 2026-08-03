@@ -35,7 +35,7 @@ def build_summary(
     item_lifecycle = Counter(record.status for record in preparation)
     attempt_lifecycle = Counter()
     prepared_by_id = {
-        record.item.id: record
+        record.item_id: record
         for record in preparation
         if record.status == "prepared"
     }

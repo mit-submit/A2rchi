@@ -61,7 +61,7 @@ def _strict_keys(value: Dict[str, Any], allowed: set, context: str) -> None:
         raise ValueError(f"{context} has unknown field(s): {', '.join(unknown)}")
 
 
-def _nonempty_string(
+def validate_nonempty_string(
     value: Any, context: str, *, normalize_newlines: bool = False
 ) -> str:
     if not isinstance(value, str) or not value.strip():
@@ -75,7 +75,7 @@ def _nonempty_string(
     return value
 
 
-def _optional_enum(value: Any, allowed: set, context: str) -> Optional[str]:
+def validate_optional_enum(value: Any, allowed: set, context: str) -> Optional[str]:
     if value is None:
         return None
     if not isinstance(value, str) or value not in allowed:
@@ -83,10 +83,10 @@ def _optional_enum(value: Any, allowed: set, context: str) -> Optional[str]:
     return value
 
 
-def _optional_nonempty_string(value: Any, context: str) -> Optional[str]:
+def validate_optional_nonempty_string(value: Any, context: str) -> Optional[str]:
     if value is None:
         return None
-    return _nonempty_string(value, context)
+    return validate_nonempty_string(value, context)
 
 
 def validate_atoms(
@@ -105,8 +105,8 @@ def validate_atoms(
         if not isinstance(raw, dict):
             raise ValueError(f"{atom_context} must be an object")
         _strict_keys(raw, {"id", "text", "required"}, atom_context)
-        atom_id = _nonempty_string(raw.get("id"), f"{atom_context}.id")
-        text = _nonempty_string(raw.get("text"), f"{atom_context}.text")
+        atom_id = validate_nonempty_string(raw.get("id"), f"{atom_context}.id")
+        text = validate_nonempty_string(raw.get("text"), f"{atom_context}.text")
         required = raw.get("required")
         if not isinstance(required, bool):
             raise ValueError(f"{atom_context}.required must be a boolean")
@@ -134,10 +134,10 @@ def _validate_dataset_row(raw: Any, *, index: int, seen_ids: Set[str]) -> Datase
     if not isinstance(raw, dict):
         raise ValueError(f"{context} must be an object")
     _strict_keys(raw, DATASET_FIELDS, context)
-    question = _nonempty_string(
+    question = validate_nonempty_string(
         raw.get("question"), f"{context}.question", normalize_newlines=True
     )
-    answer = _nonempty_string(
+    answer = validate_nonempty_string(
         raw.get("answer"),
         f"{context}.answer",
         normalize_newlines=True,
@@ -147,7 +147,7 @@ def _validate_dataset_row(raw: Any, *, index: int, seen_ids: Set[str]) -> Datase
         raise ValueError(f"{context}.time_sensitive must be a boolean")
     explicit_id = raw.get("id")
     item_id = (
-        _nonempty_string(explicit_id, f"{context}.id")
+        validate_nonempty_string(explicit_id, f"{context}.id")
         if explicit_id is not None
         else derive_item_id(question, answer)
     )
@@ -165,11 +165,13 @@ def _validate_dataset_row(raw: Any, *, index: int, seen_ids: Set[str]) -> Datase
         question=question,
         answer=answer,
         time_sensitive=time_sensitive,
-        category=_optional_nonempty_string(raw.get("category"), f"{context}.category"),
-        answer_mode=_optional_enum(
+        category=validate_optional_nonempty_string(
+            raw.get("category"), f"{context}.category"
+        ),
+        answer_mode=validate_optional_enum(
             raw.get("answer_mode"), ANSWER_MODE_VALUES, f"{context}.answer_mode"
         ),
-        answer_source=_optional_nonempty_string(
+        answer_source=validate_optional_nonempty_string(
             raw.get("answer_source"), f"{context}.answer_source"
         ),
         expected_atoms=expected_atoms,
@@ -321,7 +323,7 @@ def validate_judgments(
         if not isinstance(raw_judgment, dict):
             raise ValueError(f"{item_context} must be an object")
         _strict_keys(raw_judgment, allowed, item_context)
-        atom_id = _nonempty_string(
+        atom_id = validate_nonempty_string(
             raw_judgment.get("atom_id"), f"{item_context}.atom_id"
         )
         if atom_id not in gold_ids:
@@ -332,7 +334,7 @@ def validate_judgments(
         outcome = raw_judgment.get("outcome")
         if outcome not in OUTCOME_VALUES:
             raise ValueError(f"{item_context}.outcome must be a supported outcome")
-        rationale = _nonempty_string(
+        rationale = validate_nonempty_string(
             raw_judgment.get("rationale"), f"{item_context}.rationale"
         )
         judgments.append(

@@ -18,7 +18,6 @@ from .artifacts import (  # isort: skip
     sha256_file,
     utc_now,
     verify_hashes,
-    write_bytes,
     write_json,
     write_jsonl,
     write_text,
@@ -44,7 +43,6 @@ from .scoring import build_summary, render_report, score_attempt
 from .validation import (  # isort: skip
     dataset_source_format,
     iter_dataset_items,
-    load_dataset,
     validate_judgments,
 )
 
@@ -111,9 +109,10 @@ class QAWorkflow:
     def _load_preparation(
         run_dir: Path, manifest: Dict[str, Any]
     ) -> List[PreparationRecord]:
-        snapshot = manifest["input"]["snapshot"]
-        _dataset_format, items, _dataset_bytes = load_dataset(run_dir / snapshot)
-        return load_preparation_records(run_dir / "preparation.jsonl", items)
+        return load_preparation_records(
+            run_dir / "preparation.jsonl",
+            expected_count=manifest["phases"]["prepare"]["input_items"],
+        )
 
     @staticmethod
     def _attempt_base(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -139,7 +138,7 @@ class QAWorkflow:
         try:
             judgments = validate_judgments(
                 evaluator.compare(
-                    prepared.item.question, gold_atoms, answer_row["answer"]
+                    prepared.prepared_question, gold_atoms, answer_row["answer"]
                 ),
                 gold_atoms=gold_atoms,
                 context=f"comparison for attempt {answer_row['attempt_id']}",
@@ -200,9 +199,9 @@ class QAWorkflow:
         self._require_positive_attempts(attempts)
         expected_identities = {
             (
-                prepared.item.id,
+                prepared.item_id,
                 ordinal,
-                f"{prepared.item.id}-attempt-{ordinal}",
+                f"{prepared.item_id}-attempt-{ordinal}",
             )
             for prepared in prepared_records
             for ordinal in range(1, attempts + 1)
@@ -422,9 +421,9 @@ class QAWorkflow:
             for prepared in prepared_records:
                 for ordinal in range(1, attempts + 1):
                     attempt_slots += 1
-                    attempt_id = f"{prepared.item.id}-attempt-{ordinal}"
+                    attempt_id = f"{prepared.item_id}-attempt-{ordinal}"
                     base = {
-                        "item_id": prepared.item.id,
+                        "item_id": prepared.item_id,
                         "attempt_id": attempt_id,
                         "ordinal": ordinal,
                         "agent_config_sha256": config_hash,
@@ -432,7 +431,7 @@ class QAWorkflow:
                     }
                     attempt_started_at = perf_counter()
                     try:
-                        answer = runtime.run(prepared.item.question)
+                        answer = runtime.run(prepared.prepared_question)
                     except Exception as exc:
                         duration_ms = self._duration_ms(attempt_started_at)
                         error = {"type": type(exc).__name__, "message": str(exc)}
@@ -536,9 +535,9 @@ class QAWorkflow:
             )
         expected_identities = {
             (
-                prepared.item.id,
+                prepared.item_id,
                 ordinal,
-                f"{prepared.item.id}-attempt-{ordinal}",
+                f"{prepared.item_id}-attempt-{ordinal}",
             )
             for prepared in prepared_records
             for ordinal in range(1, manifest["attempts"] + 1)
@@ -556,7 +555,7 @@ class QAWorkflow:
             manifest["phases"].pop("score", None)
             for name in SCORE_FILES:
                 manifest["artifacts"].pop(name, None)
-        prepared_by_id = {record.item.id: record for record in prepared_records}
+        prepared_by_id = {record.item_id: record for record in prepared_records}
         started_at = utc_now()
         with AtomicJsonlWriter(run_dir / "evaluation_results.jsonl") as result_writer:
             for answer_row in iter_jsonl(run_dir / "answers.jsonl"):
@@ -618,7 +617,7 @@ class QAWorkflow:
         retry_ids = set(plan["retry_attempt_ids"])
         execution_ids = set(plan["execution_attempt_ids"])
         prepared_by_id = {
-            record.item.id: record
+            record.item_id: record
             for record in preparation
             if record.status == "prepared"
         }
@@ -640,7 +639,7 @@ class QAWorkflow:
             "agent_spec.resolved.md",
         }
         for name in copied_artifacts:
-            write_bytes(output_dir / name, (parent_run_dir / name).read_bytes())
+            copy_file_atomic(parent_run_dir / name, output_dir / name)
         manifest = {
             "schema_version": parent_manifest["schema_version"],
             "run_id": str(uuid.uuid4()),
@@ -681,7 +680,7 @@ class QAWorkflow:
             prepared = prepared_by_id[parent_result["item_id"]]
             attempt_started_at = perf_counter()
             try:
-                answer = runtime.run(prepared.item.question)
+                answer = runtime.run(prepared.prepared_question)
             except Exception as exc:
                 successor_answers.append(
                     {

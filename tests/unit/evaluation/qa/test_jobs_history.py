@@ -5,6 +5,7 @@ import uuid
 import pytest
 
 import src.evaluation.qa.console as console_module
+import src.evaluation.qa.history as history_module
 from src.evaluation.qa.artifacts import (artifact_hashes, read_json,
                                          write_json, write_jsonl)
 from src.evaluation.qa.console import EvaluationConsoleService
@@ -28,7 +29,7 @@ class _RetryWorkflow:
             "input": {"snapshot": "input.snapshot.json"},
             "attempts": 1,
             "phases": {
-                "prepare": {"status": "completed"},
+                "prepare": {"status": "completed", "input_items": 1},
                 "run": {"status": "completed"},
                 "score": {"status": "completed"},
             },
@@ -214,7 +215,7 @@ def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
                 | {"summary.json", "report.md", "console_metadata.json"},
             ),
             "phases": {
-                "prepare": {"status": "completed"},
+                "prepare": {"status": "completed", "input_items": 1},
                 "run": {"status": "completed"},
                 "score": {
                     "status": "completed",
@@ -240,7 +241,9 @@ def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
     assert "unsupported run schema" in invalid_row["error"]
 
 
-def test_history_derives_prepared_items_from_canonical_preparation(tmp_path):
+def test_history_derives_prepared_items_from_canonical_preparation(
+    monkeypatch, tmp_path
+):
     run = tmp_path / "run"
     run.mkdir()
     write_json(
@@ -282,11 +285,21 @@ def test_history_derives_prepared_items_from_canonical_preparation(tmp_path):
             "artifacts": artifact_hashes(
                 run, {"input.snapshot.json", "preparation.jsonl"}
             ),
-            "phases": {"prepare": {"status": "completed"}},
+            "phases": {
+                "prepare": {"status": "completed", "input_items": 1}
+            },
         },
     )
     history = EvaluationHistory(tmp_path)
     history_id = history.id_for_path(run)
+    monkeypatch.setattr(
+        history_module,
+        "load_dataset",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("history must consume preparation.jsonl directly")
+        ),
+        raising=False,
+    )
 
     payload = history.get_run(history_id)
 
@@ -309,7 +322,7 @@ def test_history_rejects_tampered_declared_artifacts(tmp_path):
             "attempts": 1,
             "input": {"snapshot": "input.snapshot.json"},
             "phases": {
-                "prepare": {"status": "completed"},
+                "prepare": {"status": "completed", "input_items": 1},
                 "run": {"status": "completed"},
                 "score": {"status": "completed"},
             },
@@ -361,7 +374,7 @@ def test_console_retry_keeps_root_name_across_retry_generations(tmp_path):
                 | {"summary.json", "report.md", "console_metadata.json"},
             ),
             "phases": {
-                "prepare": {"status": "completed"},
+                "prepare": {"status": "completed", "input_items": 1},
                 "run": {"status": "completed"},
                 "score": {"status": "completed"},
             },
@@ -405,7 +418,7 @@ def test_console_retry_without_failures_creates_no_job_or_successor(tmp_path):
                 parent, preparation_artifacts | {"summary.json", "report.md"}
             ),
             "phases": {
-                "prepare": {"status": "completed"},
+                "prepare": {"status": "completed", "input_items": 1},
                 "run": {"status": "completed"},
                 "score": {"status": "completed"},
             },
@@ -436,7 +449,7 @@ def test_history_rejects_missing_declared_artifact(tmp_path):
             "attempts": 1,
             "input": {"snapshot": "input.snapshot.json"},
             "phases": {
-                "prepare": {"status": "completed"},
+                "prepare": {"status": "completed", "input_items": 1},
                 "run": {"status": "completed"},
                 "score": {"status": "completed"},
             },

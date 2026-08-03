@@ -1,6 +1,6 @@
 from src.evaluation.qa.preparation import PreparationRecord
 from src.evaluation.qa.scoring import build_summary, score_attempt
-from src.evaluation.qa.validation import Atom, DatasetItem, Judgment
+from src.evaluation.qa.validation import Atom, Judgment
 
 
 def _judgment(atom_id, outcome):
@@ -53,17 +53,11 @@ class TestSummaryScoring:
         gold = Atom(id="g1", text="gold", required=True)
         preparation = [
             PreparationRecord(
-                item=DatasetItem(
-                    id="item",
-                    question="question",
-                    answer="answer",
-                    time_sensitive=False,
-                    category=None,
-                    answer_mode=None,
-                    answer_source=None,
-                    expected_atoms=None,
-                ),
+                item_id="item",
                 status="prepared",
+                question="question",
+                answer="answer",
+                time_sensitive=False,
                 gold_atoms=(gold,),
                 atom_source="inferred",
             )

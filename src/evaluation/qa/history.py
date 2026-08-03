@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Tuple
 from .artifacts import read_json, read_jsonl, verify_hashes
 from .constants import SCHEMA_VERSION
 from .preparation import load_preparation_records
-from .validation import load_dataset
 
 
 def _history_id(path: Path) -> str:
@@ -214,8 +213,10 @@ class EvaluationHistory:
             "metadata": metadata,
         }
         preparation_path = path / "preparation.jsonl"
-        _dataset_format, items, _dataset_bytes = load_dataset(path / snapshot)
-        preparation = load_preparation_records(preparation_path, items)
+        preparation = load_preparation_records(
+            preparation_path,
+            expected_count=manifest["phases"]["prepare"]["input_items"],
+        )
         payload["preparation"] = [record.to_dict() for record in preparation]
         payload["prepared_items"] = [
             record.to_dict()
