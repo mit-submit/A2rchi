@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from .artifacts import (  # isort: skip
     AtomicJsonlWriter,
@@ -114,6 +114,51 @@ class QAWorkflow:
             run_dir / "preparation.jsonl",
             expected_count=manifest["phases"]["prepare"]["input_items"],
         )
+
+    @staticmethod
+    def _iter_answer_pairs(
+        run_dir: Path, manifest: Dict[str, Any]
+    ) -> Iterator[Tuple[PreparationRecord, Dict[str, Any]]]:
+        answers = iter_jsonl(run_dir / "answers.jsonl")
+        allowed_statuses = {"answer_ready", "execution_failed"}
+        for prepared in iter_preparation_records(
+            run_dir / "preparation.jsonl",
+            expected_count=manifest["phases"]["prepare"]["input_items"],
+        ):
+            if prepared.status != "prepared":
+                continue
+            for ordinal in range(1, manifest["attempts"] + 1):
+                try:
+                    answer = next(answers)
+                except StopIteration:
+                    raise ValueError(
+                        "run contains fewer terminal slots than the prepared workspace"
+                    ) from None
+                if answer.get("status") not in allowed_statuses:
+                    raise ValueError(
+                        "run contains a non-terminal or unsupported attempt status"
+                    )
+                expected_identity = (
+                    prepared.item_id,
+                    ordinal,
+                    f"{prepared.item_id}-attempt-{ordinal}",
+                )
+                actual_identity = (
+                    answer.get("item_id"),
+                    answer.get("ordinal"),
+                    answer.get("attempt_id"),
+                )
+                if actual_identity != expected_identity:
+                    raise ValueError(
+                        "run attempt slot identities do not match the prepared workspace"
+                    )
+                yield prepared, answer
+
+        try:
+            next(answers)
+        except StopIteration:
+            return
+        raise ValueError("run contains more terminal slots than the prepared workspace")
 
     @staticmethod
     def _attempt_base(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -520,56 +565,19 @@ class QAWorkflow:
                     "supplied evaluator profile does not match the prepared profile"
                 )
         profile = stored_profile
-        preparation = self._load_preparation(run_dir, manifest)
-        prepared_records = [
-            record for record in preparation if record.status == "prepared"
-        ]
-        expected_slots = len(prepared_records) * manifest["attempts"]
-        answer_count = 0
-        actual_identities = set()
         has_answer_ready = False
-        allowed_statuses = {"answer_ready", "execution_failed"}
-        for row in iter_jsonl(run_dir / "answers.jsonl"):
-            answer_count += 1
-            if row.get("status") not in allowed_statuses:
-                raise ValueError(
-                    "run contains a non-terminal or unsupported attempt status"
-                )
-            if row["status"] == "answer_ready":
+        for _prepared, answer in self._iter_answer_pairs(run_dir, manifest):
+            if answer["status"] == "answer_ready":
                 has_answer_ready = True
-            actual_identities.add(
-                (row.get("item_id"), row.get("ordinal"), row.get("attempt_id"))
-            )
-        if answer_count != expected_slots:
-            raise ValueError(
-                f"run has {answer_count} terminal slots; expected exactly {expected_slots}"
-            )
-        expected_identities = {
-            (
-                prepared.item_id,
-                ordinal,
-                f"{prepared.item_id}-attempt-{ordinal}",
-            )
-            for prepared in prepared_records
-            for ordinal in range(1, manifest["attempts"] + 1)
-        }
-        if (
-            actual_identities != expected_identities
-            or len(actual_identities) != answer_count
-        ):
-            raise ValueError(
-                "run attempt slot identities do not match the prepared workspace"
-            )
         evaluator = LangChainEvaluatorRuntime(profile) if has_answer_ready else None
         if overwrite:
             self._remove_owned(run_dir, SCORE_FILES)
             manifest["phases"].pop("score", None)
             for name in SCORE_FILES:
                 manifest["artifacts"].pop(name, None)
-        prepared_by_id = {record.item_id: record for record in prepared_records}
         started_at = utc_now()
         with AtomicJsonlWriter(run_dir / "evaluation_results.jsonl") as result_writer:
-            for answer_row in iter_jsonl(run_dir / "answers.jsonl"):
+            for prepared, answer_row in self._iter_answer_pairs(run_dir, manifest):
                 base = self._attempt_base(answer_row)
                 if answer_row["status"] == "execution_failed":
                     result_writer.write(
@@ -580,10 +588,10 @@ class QAWorkflow:
                         }
                     )
                     continue
-                prepared = prepared_by_id[answer_row["item_id"]]
                 assert evaluator is not None
                 result_writer.write(self._score_answer(answer_row, prepared, evaluator))
 
+        preparation = self._load_preparation(run_dir, manifest)
         summary = build_summary(
             preparation,
             iter_jsonl(run_dir / "evaluation_results.jsonl"),

@@ -460,6 +460,99 @@ def test_score_does_not_initialize_evaluator_when_all_executions_failed(
     )
 
 
+def test_score_validates_then_evaluates_answer_pairs_one_at_a_time(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "dataset.json"
+    _dataset(dataset)
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow()
+    workflow.prepare(dataset, run_dir)
+    workflow.run(
+        run_dir,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        attempts=2,
+    )
+    evaluator = _EvaluatorFactory()
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
+    real_pairs = workflow._iter_answer_pairs
+    real_load_preparation = workflow._load_preparation
+    state = {"iterations": 0, "second_pass_yields": 0}
+
+    def guarded_pairs(pair_run_dir, manifest):
+        state["iterations"] += 1
+        iteration = state["iterations"]
+        for prepared, answer in real_pairs(pair_run_dir, manifest):
+            if iteration == 1:
+                assert evaluator.calls["compare"] == 0
+            else:
+                assert evaluator.calls["compare"] == state["second_pass_yields"]
+                state["second_pass_yields"] += 1
+            yield prepared, answer
+
+    def guarded_load_preparation(load_run_dir, manifest):
+        assert evaluator.calls["compare"] == 4
+        return real_load_preparation(load_run_dir, manifest)
+
+    monkeypatch.setattr(workflow, "_iter_answer_pairs", guarded_pairs)
+    monkeypatch.setattr(workflow, "_load_preparation", guarded_load_preparation)
+
+    workflow.score(run_dir)
+
+    assert state == {"iterations": 2, "second_pass_yields": 4}
+    assert evaluator.calls == Counter({"compare": 4})
+    assert len(read_jsonl(run_dir / "evaluation_results.jsonl")) == 4
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing", "fewer terminal slots"),
+        ("extra", "more terminal slots"),
+        ("reordered", "attempt slot identities"),
+    ],
+)
+def test_score_rejects_invalid_answer_sequence_before_evaluator_calls(
+    mutation, message, agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "dataset.json"
+    _dataset(dataset)
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow()
+    workflow.prepare(dataset, run_dir)
+    workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
+    answers_path = run_dir / "answers.jsonl"
+    answers = read_jsonl(answers_path)
+    if mutation == "missing":
+        answers.pop()
+    elif mutation == "extra":
+        answers.append(dict(answers[-1]))
+    else:
+        answers.reverse()
+    answers_path.write_text(
+        "".join(json.dumps(answer) + "\n" for answer in answers),
+        encoding="utf-8",
+    )
+    manifest = read_json(run_dir / "manifest.json")
+    manifest["artifacts"]["answers.jsonl"] = workflow_module.sha256_file(answers_path)
+    workflow_module.write_json(run_dir / "manifest.json", manifest)
+
+    def unexpected_evaluator(profile):
+        raise AssertionError("invalid answer sequences must fail before evaluation")
+
+    monkeypatch.setattr(
+        workflow_module,
+        "LangChainEvaluatorRuntime",
+        unexpected_evaluator,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        workflow.score(run_dir)
+
+    assert not (run_dir / "evaluation_results.jsonl").exists()
+
+
 def test_score_model_initialization_failure_aborts_phase(
     agent_inputs, monkeypatch, tmp_path
 ):
