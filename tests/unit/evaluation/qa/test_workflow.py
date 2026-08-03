@@ -569,6 +569,8 @@ def test_run_persists_agent_duration_for_success_and_failure(
                 "ordinal": 1,
                 "name": "search",
                 "status": "success",
+                "query": '{"query": "complete"}',
+                "response": '{"matches": ["answer"]}',
                 "duration_ms": 75,
             }
         ],
@@ -587,6 +589,8 @@ def test_run_persists_agent_duration_for_success_and_failure(
             "ordinal": 1,
             "name": "search",
             "status": "success",
+            "query": '{"query": "complete"}',
+            "response": '{"matches": ["answer"]}',
             "duration_ms": 75,
         }
     ]
@@ -1344,6 +1348,8 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
                 "ordinal": 1,
                 "name": "parent-tool",
                 "status": "success",
+                "query": "parent query",
+                "response": "parent response",
                 "duration_ms": 25,
             }
         ],
@@ -1378,6 +1384,8 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
                 "ordinal": 1,
                 "name": "retry-tool",
                 "status": "success",
+                "query": "retry query",
+                "response": "retry response",
                 "duration_ms": 40,
             }
         ]
@@ -1460,6 +1468,8 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
             "ordinal": 1,
             "name": "retry-tool",
             "status": "success",
+            "query": "retry query",
+            "response": "retry response",
             "duration_ms": 40,
         }
     ]

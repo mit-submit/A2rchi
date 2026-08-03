@@ -453,8 +453,11 @@ pipeline while every attempt still receives fresh invocation state. When all
 attempt slots are terminal, the manifest becomes
 `run_completed`. Each terminal answer row also records non-negative
 `duration_ms` measured only around the tested-agent execution. Its
-`tool_calls` array records each observed tool's ordinal, name, success/error
-status, and duration without storing tool arguments or outputs.
+`tool_calls` array records each observed tool's ordinal, name, success, error,
+or incomplete status, complete query, complete response or error when observed,
+and duration when available. Content is stored without truncation. A call that
+starts without a matching terminal callback remains visible as `incomplete` and
+omits unavailable response and duration fields.
 
 ### 3. Score
 
@@ -610,10 +613,29 @@ reports the raw sum of tool-call durations. If concurrent calls make that sum
 greater than total wall-clock latency, the colored tool segment is capped at the
 full bar and remaining agent time is shown as zero.
 
+If any recorded call lacks an authoritative duration, the chart still shows the
+sum of calls that were timed but labels the remaining attempt time as
+unattributed. It does not misclassify untimed tool execution as other agent
+work.
+
 Historical runs without per-attempt timings show an explicit unavailable state.
 Historical attempts that have total latency but predate tool timings show the
 total and mark the tool portion unavailable. The console does not infer latency
 from phase timestamps.
+
+### Inspect per-attempt tool calls
+
+Expand a question, then expand one of its attempts. The nested **Tool calls**
+section lists every recorded call in execution order. Expand an individual call
+to read its complete query and response or error. JSON-shaped content is
+pretty-printed, long content remains readable, and duration appears only when
+the artifact contains an authoritative `duration_ms` value.
+
+An attempt with no recorded calls says so explicitly. Historical timing-only
+calls remain listed with their available name, status, and duration, while the
+console states that their query and response details were not captured. Run
+detail returns the selected run's complete trace without truncation or
+pagination.
 
 ## Understand states
 
@@ -684,7 +706,7 @@ disk but are reported as unsupported by current run and history readers.
 | `preparation.jsonl`                 | Prepare               | One terminal record per input item, containing either runnable normalized data and fixed atoms, a skip, or a preparation failure |
 | `agent_config.resolved.yaml`        | Run                   | Exact tested Archi config                                                                       |
 | `agent_spec.resolved.md`            | Run                   | Exact tested agent spec and prompt                                                              |
-| `answers.jsonl`                     | Run                   | One terminal `answer_ready` or `execution_failed` row per attempt slot, including tested-agent `duration_ms` and timing-only tool-call records |
+| `answers.jsonl`                     | Run                   | One terminal `answer_ready` or `execution_failed` row per attempt slot, including tested-agent `duration_ms` and complete ordered tool-call query/response/error records with optional duration |
 | `evaluation_results.jsonl`          | Score                 | Answers, atom judgments, rationales, metrics, or terminal failures                              |
 | `summary.json`                      | Score                 | Machine-readable aggregate and per-item metrics plus provenance hashes                          |
 | `report.md`                         | Score                 | Human-readable result summary                                                                   |
@@ -694,8 +716,8 @@ disk but are reported as unsupported by current run and history readers.
 The workspace is the reproducibility record. Keep it intact when comparing
 runs, and archive it with any external version identifiers you need. The
 current artifacts record tested-agent and tool-call latency but do not record
-tool arguments or outputs, source-control commits, release gates, token usage,
-or full agent traces.
+source-control commits, release gates, token usage, model prompts, evaluator
+prompts, or reasoning traces. Tool queries and responses are complete.
 
 ## Rerunning and integrity protection
 

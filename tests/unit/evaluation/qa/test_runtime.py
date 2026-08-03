@@ -165,7 +165,7 @@ class _Output:
         self.answer = answer
 
 
-def test_tool_timing_callback_records_success_and_error(monkeypatch):
+def test_tool_timing_callback_records_complete_success_and_error(monkeypatch):
     from uuid import UUID
 
     clock = {"now": 10.0}
@@ -174,27 +174,71 @@ def test_tool_timing_callback_records_success_and_error(monkeypatch):
     first_run = UUID("00000000-0000-0000-0000-000000000001")
     second_run = UUID("00000000-0000-0000-0000-000000000002")
 
-    callback.on_tool_start({"name": "search"}, "query", run_id=first_run)
+    callback.on_tool_start(
+        {"name": "search"},
+        "{'query': 'fallback'}",
+        run_id=first_run,
+        inputs={"query": "complete query"},
+    )
     clock["now"] = 10.125
-    callback.on_tool_end("result", run_id=first_run)
+    callback.on_tool_end({"matches": ["first", "second"]}, run_id=first_run)
     callback.on_tool_start({"name": "lookup"}, "id", run_id=second_run)
     clock["now"] = 10.5
     callback.on_tool_error(RuntimeError("failed"), run_id=second_run)
 
-    assert callback.timings == [
+    assert callback.traces == [
         {
             "ordinal": 1,
             "name": "search",
             "status": "success",
+            "query": '{"query": "complete query"}',
+            "response": '{"matches": ["first", "second"]}',
             "duration_ms": 125,
         },
         {
             "ordinal": 2,
             "name": "lookup",
             "status": "error",
+            "query": "id",
+            "error": "failed",
             "duration_ms": 375,
         },
     ]
+
+
+def test_tool_timing_callback_retains_unfinished_call_without_invented_fields():
+    from uuid import UUID
+
+    callback = ToolTimingCallback()
+    callback.on_tool_start(
+        {"name": "slow-search"},
+        "complete untruncated query",
+        run_id=UUID("00000000-0000-0000-0000-000000000004"),
+    )
+
+    assert callback.traces == [
+        {
+            "ordinal": 1,
+            "name": "slow-search",
+            "status": "incomplete",
+            "query": "complete untruncated query",
+        }
+    ]
+
+
+def test_tool_timing_callback_does_not_truncate_query_or_response():
+    from uuid import UUID
+
+    callback = ToolTimingCallback()
+    query = "query-" + ("q" * 20_000)
+    response = "response-" + ("r" * 20_000)
+    run_id = UUID("00000000-0000-0000-0000-000000000005")
+
+    callback.on_tool_start({"name": "complete"}, query, run_id=run_id)
+    callback.on_tool_end(response, run_id=run_id)
+
+    assert callback.traces[0]["query"] == query
+    assert callback.traces[0]["response"] == response
 
 
 def test_tool_timing_callback_integrates_with_langchain_tool():
@@ -208,11 +252,13 @@ def test_tool_timing_callback_integrates_with_langchain_tool():
     callback = ToolTimingCallback()
 
     assert double.invoke({"value": 4}, config={"callbacks": [callback]}) == 8
-    assert callback.timings[0]["ordinal"] == 1
-    assert callback.timings[0]["name"] == "double"
-    assert callback.timings[0]["status"] == "success"
-    assert isinstance(callback.timings[0]["duration_ms"], int)
-    assert callback.timings[0]["duration_ms"] >= 0
+    assert callback.traces[0]["ordinal"] == 1
+    assert callback.traces[0]["name"] == "double"
+    assert callback.traces[0]["status"] == "success"
+    assert callback.traces[0]["query"] == '{"value": 4}'
+    assert callback.traces[0]["response"] == "8"
+    assert isinstance(callback.traces[0]["duration_ms"], int)
+    assert callback.traces[0]["duration_ms"] >= 0
 
 
 def _config():
@@ -387,6 +433,8 @@ def test_archi_runtime_collects_tool_timings(monkeypatch):
             "ordinal": 1,
             "name": "search",
             "status": "success",
+            "query": "query",
+            "response": "result",
             "duration_ms": 125,
         }
     ]

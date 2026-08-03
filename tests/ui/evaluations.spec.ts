@@ -217,6 +217,7 @@ test.describe("QA evaluation console", () => {
   test("groups result evidence by question with readable scores, answers, and atom judgments", async ({ page }) => {
     const historyId = "human-readable-results";
     const question = "How does Archi preserve evidence across evaluation attempts?";
+    const longToolResponse = `Complete response: ${"evidence ".repeat(300)}`;
     const atoms = [
       { id: "A1", text: "The run stores immutable input snapshots.", required: true },
       { id: "A2", text: "Each attempt retains its full model answer.", required: true },
@@ -312,8 +313,28 @@ test.describe("QA evaluation console", () => {
                 ordinal: 2,
                 duration_ms: 2800,
                 tool_calls: [
-                  { ordinal: 1, name: "search", status: "success", duration_ms: 1900 },
-                  { ordinal: 2, name: "lookup", status: "error", duration_ms: 1400 },
+                  {
+                    ordinal: 1,
+                    name: "search",
+                    status: "success",
+                    query: '{"query":"immutable evaluation evidence","record_id":9007199254740993,"duplicate":"first","duplicate":"second"}',
+                    response: JSON.stringify({ matches: ["snapshot", longToolResponse] }),
+                    duration_ms: 1900,
+                  },
+                  {
+                    ordinal: 2,
+                    name: "lookup",
+                    status: "error",
+                    query: "missing-record",
+                    error: '<img src=x onerror="window.traceInjected=true">Lookup failed',
+                    duration_ms: 400,
+                  },
+                  {
+                    ordinal: 3,
+                    name: "unfinished_fetch",
+                    status: "incomplete",
+                    query: '{"cursor":"next"}',
+                  },
                 ],
                 answer: "Archi stores snapshots but discards detailed atom judgments.",
               },
@@ -366,12 +387,17 @@ test.describe("QA evaluation console", () => {
 
     await attemptSelector.selectOption("q-human-attempt-2");
     await expect(latencyItem.locator(".latency-total-value")).toHaveText("2.80 s total");
-    await expect(latencyItem.locator(".latency-tool-value")).toHaveText("3.30 s tools");
-    await expect(latencyItem.locator(".latency-other-value")).toHaveText("0 ms other agent time");
+    await expect(latencyItem.locator(".latency-tool-value")).toHaveText("2.30 s timed tools");
+    await expect(latencyItem.locator(".latency-other-value")).toHaveText("Remaining time unattributed");
+    await expect(latencyItem.locator(".latency-tool-count")).toHaveText("2 timed of 3 tool calls");
     await expect(latencyBar).toHaveAttribute("style", /height:\s*100(\.00)?%/);
     await expect(latencyItem.locator(".latency-tool-segment")).toHaveAttribute(
       "style",
-      /height:\s*100(\.00)?%/,
+      /height:\s*82\.14%/,
+    );
+    await expect(latencyItem.locator(".latency-unknown-segment")).toHaveAttribute(
+      "style",
+      /height:\s*17\.86%/,
     );
     await expect(page.locator("#run-detail-content > :first-child")).toHaveClass(/latency-panel/);
     await expect(page.getByText("Atoms recall", { exact: true })).toBeVisible();
@@ -417,11 +443,85 @@ test.describe("QA evaluation console", () => {
     await expect(attempts.nth(1).locator(":scope > summary")).toContainText("Attempt 2");
     await expect(attempts.nth(1).locator(":scope > summary")).toContainText("25.0%");
 
+    await attempts.nth(0).locator(":scope > summary").click();
+    const historicalTools = attempts.nth(0).locator(".tool-call-disclosure");
+    await historicalTools.locator(":scope > summary").click();
+    const historicalCall = historicalTools.locator(".tool-call-detail").first();
+    await historicalCall.locator(":scope > summary").click();
+    await expect(historicalCall.locator(".tool-call-duration")).toHaveText("200 ms");
+    await expect(historicalCall).toContainText(
+      "Query and response details were not captured for this historical call.",
+    );
+
     await attempts.nth(1).locator(":scope > summary").click();
     const answer = attempts.nth(1).locator(".model-answer");
     await expect(answer).toHaveAttribute("open", "");
     await expect(answer.locator(".evidence-copy")).toContainText(
       "discards detailed atom judgments",
+    );
+
+    const toolDisclosure = attempts.nth(1).locator(".tool-call-disclosure");
+    await expect(toolDisclosure.locator(":scope > summary")).toContainText("3 calls");
+    await toolDisclosure.locator(":scope > summary").focus();
+    expect(await toolDisclosure.locator(":scope > summary").evaluate(
+      (summary) => getComputedStyle(summary).boxShadow,
+    )).toContain("rgb(8, 113, 83)");
+    await page.keyboard.press("Enter");
+    await expect(toolDisclosure).toHaveAttribute("open", "");
+    const toolCalls = toolDisclosure.locator(".tool-call-detail");
+    await expect(toolCalls).toHaveCount(3);
+
+    await expect(toolCalls.nth(0).locator("pre")).toHaveCount(0);
+    await toolCalls.nth(0).locator(":scope > summary").focus();
+    expect(await toolCalls.nth(0).locator(":scope > summary").evaluate(
+      (summary) => getComputedStyle(summary).boxShadow,
+    )).toContain("rgb(8, 113, 83)");
+    await page.keyboard.press("Enter");
+    await expect(toolCalls.nth(0)).toHaveAttribute("open", "");
+    await expect(toolCalls.nth(0).locator(".tool-call-duration")).toHaveText("1900 ms");
+    await expect(toolCalls.nth(0).getByText("Query", { exact: true })).toBeVisible();
+    await expect(toolCalls.nth(0).locator("pre").first()).toContainText(
+      '"query": "immutable evaluation evidence"',
+    );
+    await expect(toolCalls.nth(0).locator("pre").first()).toContainText(
+      '"record_id": 9007199254740993',
+    );
+    await expect(toolCalls.nth(0).locator("pre").first()).toContainText(
+      '"duplicate": "first"',
+    );
+    await expect(toolCalls.nth(0).locator("pre").first()).toContainText(
+      '"duplicate": "second"',
+    );
+    const responseText = await toolCalls.nth(0).locator("pre").nth(1).textContent();
+    expect(responseText).toContain(longToolResponse);
+    const responsePre = toolCalls.nth(0).locator("pre").nth(1);
+    await expect(responsePre).toHaveAttribute("tabindex", "0");
+    const responseLabelId = await responsePre.getAttribute("aria-labelledby");
+    expect(responseLabelId).toBeTruthy();
+    await expect(page.locator(`#${responseLabelId}`)).toHaveText("Response");
+    const responseLayout = await toolCalls.nth(0).locator("pre").nth(1).evaluate((pre) => ({
+      clientHeight: pre.clientHeight,
+      scrollHeight: pre.scrollHeight,
+      overflowY: getComputedStyle(pre).overflowY,
+    }));
+    expect(responseLayout.overflowY).toBe("auto");
+    expect(responseLayout.scrollHeight).toBeGreaterThan(responseLayout.clientHeight);
+    await responsePre.focus();
+    await page.keyboard.press("PageDown");
+    await expect.poll(() => responsePre.evaluate((pre) => pre.scrollTop)).toBeGreaterThan(0);
+
+    await toolCalls.nth(1).locator(":scope > summary").click();
+    await expect(toolCalls.nth(1).getByText("Error", { exact: true })).toBeVisible();
+    await expect(toolCalls.nth(1).locator("pre").nth(1)).toContainText(
+      '<img src=x onerror="window.traceInjected=true">Lookup failed',
+    );
+    await expect(toolCalls.nth(1).locator("img")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as Window & { traceInjected?: boolean }).traceInjected)).toBeUndefined();
+
+    await toolCalls.nth(2).locator(":scope > summary").click();
+    await expect(toolCalls.nth(2).locator(".tool-call-duration")).toHaveCount(0);
+    await expect(toolCalls.nth(2)).toContainText(
+      "No tool response was captured for this incomplete call.",
     );
 
     const judgments = attempts.nth(1).locator(".atom-judgment");
@@ -447,6 +547,112 @@ test.describe("QA evaluation console", () => {
     expect(tooltipBounds).not.toBeNull();
     expect(tooltipBounds!.x).toBeGreaterThanOrEqual(0);
     expect(tooltipBounds!.x + tooltipBounds!.width).toBeLessThanOrEqual(390);
+  });
+
+  test("shows answer-owned tool evidence before a run is scored", async ({ page }) => {
+    const historyId = "run-completed-tools";
+    await page.route(`**/api/evaluations/runs/${historyId}`, async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          run: {
+            manifest: {
+              run_id: "run-completed",
+              schema_version: "qa-v1",
+              status: "run_completed",
+            },
+            metadata: {
+              name: "Unscored tool run",
+              dataset_name: "Pending score dataset",
+              agent_spec: "qa-agent.md",
+            },
+            prepared_items: [{
+              item_id: "pending-question",
+              question: "What evidence was gathered?",
+              gold_atoms: [{ id: "A1", text: "Evidence", required: true }],
+            }],
+            answers: [{
+              item_id: "pending-question",
+              attempt_id: "pending-question-attempt-1",
+              ordinal: 1,
+              status: "answer_ready",
+              duration_ms: 20,
+              answer: "The evidence was gathered.",
+              tool_calls: [{
+                ordinal: 1,
+                name: "search",
+                status: "success",
+                query: '{"query":"evidence"}',
+                response: '{"matches":["evidence"]}',
+                duration_ms: 7,
+              }],
+            }, {
+              item_id: "pending-question",
+              attempt_id: "pending-question-attempt-2",
+              ordinal: 2,
+              status: "answer_ready",
+              duration_ms: 30,
+              answer: "The unfinished lookup produced no terminal result.",
+              tool_calls: [{
+                ordinal: 1,
+                name: "unfinished_lookup",
+                status: "incomplete",
+                query: '{"cursor":"next"}',
+              }],
+            }],
+            evaluation_results: [],
+            report_available: false,
+          },
+        }),
+      });
+    });
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          runs: [{
+            id: historyId,
+            valid: true,
+            name: "Unscored tool run",
+            status: "run_completed",
+            attempts: 2,
+          }],
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+    await page.locator(`[data-run-id="${historyId}"]`).click();
+    const latencyItem = page.locator(".latency-item");
+    await latencyItem.getByLabel("Attempt for pending-question").selectOption(
+      "pending-question-attempt-2",
+    );
+    await expect(latencyItem.locator(".latency-tool-value")).toHaveText(
+      "Tool timing unavailable",
+    );
+    await expect(latencyItem.locator(".latency-other-value")).toHaveText(
+      "Remaining time unattributed",
+    );
+    await expect(latencyItem.locator(".latency-tool-count")).toHaveText(
+      "0 timed of 1 tool call",
+    );
+    await expect(latencyItem.locator(".latency-unknown-segment")).toHaveAttribute(
+      "style",
+      /height:\s*100(\.00)?%/,
+    );
+    const question = page.locator(".question-result");
+    await expect(question.locator(":scope > summary")).toContainText("No scored attempts");
+    await question.locator(":scope > summary").click();
+    const attempt = question.locator(".attempt-result").first();
+    await expect(attempt.locator(":scope > summary")).toContainText("answer_ready");
+    await expect(attempt.locator(":scope > summary")).toContainText("Not scored");
+    await attempt.locator(":scope > summary").click();
+    const tools = attempt.locator(".tool-call-disclosure");
+    await tools.locator(":scope > summary").click();
+    const call = tools.locator(".tool-call-detail");
+    await call.locator(":scope > summary").click();
+    await expect(call.locator("pre").first()).toContainText('"query": "evidence"');
+    await expect(call.locator("pre").nth(1)).toContainText('"matches": [');
   });
 
   test("marks tool latency unavailable for a historical total-only attempt", async ({ page }) => {
@@ -539,6 +745,15 @@ test.describe("QA evaluation console", () => {
       "style",
       /height:\s*100(\.00)?%/,
     );
+    const question = page.locator(".question-result");
+    await question.locator(":scope > summary").click();
+    const attempt = question.locator(".attempt-result");
+    await attempt.locator(":scope > summary").click();
+    const toolDisclosure = attempt.locator(".tool-call-disclosure");
+    await toolDisclosure.locator(":scope > summary").click();
+    await expect(toolDisclosure).toContainText(
+      "Tool-call details were not captured for this historical attempt.",
+    );
   });
 
   test("does not synthesize latency for a legacy run without attempt timings", async ({ page }) => {
@@ -579,6 +794,7 @@ test.describe("QA evaluation console", () => {
               attempt_id: "legacy-question-attempt-1",
               ordinal: 1,
               status: "answer_ready",
+              tool_calls: [],
               answer: "This answer predates timing capture.",
             }],
             evaluation_results: [{
@@ -624,6 +840,15 @@ test.describe("QA evaluation console", () => {
       "This historical run has no authoritative per-attempt timings.",
     );
     await expect(latencyPanel.getByRole("listitem")).toHaveCount(0);
+    const question = page.locator(".question-result");
+    await question.locator(":scope > summary").click();
+    const attempt = question.locator(".attempt-result");
+    await attempt.locator(":scope > summary").click();
+    const toolDisclosure = attempt.locator(".tool-call-disclosure");
+    await toolDisclosure.locator(":scope > summary").click();
+    await expect(toolDisclosure).toContainText(
+      "This attempt performed no recorded tool calls.",
+    );
   });
 
   test("retries only failed atoms and opens a complete evaluation successor", async ({ page }) => {

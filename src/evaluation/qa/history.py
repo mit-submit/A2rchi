@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 from .artifacts import read_json, read_jsonl, verify_hashes
 from .constants import SCHEMA_VERSION
 from .preparation import load_preparation_records
+from .tool_traces import serialize_tool_call_records
 
 
 def _history_id(path: Path) -> str:
@@ -234,6 +235,14 @@ class EvaluationHistory:
                     read_json(artifact)
                     if filename.endswith(".json")
                     else read_jsonl(artifact)
+                )
+        for index, answer in enumerate(payload.get("answers", []), 1):
+            if not isinstance(answer, dict):
+                raise ValueError(f"answer row {index} must be an object")
+            if "tool_calls" in answer:
+                answer["tool_calls"] = serialize_tool_call_records(
+                    answer["tool_calls"],
+                    context=f"answer row {index}.tool_calls",
                 )
         report = path / "report.md"
         payload["report_available"] = report.is_file()

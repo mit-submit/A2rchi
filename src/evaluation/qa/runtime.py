@@ -3,21 +3,24 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from importlib import import_module
 from pathlib import Path
+from threading import Lock
 from time import perf_counter
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from uuid import UUID
 
 import yaml
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import BaseMessage, ToolMessage
 
 from .constants import (  # isort: skip
     COMPARATOR_SYSTEM_PROMPT,
     GOLD_SYSTEM_PROMPT,
 )
 from .profile import EvaluatorProfile
+from .tool_traces import ToolCallRecord, ToolCallStatus
 from .validation import Atom
 
 GOLD_ATOM_SCHEMA = {
@@ -73,15 +76,37 @@ JUDGMENT_SCHEMA = {
 }
 
 
+@dataclass(frozen=True)
+class _ActiveToolCall:
+    ordinal: int
+    name: str
+    query: str
+    started_at: float
+
+
+def _trace_text(value: Any) -> str:
+    if isinstance(value, BaseMessage):
+        value = value.content
+    if isinstance(value, BaseException):
+        return str(value)
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 class ToolTimingCallback(BaseCallbackHandler):
-    """Collect timing-only metadata for tool calls in one agent attempt."""
+    """Collect the complete observed tool trace for one agent attempt."""
 
     run_inline = True
 
     def __init__(self) -> None:
-        self._active: Dict[UUID, Tuple[int, str, float]] = {}
+        self._active: Dict[UUID, _ActiveToolCall] = {}
         self._next_ordinal = 1
-        self.timings: List[Dict[str, Any]] = []
+        self._completed: List[ToolCallRecord] = []
+        self._lock = Lock()
 
     def on_tool_start(
         self,
@@ -89,28 +114,63 @@ class ToolTimingCallback(BaseCallbackHandler):
         input_str: str,
         *,
         run_id: UUID,
+        inputs: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
-        self._active[run_id] = (
-            self._next_ordinal,
-            serialized["name"],
-            perf_counter(),
+        started_at = perf_counter()
+        with self._lock:
+            ordinal = self._next_ordinal
+            self._next_ordinal += 1
+        active = _ActiveToolCall(
+            ordinal=ordinal,
+            name=serialized["name"],
+            query=_trace_text(inputs if inputs is not None else input_str),
+            started_at=started_at,
         )
-        self._next_ordinal += 1
+        with self._lock:
+            self._active[run_id] = active
 
-    def _finish(self, run_id: UUID, status: str) -> None:
-        ordinal, name, started_at = self._active.pop(run_id)
-        self.timings.append(
-            {
-                "ordinal": ordinal,
-                "name": name,
-                "status": status,
-                "duration_ms": max(
-                    0,
-                    int(round((perf_counter() - started_at) * 1000)),
-                ),
-            }
-        )
+    def _finish(
+        self,
+        run_id: UUID,
+        status: ToolCallStatus,
+        output: Any,
+    ) -> None:
+        ended_at = perf_counter()
+        text = _trace_text(output)
+        with self._lock:
+            active = self._active.pop(run_id)
+            self._completed.append(
+                ToolCallRecord(
+                    ordinal=active.ordinal,
+                    name=active.name,
+                    status=status,
+                    query=active.query,
+                    response=text if status == ToolCallStatus.SUCCESS else None,
+                    error=text if status == ToolCallStatus.ERROR else None,
+                    duration_ms=max(
+                        0,
+                        int(round((ended_at - active.started_at) * 1000)),
+                    ),
+                )
+            )
+
+    @property
+    def traces(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            traces = list(self._completed)
+            traces.extend(
+                ToolCallRecord(
+                    ordinal=active.ordinal,
+                    name=active.name,
+                    status=ToolCallStatus.INCOMPLETE,
+                    query=active.query,
+                )
+                for active in self._active.values()
+            )
+        return [
+            trace.to_dict() for trace in sorted(traces, key=lambda item: item.ordinal)
+        ]
 
     def on_tool_end(
         self,
@@ -119,7 +179,12 @@ class ToolTimingCallback(BaseCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        self._finish(run_id, "success")
+        status = (
+            ToolCallStatus.ERROR
+            if isinstance(output, ToolMessage) and output.status == "error"
+            else ToolCallStatus.SUCCESS
+        )
+        self._finish(run_id, status, output)
 
     def on_tool_error(
         self,
@@ -128,7 +193,7 @@ class ToolTimingCallback(BaseCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        self._finish(run_id, "error")
+        self._finish(run_id, ToolCallStatus.ERROR, error)
 
 
 class LangChainEvaluatorRuntime:
@@ -318,7 +383,7 @@ class ArchiAgentRuntime:
             )
         finally:
             self.tool_calls = sorted(
-                timing_callback.timings,
+                timing_callback.traces,
                 key=lambda timing: timing["ordinal"],
             )
         answer = output.answer

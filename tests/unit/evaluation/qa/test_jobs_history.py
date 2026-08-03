@@ -399,6 +399,138 @@ def test_history_derives_prepared_items_from_canonical_preparation(
     assert payload["prepared_items"] == preparation
 
 
+def test_history_exposes_complete_tool_call_trace_unchanged(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    write_json(
+        run / "input.snapshot.json",
+        [
+            {
+                "id": "item",
+                "question": "Question",
+                "answer": "Answer",
+                "time_sensitive": False,
+                "expected_atoms": [{"id": "A1", "text": "Answer", "required": True}],
+            }
+        ],
+    )
+    write_jsonl(
+        run / "preparation.jsonl",
+        [
+            {
+                "item_id": "item",
+                "status": "prepared",
+                "category": None,
+                "answer_mode": None,
+                "answer_source": None,
+                "question": "Question",
+                "answer": "Answer",
+                "time_sensitive": False,
+                "atom_source": "supplied",
+                "gold_atoms": [{"id": "A1", "text": "Answer", "required": True}],
+            }
+        ],
+    )
+    tool_calls = [
+        {
+            "ordinal": 1,
+            "name": "search",
+            "status": "success",
+            "query": '{"query": "complete"}',
+            "response": "complete response",
+            "duration_ms": 13,
+        },
+        {
+            "ordinal": 2,
+            "name": "unfinished",
+            "status": "incomplete",
+            "query": "complete unfinished query",
+        },
+    ]
+    write_jsonl(
+        run / "answers.jsonl",
+        [
+            {
+                "item_id": "item",
+                "attempt_id": "item-attempt-1",
+                "ordinal": 1,
+                "status": "answer_ready",
+                "duration_ms": 25,
+                "tool_calls": tool_calls,
+                "answer": "Answer",
+            }
+        ],
+    )
+    artifacts = {"input.snapshot.json", "preparation.jsonl", "answers.jsonl"}
+    write_json(
+        run / "manifest.json",
+        {
+            "schema_version": "qa-v1",
+            "run_id": "run-1",
+            "status": "run_completed",
+            "attempts": 1,
+            "input": {"snapshot": "input.snapshot.json"},
+            "artifacts": artifact_hashes(run, artifacts),
+            "phases": {
+                "prepare": {"status": "completed", "input_items": 1},
+                "run": {"status": "completed"},
+            },
+        },
+    )
+    history = EvaluationHistory(tmp_path)
+
+    payload = history.get_run(history.id_for_path(run))
+
+    assert payload["answers"][0]["tool_calls"] == tool_calls
+
+
+def test_history_rejects_invalid_tool_trace_at_artifact_boundary(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    artifacts = _write_preparation_artifacts(run)
+    write_jsonl(
+        run / "answers.jsonl",
+        [
+            {
+                "item_id": "item",
+                "attempt_id": "item-attempt-1",
+                "ordinal": 1,
+                "status": "answer_ready",
+                "duration_ms": 25,
+                "tool_calls": [
+                    {
+                        "ordinal": 1,
+                        "name": "search",
+                        "status": "success",
+                        "query": "missing terminal response",
+                    }
+                ],
+                "answer": "Answer",
+            }
+        ],
+    )
+    artifacts.add("answers.jsonl")
+    write_json(
+        run / "manifest.json",
+        {
+            "schema_version": "qa-v1",
+            "run_id": "run-1",
+            "status": "run_completed",
+            "attempts": 1,
+            "input": {"snapshot": "input.snapshot.json"},
+            "artifacts": artifact_hashes(run, artifacts),
+            "phases": {
+                "prepare": {"status": "completed", "input_items": 1},
+                "run": {"status": "completed"},
+            },
+        },
+    )
+    history = EvaluationHistory(tmp_path)
+
+    with pytest.raises(ValueError, match="successful tool-call records require"):
+        history.get_run(history.id_for_path(run))
+
+
 def test_history_rejects_tampered_declared_artifacts(tmp_path):
     run = tmp_path / "run"
     run.mkdir()

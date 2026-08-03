@@ -284,8 +284,10 @@ runtime, so mutable agent state is never shared by concurrent attempts. The
 canonical answer and gold atoms are not passed to Archi.
 The command stores the resolved agent configuration and spec, then writes each
 verbatim terminal answer—or an `execution_failed` record—to `answers.jsonl`.
-Each row includes total tested-agent latency and timing-only tool-call records
-with ordinal, name, status, and duration.
+Each row includes total tested-agent latency and an ordered record for every
+observed tool call: ordinal, name, status, complete query, complete response or
+error when observed, and duration in milliseconds when available. Historical
+rows with timing-only records remain supported by the evaluation console.
 
 #### 3. Score the answers
 
@@ -329,7 +331,7 @@ more detailed analysis or automation, the same workspace contains:
 |------|----------|
 | `summary.json` | Machine-readable aggregate and per-item metrics, lifecycle counts, atom pass rates, and configuration provenance hashes. |
 | `evaluation_results.jsonl` | One terminal scoring record per attempt: the Archi answer, each atom's outcome and evaluator rationale, numeric scores and pass result, or an evaluation/execution failure. |
-| `answers.jsonl` | The verbatim answer produced by Archi for every attempt, or its terminal execution error, plus total attempt and timing-only tool-call latency before evaluator scoring. |
+| `answers.jsonl` | The verbatim answer produced by Archi for every attempt, or its terminal execution error, plus total attempt latency and complete ordered tool-call query/response or error evidence with optional per-call latency before evaluator scoring. |
 | `preparation.jsonl` | Exactly one terminal record per input item: normalized prepared questions with canonical answers and fixed gold atoms, time-sensitive skips, or atom-extraction failures. |
 | `input.snapshot.json` or `input.snapshot.jsonl` | An exact snapshot of the input dataset used for the evaluation. |
 | `agent_config.resolved.yaml` and `agent_spec.resolved.md` | The resolved Archi configuration and exact agent spec used to generate the answers. |

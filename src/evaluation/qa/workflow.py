@@ -44,6 +44,7 @@ from .preparation import (
 )
 from .runtime import ArchiAgentRuntime, LangChainEvaluatorRuntime, load_agent_inputs
 from .scoring import build_summary, render_report, score_attempt
+from .tool_traces import serialize_tool_call_records
 from .validation import (  # isort: skip
     dataset_source_format,
     iter_dataset_items,
@@ -86,7 +87,18 @@ class QAWorkflow:
 
     @staticmethod
     def _tool_calls(runtime: Any) -> List[Dict[str, Any]]:
-        return [dict(call) for call in runtime.tool_calls]
+        return serialize_tool_call_records(
+            runtime.tool_calls,
+            context="tested-agent tool_calls",
+        )
+
+    @staticmethod
+    def _validate_answer_tool_calls(answer: Dict[str, Any], *, context: str) -> None:
+        if "tool_calls" in answer:
+            answer["tool_calls"] = serialize_tool_call_records(
+                answer["tool_calls"],
+                context=f"{context}.tool_calls",
+            )
 
     def _run_attempt(
         self,
@@ -186,6 +198,12 @@ class QAWorkflow:
                     raise ValueError(
                         "run contains fewer terminal slots than the prepared workspace"
                     ) from None
+                if not isinstance(answer, dict):
+                    raise ValueError("run answer row must be an object")
+                QAWorkflow._validate_answer_tool_calls(
+                    answer,
+                    context=f"run answer {answer.get('attempt_id', ordinal)}",
+                )
                 if answer.get("status") not in allowed_statuses:
                     raise ValueError(
                         "run contains a non-terminal or unsupported attempt status"
@@ -293,6 +311,13 @@ class QAWorkflow:
         ]
         answers = read_jsonl(run_dir / "answers.jsonl")
         results = read_jsonl(run_dir / "evaluation_results.jsonl")
+        for index, answer in enumerate(answers, 1):
+            if not isinstance(answer, dict):
+                raise ValueError(f"parent answer row {index} must be an object")
+            self._validate_answer_tool_calls(
+                answer,
+                context=f"parent answer row {index}",
+            )
         attempts = manifest.get("attempts")
         self._require_positive_attempts(attempts)
         expected_identities = {

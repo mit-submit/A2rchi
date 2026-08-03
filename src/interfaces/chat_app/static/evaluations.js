@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const state = { datasets: [], profiles: [], agents: [], runs: [], jobs: [], selectedDataset: null, draft: null, openRunId: null, pollingJobId: null, reviewValidationActive: false };
+  const state = { datasets: [], profiles: [], agents: [], runs: [], jobs: [], selectedDataset: null, draft: null, openRunId: null, pollingJobId: null, reviewValidationActive: false, openToolCalls: new Map(), nextToolCallKey: 1 };
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
@@ -539,30 +539,31 @@
     } catch (error) { toast("Could not run evaluation", error.message); }
   }
 
-  function groupQuestionResults(preparedItems, evaluationResults) {
+  function groupQuestionResults(preparedItems, answers, evaluationResults) {
     const groups = [];
     const byId = new Map();
+    const resultsByAttempt = new Map((evaluationResults || []).map((result) => [result.attempt_id, result]));
     (preparedItems || []).forEach((prepared) => {
       const group = { itemId: prepared.item_id, prepared, attempts: [] };
       groups.push(group);
       byId.set(prepared.item_id, group);
     });
-    (evaluationResults || []).forEach((result) => {
-      let group = byId.get(result.item_id);
+    (answers || []).forEach((answer) => {
+      let group = byId.get(answer.item_id);
       if (!group) {
-        group = { itemId: result.item_id, prepared: {}, attempts: [] };
+        group = { itemId: answer.item_id, prepared: {}, attempts: [] };
         groups.push(group);
-        byId.set(result.item_id, group);
+        byId.set(answer.item_id, group);
       }
-      group.attempts.push(result);
+      group.attempts.push({ answer, result: resultsByAttempt.get(answer.attempt_id) || null });
     });
-    groups.forEach((group) => group.attempts.sort((left, right) => (left.ordinal || 0) - (right.ordinal || 0)));
+    groups.forEach((group) => group.attempts.sort((left, right) => (left.answer.ordinal || 0) - (right.answer.ordinal || 0)));
     return groups;
   }
 
   function questionScoreSummary(attempts) {
     const scored = attempts
-      .map((attempt) => ({ attempt, score: scoreValue(attempt.atom_score) }))
+      .map((attempt) => ({ attempt, score: scoreValue(attempt.result?.atom_score) }))
       .filter((entry) => entry.score !== null);
     if (!scored.length) return { average: null, best: null, worst: null };
     return {
@@ -594,15 +595,18 @@
           attempts: []
         });
       }
-      const toolCalls = Array.isArray(answer.tool_calls)
+      const recordedToolCalls = Array.isArray(answer.tool_calls) ? answer.tool_calls : null;
+      const timedToolCalls = recordedToolCalls
         ? answer.tool_calls.filter((call) => typeof call.duration_ms === "number" && Number.isFinite(call.duration_ms) && call.duration_ms >= 0)
         : null;
       groups.get(answer.item_id).attempts.push({
         attemptId: answer.attempt_id,
         ordinal: answer.ordinal,
         total: answer.duration_ms,
-        toolTotal: toolCalls === null ? null : toolCalls.reduce((total, call) => total + call.duration_ms, 0),
-        toolCount: toolCalls === null ? null : toolCalls.length
+        toolTotal: timedToolCalls === null ? null : timedToolCalls.reduce((total, call) => total + call.duration_ms, 0),
+        toolCount: recordedToolCalls === null ? null : recordedToolCalls.length,
+        timedToolCount: timedToolCalls === null ? null : timedToolCalls.length,
+        toolTimingComplete: recordedToolCalls !== null && timedToolCalls.length === recordedToolCalls.length
       });
     });
     return [...groups.values()]
@@ -628,8 +632,8 @@
           const first = row.attempts[0];
           return `<article class="latency-item" role="listitem" data-question-id="${esc(row.itemId)}">
             <div class="latency-question"><code>${esc(row.itemId)}</code><span title="${esc(row.question)}">${esc(row.question)}</span></div>
-            <label class="latency-attempt"><span>Attempt</span><select aria-label="Attempt for ${esc(row.itemId)}">
-              ${row.attempts.map((attempt) => `<option value="${esc(attempt.attemptId)}" data-total="${attempt.total}" data-tool="${attempt.toolTotal === null ? "" : attempt.toolTotal}" data-tool-count="${attempt.toolCount === null ? "" : attempt.toolCount}">Attempt ${esc(attempt.ordinal ?? "—")}</option>`).join("")}
+            <label class="latency-attempt"><span>Attempt</span><select name="latency-attempt-${esc(row.itemId)}" aria-label="Attempt for ${esc(row.itemId)}">
+              ${row.attempts.map((attempt) => `<option value="${esc(attempt.attemptId)}" data-total="${attempt.total}" data-tool="${attempt.toolTotal === null ? "" : attempt.toolTotal}" data-tool-count="${attempt.toolCount === null ? "" : attempt.toolCount}" data-timed-tool-count="${attempt.timedToolCount === null ? "" : attempt.timedToolCount}" data-tool-timing-complete="${attempt.toolTimingComplete}">Attempt ${esc(attempt.ordinal ?? "—")}</option>`).join("")}
             </select></label>
             <div class="latency-plot">
               <div class="latency-bar" role="img" aria-label="Latency for ${esc(row.itemId)}, attempt ${esc(first.ordinal ?? "—")}">
@@ -664,30 +668,36 @@
         const option = select.selectedOptions[0];
         const total = Number(option.dataset.total);
         const toolAvailable = option.dataset.tool !== "";
+        const toolTimingComplete = option.dataset.toolTimingComplete === "true";
         const toolTotal = toolAvailable ? Number(option.dataset.tool) : null;
         const representedTool = toolAvailable ? Math.min(toolTotal, total) : 0;
-        const other = toolAvailable ? Math.max(0, total - representedTool) : null;
+        const other = toolTimingComplete ? Math.max(0, total - representedTool) : null;
         const barHeight = maximumDuration > 0 ? (total / maximumDuration) * 100 : 0;
         const toolHeight = total > 0 ? (representedTool / total) * 100 : 0;
-        const otherHeight = toolAvailable ? 100 - toolHeight : 0;
+        const otherHeight = toolTimingComplete ? 100 - toolHeight : 0;
+        const unknownHeight = toolAvailable && !toolTimingComplete ? 100 - toolHeight : (toolAvailable ? 0 : 100);
 
         bar.style.height = `${barHeight.toFixed(2)}%`;
         toolSegment.style.height = `${toolHeight.toFixed(2)}%`;
         otherSegment.style.height = `${otherHeight.toFixed(2)}%`;
-        unknownSegment.style.height = toolAvailable ? "0.00%" : "100.00%";
+        unknownSegment.style.height = `${unknownHeight.toFixed(2)}%`;
         item.querySelector(".latency-total-value").textContent = `${formatDuration(total)} total`;
-        item.querySelector(".latency-tool-value").textContent = toolAvailable
-          ? `${formatDuration(toolTotal)} tools`
+        const timedToolCount = option.dataset.timedToolCount;
+        const toolCount = option.dataset.toolCount;
+        item.querySelector(".latency-tool-value").textContent = toolAvailable && timedToolCount !== "0"
+          ? `${formatDuration(toolTotal)} ${toolTimingComplete ? "tools" : "timed tools"}`
           : "Tool timing unavailable";
-        item.querySelector(".latency-other-value").textContent = toolAvailable
+        item.querySelector(".latency-other-value").textContent = toolTimingComplete
           ? `${formatDuration(other)} other agent time`
-          : "Remaining time unavailable";
+          : (toolAvailable ? "Remaining time unattributed" : "Remaining time unavailable");
         item.querySelector(".latency-tool-count").textContent = toolAvailable
-          ? `${option.dataset.toolCount} tool call${option.dataset.toolCount === "1" ? "" : "s"}`
+          ? (timedToolCount === toolCount
+            ? `${toolCount} tool call${toolCount === "1" ? "" : "s"}`
+            : `${timedToolCount} timed of ${toolCount} tool call${toolCount === "1" ? "" : "s"}`)
           : "";
         bar.setAttribute(
           "aria-label",
-          `${item.dataset.questionId}, ${option.textContent}: ${formatDuration(total)} total; ${toolAvailable ? `${formatDuration(toolTotal)} in tools and ${formatDuration(other)} in other agent time` : "tool timing unavailable"}`
+          `${item.dataset.questionId}, ${option.textContent}: ${formatDuration(total)} total; ${toolTimingComplete ? `${formatDuration(toolTotal)} in tools and ${formatDuration(other)} in other agent time` : (toolAvailable && timedToolCount !== "0" ? `${formatDuration(toolTotal)} in timed tools; remaining time unattributed` : "tool timing unavailable; remaining time unattributed")}`
         );
       };
       select.addEventListener("change", update);
@@ -725,20 +735,166 @@
     </details>`;
   }
 
-  function renderAttempt(result, prepared, answer) {
+  function formatToolTraceText(value) {
+    if (typeof value !== "string") return JSON.stringify(value, null, 2);
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    try {
+      const structured = JSON.parse(trimmed);
+      if (structured === null || typeof structured !== "object") return value;
+    } catch (_error) {
+      return value;
+    }
+    let output = "";
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    const indentation = () => "  ".repeat(depth);
+    for (const char of trimmed) {
+      if (inString) {
+        output += char;
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+      if (char === '"') {
+        inString = true;
+        output += char;
+      } else if (char === "{" || char === "[") {
+        depth += 1;
+        output += `${char}\n${indentation()}`;
+      } else if (char === "}" || char === "]") {
+        depth -= 1;
+        output = `${output.trimEnd()}\n${indentation()}${char}`;
+      } else if (char === ",") {
+        output += `,\n${indentation()}`;
+      } else if (char === ":") {
+        output += ": ";
+      } else if (!/\s/.test(char)) {
+        output += char;
+      }
+    }
+    return output;
+  }
+
+  function hasOwn(object, field) {
+    return Object.prototype.hasOwnProperty.call(object, field);
+  }
+
+  function renderToolCall(call) {
+    const key = `tool-call-${state.nextToolCallKey++}`;
+    state.openToolCalls.set(key, call);
+    const durationAvailable = typeof call.duration_ms === "number"
+      && Number.isFinite(call.duration_ms)
+      && call.duration_ms >= 0;
+
+    return `<details class="tool-call-detail status-${esc(call.status)}" data-tool-key="${key}" data-tool-ordinal="${esc(call.ordinal)}">
+      <summary>
+        <span class="tool-call-title"><code>#${esc(call.ordinal)}</code><strong>${esc(call.name)}</strong></span>
+        <span class="tool-call-meta">
+          <span class="tool-call-status">${esc(call.status.replaceAll("_", " "))}</span>
+          ${durationAvailable ? `<span class="tool-call-duration">${esc(call.duration_ms)} ms</span>` : ""}
+        </span>
+      </summary>
+      <div class="tool-call-body" data-tool-call-body></div>
+    </details>`;
+  }
+
+  function appendToolTraceSection(body, label, value, labelId, className = "") {
+    const section = document.createElement("section");
+    if (className) section.className = className;
+    const heading = document.createElement("p");
+    heading.className = "field-label";
+    heading.id = labelId;
+    heading.textContent = label;
+    const content = document.createElement("pre");
+    content.tabIndex = 0;
+    content.setAttribute("role", "region");
+    content.setAttribute("aria-labelledby", labelId);
+    content.textContent = formatToolTraceText(value);
+    section.append(heading, content);
+    body.append(section);
+  }
+
+  function hydrateToolCall(detail) {
+    const body = detail.querySelector("[data-tool-call-body]");
+    if (!body || body.dataset.hydrated === "true") return;
+    const call = state.openToolCalls.get(detail.dataset.toolKey);
+    if (!call) return;
+    const queryAvailable = hasOwn(call, "query");
+    const responseField = hasOwn(call, "error") ? "error" : (hasOwn(call, "response") ? "response" : null);
+    if (!queryAvailable && responseField === null) {
+      const unavailable = document.createElement("p");
+      unavailable.className = "tool-call-unavailable";
+      unavailable.textContent = "Query and response details were not captured for this historical call.";
+      body.append(unavailable);
+    } else {
+      if (queryAvailable) appendToolTraceSection(
+        body,
+        "Query",
+        call.query,
+        `${detail.dataset.toolKey}-query-label`,
+      );
+      if (responseField) {
+        appendToolTraceSection(
+          body,
+          responseField === "error" ? "Error" : "Response",
+          call[responseField],
+          `${detail.dataset.toolKey}-${responseField}-label`,
+          `tool-call-${responseField}`,
+        );
+      } else {
+        const unavailable = document.createElement("p");
+        unavailable.className = "tool-call-unavailable";
+        unavailable.textContent = "No tool response was captured for this incomplete call.";
+        body.append(unavailable);
+      }
+    }
+    body.dataset.hydrated = "true";
+    state.openToolCalls.delete(detail.dataset.toolKey);
+  }
+
+  function bindToolCallDetails() {
+    $$(".tool-call-detail").forEach((detail) => detail.addEventListener("toggle", () => {
+      if (detail.open) hydrateToolCall(detail);
+    }));
+  }
+
+  function renderToolCalls(answer) {
+    if (!Array.isArray(answer.tool_calls)) {
+      return `<details class="readable-disclosure tool-call-disclosure">
+        <summary><span>Tool calls</span><small>Details unavailable</small></summary>
+        <div class="tool-call-empty"><strong>Tool-call details were not captured for this historical attempt.</strong></div>
+      </details>`;
+    }
+    const calls = [...answer.tool_calls].sort((left, right) => (left.ordinal || 0) - (right.ordinal || 0));
+    const countLabel = `${calls.length} call${calls.length === 1 ? "" : "s"}`;
+    return `<details class="readable-disclosure tool-call-disclosure">
+      <summary><span>Tool calls</span><small>${countLabel}</small></summary>
+      ${calls.length
+        ? `<div class="tool-call-list">${calls.map(renderToolCall).join("")}</div>`
+        : `<div class="tool-call-empty"><strong>This attempt performed no recorded tool calls.</strong></div>`}
+    </details>`;
+  }
+
+  function renderAttempt(attempt, prepared) {
+    const answer = attempt.answer;
+    const result = attempt.result || {};
     const score = scoreValue(result.atom_score);
-    const statusClass = result.status === "scored" ? (result.passed ? "good" : "bad") : "bad";
+    const attemptStatus = result.status || answer.status;
+    const statusClass = result.status === "scored" ? (result.passed ? "good" : "bad") : (attemptStatus === "execution_failed" ? "bad" : "run");
     const atoms = prepared.gold_atoms || prepared.expected_atoms || [];
     const judgmentsByAtom = new Map((result.judgments || []).map((judgment) => [judgment.atom_id, judgment]));
     const displayedAtoms = atoms.length
       ? atoms
       : (result.judgments || []).map((judgment) => ({ id: judgment.atom_id, text: "", required: false }));
     const modelAnswer = answer.answer || result.answer;
-    return `<details class="attempt-result" data-attempt-id="${esc(result.attempt_id || "")}">
+    return `<details class="attempt-result" data-attempt-id="${esc(answer.attempt_id)}">
       <summary>
         <span class="attempt-title">
-          <strong>Attempt ${esc(result.ordinal ?? "—")}</strong>
-          <span class="status ${statusClass}">${esc(result.status || "unknown")}</span>
+          <strong>Attempt ${esc(answer.ordinal)}</strong>
+          <span class="status ${statusClass}">${esc(attemptStatus)}</span>
         </span>
         <span class="attempt-score ${score === null ? "unscored" : (result.passed ? "passed" : "failed")}">${score === null ? "Not scored" : percent(score)}</span>
       </summary>
@@ -747,7 +903,8 @@
           <summary><span>Model answer</span><small>Full response</small></summary>
           <div class="evidence-copy">${esc(modelAnswer)}</div>
         </details>` : ""}
-        ${result.error ? `<section class="attempt-error"><p class="field-label">Attempt error</p><p>${esc(readableError(result.error))}</p></section>` : ""}
+        ${renderToolCalls(answer)}
+        ${(result.error || answer.error) ? `<section class="attempt-error"><p class="field-label">Attempt error</p><p>${esc(readableError(result.error || answer.error))}</p></section>` : ""}
         ${displayedAtoms.length ? `<section class="atom-evidence" aria-label="Atom judgments">
           <div class="atom-evidence-head"><div><p class="eyebrow">Atom evidence</p><h3>Expected content and evaluator judgment</h3></div><span>${displayedAtoms.length} atom${displayedAtoms.length === 1 ? "" : "s"}</span></div>
           <div class="atom-judgment-list">${displayedAtoms.map((atom, index) => renderAtomJudgment(atom, judgmentsByAtom.get(atom.id), index)).join("")}</div>
@@ -756,13 +913,13 @@
     </details>`;
   }
 
-  function renderQuestionGroup(group, answersByAttempt) {
+  function renderQuestionGroup(group) {
     const question = group.prepared.question || "Question text unavailable";
     const score = questionScoreSummary(group.attempts);
     const scoreLabel = score.average === null ? "No scored attempts" : percent(score.average);
     const bestWorst = score.average === null
       ? `${group.attempts.length} attempt${group.attempts.length === 1 ? "" : "s"} · awaiting scores`
-      : `Best A${score.best.attempt.ordinal} ${percent(score.best.score)} · Worst A${score.worst.attempt.ordinal} ${percent(score.worst.score)}`;
+      : `Best A${score.best.attempt.answer.ordinal} ${percent(score.best.score)} · Worst A${score.worst.attempt.answer.ordinal} ${percent(score.worst.score)}`;
     return `<details class="question-result" data-question-id="${esc(group.itemId)}">
       <summary>
         <span class="question-summary-copy"><code>${esc(group.itemId)}</code><strong>${esc(question)}</strong></span>
@@ -778,7 +935,7 @@
           <div class="evidence-copy">${esc(question)}</div>
         </details>
         <div class="attempt-list">
-          ${group.attempts.map((result) => renderAttempt(result, group.prepared, answersByAttempt[result.attempt_id] || {})).join("") || `<div class="empty compact"><strong>No attempts are available for this question.</strong></div>`}
+          ${group.attempts.map((attempt) => renderAttempt(attempt, group.prepared)).join("") || `<div class="empty compact"><strong>No attempts are available for this question.</strong></div>`}
         </div>
       </div>
     </details>`;
@@ -800,8 +957,9 @@
       retryButton.disabled = false;
       retryButton.textContent = `Retry failed attempts (${retryableCount})`;
       const parent = state.runs.find((item) => item.id === meta.retry_of_history_id);
-      const answersByAttempt = Object.fromEntries((run.answers || []).map((item) => [item.attempt_id, item]));
-      const questionGroups = groupQuestionResults(run.prepared_items || [], run.evaluation_results || []);
+      state.openToolCalls = new Map();
+      state.nextToolCallKey = 1;
+      const questionGroups = groupQuestionResults(run.prepared_items || [], run.answers || [], run.evaluation_results || []);
       const atomRecall = macroMeanScoredAttemptAtomRecall(run.evaluation_results);
       $("#run-detail-content").innerHTML = `
         ${meta.retry_of_history_id ? `<div class="lineage-callout"><strong>Successor run ${esc(meta.retry_number || "")}</strong> · retried from ${esc(parent?.name || meta.retry_of_history_id)}. Scored attempts were carried forward unchanged.</div>` : ""}
@@ -833,9 +991,10 @@
           <article class="evidence-card"><span>Artifact schema</span><strong>${esc(manifest.schema_version || "—")}</strong><small>${esc(manifest.status || "unknown")}</small></article>
         </div>
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Attempt evidence</p><h2>Answers and judgments</h2></div></div>
-          <div class="result-list">${questionGroups.map((group) => renderQuestionGroup(group, answersByAttempt)).join("") || `<div class="empty"><strong>No question results are available.</strong></div>`}</div>
+          <div class="result-list">${questionGroups.map((group) => renderQuestionGroup(group)).join("") || `<div class="empty"><strong>No question results are available.</strong></div>`}</div>
         </section>`;
       bindLatencyChart();
+      bindToolCallDetails();
       showView("run-detail");
     } catch (error) { toast("Could not open run", error.message); }
   }

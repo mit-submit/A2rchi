@@ -279,6 +279,34 @@ dialog::backdrop { background:rgba(4,12,9,.72); backdrop-filter:blur(4px); }
 .attempt-body { padding:16px;border-top:1px solid var(--line);display:grid;gap:16px;background:#faf9f5; }
 .attempt-error { padding:13px 15px;border:1px solid rgba(179,61,61,.2);border-left:3px solid var(--red);border-radius:8px;background:rgba(179,61,61,.07); }
 .attempt-error p:last-child { margin:0;color:#7c3434;white-space:pre-wrap;overflow-wrap:anywhere; }
+.tool-call-disclosure { border-left:3px solid var(--blue); }
+.tool-call-list { padding:10px;border-top:1px solid var(--line);display:grid;gap:8px;background:#f2f4f2; }
+.tool-call-detail { overflow:hidden;border:1px solid #d4d9d5;border-radius:8px;background:#fff; }
+.tool-call-detail > summary { min-height:50px;padding:10px 42px 10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;position:relative;list-style:none;cursor:pointer; }
+.tool-call-detail > summary::-webkit-details-marker { display:none; }
+.tool-call-detail > summary::after { content:"";position:absolute;right:17px;top:18px;width:7px;height:7px;border-right:2px solid var(--blue);border-bottom:2px solid var(--blue);transform:rotate(45deg);transition:transform .16s ease; }
+.tool-call-detail[open] > summary::after { transform:rotate(-135deg); }
+.tool-call-detail > summary:hover { background:#f5f8f6; }
+.tool-call-detail > summary:focus,.tool-call-disclosure > summary:focus { outline:none;box-shadow:inset 0 0 0 3px #087153; }
+.tool-call-title,.tool-call-meta { min-width:0;display:flex;align-items:center;gap:8px; }
+.tool-call-title code { flex:none;padding:2px 5px;border-radius:4px;background:rgba(53,109,168,.09);color:var(--blue);font-size:9px; }
+.tool-call-title strong { overflow-wrap:anywhere;font-size:12px; }
+.tool-call-meta { justify-content:flex-end;flex-wrap:wrap; }
+.tool-call-status,.tool-call-duration { padding:3px 7px;border-radius:999px;font:750 10px var(--mono);text-transform:uppercase;letter-spacing:.04em; }
+.tool-call-status { color:#315b81;background:rgba(53,109,168,.1); }
+.status-success .tool-call-status { color:#087153;background:rgba(17,133,99,.12); }
+.status-error .tool-call-status { color:#963131;background:rgba(179,61,61,.12); }
+.status-incomplete .tool-call-status { color:#80520b;background:rgba(199,139,28,.16); }
+.tool-call-duration { color:#4d5953;background:var(--surface-2); }
+.tool-call-body { border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.tool-call-body > section { min-width:0;padding:13px; }
+.tool-call-body > section + section { border-left:1px solid var(--line); }
+.tool-call-body pre { max-width:100%;max-block-size:min(34rem,65vh);margin:0;color:#29352f;font:11px/1.55 var(--mono);white-space:pre-wrap;overflow:auto;overflow-wrap:anywhere;word-break:break-word; }
+.tool-call-error pre { color:#7c3434; }
+.tool-call-unavailable,.tool-call-empty { margin:0;padding:14px;color:var(--muted);font-size:12px;line-height:1.5; }
+.tool-call-unavailable { grid-column:1/-1; }
+.tool-call-empty { border-top:1px solid var(--line); }
+.tool-call-empty strong { color:#4d5953; }
 .atom-evidence { display:grid;gap:10px; }
 .atom-evidence-head { display:flex;align-items:end;justify-content:space-between;gap:16px; }
 .atom-evidence-head .eyebrow { margin-bottom:4px; }.atom-evidence-head h3 { margin:0;font-size:16px;letter-spacing:-.02em; }
@@ -331,6 +359,8 @@ dialog::backdrop { background:rgba(4,12,9,.72); backdrop-filter:blur(4px); }
   .latency-item { min-width:180px;grid-template-rows:auto auto 170px auto; }
   .question-summary-score > small { text-align:left; }.question-result-body { padding:10px; }
   .attempt-result > summary { grid-template-columns:minmax(0,1fr) auto;padding-left:13px; }.attempt-score { min-width:70px; }
+  .tool-call-detail > summary { grid-template-columns:1fr;gap:7px; }.tool-call-meta { justify-content:flex-start; }.tool-call-body { grid-template-columns:1fr; }
+  .tool-call-body > section + section { border-left:0;border-top:1px solid var(--line); }
   .atom-evidence-head { align-items:start; }.atom-judgment > summary { grid-template-columns:1fr;gap:8px;padding-right:42px; }
   .atom-outcome { width:max-content;min-width:0; }.atom-judgment-body { grid-template-columns:1fr; }
   .atom-judgment-body > section + section { border-left:0;border-top:1px solid var(--line); }

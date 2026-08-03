@@ -120,6 +120,8 @@ class FakeWorkflow:
                                     "ordinal": 1,
                                     "name": "mock_lookup",
                                     "status": "error",
+                                    "query": '{"record_id": "missing"}',
+                                    "error": "Deterministic tool lookup failed.",
                                     "duration_ms": 125 + ordinal,
                                 }
                             ],
@@ -150,6 +152,11 @@ class FakeWorkflow:
                                 "ordinal": 1,
                                 "name": "mock_lookup",
                                 "status": "success",
+                                "query": '{"record_id": "mock-entry"}',
+                                "response": (
+                                    '{"record_id": "mock-entry", '
+                                    '"value": "<complete>42</complete>"}'
+                                ),
                                 "duration_ms": 125 + ordinal,
                             }
                         ],
@@ -301,6 +308,8 @@ class FakeWorkflow:
                         "ordinal": 1,
                         "name": "mock_retry",
                         "status": "success",
+                        "query": '{"retry": true}',
+                        "response": '{"recovered": true}',
                         "duration_ms": 100 + result["ordinal"],
                     }
                 ],
