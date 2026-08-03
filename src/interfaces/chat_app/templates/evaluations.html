@@ -116,10 +116,21 @@
             <label>Agent spec<select name="agent_spec" id="launch-agent" required></select></label>
             <p class="callout">The deployment’s resolved agent YAML is used. The selected Markdown spec is copied into the run.</p>
           </section>
+          <section class="panel form-card concurrency-card">
+            <span class="step">04</span><h2>Concurrency</h2>
+            <div class="field-group">
+              <label>Run workers<input name="run_workers" type="number" min="1" max="16" step="1" value="1" aria-describedby="run-workers-help" required></label>
+              <small class="field-help" id="run-workers-help">Choose 1–16 concurrent agent calls. Each worker owns a separate runtime.</small>
+            </div>
+            <div class="field-group">
+              <label>Evaluation workers<input name="score_workers" type="number" min="1" max="16" step="1" value="1" aria-describedby="score-workers-help" required></label>
+              <small class="field-help" id="score-workers-help">Choose 1–16 concurrent judge calls after every agent run finishes.</small>
+            </div>
+          </section>
           <section class="panel launch-card">
             <p class="eyebrow">Execution contract</p>
-            <h2>Run serially in the background</h2>
-            <ul><li>HTTP request returns immediately</li><li>Inputs become immutable snapshots</li><li>Progress is persisted as a job</li><li>History is derived from artifacts</li></ul>
+            <h2>Parallel by phase. Ordered by design.</h2>
+            <ul><li>Run and evaluation phases never overlap</li><li>Higher worker counts increase provider calls and memory</li><li>Artifacts retain canonical question order</li><li>One background job remains active at a time</li></ul>
             <button class="button primary large" type="submit">Start evaluation</button>
           </section>
         </form>

@@ -525,6 +525,8 @@
     event.preventDefault();
     const body = Object.fromEntries(new FormData(event.currentTarget));
     body.attempts = Number(body.attempts);
+    body.run_workers = Number(body.run_workers);
+    body.score_workers = Number(body.score_workers);
     try {
       const payload = await api("/api/evaluations/runs", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)

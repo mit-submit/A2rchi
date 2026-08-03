@@ -227,6 +227,8 @@ def runs():
             profile_id=body.get("profile_id") or "builtin",
             agent_spec=body.get("agent_spec"),
             attempts=body.get("attempts", 1),
+            run_workers=body.get("run_workers", 1),
+            score_workers=body.get("score_workers", 1),
         )
         return jsonify({"job": job}), 202
     except Exception as exc:

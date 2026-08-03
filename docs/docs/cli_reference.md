@@ -199,13 +199,21 @@ archi eval qa \
   --agent-config agent.yaml \
   --agent-spec agent.md \
   --output-dir evaluation-run/ \
-  --attempts 4
+  --attempts 4 \
+  --run-workers 4 \
+  --score-workers 8
 ```
 
 Here, `evaluation-run/` is a directory used as the evaluation workspace. You
 may choose any directory name or path. The command creates it if necessary and
 stores all prepared data, Archi answers, scoring results, and reports inside
 it.
+
+`--run-workers` and `--score-workers` independently control concurrent agent
+attempts and evaluator comparisons. Both default to `1` and accept `1` through
+`16`. Scoring starts only after every agent attempt finishes. Higher values can
+reduce wall-clock time for provider-bound work, but increase concurrent provider
+requests and keep up to that many agent or evaluator runtimes in memory.
 
 The YAML must define `services.chat_app.agent_class`, `default_provider`, and
 `default_model`. The Markdown frontmatter selects tools and its body is the
@@ -264,14 +272,16 @@ does not run Archi or generate answers.
 archi eval qa run evaluation-run/ \
   --agent-config agent.yaml \
   --agent-spec agent.md \
-  --attempts 4
+  --attempts 4 \
+  --run-workers 4
 ```
 
 The positional `evaluation-run/` argument is the prepared workspace directory created
 by `prepare`. `run` reads the questions from that directory, so it does not take
-the original dataset path again. For every prepared item, it creates a fresh
-instance of the selected Archi pipeline and asks the same question once per
-requested attempt. The canonical answer and gold atoms are not passed to Archi.
+the original dataset path again. It asks every prepared question once per
+requested attempt. Each run worker owns and reuses a separate selected Archi
+runtime, so mutable agent state is never shared by concurrent attempts. The
+canonical answer and gold atoms are not passed to Archi.
 The command stores the resolved agent configuration and spec, then writes each
 verbatim terminal answer—or an `execution_failed` record—to `answers.jsonl`.
 Each row includes total tested-agent latency and timing-only tool-call records
@@ -280,7 +290,7 @@ with ordinal, name, status, and duration.
 #### 3. Score the answers
 
 ```bash
-archi eval qa score evaluation-run/
+archi eval qa score evaluation-run/ --score-workers 8
 ```
 
 The positional `evaluation-run/` argument is the same workspace directory used by the

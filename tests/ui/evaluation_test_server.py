@@ -51,6 +51,8 @@ class FakeWorkflow:
         evaluator_profile_path=None,
         attempts=1,
         overwrite=False,
+        run_workers=1,
+        score_workers=1,
     ):
         from src.evaluation.qa.validation import load_dataset
 
@@ -225,10 +227,11 @@ class FakeWorkflow:
             "input": {"snapshot": "input.snapshot.json"},
             "artifacts": artifact_hashes(output_dir, artifact_names),
             "phases": {
-                "prepare": {"status": "completed"},
-                "run": {"status": "completed"},
+                "prepare": {"status": "completed", "input_items": len(all_items)},
+                "run": {"status": "completed", "workers": run_workers},
                 "score": {
                     "status": "completed",
+                    "workers": score_workers,
                     "completed_at": "2026-07-24T12:00:00+00:00",
                 },
             },
@@ -270,9 +273,7 @@ class FakeWorkflow:
         parent_manifest = read_json(parent_run_dir / "manifest.json")
         plan = self.retry_plan(parent_run_dir)
         preparation = read_jsonl(parent_run_dir / "preparation.jsonl")
-        prepared = [
-            row for row in preparation if row["status"] == "prepared"
-        ]
+        prepared = [row for row in preparation if row["status"] == "prepared"]
         answers = {
             row["attempt_id"]: row
             for row in read_jsonl(parent_run_dir / "answers.jsonl")
@@ -364,10 +365,17 @@ class FakeWorkflow:
             "input": {"snapshot": "input.snapshot.json"},
             "artifacts": artifact_hashes(output_dir, artifact_names),
             "phases": {
-                "prepare": {"status": "completed"},
-                "run": {"status": "completed"},
+                "prepare": {
+                    "status": "completed",
+                    "input_items": parent_manifest["phases"]["prepare"]["input_items"],
+                },
+                "run": {
+                    "status": "completed",
+                    "workers": parent_manifest["phases"]["run"].get("workers", 1),
+                },
                 "score": {
                     "status": "completed",
+                    "workers": parent_manifest["phases"]["score"].get("workers", 1),
                     "completed_at": "2026-07-24T12:01:00+00:00",
                 },
             },

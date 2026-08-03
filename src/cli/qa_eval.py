@@ -49,6 +49,20 @@ def eval_cli() -> None:
     default=1,
     show_default=True,
 )
+@click.option(
+    "--run-workers",
+    type=click.IntRange(min=1, max=QAWorkflow.MAX_PHASE_WORKERS),
+    default=1,
+    show_default=True,
+    help="Concurrent tested-agent attempts.",
+)
+@click.option(
+    "--score-workers",
+    type=click.IntRange(min=1, max=QAWorkflow.MAX_PHASE_WORKERS),
+    default=1,
+    show_default=True,
+    help="Concurrent evaluator comparisons.",
+)
 @click.option("--overwrite", is_flag=True, help="Replace evaluator-owned artifacts.")
 def qa_cli(
     ctx: click.Context,
@@ -58,6 +72,8 @@ def qa_cli(
     evaluator_profile_path: Optional[Path],
     output_dir: Optional[Path],
     attempts: int,
+    run_workers: int,
+    score_workers: int,
     overwrite: bool,
 ) -> None:
     """Evaluate agent answers against hidden canonical answers."""
@@ -86,6 +102,8 @@ def qa_cli(
             evaluator_profile_path=evaluator_profile_path,
             output_dir=output_dir,
             attempts=attempts,
+            run_workers=run_workers,
+            score_workers=score_workers,
             overwrite=overwrite,
         ),
         "QA evaluation completed",
@@ -132,18 +150,33 @@ def prepare_cli(
     default=1,
     show_default=True,
 )
+@click.option(
+    "--run-workers",
+    type=click.IntRange(min=1, max=QAWorkflow.MAX_PHASE_WORKERS),
+    default=1,
+    show_default=True,
+    help="Concurrent tested-agent attempts.",
+)
 @click.option("--overwrite", is_flag=True, help="Replace run and downstream artifacts.")
 def run_cli(
     run_dir: Path,
     agent_config: Path,
     agent_spec: Path,
     attempts: int,
+    run_workers: int,
     overwrite: bool,
 ) -> None:
     """Run isolated Archi attempts in prepared RUN_DIR."""
     workflow = QAWorkflow()
     _run(
-        lambda: workflow.run(run_dir, agent_config, agent_spec, attempts, overwrite),
+        lambda: workflow.run(
+            run_dir,
+            agent_config,
+            agent_spec,
+            attempts,
+            overwrite,
+            run_workers=run_workers,
+        ),
         "QA agent run completed",
     )
 
@@ -157,12 +190,27 @@ def run_cli(
     help="Matching QA evaluator profile.",
 )
 @click.option("--overwrite", is_flag=True, help="Replace score and report artifacts.")
+@click.option(
+    "--score-workers",
+    type=click.IntRange(min=1, max=QAWorkflow.MAX_PHASE_WORKERS),
+    default=1,
+    show_default=True,
+    help="Concurrent evaluator comparisons.",
+)
 def score_cli(
-    run_dir: Path, evaluator_profile_path: Optional[Path], overwrite: bool
+    run_dir: Path,
+    evaluator_profile_path: Optional[Path],
+    overwrite: bool,
+    score_workers: int,
 ) -> None:
     """Compare and score terminal answers in RUN_DIR."""
     workflow = QAWorkflow()
     _run(
-        lambda: workflow.score(run_dir, evaluator_profile_path, overwrite),
+        lambda: workflow.score(
+            run_dir,
+            evaluator_profile_path,
+            overwrite,
+            score_workers=score_workers,
+        ),
         "QA scoring completed",
     )

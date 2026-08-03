@@ -376,12 +376,21 @@ archi eval qa \
   --agent-spec agent.md \
   --evaluator-profile evaluator.yaml \
   --output-dir evaluation-run/ \
-  --attempts 4
+  --attempts 4 \
+  --run-workers 4 \
+  --score-workers 8
 ```
 
 `--attempts` defaults to `1` and must be positive. Four attempts means each
 prepared question is independently asked four times. More attempts provide a
 better view of stability but increase agent and evaluator calls linearly.
+
+`--run-workers` and `--score-workers` default to `1` and accept values from `1`
+through `16`. They control concurrency independently: the run phase must finish
+all attempts before the score phase begins. Each worker owns one runtime, and
+artifacts remain in canonical question and attempt order even when calls finish
+out of order. Start low and raise each value only within your provider's rate
+limits and the deployment's available memory.
 
 Omit `--evaluator-profile` to use the built-in profile:
 
@@ -428,7 +437,8 @@ the subsequent run refuses to start because there are no prepared items.
 archi eval qa run evaluation-run/ \
   --agent-config agent.yaml \
   --agent-spec agent.md \
-  --attempts 4
+  --attempts 4 \
+  --run-workers 4
 ```
 
 Inspect:
@@ -438,8 +448,9 @@ less evaluation-run/answers.jsonl
 ```
 
 The command reads questions from the prepared workspace; it does not take the
-original dataset again. Every attempt creates a fresh selected pipeline
-instance. When all attempt slots are terminal, the manifest becomes
+original dataset again. Each run worker owns and reuses a separate selected
+pipeline while every attempt still receives fresh invocation state. When all
+attempt slots are terminal, the manifest becomes
 `run_completed`. Each terminal answer row also records non-negative
 `duration_ms` measured only around the tested-agent execution. Its
 `tool_calls` array records each observed tool's ordinal, name, success/error
@@ -448,7 +459,7 @@ status, and duration without storing tool arguments or outputs.
 ### 3. Score
 
 ```bash
-archi eval qa score evaluation-run/
+archi eval qa score evaluation-run/ --score-workers 8
 ```
 
 You may pass `--evaluator-profile evaluator.yaml`, but it must match the
@@ -546,10 +557,14 @@ rows, or import a dataset with zero atoms and generate all of them.
    preparation infers atoms for eligible rows that do not supply them, without
    a manual review checkpoint.
 4. Choose a positive attempt count.
-5. Select **Start evaluation**.
-6. Watch the background job or leave the page; the run continues in the chat
+5. Choose **Run workers** and **Evaluation workers** from `1` through `16`.
+   Run workers control simultaneous tested-agent calls. Evaluation workers
+   control simultaneous judge calls after the complete run phase. Higher values
+   increase concurrent provider requests and runtime memory.
+6. Select **Start evaluation**.
+7. Watch the background job or leave the page; the run continues in the chat
    service.
-7. Open **Runs** to inspect status, answers, judgments, metrics, and the
+8. Open **Runs** to inspect status, answers, judgments, metrics, and the
    report. The underlying run API and workspace also preserve the manifest,
    preparation records, and other raw artifacts listed below.
 
@@ -576,8 +591,9 @@ The console exposes retry actions only for provider or runtime failures:
 
 Successful scored attempts are carried forward unchanged. The parent run
 remains immutable, the successor records its direct parent and retry selection,
-and both runs remain visible in history. Scored attempts that merely fail the
-quality threshold are not retryable.
+and both runs remain visible in history. Evaluation retries inherit the parent's
+run and score worker counts. Scored attempts that merely fail the quality
+threshold are not retryable.
 
 Atom retries require `evaluations:manage`; evaluation retries require
 `evaluations:run`. A draft or run without retryable technical failures creates
@@ -672,8 +688,8 @@ disk but are reported as unsupported by current run and history readers.
 | `evaluation_results.jsonl`          | Score                 | Answers, atom judgments, rationales, metrics, or terminal failures                              |
 | `summary.json`                      | Score                 | Machine-readable aggregate and per-item metrics plus provenance hashes                          |
 | `report.md`                         | Score                 | Human-readable result summary                                                                   |
-| `manifest.json`                     | Every completed phase | Schema/run version, state, phase timestamps/counts, agent metadata, and artifact SHA-256 hashes |
-| `console_metadata.json`             | Console only          | Display name and selected catalog IDs/spec                                                      |
+| `manifest.json`                     | Every completed phase | Schema/run version, state, phase timestamps/counts, phase worker counts, agent metadata, and artifact SHA-256 hashes |
+| `console_metadata.json`             | Console only          | Display name, selected catalog IDs/spec, and launch worker counts                                |
 
 The workspace is the reproducibility record. Keep it intact when comparing
 runs, and archive it with any external version identifiers you need. The

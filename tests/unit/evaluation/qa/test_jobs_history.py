@@ -152,6 +152,98 @@ def test_console_atom_generation_constructs_evaluator_directly(monkeypatch, tmp_
     service.jobs.close()
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("run_workers", 0),
+        ("run_workers", 17),
+        ("run_workers", True),
+        ("score_workers", 0),
+        ("score_workers", 17),
+        ("score_workers", "2"),
+    ],
+)
+def test_console_rejects_invalid_phase_workers_before_catalog_or_job(
+    field, value, tmp_path
+):
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+    )
+    values = {"run_workers": 1, "score_workers": 1, field: value}
+
+    with pytest.raises(ValueError, match=f"{field} must be an integer from 1 to 16"):
+        service.start_evaluation(
+            name="Run",
+            dataset_id="missing",
+            profile_id="builtin",
+            agent_spec="agent.md",
+            attempts=1,
+            **values,
+        )
+
+    assert service.jobs.list() == []
+    service.jobs.close()
+
+
+def test_console_persists_and_passes_phase_workers(tmp_path):
+    calls = []
+
+    class Workflow:
+        def composite(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "run_id": "run-1",
+                "status": "scored",
+                "artifacts": {},
+            }
+
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "agent.md").write_text(
+        "---\nname: Agent\ntools: [search]\n---\nPrompt\n"
+    )
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("services: {}\n")
+    service = EvaluationConsoleService(
+        tmp_path / "console",
+        agent_config_path=config_path,
+        agents_dir=agents_dir,
+        workflow_factory=Workflow,
+    )
+    dataset, _created = service.catalog.import_dataset(
+        "Dataset",
+        "dataset.json",
+        b'[{"id":"item","question":"Q","answer":"A","time_sensitive":false}]',
+    )
+
+    job = service.start_evaluation(
+        name="Parallel run",
+        dataset_id=dataset["id"],
+        profile_id="builtin",
+        agent_spec="agent.md",
+        attempts=2,
+        run_workers=4,
+        score_workers=3,
+    )
+    completed = service.jobs.wait(job["id"], timeout=2)
+
+    assert completed["status"] == "completed"
+    assert job["context"]["run_workers"] == 4
+    assert job["context"]["score_workers"] == 3
+    assert calls[0]["run_workers"] == 4
+    assert calls[0]["score_workers"] == 3
+    metadata = read_json(
+        service.catalog.runs_dir
+        / job["context"]["workspace_id"]
+        / "console_metadata.json"
+    )
+    assert metadata["run_workers"] == 4
+    assert metadata["score_workers"] == 3
+    service.jobs.close()
+
+
 def test_job_manager_enforces_single_flight_and_persists_result(tmp_path):
     manager = EvaluationJobManager(tmp_path)
     release = threading.Event()

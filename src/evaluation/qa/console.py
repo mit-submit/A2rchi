@@ -132,11 +132,15 @@ class EvaluationConsoleService:
         profile_id: str,
         agent_spec: str,
         attempts: int,
+        run_workers: int = 1,
+        score_workers: int = 1,
     ) -> Dict[str, Any]:
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 160:
             raise ValueError("evaluation name must be a non-empty string")
         if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts <= 0:
             raise ValueError("attempts must be a positive integer")
+        QAWorkflow.require_worker_count(run_workers, "run_workers")
+        QAWorkflow.require_worker_count(score_workers, "score_workers")
         dataset = self.catalog.get_dataset(dataset_id)
         profile = self.catalog.get_profile(profile_id)
         dataset_path = self.catalog.dataset_path(dataset_id)
@@ -153,6 +157,8 @@ class EvaluationConsoleService:
             "profile_id": profile_id,
             "profile_name": profile["name"],
             "agent_spec": agent_spec,
+            "run_workers": run_workers,
+            "score_workers": score_workers,
             "created_at": utc_now(),
         }
 
@@ -166,6 +172,8 @@ class EvaluationConsoleService:
                 output_dir=run_dir,
                 evaluator_profile_path=profile_path,
                 attempts=attempts,
+                run_workers=run_workers,
+                score_workers=score_workers,
                 overwrite=False,
             )
             manifest["artifacts"]["console_metadata.json"] = sha256_file(
@@ -186,6 +194,8 @@ class EvaluationConsoleService:
                 "profile_id": profile_id,
                 "agent_spec": agent_spec,
                 "attempts": attempts,
+                "run_workers": run_workers,
+                "score_workers": score_workers,
                 "workspace_id": run_dir.name,
             },
         )

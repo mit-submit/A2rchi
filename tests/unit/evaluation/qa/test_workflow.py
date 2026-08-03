@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -244,6 +246,239 @@ def test_composite_and_staged_workflows_are_equivalent_at_four_attempts(
     assert "- Agent class: `FakeAgent`" in report
     assert "- Agent:" not in report
     assert "fake-model" not in report
+
+
+def test_run_and_score_workers_overlap_with_isolated_runtimes_and_ordered_artifacts(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "parallel.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": item_id,
+                    "question": question,
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                }
+                for item_id, question in (
+                    ("slow", "slow question"),
+                    ("fast", "fast question"),
+                )
+            ]
+        )
+    )
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow()
+    workflow.prepare(dataset, run_dir)
+
+    class AgentFactory:
+        def __init__(self):
+            self.instances = 0
+            self.active = 0
+            self.maximum_active = 0
+            self.lock = threading.Lock()
+            self.started = threading.Barrier(2)
+
+        def __call__(self, config, spec, pipeline_class):
+            factory = self
+            factory.instances += 1
+
+            class Agent:
+                def __init__(self):
+                    self.tool_calls = []
+                    self.active = False
+
+                def run(self, question):
+                    with factory.lock:
+                        assert self.active is False
+                        self.active = True
+                        factory.active += 1
+                        factory.maximum_active = max(
+                            factory.maximum_active, factory.active
+                        )
+                    try:
+                        factory.started.wait(timeout=2)
+                        if question == "slow question":
+                            time.sleep(0.04)
+                        return f"answer for {question}"
+                    finally:
+                        with factory.lock:
+                            self.active = False
+                            factory.active -= 1
+
+            return Agent()
+
+    agent_factory = AgentFactory()
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", agent_factory)
+    workflow.run(
+        run_dir,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        run_workers=2,
+    )
+
+    answers = read_jsonl(run_dir / "answers.jsonl")
+    assert [row["item_id"] for row in answers] == ["slow", "fast"]
+    assert agent_factory.maximum_active == 2
+    assert agent_factory.instances == 2
+
+    class EvaluatorFactory:
+        def __init__(self):
+            self.instances = 0
+            self.active = 0
+            self.maximum_active = 0
+            self.lock = threading.Lock()
+            self.started = threading.Barrier(2)
+
+        def __call__(self, profile):
+            factory = self
+            factory.instances += 1
+
+            class Evaluator:
+                def __init__(self):
+                    self.active = False
+
+                def compare(self, question, gold_atoms, answer):
+                    with factory.lock:
+                        assert self.active is False
+                        self.active = True
+                        factory.active += 1
+                        factory.maximum_active = max(
+                            factory.maximum_active, factory.active
+                        )
+                    try:
+                        factory.started.wait(timeout=2)
+                        if question == "slow question":
+                            time.sleep(0.04)
+                        return {
+                            "judgments": [
+                                {
+                                    "atom_id": atom.id,
+                                    "outcome": "entailed",
+                                    "rationale": "deterministic fake",
+                                }
+                                for atom in gold_atoms
+                            ]
+                        }
+                    finally:
+                        with factory.lock:
+                            self.active = False
+                            factory.active -= 1
+
+            return Evaluator()
+
+    evaluator_factory = EvaluatorFactory()
+    monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator_factory)
+    manifest = workflow.score(run_dir, score_workers=2)
+
+    results = read_jsonl(run_dir / "evaluation_results.jsonl")
+    assert [row["item_id"] for row in results] == ["slow", "fast"]
+    assert evaluator_factory.maximum_active == 2
+    assert evaluator_factory.instances == 2
+    assert manifest["phases"]["run"]["workers"] == 2
+    assert manifest["phases"]["score"]["workers"] == 2
+
+
+def test_composite_finishes_run_phase_before_parallel_scoring(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "barrier.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": f"item-{index}",
+                    "question": f"question {index}",
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                }
+                for index in range(4)
+            ]
+        )
+    )
+    state = {"completed_runs": 0}
+    lock = threading.Lock()
+
+    class Agent:
+        tool_calls = []
+
+        def run(self, question):
+            with lock:
+                state["completed_runs"] += 1
+            return "answer"
+
+    class Evaluator:
+        def extract_gold(self, question, answer):
+            raise AssertionError("supplied atoms must not be regenerated")
+
+        def compare(self, question, gold_atoms, answer):
+            with lock:
+                assert state["completed_runs"] == 4
+            return {
+                "judgments": [
+                    {
+                        "atom_id": atom.id,
+                        "outcome": "entailed",
+                        "rationale": "deterministic fake",
+                    }
+                    for atom in gold_atoms
+                ]
+            }
+
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", lambda *args: Agent())
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", lambda profile: Evaluator()
+    )
+
+    QAWorkflow().composite(
+        dataset,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        tmp_path / "run",
+        run_workers=2,
+        score_workers=2,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("run_workers", 0),
+        ("run_workers", 17),
+        ("run_workers", True),
+        ("score_workers", 0),
+        ("score_workers", 17),
+        ("score_workers", 1.5),
+    ],
+)
+def test_composite_rejects_invalid_worker_counts_before_inputs_or_providers(
+    field, value, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        workflow_module,
+        "load_agent_inputs",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("agent inputs must not be loaded")
+        ),
+    )
+
+    with pytest.raises(ValueError, match=f"{field} must be an integer from 1 to 16"):
+        QAWorkflow().composite(
+            tmp_path / "dataset.json",
+            tmp_path / "agent.yaml",
+            tmp_path / "agent.md",
+            tmp_path / "run",
+            **{field: value},
+        )
+
+    assert not (tmp_path / "run").exists()
 
 
 def test_failure_accounting_preserves_slots_and_denominators(
@@ -1124,6 +1359,8 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
         tmp_path / "agent.yaml",
         tmp_path / "agent.md",
         parent,
+        run_workers=2,
+        score_workers=2,
     )
     parent_bytes = {
         path.name: path.read_bytes() for path in parent.iterdir() if path.is_file()
@@ -1237,6 +1474,8 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
         "evaluation_attempt_ids": ["evaluation-attempt-1"],
         "carried_forward_attempt_ids": ["scored-attempt-1"],
     }
+    assert manifest["phases"]["run"]["workers"] == 2
+    assert manifest["phases"]["score"]["workers"] == 2
     assert read_json(successor / "summary.json")["attempt_lifecycle_counts"] == {
         "execution_failed": 0,
         "evaluation_failed": 0,
@@ -1304,6 +1543,52 @@ def test_retry_rejects_tampered_parent_before_provider_or_output(
     assert not successor.exists()
 
 
+def test_retry_defaults_legacy_manifests_to_one_worker_per_phase(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "item",
+                    "question": "question",
+                    "answer": "expected",
+                    "time_sensitive": False,
+                    "expected_atoms": [
+                        {"id": "required", "text": "expected", "required": True}
+                    ],
+                }
+            ]
+        )
+    )
+    parent = tmp_path / "parent"
+    monkeypatch.setattr(
+        workflow_module,
+        "ArchiAgentRuntime",
+        _AgentFactory(failures={("question", 1)}),
+    )
+    QAWorkflow().composite(
+        dataset,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        parent,
+    )
+    parent_manifest = read_json(parent / "manifest.json")
+    parent_manifest["phases"]["run"].pop("workers")
+    parent_manifest["phases"]["score"].pop("workers")
+    workflow_module.write_json(parent / "manifest.json", parent_manifest)
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", _AgentFactory())
+    monkeypatch.setattr(
+        workflow_module, "LangChainEvaluatorRuntime", _EvaluatorFactory()
+    )
+
+    manifest = QAWorkflow().retry(parent, tmp_path / "successor")
+
+    assert manifest["phases"]["run"]["workers"] == 1
+    assert manifest["phases"]["score"]["workers"] == 1
+
+
 def test_run_and_score_do_not_decode_the_input_snapshot(
     agent_inputs, monkeypatch, tmp_path
 ):
@@ -1314,7 +1599,9 @@ def test_run_and_score_do_not_decode_the_input_snapshot(
     workflow.prepare(dataset, run_dir)
 
     def unexpected_dataset_load(*_args, **_kwargs):
-        raise AssertionError("downstream phases must consume preparation.jsonl directly")
+        raise AssertionError(
+            "downstream phases must consume preparation.jsonl directly"
+        )
 
     monkeypatch.setattr(
         workflow_module,

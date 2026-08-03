@@ -129,6 +129,8 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
             "profile_id": "builtin",
             "agent_spec": "agent.md",
             "attempts": 2,
+            "run_workers": 4,
+            "score_workers": 3,
         },
     )
     evaluation_retry = client.post(
@@ -154,10 +156,41 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
         Permission.Evaluations.RUN,
         Permission.Evaluations.RUN,
     ]
-    launched_call = next(
-        entry for entry in service.started if entry[0] == "evaluation"
-    )
+    launched_call = next(entry for entry in service.started if entry[0] == "evaluation")
     assert launched_call[1]["attempts"] == 2
+    assert launched_call[1]["run_workers"] == 4
+    assert launched_call[1]["score_workers"] == 3
+
+
+def test_launch_route_defaults_phase_workers_for_older_clients(tmp_path):
+    app, service, _permissions = _app(tmp_path)
+
+    response = app.test_client().post(
+        "/api/evaluations/runs",
+        json={
+            "name": "Run",
+            "dataset_id": "dataset-id",
+            "profile_id": "builtin",
+            "agent_spec": "agent.md",
+            "attempts": 1,
+        },
+    )
+
+    assert response.status_code == 202
+    assert service.started == [
+        (
+            "evaluation",
+            {
+                "name": "Run",
+                "dataset_id": "dataset-id",
+                "profile_id": "builtin",
+                "agent_spec": "agent.md",
+                "attempts": 1,
+                "run_workers": 1,
+                "score_workers": 1,
+            },
+        )
+    ]
 
 
 def test_partial_dataset_review_never_starts_generation_or_provider(tmp_path):

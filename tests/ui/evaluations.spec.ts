@@ -124,7 +124,26 @@ test.describe("QA evaluation console", () => {
     await expect(page.getByLabel("Atom generation profile")).toHaveCount(0);
     await page.getByRole("button", { name: "Evaluate" }).click();
     await page.getByLabel("Evaluation name").fill("Browser reviewed run");
+    const runWorkers = page.getByLabel("Run workers");
+    const scoreWorkers = page.getByLabel("Evaluation workers");
+    for (const workers of [runWorkers, scoreWorkers]) {
+      await expect(workers).toHaveValue("1");
+      await expect(workers).toHaveAttribute("min", "1");
+      await expect(workers).toHaveAttribute("max", "16");
+      await expect(workers).toHaveAttribute("required", "");
+    }
+    await runWorkers.fill("17");
+    expect(await runWorkers.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(false);
+    await runWorkers.fill("2");
+    await scoreWorkers.fill("3");
+    const launchRequest = page.waitForRequest((request) => (
+      request.url().endsWith("/api/evaluations/runs") && request.method() === "POST"
+    ));
     await page.getByRole("button", { name: "Start evaluation" }).click();
+    expect((await launchRequest).postDataJSON()).toMatchObject({
+      run_workers: 2,
+      score_workers: 3,
+    });
     await expect(page.getByRole("heading", { name: "Browser reviewed run" })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(".evidence-card").getByText("100.0%", { exact: true }).first()).toBeVisible();
 
