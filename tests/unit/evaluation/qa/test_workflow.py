@@ -526,6 +526,88 @@ def test_hash_tamper_fails_before_agent_call(agent_inputs, monkeypatch, tmp_path
     assert agent.calls == Counter()
 
 
+def test_run_validates_then_streams_preparation_records(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "dataset.json"
+    _dataset(dataset)
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow()
+    workflow.prepare(dataset, run_dir)
+    agent = _AgentFactory()
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", agent)
+    real_iterator = workflow_module.iter_preparation_records
+    state = {"iterations": 0, "previous_question": None}
+
+    def guarded_iterator(path, *, expected_count=None):
+        state["iterations"] += 1
+        iteration = state["iterations"]
+        for record in real_iterator(path, expected_count=expected_count):
+            if iteration == 1:
+                assert agent.calls == Counter()
+            else:
+                previous_question = state["previous_question"]
+                if previous_question is not None:
+                    assert agent.calls[previous_question] == 2
+                if record.status == "prepared":
+                    state["previous_question"] = record.prepared_question
+            yield record
+
+    monkeypatch.setattr(
+        workflow_module,
+        "iter_preparation_records",
+        guarded_iterator,
+    )
+    monkeypatch.setattr(
+        workflow,
+        "_load_preparation",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run must not materialize preparation records")
+        ),
+    )
+
+    workflow.run(
+        run_dir,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        attempts=2,
+    )
+
+    assert state["iterations"] == 2
+    assert agent.calls == Counter({"inferred question": 2, "supplied question": 2})
+    assert len(read_jsonl(run_dir / "answers.jsonl")) == 4
+
+
+def test_run_preflight_rejects_late_invalid_preparation_before_agent_calls(
+    agent_inputs, monkeypatch, tmp_path
+):
+    dataset = tmp_path / "dataset.json"
+    _dataset(dataset)
+    run_dir = tmp_path / "run"
+    workflow = QAWorkflow()
+    workflow.prepare(dataset, run_dir)
+    preparation_path = run_dir / "preparation.jsonl"
+    rows = read_jsonl(preparation_path)
+    rows[-1]["unexpected"] = "invalid"
+    preparation_path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    manifest = read_json(run_dir / "manifest.json")
+    manifest["artifacts"]["preparation.jsonl"] = workflow_module.sha256_file(
+        preparation_path
+    )
+    workflow_module.write_json(run_dir / "manifest.json", manifest)
+    agent = _AgentFactory()
+    monkeypatch.setattr(workflow_module, "ArchiAgentRuntime", agent)
+
+    with pytest.raises(ValueError, match="invalid fields.*unexpected"):
+        workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
+
+    assert agent.calls == Counter()
+    assert not (run_dir / "answers.jsonl").exists()
+
+
 def test_prepare_validates_all_rows_before_evaluator_calls(monkeypatch, tmp_path):
     dataset = tmp_path / "invalid.json"
     dataset.write_text(

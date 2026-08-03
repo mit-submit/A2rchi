@@ -237,6 +237,9 @@ class TestPreparationArtifact:
         with pytest.raises(ValueError, match="exactly one row per input item"):
             load_preparation_records(path, expected_count=2)
 
+        with pytest.raises(ValueError, match="exactly one row per input item"):
+            list(iter_preparation_records(path, expected_count=2))
+
     def test_preserves_authoritative_artifact_order(self, tmp_path):
         first = _item("first", time_sensitive=True)
         second = _item("second", time_sensitive=True)

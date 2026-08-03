@@ -35,6 +35,7 @@ from .profile import load_profile
 from .preparation import (
     AnswerComparator,
     PreparationRecord,
+    iter_preparation_records,
     load_preparation_records,
     prepare_dataset_item,
 )
@@ -390,17 +391,22 @@ class QAWorkflow:
                 + ", ".join(existing)
                 + "; use --overwrite"
             )
+        preparation_path = run_dir / "preparation.jsonl"
+        preparation_count = manifest["phases"]["prepare"]["input_items"]
+        prepared_item_count = sum(
+            record.status == "prepared"
+            for record in iter_preparation_records(
+                preparation_path,
+                expected_count=preparation_count,
+            )
+        )
+        if prepared_item_count == 0:
+            raise ValueError("run requires at least one prepared item")
         config, spec, spec_text, pipeline_class = (
             _resolved_agent_inputs
             if _resolved_agent_inputs is not None
             else load_agent_inputs(agent_config, agent_spec)
         )
-        preparation = self._load_preparation(run_dir, manifest)
-        prepared_records = [
-            record for record in preparation if record.status == "prepared"
-        ]
-        if not prepared_records:
-            raise ValueError("run requires at least one prepared item")
         if overwrite:
             self._remove_owned(run_dir, RUN_FILES | SCORE_FILES)
             manifest["phases"].pop("run", None)
@@ -418,7 +424,12 @@ class QAWorkflow:
         started_at = utc_now()
         attempt_slots = 0
         with AtomicJsonlWriter(run_dir / "answers.jsonl") as answer_writer:
-            for prepared in prepared_records:
+            for prepared in iter_preparation_records(
+                preparation_path,
+                expected_count=preparation_count,
+            ):
+                if prepared.status != "prepared":
+                    continue
                 for ordinal in range(1, attempts + 1):
                     attempt_slots += 1
                     attempt_id = f"{prepared.item_id}-attempt-{ordinal}"

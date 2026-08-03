@@ -298,8 +298,20 @@ def _record_from_row(row: Dict[str, Any], *, index: int) -> PreparationRecord:
     return PreparationRecord(**common, status="skipped_time_sensitive")
 
 
-def iter_preparation_records(path: Path) -> Iterator[PreparationRecord]:
+def _validate_expected_count(expected_count: Optional[int]) -> None:
+    if expected_count is not None and (
+        isinstance(expected_count, bool)
+        or not isinstance(expected_count, int)
+        or expected_count <= 0
+    ):
+        raise ValueError("preparation input item count must be a positive integer")
+
+
+def iter_preparation_records(
+    path: Path, *, expected_count: Optional[int] = None
+) -> Iterator[PreparationRecord]:
     """Validate and yield the authoritative preparation artifact incrementally."""
+    _validate_expected_count(expected_count)
     seen_ids: Set[str] = set()
     record_count = 0
     for record_count, row in enumerate(iter_jsonl(path), 1):
@@ -310,20 +322,13 @@ def iter_preparation_records(path: Path) -> Iterator[PreparationRecord]:
         yield record
     if record_count == 0:
         raise ValueError("preparation artifact must contain at least one row")
+    if expected_count is not None and record_count != expected_count:
+        raise ValueError(
+            "preparation artifact must contain exactly one row per input item"
+        )
 
 
 def load_preparation_records(
     path: Path, *, expected_count: Optional[int] = None
 ) -> List[PreparationRecord]:
-    if expected_count is not None and (
-        isinstance(expected_count, bool)
-        or not isinstance(expected_count, int)
-        or expected_count <= 0
-    ):
-        raise ValueError("preparation input item count must be a positive integer")
-    records = list(iter_preparation_records(path))
-    if expected_count is not None and len(records) != expected_count:
-        raise ValueError(
-            "preparation artifact must contain exactly one row per input item"
-        )
-    return records
+    return list(iter_preparation_records(path, expected_count=expected_count))
