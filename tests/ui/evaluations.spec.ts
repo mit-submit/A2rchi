@@ -3,6 +3,43 @@ import { expect, test } from "@playwright/test";
 test.describe("QA evaluation console", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("uses the Archi page header and selected dark theme", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("archi_theme", "dark"));
+    await page.goto("/evaluations");
+
+    const header = page.locator(".evaluation-header");
+    const backToChat = page.getByRole("link", { name: "Back to Chat" });
+    await expect(header).toBeVisible();
+    await expect(header.getByRole("heading", { name: "QA Evaluations" })).toBeVisible();
+    await expect(backToChat).toBeVisible();
+    await expect(backToChat).toHaveAttribute("href", "/chat");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    const colors = await page.evaluate(() => ({
+      page: getComputedStyle(document.body).backgroundColor,
+      header: getComputedStyle(document.querySelector(".evaluation-header")!).backgroundColor,
+      panel: getComputedStyle(document.querySelector(".panel")!).backgroundColor,
+      text: getComputedStyle(document.body).color,
+    }));
+    expect(colors).toEqual({
+      page: "rgb(15, 18, 23)",
+      header: "rgb(20, 25, 35)",
+      panel: "rgb(20, 25, 35)",
+      text: "rgb(229, 231, 235)",
+    });
+
+    const backBox = await backToChat.boundingBox();
+    const headerBox = await header.boundingBox();
+    const sidebarBox = await page.locator(".sidebar").boundingBox();
+    expect(backBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    expect(sidebarBox).not.toBeNull();
+    expect(backBox!.x).toBeLessThan(40);
+    expect(backBox!.y).toBeGreaterThanOrEqual(headerBox!.y);
+    expect(backBox!.y + backBox!.height).toBeLessThanOrEqual(headerBox!.y + headerBox!.height);
+    expect(sidebarBox!.y).toBe(headerBox!.y + headerBox!.height);
+  });
+
   test("imports, reviews atoms, saves a child dataset, launches, and opens history", async ({ page }) => {
     await page.goto("/evaluations");
     await expect(page.getByRole("heading", { name: "Evidence, not dashboard theatre." })).toBeVisible();
@@ -465,7 +502,7 @@ test.describe("QA evaluation console", () => {
     await toolDisclosure.locator(":scope > summary").focus();
     expect(await toolDisclosure.locator(":scope > summary").evaluate(
       (summary) => getComputedStyle(summary).boxShadow,
-    )).toContain("rgb(8, 113, 83)");
+    )).toContain("rgb(16, 163, 127)");
     await page.keyboard.press("Enter");
     await expect(toolDisclosure).toHaveAttribute("open", "");
     const toolCalls = toolDisclosure.locator(".tool-call-detail");
@@ -475,7 +512,7 @@ test.describe("QA evaluation console", () => {
     await toolCalls.nth(0).locator(":scope > summary").focus();
     expect(await toolCalls.nth(0).locator(":scope > summary").evaluate(
       (summary) => getComputedStyle(summary).boxShadow,
-    )).toContain("rgb(8, 113, 83)");
+    )).toContain("rgb(16, 163, 127)");
     await page.keyboard.press("Enter");
     await expect(toolCalls.nth(0)).toHaveAttribute("open", "");
     await expect(toolCalls.nth(0).locator(".tool-call-duration")).toHaveText("1900 ms");

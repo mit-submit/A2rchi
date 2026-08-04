@@ -4,29 +4,51 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Archi · QA evaluations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/archi_notext.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='evaluations.css') }}">
+  <script src="{{ url_for('static', filename='modules/theme-init.js') }}"></script>
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="/chat" aria-label="Back to Archi chat">
-        <img class="brand-mark" src="{{ url_for('static', filename='images/archi_notext.png') }}" alt="">
-        <span><strong>Archi</strong><small>QA evaluation</small></span>
-      </a>
-      <nav aria-label="Evaluation console">
-        <button class="nav-item active" data-view="runs"><span>01</span>Runs</button>
-        <button class="nav-item" data-view="datasets"><span>02</span>Datasets <b id="dataset-count">0</b></button>
-        <button class="nav-item" data-view="profiles"><span>03</span>Profiles <b id="profile-count">0</b></button>
-        <button class="nav-item" data-view="new"><span>04</span>New evaluation</button>
-      </nav>
-      <div class="sidebar-foot">
-        <div class="runtime"><i></i><span><strong id="runtime-label">Ready</strong><small>single-flight executor</small></span></div>
-        <a href="/chat">← Return to chat</a>
+  <div class="evaluation-app">
+    <header class="evaluation-header">
+      <div class="header-left">
+        <a href="/chat" class="back-link" title="Back to Chat" aria-label="Back to Chat">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M19 12H5M12 19l-7-7 7-7"></path>
+          </svg>
+          <span>Chat</span>
+        </a>
       </div>
-    </aside>
+      <div class="header-center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="header-icon" aria-hidden="true">
+          <path d="M4 19V9"></path>
+          <path d="M10 19V5"></path>
+          <path d="M16 19v-7"></path>
+          <path d="M22 19V3"></path>
+          <path d="M2 19h22"></path>
+        </svg>
+        <h1>QA Evaluations</h1>
+      </div>
+      <div class="header-right" aria-hidden="true"></div>
+    </header>
 
-    <main>
+    <div class="shell">
+      <aside class="sidebar">
+        <nav aria-label="Evaluation console">
+          <button class="nav-item active" data-view="runs"><span>01</span>Runs</button>
+          <button class="nav-item" data-view="datasets"><span>02</span>Datasets <b id="dataset-count">0</b></button>
+          <button class="nav-item" data-view="profiles"><span>03</span>Profiles <b id="profile-count">0</b></button>
+          <button class="nav-item" data-view="new"><span>04</span>New evaluation</button>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="runtime"><i></i><span><strong id="runtime-label">Ready</strong><small>single-flight executor</small></span></div>
+        </div>
+      </aside>
+
+      <main>
       <div id="job-banner" class="job-banner" hidden aria-live="polite"></div>
 
       <section class="view active" id="view-runs">
@@ -146,7 +168,8 @@
         </header>
         <div id="run-detail-content"></div>
       </section>
-    </main>
+      </main>
+    </div>
   </div>
 
   <dialog id="atom-dialog" aria-labelledby="atom-dialog-title" aria-describedby="atom-dialog-description">
