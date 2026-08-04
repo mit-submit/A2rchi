@@ -3,16 +3,36 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterator, List, Set, Tuple
 
-from .artifacts import read_json, read_jsonl, verify_hashes
+from .artifacts import iter_jsonl, read_json, read_jsonl, verify_hashes
 from .constants import SCHEMA_VERSION
-from .preparation import load_preparation_records
+from .preparation import load_preparation_records, load_preparation_rows
 from .tool_traces import serialize_tool_call_records
+
+LEGACY_SCHEMA_VERSION = "qa-v0"
+_PREPARATION_FILES = {
+    LEGACY_SCHEMA_VERSION: ("prepared_items.jsonl", "preparation_results.jsonl"),
+    SCHEMA_VERSION: ("preparation.jsonl",),
+}
 
 
 def _history_id(path: Path) -> str:
     return hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:24]
+
+
+def _require_exact_fields(
+    row: Dict[str, Any], expected: Set[str], *, context: str
+) -> None:
+    missing = sorted(expected - set(row))
+    unknown = sorted(set(row) - expected)
+    details = []
+    if missing:
+        details.append("missing: " + ", ".join(missing))
+    if unknown:
+        details.append("unknown: " + ", ".join(unknown))
+    if details:
+        raise ValueError(f"{context} has invalid fields ({'; '.join(details)})")
 
 
 class EvaluationHistory:
@@ -48,12 +68,25 @@ class EvaluationHistory:
         return self._resolve(history_id)
 
     @staticmethod
+    def _preparation_files(schema_version: str) -> Tuple[str, ...]:
+        try:
+            return _PREPARATION_FILES[schema_version]
+        except KeyError as exc:
+            raise ValueError("unsupported run schema") from exc
+
+    @staticmethod
+    def _capabilities(schema_version: str) -> Dict[str, bool]:
+        return {"retry_failed": schema_version == SCHEMA_VERSION}
+
+    @staticmethod
     def _load(path: Path) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         manifest = read_json(path / "manifest.json")
         if not isinstance(manifest, dict):
             raise ValueError("manifest must be an object")
-        if manifest.get("schema_version") != SCHEMA_VERSION:
+        schema_version = manifest.get("schema_version")
+        if not isinstance(schema_version, str):
             raise ValueError("unsupported run schema")
+        preparation_files = EvaluationHistory._preparation_files(schema_version)
         run_id = manifest.get("run_id")
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("manifest run_id must be a non-empty string")
@@ -99,7 +132,7 @@ class EvaluationHistory:
         snapshot = input_details.get("snapshot")
         if not isinstance(snapshot, str) or Path(snapshot).name != snapshot:
             raise ValueError("manifest input snapshot is invalid")
-        if not {snapshot, "preparation.jsonl"}.issubset(artifacts):
+        if not {snapshot, *preparation_files}.issubset(artifacts):
             raise ValueError("manifest is missing preparation artifacts")
         if status == "scored" and not {
             "summary.json",
@@ -114,6 +147,100 @@ class EvaluationHistory:
         if not isinstance(metadata, dict):
             metadata = {}
         return manifest, metadata
+
+    @staticmethod
+    def _legacy_preparation_rows(path: Path) -> Iterator[Dict[str, Any]]:
+        metadata_fields = {
+            "item_id",
+            "category",
+            "answer_mode",
+            "answer_source",
+        }
+        prepared_fields = metadata_fields | {
+            "question",
+            "answer",
+            "time_sensitive",
+            "atom_source",
+            "gold_atoms",
+        }
+        prepared_by_id: Dict[str, Dict[str, Any]] = {}
+        for index, row in enumerate(iter_jsonl(path / "prepared_items.jsonl"), 1):
+            _require_exact_fields(
+                row, prepared_fields, context=f"legacy prepared row {index}"
+            )
+            item_id = row["item_id"]
+            if not isinstance(item_id, str) or not item_id.strip():
+                raise ValueError(f"legacy prepared row {index} has an invalid item ID")
+            if item_id in prepared_by_id:
+                raise ValueError(
+                    "legacy preparation contains duplicate prepared item IDs"
+                )
+            prepared_by_id[item_id] = row
+
+        seen_results = set()
+        for index, result in enumerate(
+            iter_jsonl(path / "preparation_results.jsonl"), 1
+        ):
+            status = result.get("status")
+            status_fields = {
+                "prepared": set(),
+                "preparation_failed": {"error"},
+                "skipped_time_sensitive": set(),
+            }
+            if not isinstance(status, str) or status not in status_fields:
+                raise ValueError(
+                    f"legacy preparation result row {index} has an unsupported status"
+                )
+            _require_exact_fields(
+                result,
+                metadata_fields | {"status"} | status_fields[status],
+                context=f"legacy preparation result row {index}",
+            )
+            item_id = result["item_id"]
+            if not isinstance(item_id, str) or not item_id.strip():
+                raise ValueError(
+                    f"legacy preparation result row {index} has an invalid item ID"
+                )
+            if item_id in seen_results:
+                raise ValueError(
+                    "legacy preparation contains duplicate result item IDs"
+                )
+            seen_results.add(item_id)
+            if status != "prepared":
+                yield result
+                continue
+
+            try:
+                prepared = prepared_by_id.pop(item_id)
+            except KeyError as exc:
+                raise ValueError(
+                    "legacy prepared result has no matching prepared item"
+                ) from exc
+            if any(
+                prepared[field] != result[field]
+                for field in metadata_fields - {"item_id"}
+            ):
+                raise ValueError("legacy preparation metadata is inconsistent")
+            yield {**prepared, "status": "prepared"}
+
+        if prepared_by_id:
+            raise ValueError("legacy prepared item has no matching preparation result")
+
+    @staticmethod
+    def _load_preparation(
+        path: Path, manifest: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        expected_count = manifest["phases"]["prepare"]["input_items"]
+        if manifest["schema_version"] == LEGACY_SCHEMA_VERSION:
+            records = load_preparation_rows(
+                EvaluationHistory._legacy_preparation_rows(path),
+                expected_count=expected_count,
+            )
+        else:
+            records = load_preparation_records(
+                path / "preparation.jsonl", expected_count=expected_count
+            )
+        return [record.to_dict() for record in records]
 
     @staticmethod
     def _verify_present(
@@ -176,6 +303,10 @@ class EvaluationHistory:
                             if isinstance(summary, dict)
                             else None
                         ),
+                        "schema_version": manifest["schema_version"],
+                        "capabilities": self._capabilities(
+                            manifest["schema_version"]
+                        ),
                         "valid": True,
                     }
                 )
@@ -196,13 +327,14 @@ class EvaluationHistory:
         path = self._resolve(history_id)
         manifest, metadata = self._load(path)
         snapshot = manifest["input"]["snapshot"]
+        preparation_files = self._preparation_files(manifest["schema_version"])
         self._verify_present(
             path,
             manifest,
             [
                 snapshot,
                 "summary.json",
-                "preparation.jsonl",
+                *preparation_files,
                 "answers.jsonl",
                 "evaluation_results.jsonl",
                 "report.md",
@@ -212,17 +344,14 @@ class EvaluationHistory:
             "id": history_id,
             "manifest": manifest,
             "metadata": metadata,
+            "capabilities": self._capabilities(manifest["schema_version"]),
         }
-        preparation_path = path / "preparation.jsonl"
-        preparation = load_preparation_records(
-            preparation_path,
-            expected_count=manifest["phases"]["prepare"]["input_items"],
-        )
-        payload["preparation"] = [record.to_dict() for record in preparation]
+        preparation = self._load_preparation(path, manifest)
+        payload["preparation"] = preparation
         payload["prepared_items"] = [
-            record.to_dict()
+            record
             for record in preparation
-            if record.status == "prepared"
+            if record["status"] == "prepared"
         ]
         for filename, key in (
             ("summary.json", "summary"),

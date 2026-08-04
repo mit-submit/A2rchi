@@ -312,8 +312,9 @@ summary to `report.md`. It does not invoke Archi again.
 #### Understanding the output
 
 Current commands write workspace schema `qa-v1`. Earlier `qa-v0` workspaces
-that used separate preparation files are left unchanged and are not accepted
-by current run or history readers.
+that used separate preparation files are left unchanged. Current run, score,
+and retry commands do not accept them, but the browser history console can
+inspect intact `qa-v0` workspaces through a read-only in-memory projection.
 
 At the end of a successful evaluation, the main result for a person to inspect
 is `report.md` in the selected output directory:

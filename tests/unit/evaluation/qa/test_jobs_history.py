@@ -77,6 +77,63 @@ def _write_preparation_artifacts(run_dir):
     return {"input.snapshot.json", "preparation.jsonl"}
 
 
+def _write_legacy_prepared_workspace(run_dir):
+    write_json(
+        run_dir / "input.snapshot.json",
+        [
+            {
+                "id": "item",
+                "question": "Question",
+                "answer": "Answer",
+                "time_sensitive": False,
+            }
+        ],
+    )
+    prepared = {
+        "item_id": "item",
+        "question": "Question",
+        "answer": "Answer",
+        "time_sensitive": False,
+        "category": None,
+        "answer_mode": None,
+        "answer_source": None,
+        "atom_source": "supplied",
+        "gold_atoms": [{"id": "A1", "text": "Answer", "required": True}],
+    }
+    write_jsonl(run_dir / "prepared_items.jsonl", [prepared])
+    write_jsonl(
+        run_dir / "preparation_results.jsonl",
+        [
+            {
+                "item_id": "item",
+                "status": "prepared",
+                "category": None,
+                "answer_mode": None,
+                "answer_source": None,
+            }
+        ],
+    )
+    artifacts = {
+        "input.snapshot.json",
+        "prepared_items.jsonl",
+        "preparation_results.jsonl",
+    }
+    write_json(
+        run_dir / "manifest.json",
+        {
+            "schema_version": "qa-v0",
+            "run_id": "legacy-run",
+            "status": "prepared",
+            "input": {"snapshot": "input.snapshot.json"},
+            "artifacts": artifact_hashes(run_dir, artifacts),
+            "phases": {
+                "prepare": {"status": "completed", "input_items": 1},
+            },
+        },
+    )
+    return prepared
+
+
 def test_console_job_exposes_current_atom_draft_status(tmp_path):
     service = EvaluationConsoleService(
         tmp_path,
@@ -331,6 +388,206 @@ def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
     assert valid_row["retry_number"] == 2
     assert history.get_report(valid_row["id"]) == "# Report\n"
     assert "unsupported run schema" in invalid_row["error"]
+
+
+def test_history_reads_legacy_v0_runs_without_rewriting_artifacts(tmp_path):
+    run = tmp_path / "legacy"
+    run.mkdir()
+    write_json(
+        run / "input.snapshot.json",
+        [
+            {
+                "id": "prepared",
+                "question": "Question",
+                "answer": "Answer",
+                "time_sensitive": False,
+            },
+            {
+                "id": "skipped",
+                "question": "Current question",
+                "answer": "Current answer",
+                "time_sensitive": True,
+            },
+            {
+                "id": "failed",
+                "question": "Failed question",
+                "answer": "Failed answer",
+                "time_sensitive": False,
+            },
+        ],
+    )
+    write_jsonl(
+        run / "prepared_items.jsonl",
+        [
+            {
+                "item_id": "prepared",
+                "question": "Question",
+                "answer": "Answer",
+                "time_sensitive": False,
+                "category": "general",
+                "answer_mode": None,
+                "answer_source": None,
+                "atom_source": "supplied",
+                "gold_atoms": [
+                    {"id": "A1", "text": "Answer", "required": True}
+                ],
+            }
+        ],
+    )
+    write_jsonl(
+        run / "preparation_results.jsonl",
+        [
+            {
+                "item_id": "prepared",
+                "status": "prepared",
+                "category": "general",
+                "answer_mode": None,
+                "answer_source": None,
+            },
+            {
+                "item_id": "skipped",
+                "status": "skipped_time_sensitive",
+                "category": "live",
+                "answer_mode": None,
+                "answer_source": None,
+            },
+            {
+                "item_id": "failed",
+                "status": "preparation_failed",
+                "category": None,
+                "answer_mode": None,
+                "answer_source": None,
+                "error": "provider unavailable",
+            },
+        ],
+    )
+    write_json(run / "summary.json", {"overall_attempt_pass_rate": 1.0})
+    (run / "report.md").write_text("# Legacy report\n")
+    artifacts = {
+        "input.snapshot.json",
+        "prepared_items.jsonl",
+        "preparation_results.jsonl",
+        "summary.json",
+        "report.md",
+    }
+    write_json(
+        run / "manifest.json",
+        {
+            "schema_version": "qa-v0",
+            "run_id": "legacy-run",
+            "status": "scored",
+            "attempts": 1,
+            "input": {"snapshot": "input.snapshot.json"},
+            "artifacts": artifact_hashes(run, artifacts),
+            "phases": {
+                "prepare": {"status": "completed", "input_items": 3},
+                "run": {"status": "completed"},
+                "score": {"status": "completed"},
+            },
+        },
+    )
+    original_manifest = (run / "manifest.json").read_bytes()
+    history = EvaluationHistory(tmp_path)
+
+    rows = history.list_runs()
+    payload = history.get_run(history.id_for_path(run))
+
+    assert rows == [
+        {
+            "id": history.id_for_path(run),
+            "run_id": "legacy-run",
+            "name": "legacy-run",
+            "status": "scored",
+            "created_at": "",
+            "dataset_id": None,
+            "dataset_name": None,
+            "profile_id": None,
+            "profile_name": None,
+            "agent_spec": None,
+            "attempts": 1,
+            "retry_of_history_id": None,
+            "retry_number": None,
+            "overall_attempt_pass_rate": 1.0,
+            "schema_version": "qa-v0",
+            "capabilities": {"retry_failed": False},
+            "valid": True,
+        }
+    ]
+    assert payload["preparation"] == [
+        {
+            "item_id": "prepared",
+            "status": "prepared",
+            "category": "general",
+            "answer_mode": None,
+            "answer_source": None,
+            "question": "Question",
+            "answer": "Answer",
+            "time_sensitive": False,
+            "atom_source": "supplied",
+            "gold_atoms": [{"id": "A1", "text": "Answer", "required": True}],
+        },
+        {
+            "item_id": "skipped",
+            "status": "skipped_time_sensitive",
+            "category": "live",
+            "answer_mode": None,
+            "answer_source": None,
+        },
+        {
+            "item_id": "failed",
+            "status": "preparation_failed",
+            "category": None,
+            "answer_mode": None,
+            "answer_source": None,
+            "error": "provider unavailable",
+        },
+    ]
+    assert payload["prepared_items"] == [payload["preparation"][0]]
+    assert payload["capabilities"] == {"retry_failed": False}
+    assert history.get_report(history.id_for_path(run)) == "# Legacy report\n"
+    assert (run / "manifest.json").read_bytes() == original_manifest
+    assert not (run / "preparation.jsonl").exists()
+
+
+def test_history_rejects_tampered_legacy_v0_preparation(tmp_path):
+    run = tmp_path / "legacy"
+    run.mkdir()
+    prepared = _write_legacy_prepared_workspace(run)
+    prepared["answer"] = "Tampered"
+    write_jsonl(run / "prepared_items.jsonl", [prepared])
+    history = EvaluationHistory(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="workspace artifact hash mismatch: prepared_items.jsonl",
+    ):
+        history.get_run(history.id_for_path(run))
+
+
+def test_console_rejects_legacy_v0_retry_before_workflow_or_job(tmp_path):
+    workflow_constructed = False
+
+    def workflow_factory():
+        nonlocal workflow_constructed
+        workflow_constructed = True
+        return _RetryWorkflow()
+
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+        workflow_factory=workflow_factory,
+    )
+    run = service.catalog.runs_dir / "legacy"
+    run.mkdir()
+    _write_legacy_prepared_workspace(run)
+
+    with pytest.raises(ValueError, match="legacy evaluation runs cannot be retried"):
+        service.start_evaluation_retry(service.history.id_for_path(run))
+
+    assert workflow_constructed is False
+    assert service.jobs.list() == []
+    service.jobs.close()
 
 
 def test_history_derives_prepared_items_from_canonical_preparation(

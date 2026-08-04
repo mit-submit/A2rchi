@@ -203,6 +203,8 @@ class EvaluationConsoleService:
     def start_evaluation_retry(self, history_id: str) -> Dict[str, Any]:
         parent_path = self.history.run_path(history_id)
         parent = self.history.get_run(history_id)
+        if not parent["capabilities"]["retry_failed"]:
+            raise ValueError("legacy evaluation runs cannot be retried")
         workflow = self.workflow_factory()
         plan = workflow.retry_plan(parent_path)
         parent_metadata = parent["metadata"]

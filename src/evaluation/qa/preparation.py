@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import (
     Any,
     Dict,
+    Iterable,
     Iterator,
     List,
     Literal,
@@ -307,14 +308,13 @@ def _validate_expected_count(expected_count: Optional[int]) -> None:
         raise ValueError("preparation input item count must be a positive integer")
 
 
-def iter_preparation_records(
-    path: Path, *, expected_count: Optional[int] = None
+def _iter_preparation_rows(
+    rows: Iterable[Dict[str, Any]], *, expected_count: Optional[int] = None
 ) -> Iterator[PreparationRecord]:
-    """Validate and yield the authoritative preparation artifact incrementally."""
     _validate_expected_count(expected_count)
     seen_ids: Set[str] = set()
     record_count = 0
-    for record_count, row in enumerate(iter_jsonl(path), 1):
+    for record_count, row in enumerate(rows, 1):
         record = _record_from_row(row, index=record_count)
         if record.item_id in seen_ids:
             raise ValueError("preparation artifact contains duplicate item IDs")
@@ -328,7 +328,23 @@ def iter_preparation_records(
         )
 
 
+def iter_preparation_records(
+    path: Path, *, expected_count: Optional[int] = None
+) -> Iterator[PreparationRecord]:
+    """Validate and yield the authoritative preparation artifact incrementally."""
+    yield from _iter_preparation_rows(
+        iter_jsonl(path), expected_count=expected_count
+    )
+
+
 def load_preparation_records(
     path: Path, *, expected_count: Optional[int] = None
 ) -> List[PreparationRecord]:
     return list(iter_preparation_records(path, expected_count=expected_count))
+
+
+def load_preparation_rows(
+    rows: Iterable[Dict[str, Any]], *, expected_count: Optional[int] = None
+) -> List[PreparationRecord]:
+    """Validate a projected row stream using the canonical record contract."""
+    return list(_iter_preparation_rows(rows, expected_count=expected_count))

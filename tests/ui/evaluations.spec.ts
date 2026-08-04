@@ -756,6 +756,69 @@ test.describe("QA evaluation console", () => {
     );
   });
 
+  test("does not offer retries for read-only qa-v0 history", async ({ page }) => {
+    const historyId = "legacy-read-only";
+    await page.route(`**/api/evaluations/runs/${historyId}`, async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          run: {
+            manifest: {
+              run_id: "legacy-read-only-run",
+              schema_version: "qa-v0",
+              status: "scored",
+            },
+            metadata: { name: "Legacy read-only run" },
+            capabilities: { retry_failed: false },
+            summary: {
+              overall_attempt_pass_rate: 0,
+              attempt_lifecycle_counts: {
+                scored: 0,
+                execution_failed: 1,
+                evaluation_failed: 0,
+              },
+            },
+            prepared_items: [{
+              item_id: "legacy-question",
+              question: "Can this historical failure be retried?",
+              gold_atoms: [{ id: "A1", text: "No.", required: true }],
+            }],
+            answers: [{
+              item_id: "legacy-question",
+              attempt_id: "legacy-question-attempt-1",
+              ordinal: 1,
+              status: "execution_failed",
+              error: { type: "RuntimeError", message: "Historical failure" },
+            }],
+            evaluation_results: [],
+            report_available: false,
+          },
+        }),
+      });
+    });
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          runs: [{
+            id: historyId,
+            valid: true,
+            name: "Legacy read-only run",
+            status: "scored",
+            attempts: 1,
+            overall_attempt_pass_rate: 0,
+          }],
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+    await page.locator(`[data-run-id="${historyId}"]`).click();
+
+    await expect(page.locator("#retry-failed-evaluation")).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Legacy read-only run" })).toBeVisible();
+  });
+
   test("does not synthesize latency for a legacy run without attempt timings", async ({ page }) => {
     const historyId = "legacy-without-latency";
     await page.route(`**/api/evaluations/runs/${historyId}`, async (route) => {

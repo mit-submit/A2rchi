@@ -696,8 +696,11 @@ evaluator failures are not mistaken for good quality.
 ## Run workspace artifacts
 
 The current workspace schema is `qa-v1`. It introduced the canonical
-`preparation.jsonl` artifact; earlier `qa-v0` workspaces remain unchanged on
-disk but are reported as unsupported by current run and history readers.
+`preparation.jsonl` artifact. Current run, score, and retry workflows require
+`qa-v1`. The history console reads intact `qa-v0` workspaces through a
+read-only adapter that joins their separate `prepared_items.jsonl` and
+`preparation_results.jsonl` artifacts in memory. It never rewrites those
+historical workspaces, and they cannot be retried.
 
 | File                                  | Written in            | Contents                                                                                        |
 | ------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- |

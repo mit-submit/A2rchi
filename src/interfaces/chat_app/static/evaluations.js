@@ -953,7 +953,7 @@
       const counts = summary.attempt_lifecycle_counts || {};
       const retryableCount = (counts.execution_failed || 0) + (counts.evaluation_failed || 0);
       const retryButton = $("#retry-failed-evaluation");
-      retryButton.hidden = retryableCount === 0;
+      retryButton.hidden = retryableCount === 0 || run.capabilities?.retry_failed !== true;
       retryButton.disabled = false;
       retryButton.textContent = `Retry failed attempts (${retryableCount})`;
       const parent = state.runs.find((item) => item.id === meta.retry_of_history_id);
