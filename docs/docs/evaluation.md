@@ -604,9 +604,10 @@ neither a job nor a new artifact.
 
 ### Compare history trends
 
-The evaluation homepage charts every persisted run with an authoritative
-timestamp and metric value. One shared dataset selector controls all three
-graphs:
+The evaluation homepage charts valid, fully scored runs with an authoritative
+timestamp and metric value. Prepared or execution-complete runs remain in the
+run table while work continues, but do not appear in the trend dataset selector
+or graphs. One shared dataset selector controls all three graphs:
 
 - **Attempt latency** plots the average, best, and worst tested-agent latency
   across the attempts recorded by each run.

@@ -40,6 +40,174 @@ test.describe("QA evaluation console", () => {
     expect(sidebarBox!.y).toBe(headerBox!.y + headerBox!.height);
   });
 
+  test("previews launch selections in equal-height cards and explains worker memory", async ({ page }) => {
+    const dataset = {
+      id: "dataset-launch",
+      name: "Launch dataset",
+      source_filename: "launch.json",
+      sha256: "1".repeat(64),
+      item_count: 4,
+      eligible_item_count: 4,
+      time_sensitive_item_count: 0,
+      supplied_atom_item_count: 4,
+      atom_count: 4,
+      categories: ["operations"],
+      answer_sources: ["handbook"],
+      created_at: "2026-08-05T10:00:00+00:00",
+      parent_dataset_id: null,
+    };
+    const profiles = [
+      {
+        id: "builtin",
+        name: "Built-in QA profile",
+        sha256: null,
+        built_in: true,
+        components: {
+          atoms_extractor: { provider: "openai", model: "extractor-default" },
+          evaluator: { provider: "openai", model: "judge-default" },
+        },
+      },
+      {
+        id: "profile-local",
+        name: "Local deterministic judge",
+        sha256: "2".repeat(64),
+        built_in: false,
+        components: {
+          atoms_extractor: { provider: "ollama", model: "extractor-local", timeout: 30 },
+          evaluator: { provider: "ollama", model: "judge-local", timeout: 45 },
+        },
+      },
+    ];
+    const agentContents: Record<string, { name: string; tools: string[]; content: string }> = {
+      "alpha.md": {
+        name: "Alpha operator",
+        tools: ["search", "lookup"],
+        content: "---\nname: Alpha operator\ntools:\n  - search\n  - lookup\n---\nAnswer only from retrieved evidence.",
+      },
+      "beta.md": {
+        name: "Beta investigator",
+        tools: ["search"],
+        content: "---\nname: Beta investigator\ntools:\n  - search\n---\nCompare sources before answering.",
+      },
+    };
+    let catalogAgents = [
+      { id: "alpha.md", name: "alpha" },
+      { id: "beta.md", name: "beta" },
+      { id: "broken.md", name: "broken" },
+    ];
+    let releaseBeta!: () => void;
+    const betaGate = new Promise<void>((resolve) => { releaseBeta = resolve; });
+    const requestedAgents: string[] = [];
+    await page.route("**/api/evaluations/catalog", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          datasets: [dataset],
+          profiles,
+          agents: catalogAgents,
+          jobs: [],
+        }),
+      });
+    });
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ runs: [] }) });
+    });
+    await page.route("**/api/evaluations/agents/*", async (route) => {
+      const id = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop()!);
+      requestedAgents.push(id);
+      const agent = agentContents[id];
+      if (!agent) {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "selected agent spec does not exist" }),
+        });
+        return;
+      }
+      if (id === "beta.md") await betaGate;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          agent: { id, ...agent },
+        }),
+      });
+    });
+
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/evaluations");
+    await page.getByRole("button", { name: /New evaluation/ }).click();
+
+    const profileSnapshot = page.locator("#profile-snapshot");
+    const agentSnapshot = page.locator("#agent-snapshot");
+    await expect(profileSnapshot.getByRole("heading", { name: "Built-in QA profile" })).toBeVisible();
+    await expect(profileSnapshot).toContainText("openai / extractor-default");
+    await expect(profileSnapshot).toContainText("openai / judge-default");
+    await expect(agentSnapshot.getByRole("heading", { name: "Alpha operator" })).toBeVisible();
+    await expect(agentSnapshot.getByLabel("Selected specification contents")).toContainText(
+      "Answer only from retrieved evidence.",
+    );
+
+    await page.getByLabel("Evaluator profile").selectOption("profile-local");
+    await expect(profileSnapshot.getByRole("heading", { name: "Local deterministic judge" })).toBeVisible();
+    await expect(profileSnapshot).toContainText("ollama / judge-local");
+    await expect(profileSnapshot).toContainText("45s timeout");
+
+    await page.getByLabel("Agent spec").selectOption("beta.md");
+    await expect(agentSnapshot.getByRole("status")).toHaveText("Loading selected agent spec…");
+    releaseBeta();
+    await expect(agentSnapshot.getByRole("heading", { name: "Beta investigator" })).toBeVisible();
+    await expect(agentSnapshot).toContainText("Compare sources before answering.");
+    expect(requestedAgents).toEqual(["alpha.md", "beta.md"]);
+
+    const cardHeights = await page.locator(".configuration-grid > .form-card").evaluateAll((cards) => (
+      cards.map((card) => Math.round(card.getBoundingClientRect().height))
+    ));
+    expect(new Set(cardHeights).size).toBe(1);
+
+    const runInfo = page.getByRole("button", { name: "Run phase concurrency and memory help" });
+    const runTooltip = page.locator("#run-workers-tooltip");
+    await runInfo.focus();
+    await expect(runTooltip).toBeVisible();
+    await expect(runTooltip).toContainText("isolated agent runtime");
+    await expect(runTooltip).toContainText("memory generally grows roughly in proportion");
+    await expect(runTooltip).toContainText("never overlap");
+    const runTooltipBox = await runTooltip.boundingBox();
+    const runInputBox = await page.getByLabel("Run workers").boundingBox();
+    expect(runTooltipBox).not.toBeNull();
+    expect(runInputBox).not.toBeNull();
+    expect(runTooltipBox!.y + runTooltipBox!.height).toBeLessThanOrEqual(runInputBox!.y);
+
+    const scoreInfo = page.getByRole("button", { name: "Evaluation phase concurrency and memory help" });
+    await scoreInfo.focus();
+    const scoreTooltip = page.locator("#score-workers-tooltip");
+    await expect(scoreTooltip).toBeVisible();
+    await expect(scoreTooltip).toContainText("isolated evaluator runtime");
+    await expect(scoreTooltip).toContainText("not active during the run phase");
+
+    await page.getByLabel("Agent spec").selectOption("broken.md");
+    await expect(agentSnapshot.getByRole("status")).toContainText("Could not load this agent spec.");
+    await expect(page.getByLabel("Agent spec")).toHaveValue("broken.md");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await runInfo.focus();
+    await expect(runTooltip).toBeVisible();
+    const mobileTooltipBox = await runTooltip.boundingBox();
+    expect(mobileTooltipBox).not.toBeNull();
+    expect(mobileTooltipBox!.x).toBeGreaterThanOrEqual(0);
+    expect(mobileTooltipBox!.x + mobileTooltipBox!.width).toBeLessThanOrEqual(390);
+    const hasPageOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasPageOverflow).toBe(false);
+
+    catalogAgents = [];
+    await page.reload();
+    await page.getByRole("button", { name: /New evaluation/ }).click();
+    await expect(page.locator("#agent-snapshot").getByRole("status")).toHaveText(
+      "No agent spec is available.",
+    );
+  });
+
   test("filters history trends by dataset and opens points with keyboard", async ({ page }) => {
     const runs = [
       {
@@ -132,6 +300,52 @@ test.describe("QA evaluation console", () => {
         },
         valid: true,
       },
+      {
+        id: "trend-prepared",
+        run_id: "trend-prepared",
+        name: "Evaluation in progress",
+        status: "prepared",
+        created_at: "2026-08-04T10:00:00+00:00",
+        dataset_id: null,
+        dataset_key: "snapshot:prepared",
+        dataset_name: "source.json",
+        attempts: null,
+        retry_of_history_id: null,
+        retry_number: null,
+        overall_attempt_pass_rate: null,
+        passed_attempts: null,
+        quality_accounted_attempts: null,
+        attempt_lifecycle_counts: null,
+        technical_failure_rate: null,
+        latency: null,
+        valid: true,
+      },
+      {
+        id: "trend-run-completed",
+        run_id: "trend-run-completed",
+        name: "Execution complete, scoring pending",
+        status: "run_completed",
+        created_at: "2026-08-04T11:00:00+00:00",
+        dataset_id: null,
+        dataset_key: "dataset-alpha",
+        dataset_name: "source.json",
+        attempts: 1,
+        retry_of_history_id: null,
+        retry_number: null,
+        overall_attempt_pass_rate: null,
+        passed_attempts: null,
+        quality_accounted_attempts: null,
+        attempt_lifecycle_counts: null,
+        technical_failure_rate: null,
+        latency: {
+          total_attempts: 1,
+          timed_attempts: 1,
+          average_ms: 700,
+          best_ms: 700,
+          worst_ms: 700,
+        },
+        valid: true,
+      },
     ];
     await page.route("**/api/evaluations/runs", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ runs }) });
@@ -171,6 +385,8 @@ test.describe("QA evaluation console", () => {
     const beta = page.getByRole("checkbox", { name: "Beta set" });
     await expect(alpha).toBeChecked();
     await expect(beta).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "source.json" })).toHaveCount(0);
+    await expect(page.locator("#trend-filter-status")).toHaveText("Showing 2 of 2 datasets");
     await expect(page.locator('#trend-latency-chart [data-series="average"]')).toHaveCount(3);
     await expect(page.locator('#trend-pass-chart [data-series="pass"]')).toHaveCount(3);
     await expect(page.locator('#trend-failure-chart [data-series="failure"]')).toHaveCount(3);

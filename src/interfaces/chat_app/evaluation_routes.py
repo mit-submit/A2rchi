@@ -214,6 +214,14 @@ def profile_detail(profile_id):
         return _error(exc)
 
 
+@evaluations_bp.route("/api/evaluations/agents/<agent_filename>")
+def agent_detail(agent_filename):
+    try:
+        return jsonify({"agent": _service().get_agent_snapshot(agent_filename)})
+    except Exception as exc:
+        return _error(exc)
+
+
 @evaluations_bp.route("/api/evaluations/runs", methods=["GET", "POST"])
 def runs():
     service = _service()

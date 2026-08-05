@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from src.archi.pipelines.agents.agent_spec import list_agent_files
+from src.archi.pipelines.agents import agent_spec as agent_spec_utils
 
 from .artifacts import read_json, sha256_file, utc_now, write_json
 from .catalog import EvaluationCatalog
@@ -13,6 +13,8 @@ from .jobs import EvaluationJobManager
 from .profile import load_profile
 from .runtime import LangChainEvaluatorRuntime
 from .workflow import QAWorkflow
+
+MAX_AGENT_SNAPSHOT_BYTES = 256 * 1024
 
 
 class EvaluationConsoleService:
@@ -36,7 +38,7 @@ class EvaluationConsoleService:
     def list_agents(self) -> List[Dict[str, str]]:
         return [
             {"id": path.name, "name": path.stem}
-            for path in list_agent_files(self.agents_dir)
+            for path in agent_spec_utils.list_agent_files(self.agents_dir)
         ]
 
     def get_job(self, job_id: str) -> Dict[str, Any]:
@@ -75,11 +77,42 @@ class EvaluationConsoleService:
             or Path(agent_filename).suffix.lower() != ".md"
         ):
             raise ValueError("agent_spec must be a catalog agent filename")
-        available = {path.name: path for path in list_agent_files(self.agents_dir)}
+        available = {
+            path.name: path
+            for path in agent_spec_utils.list_agent_files(self.agents_dir)
+        }
         try:
-            return available[agent_filename]
+            path = available[agent_filename].resolve()
         except KeyError as exc:
             raise ValueError("selected agent spec does not exist") from exc
+        try:
+            path.relative_to(self.agents_dir.resolve())
+        except ValueError as exc:
+            raise ValueError(
+                "selected agent spec is outside the configured agents directory"
+            ) from exc
+        return path
+
+    def get_agent_snapshot(self, agent_filename: str) -> Dict[str, Any]:
+        path = self._agent_path(agent_filename)
+        with path.open("rb") as handle:
+            blob = handle.read(MAX_AGENT_SNAPSHOT_BYTES + 1)
+        if len(blob) > MAX_AGENT_SNAPSHOT_BYTES:
+            raise ValueError("agent spec snapshot exceeds the 256 KiB limit")
+        try:
+            content = blob.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("agent spec must be UTF-8 text") from exc
+        try:
+            spec = agent_spec_utils.load_agent_spec_from_text(content)
+        except agent_spec_utils.AgentSpecError as exc:
+            raise ValueError(str(exc).replace("<memory>", agent_filename)) from exc
+        return {
+            "id": agent_filename,
+            "name": spec.name,
+            "tools": list(spec.tools),
+            "content": content,
+        }
 
     def start_atom_generation(self, dataset_id: str, profile_id: str) -> Dict[str, Any]:
         dataset = self.catalog.get_dataset(dataset_id)

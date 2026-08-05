@@ -6,7 +6,7 @@
     draft: null, openRunId: null, pollingJobId: null, reviewValidationActive: false,
     openToolCalls: new Map(), nextToolCallKey: 1, trendDatasetKeys: [],
     selectedTrendDatasets: new Set(), trendFiltersInitialized: false,
-    trendPointData: new Map()
+    trendPointData: new Map(), agentSnapshotRequest: 0
   };
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -69,6 +69,52 @@
     $("#launch-agent").innerHTML = state.agents.length
       ? state.agents.map((item) => `<option value="${esc(item.id)}">${esc(item.name)} · ${esc(item.id)}</option>`).join("")
       : `<option value="">No agent specs found</option>`;
+    renderProfileSnapshot();
+    renderAgentSnapshot();
+  }
+
+  function descriptorSummary(label, descriptor) {
+    const timeout = descriptor.timeout == null ? "default timeout" : `${descriptor.timeout}s timeout`;
+    return `<div class="snapshot-row"><span>${esc(label)}</span><strong>${esc(descriptor.provider)} / ${esc(descriptor.model)}</strong><small>${esc(timeout)}</small></div>`;
+  }
+
+  function renderProfileSnapshot() {
+    const profileId = $("#launch-profile").value;
+    const profile = state.profiles.find((item) => item.id === profileId);
+    if (!profile) {
+      $("#profile-snapshot").innerHTML = `<div class="snapshot-status" role="status">No evaluator profile is available.</div>`;
+      return;
+    }
+    $("#profile-snapshot").innerHTML = `
+      <header class="snapshot-head"><div><span>Selected profile</span><h3 id="profile-snapshot-title">${esc(profile.name)}</h3></div><code>${esc(shortHash(profile.sha256))}</code></header>
+      <div class="snapshot-content">
+        ${descriptorSummary("Atom extractor", profile.components.atoms_extractor)}
+        ${descriptorSummary("Answer evaluator", profile.components.evaluator)}
+      </div>`;
+  }
+
+  async function renderAgentSnapshot() {
+    const agentId = $("#launch-agent").value;
+    const requestId = ++state.agentSnapshotRequest;
+    if (!agentId) {
+      $("#agent-snapshot").innerHTML = `<div class="snapshot-status" role="status">No agent spec is available.</div>`;
+      return;
+    }
+    $("#agent-snapshot").setAttribute("aria-busy", "true");
+    $("#agent-snapshot").innerHTML = `<div class="snapshot-status" role="status">Loading selected agent spec…</div>`;
+    try {
+      const { agent } = await api(`/api/evaluations/agents/${encodeURIComponent(agentId)}`);
+      if (requestId !== state.agentSnapshotRequest || $("#launch-agent").value !== agentId) return;
+      $("#agent-snapshot").innerHTML = `
+        <header class="snapshot-head"><div><span>Selected agent</span><h3 id="agent-snapshot-title">${esc(agent.name)}</h3></div><code>${esc(agent.id)}</code></header>
+        <div class="snapshot-tools"><span>Tools</span><strong>${agent.tools.length ? agent.tools.map(esc).join(" · ") : "None"}</strong></div>
+        <pre class="agent-spec-content" tabindex="0" aria-label="Selected specification contents">${esc(agent.content)}</pre>`;
+    } catch (error) {
+      if (requestId !== state.agentSnapshotRequest || $("#launch-agent").value !== agentId) return;
+      $("#agent-snapshot").innerHTML = `<div class="snapshot-status error" role="status"><strong>Could not load this agent spec.</strong><span>${esc(error.message)}</span></div>`;
+    } finally {
+      if (requestId === state.agentSnapshotRequest) $("#agent-snapshot").removeAttribute("aria-busy");
+    }
   }
 
   function renderProfiles() {
@@ -160,9 +206,13 @@
     renderHistoryTrends();
   }
 
+  function scoredTrendRuns() {
+    return state.runs.filter((run) => run.valid && run.status === "scored");
+  }
+
   function trendDatasets() {
     const byKey = new Map();
-    state.runs.filter((run) => run.valid && typeof run.dataset_key === "string" && run.dataset_key).forEach((run) => {
+    scoredTrendRuns().filter((run) => typeof run.dataset_key === "string" && run.dataset_key).forEach((run) => {
       if (!byKey.has(run.dataset_key)) byKey.set(run.dataset_key, run.dataset_name || "CLI snapshot");
     });
     const nameCounts = new Map();
@@ -219,15 +269,14 @@
   }
 
   function datedTrendRuns() {
-    return state.runs.map((run) => ({ run, timestamp: Date.parse(run.created_at) }))
-      .filter(({ run, timestamp }) => run.valid
-        && state.selectedTrendDatasets.has(run.dataset_key)
+    return scoredTrendRuns().map((run) => ({ run, timestamp: Date.parse(run.created_at) }))
+      .filter(({ run, timestamp }) => state.selectedTrendDatasets.has(run.dataset_key)
         && Number.isFinite(timestamp))
       .sort((left, right) => left.timestamp - right.timestamp);
   }
 
   function selectedTrendRuns() {
-    return state.runs.filter((run) => run.valid && state.selectedTrendDatasets.has(run.dataset_key));
+    return scoredTrendRuns().filter((run) => state.selectedTrendDatasets.has(run.dataset_key));
   }
 
   function svgPath(points) {
@@ -1335,6 +1384,8 @@
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
   $$("[data-go]").forEach((item) => item.addEventListener("click", () => showView(item.dataset.go)));
   $("#dataset-search").addEventListener("input", renderDatasets);
+  $("#launch-profile").addEventListener("change", renderProfileSnapshot);
+  $("#launch-agent").addEventListener("change", renderAgentSnapshot);
   $("#refresh-runs").addEventListener("click", () => loadRuns().catch((error) => toast("Refresh failed", error.message)));
   $("#trend-select-all").addEventListener("click", () => {
     state.selectedTrendDatasets = new Set(state.trendDatasetKeys);

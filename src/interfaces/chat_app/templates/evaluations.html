@@ -166,32 +166,75 @@
           <div><p class="eyebrow">New evaluation</p><h1>Choose exact inputs. Preserve exact outputs.</h1><p>The dataset, profile, agent config, and agent spec are snapshotted into the run.</p></div>
         </header>
         <form class="launch-grid" id="evaluation-form">
-          <section class="panel form-card">
-            <span class="step">01</span><h2>Identity</h2>
-            <label>Evaluation name<input name="name" placeholder="ops-readiness · reviewed atoms" autocomplete="off" required></label>
-            <label>Attempts per eligible question<input name="attempts" type="number" min="1" value="1" required></label>
-          </section>
-          <section class="panel form-card">
-            <span class="step">02</span><h2>Gold and judge</h2>
-            <label>Dataset<select name="dataset_id" id="launch-dataset" required></select></label>
-            <label>Evaluator profile<select name="profile_id" id="launch-profile" required></select></label>
-          </section>
-          <section class="panel form-card">
-            <span class="step">03</span><h2>Agent under test</h2>
-            <label>Agent spec<select name="agent_spec" id="launch-agent" required></select></label>
-            <p class="callout">The deployment’s resolved agent YAML is used. The selected Markdown spec is copied into the run.</p>
-          </section>
-          <section class="panel form-card concurrency-card">
-            <span class="step">04</span><h2>Concurrency</h2>
-            <div class="field-group">
-              <label>Run workers<input name="run_workers" type="number" min="1" max="16" step="1" value="1" aria-describedby="run-workers-help" required></label>
-              <small class="field-help" id="run-workers-help">Choose 1–16 concurrent agent calls. Each worker owns a separate runtime.</small>
-            </div>
-            <div class="field-group">
-              <label>Evaluation workers<input name="score_workers" type="number" min="1" max="16" step="1" value="1" aria-describedby="score-workers-help" required></label>
-              <small class="field-help" id="score-workers-help">Choose 1–16 concurrent judge calls after every agent run finishes.</small>
-            </div>
-          </section>
+          <div class="configuration-grid">
+            <section class="panel form-card">
+              <header class="form-card-head"><span class="step">01</span><h2>Identity</h2></header>
+              <div class="form-card-body">
+                <div class="field-group">
+                  <label for="evaluation-name">Evaluation name</label>
+                  <input id="evaluation-name" name="name" placeholder="ops-readiness · reviewed atoms" autocomplete="off" required>
+                </div>
+                <div class="field-group">
+                  <label for="evaluation-attempts">Attempts per eligible question</label>
+                  <input id="evaluation-attempts" name="attempts" type="number" min="1" value="1" required>
+                </div>
+                <p class="callout supporting-callout">Use a name that distinguishes the dataset, agent, or comparison goal in run history.</p>
+              </div>
+            </section>
+            <section class="panel form-card">
+              <header class="form-card-head"><span class="step">02</span><h2>Gold and judge</h2></header>
+              <div class="form-card-body">
+                <div class="field-group">
+                  <label for="launch-dataset">Dataset</label>
+                  <select name="dataset_id" id="launch-dataset" required></select>
+                </div>
+                <div class="field-group">
+                  <label for="launch-profile">Evaluator profile</label>
+                  <select name="profile_id" id="launch-profile" required></select>
+                </div>
+                <aside class="selection-snapshot" id="profile-snapshot" aria-label="Selected judge configuration">
+                  <div class="snapshot-status" role="status">Select an evaluator profile to inspect it.</div>
+                </aside>
+              </div>
+            </section>
+            <section class="panel form-card">
+              <header class="form-card-head"><span class="step">03</span><h2>Agent under test</h2></header>
+              <div class="form-card-body">
+                <div class="field-group">
+                  <label for="launch-agent">Agent spec</label>
+                  <select name="agent_spec" id="launch-agent" required></select>
+                </div>
+                <aside class="selection-snapshot agent-snapshot" id="agent-snapshot" aria-label="Selected agent configuration">
+                  <div class="snapshot-status" role="status">Select an agent spec to inspect it.</div>
+                </aside>
+                <p class="callout supporting-callout">The deployment’s resolved agent YAML is used. This Markdown spec is copied into the run.</p>
+              </div>
+            </section>
+            <section class="panel form-card concurrency-card">
+              <header class="form-card-head"><span class="step">04</span><h2>Concurrency</h2></header>
+              <div class="form-card-body">
+                <div class="field-group">
+                  <div class="field-label-row">
+                    <label for="run-workers">Run workers</label>
+                    <button class="field-info" type="button" aria-label="Run phase concurrency and memory help" aria-describedby="run-workers-tooltip">i</button>
+                    <span class="field-tooltip" id="run-workers-tooltip" role="tooltip">Runs tested-agent attempts concurrently during the run phase. Every worker owns an isolated agent runtime and tool state, so runtime memory generally grows roughly in proportion to this count. Run and evaluation phases never overlap.</span>
+                  </div>
+                  <input id="run-workers" name="run_workers" type="number" min="1" max="16" step="1" value="1" aria-describedby="run-workers-help" required>
+                  <small class="field-help" id="run-workers-help">1–16 concurrent tested-agent calls.</small>
+                </div>
+                <div class="field-group">
+                  <div class="field-label-row">
+                    <label for="score-workers">Evaluation workers</label>
+                    <button class="field-info" type="button" aria-label="Evaluation phase concurrency and memory help" aria-describedby="score-workers-tooltip">i</button>
+                    <span class="field-tooltip" id="score-workers-tooltip" role="tooltip">Compares answers concurrently after every tested-agent attempt finishes. Every worker owns an isolated evaluator runtime, so runtime memory generally grows roughly in proportion to this count. Evaluation workers are not active during the run phase.</span>
+                  </div>
+                  <input id="score-workers" name="score_workers" type="number" min="1" max="16" step="1" value="1" aria-describedby="score-workers-help" required>
+                  <small class="field-help" id="score-workers-help">1–16 concurrent judge calls.</small>
+                </div>
+                <p class="callout supporting-callout">Start at 1 when memory is constrained; increase one phase at a time while observing the deployment.</p>
+              </div>
+            </section>
+          </div>
           <section class="panel launch-card">
             <p class="eyebrow">Execution contract</p>
             <h2>Parallel by phase. Ordered by design.</h2>

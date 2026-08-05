@@ -1,6 +1,7 @@
 import io
 from types import SimpleNamespace
 
+import pytest
 from flask import Flask
 
 from src.evaluation.qa import artifacts as artifact_utils
@@ -29,6 +30,16 @@ class _Service:
 
     def list_agents(self):
         return [{"id": "agent.md", "name": "Agent"}]
+
+    def get_agent_snapshot(self, agent_filename):
+        if agent_filename != "agent.md":
+            raise ValueError("selected agent spec does not exist")
+        return {
+            "id": "agent.md",
+            "name": "Agent",
+            "tools": ["search"],
+            "content": "---\nname: Agent\ntools: [search]\n---\nAnswer carefully.",
+        }
 
     def list_jobs(self):
         return self.jobs.list()
@@ -179,6 +190,7 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
     )
     dataset_id = imported.get_json()["dataset"]["id"]
     listed = client.get("/api/evaluations/catalog")
+    agent_snapshot = client.get("/api/evaluations/agents/agent.md")
     generated = client.post(
         f"/api/evaluations/datasets/{dataset_id}/generate-atoms",
         json={"profile_id": "builtin"},
@@ -210,6 +222,8 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
 
     assert imported.status_code == 201
     assert listed.status_code == 200
+    assert agent_snapshot.status_code == 200
+    assert agent_snapshot.get_json()["agent"]["tools"] == ["search"]
     assert generated.status_code == 202
     assert reviewed.status_code == 201
     assert atom_retry.status_code == 202
@@ -221,6 +235,7 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
     assert permissions == [
         Permission.Evaluations.MANAGE,
         Permission.Evaluations.VIEW,
+        Permission.Evaluations.VIEW,
         Permission.Evaluations.MANAGE,
         Permission.Evaluations.MANAGE,
         Permission.Evaluations.MANAGE,
@@ -231,6 +246,58 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
     assert launched_call[1]["attempts"] == 2
     assert launched_call[1]["run_workers"] == 4
     assert launched_call[1]["score_workers"] == 3
+
+
+def test_agent_snapshot_is_validated_bounded_and_kept_inside_catalog(
+    tmp_path, monkeypatch
+):
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    agent_path = agents_dir / "reviewer.md"
+    content = "---\nname: Reviewer\ntools:\n  - search\n---\nAnswer from evidence.\n"
+    agent_path.write_text(content, encoding="utf-8")
+    service = EvaluationConsoleService(
+        tmp_path / "console",
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=agents_dir,
+    )
+
+    assert service.get_agent_snapshot("reviewer.md") == {
+        "id": "reviewer.md",
+        "name": "Reviewer",
+        "tools": ["search"],
+        "content": content,
+    }
+
+    with pytest.raises(ValueError, match="does not exist"):
+        service.get_agent_snapshot("missing.md")
+    with pytest.raises(ValueError, match="catalog agent filename"):
+        service.get_agent_snapshot("../reviewer.md")
+
+    invalid_path = agents_dir / "invalid.md"
+    invalid_path.write_text("not an agent spec", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid.md missing YAML frontmatter"):
+        service.get_agent_snapshot("invalid.md")
+
+    outside_path = tmp_path / "outside.md"
+    outside_path.write_text(content, encoding="utf-8")
+    (agents_dir / "outside.md").symlink_to(outside_path)
+    with pytest.raises(ValueError, match="outside the configured agents directory"):
+        service.get_agent_snapshot("outside.md")
+
+    monkeypatch.setattr("src.evaluation.qa.console.MAX_AGENT_SNAPSHOT_BYTES", 8)
+    with pytest.raises(ValueError, match="256 KiB limit"):
+        service.get_agent_snapshot("reviewer.md")
+
+
+def test_agent_snapshot_route_reports_missing_selection_with_view_permission(tmp_path):
+    app, _service, permissions = _app(tmp_path)
+
+    response = app.test_client().get("/api/evaluations/agents/missing.md")
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "selected agent spec does not exist"}
+    assert permissions == [Permission.Evaluations.VIEW]
 
 
 def test_run_history_route_exposes_compact_trend_projection(tmp_path):
