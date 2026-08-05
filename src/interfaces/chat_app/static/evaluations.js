@@ -1,7 +1,13 @@
 (() => {
   "use strict";
 
-  const state = { datasets: [], profiles: [], agents: [], runs: [], jobs: [], selectedDataset: null, draft: null, openRunId: null, pollingJobId: null, reviewValidationActive: false, openToolCalls: new Map(), nextToolCallKey: 1 };
+  const state = {
+    datasets: [], profiles: [], agents: [], runs: [], jobs: [], selectedDataset: null,
+    draft: null, openRunId: null, pollingJobId: null, reviewValidationActive: false,
+    openToolCalls: new Map(), nextToolCallKey: 1, trendDatasetKeys: [],
+    selectedTrendDatasets: new Set(), trendFiltersInitialized: false,
+    trendPointData: new Map()
+  };
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
@@ -151,6 +157,305 @@
       <td><span class="status ${run.valid ? (run.status === "scored" ? "good" : "run") : "bad"}">${esc(run.status)}</span></td>
     </tr>`).join("");
     $$("[data-run-id]").forEach((row) => row.addEventListener("click", () => openRun(row.dataset.runId)));
+    renderHistoryTrends();
+  }
+
+  function trendDatasets() {
+    const byKey = new Map();
+    state.runs.filter((run) => run.valid && typeof run.dataset_key === "string" && run.dataset_key).forEach((run) => {
+      if (!byKey.has(run.dataset_key)) byKey.set(run.dataset_key, run.dataset_name || "CLI snapshot");
+    });
+    const nameCounts = new Map();
+    [...byKey.values()].forEach((name) => nameCounts.set(name, (nameCounts.get(name) || 0) + 1));
+    return [...byKey.entries()].map(([key, name]) => ({
+      key,
+      name,
+      label: nameCounts.get(name) > 1 ? `${name} · ${key.length > 18 ? shortHash(key) : key}` : name
+    })).sort((left, right) => left.label.localeCompare(right.label));
+  }
+
+  function syncTrendDatasets(datasets) {
+    const nextKeys = datasets.map((dataset) => dataset.key);
+    const previouslyAll = !state.trendFiltersInitialized
+      || state.trendDatasetKeys.every((key) => state.selectedTrendDatasets.has(key));
+    const nextSelection = previouslyAll
+      ? new Set(nextKeys)
+      : new Set(nextKeys.filter((key) => state.selectedTrendDatasets.has(key)));
+    if (!nextSelection.size && nextKeys.length) nextSelection.add(nextKeys[0]);
+    state.trendDatasetKeys = nextKeys;
+    state.selectedTrendDatasets = nextSelection;
+    state.trendFiltersInitialized = true;
+  }
+
+  function updateTrendFilterStatus(message = "") {
+    const selected = state.selectedTrendDatasets.size;
+    const total = state.trendDatasetKeys.length;
+    $("#trend-filter-status").textContent = message || (total
+      ? `Showing ${selected} of ${total} datasets`
+      : "No datasets in history");
+    $("#trend-select-all").disabled = !total || selected === total;
+  }
+
+  function renderTrendFilters(datasets) {
+    const filters = $("#trend-dataset-filters");
+    filters.innerHTML = datasets.map((dataset) => `<label class="trend-dataset-option">
+      <input type="checkbox" value="${esc(dataset.key)}" ${state.selectedTrendDatasets.has(dataset.key) ? "checked" : ""}>
+      <span>${esc(dataset.label)}</span>
+    </label>`).join("");
+    filters.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener("change", () => {
+      if (input.checked) {
+        state.selectedTrendDatasets.add(input.value);
+      } else if (state.selectedTrendDatasets.size === 1) {
+        input.checked = true;
+        updateTrendFilterStatus("At least one dataset must remain selected.");
+        return;
+      } else {
+        state.selectedTrendDatasets.delete(input.value);
+      }
+      updateTrendFilterStatus();
+      renderTrendCharts();
+    }));
+    updateTrendFilterStatus();
+  }
+
+  function datedTrendRuns() {
+    return state.runs.map((run) => ({ run, timestamp: Date.parse(run.created_at) }))
+      .filter(({ run, timestamp }) => run.valid
+        && state.selectedTrendDatasets.has(run.dataset_key)
+        && Number.isFinite(timestamp))
+      .sort((left, right) => left.timestamp - right.timestamp);
+  }
+
+  function selectedTrendRuns() {
+    return state.runs.filter((run) => run.valid && state.selectedTrendDatasets.has(run.dataset_key));
+  }
+
+  function svgPath(points) {
+    return points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+  }
+
+  function trendDateLabel(timestamp, includeTime = false) {
+    const options = includeTime
+      ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
+      : { month: "short", day: "numeric" };
+    return new Intl.DateTimeFormat(undefined, options).format(new Date(timestamp));
+  }
+
+  function trendPointDetails(kind, series, run, value) {
+    const parent = run.retry_of_history_id
+      ? state.runs.find((candidate) => candidate.id === run.retry_of_history_id)
+      : null;
+    const details = {
+      title: run.name || run.run_id || "Unnamed run",
+      dataset: run.dataset_name || "CLI snapshot",
+      date: when(run.created_at),
+      lineage: run.retry_of_history_id ? `Retry of ${parent?.name || run.retry_of_history_id}` : "",
+      lines: []
+    };
+    if (kind === "latency") {
+      const latency = run.latency;
+      const labels = { average: "Average latency", best: "Best latency", worst: "Worst latency" };
+      details.valueLabel = `${labels[series]} ${formatDuration(value)}`;
+      details.lines = [
+        `Average ${formatDuration(latency.average_ms)} · Best ${formatDuration(latency.best_ms)} · Worst ${formatDuration(latency.worst_ms)}`,
+        `${latency.timed_attempts} of ${latency.total_attempts} attempts timed`
+      ];
+    } else if (kind === "pass") {
+      details.valueLabel = `Pass rate ${percent(value)}`;
+      details.lines = Number.isInteger(run.passed_attempts) && Number.isInteger(run.quality_accounted_attempts)
+        ? [`${run.passed_attempts} of ${run.quality_accounted_attempts} quality-accounted attempts passed`]
+        : ["Pass numerator and denominator unavailable in this historical artifact"];
+    } else {
+      const counts = run.attempt_lifecycle_counts;
+      const total = counts.scored + counts.execution_failed + counts.evaluation_failed;
+      details.valueLabel = `Technical failure rate ${percent(value)}`;
+      details.lines = [
+        `${counts.execution_failed + counts.evaluation_failed} of ${total} terminal attempts failed technically`,
+        `${counts.execution_failed} execution · ${counts.evaluation_failed} evaluation failures`
+      ];
+    }
+    return details;
+  }
+
+  function renderTrendChart({ id, kind, series, rate = false }) {
+    const container = $(`#${id}`);
+    const dated = datedTrendRuns();
+    const selected = selectedTrendRuns();
+    const undatedCount = selected.length - dated.length;
+    const seriesPoints = series.map((definition) => ({
+      ...definition,
+      points: dated.map(({ run, timestamp }, index) => ({ run, timestamp, index, value: definition.value(run) }))
+        .filter((point) => typeof point.value === "number" && Number.isFinite(point.value) && point.value >= 0)
+    }));
+    const availableRunIds = new Set(seriesPoints.flatMap((definition) => definition.points.map((point) => point.run.id)));
+    if (!dated.length || !availableRunIds.size) {
+      const reason = dated.length
+        ? "This selection has no authoritative values for this metric."
+        : "This selection has no runs with an authoritative timestamp.";
+      const coverage = [];
+      if (dated.length) coverage.push(`${dated.length} without this metric`);
+      if (undatedCount) coverage.push(`${undatedCount} without a timestamp`);
+      container.innerHTML = `<div class="trend-empty"><strong>Trend unavailable.</strong><span>${esc(reason)}</span>${coverage.length ? `<small>${esc(coverage.join(" · "))}</small>` : ""}</div>`;
+      return;
+    }
+
+    const width = 920, height = 280;
+    const plot = { left: 62, right: 24, top: 24, bottom: 48 };
+    const plotWidth = width - plot.left - plot.right;
+    const plotHeight = height - plot.top - plot.bottom;
+    const values = seriesPoints.flatMap((definition) => definition.points.map((point) => point.value));
+    const maximumValue = rate ? 1 : Math.max(...values, 1);
+    const indexByRun = new Map(dated.map((entry, index) => [entry.run, index]));
+    const xFor = (index) => dated.length === 1
+      ? plot.left + plotWidth / 2
+      : plot.left + (index / (dated.length - 1)) * plotWidth;
+    const yFor = (value) => plot.top + plotHeight - (Math.min(value, maximumValue) / maximumValue) * plotHeight;
+    const yTicks = [0, .25, .5, .75, 1].map((fraction) => ({
+      y: plot.top + plotHeight - fraction * plotHeight,
+      label: rate ? `${Math.round(fraction * 100)}%` : formatDuration(maximumValue * fraction)
+    }));
+    const xIndexes = [...new Set([0, Math.floor((dated.length - 1) / 2), dated.length - 1])];
+    const xDateLabels = xIndexes.map((index) => trendDateLabel(dated[index].timestamp));
+    const showTimes = new Set(xDateLabels).size !== xDateLabels.length;
+    const tooltipId = id.replace("-chart", "-tooltip");
+
+    const paths = seriesPoints.map((definition) => {
+      const points = definition.points.map((point) => ({
+        ...point,
+        x: xFor(indexByRun.get(point.run)),
+        y: yFor(point.value)
+      }));
+      const segments = points.reduce((groups, point) => {
+        const current = groups[groups.length - 1];
+        if (!current || point.index !== current[current.length - 1].index + 1) groups.push([point]);
+        else current.push(point);
+        return groups;
+      }, []);
+      const path = segments.filter((segment) => segment.length > 1)
+        .map((segment) => `<path class="trend-line trend-${definition.key}" pathLength="1" d="${svgPath(segment)}"></path>`)
+        .join("");
+      const dots = points.map((point) => {
+        const pointKey = `${kind}:${definition.key}:${point.run.id}`;
+        const details = trendPointDetails(kind, definition.key, point.run, point.value);
+        state.trendPointData.set(pointKey, details);
+        const accessibleName = `${details.title}, ${details.dataset}, ${details.valueLabel}, ${details.date}`;
+        return `<a href="#evaluation-${esc(point.run.id)}" class="trend-point-link" data-point-key="${esc(pointKey)}" data-run-id="${esc(point.run.id)}" aria-label="${esc(accessibleName)}" aria-describedby="${tooltipId}">
+          <circle class="trend-point trend-${definition.key}" data-series="${esc(definition.key)}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="5"></circle>
+        </a>`;
+      }).join("");
+      return `${path}${dots}`;
+    }).join("");
+    const partial = dated.length - availableRunIds.size;
+    const summaryParts = [`${availableRunIds.size} run${availableRunIds.size === 1 ? "" : "s"} plotted`];
+    if (partial) summaryParts.push(`${partial} without this metric`);
+    if (undatedCount) summaryParts.push(`${undatedCount} without a timestamp`);
+    container.innerHTML = `<div class="trend-chart-scroll">
+      <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="group" aria-label="${esc(summaryParts.join("; "))}">
+        <g class="trend-grid-lines">${yTicks.map((tick) => `<line x1="${plot.left}" y1="${tick.y}" x2="${width - plot.right}" y2="${tick.y}"></line><text x="${plot.left - 10}" y="${tick.y + 4}" text-anchor="end">${esc(tick.label)}</text>`).join("")}</g>
+        <line class="trend-axis" x1="${plot.left}" y1="${plot.top + plotHeight}" x2="${width - plot.right}" y2="${plot.top + plotHeight}"></line>
+        <g class="trend-x-labels">${xIndexes.map((index) => `<text x="${xFor(index)}" y="${height - 16}" text-anchor="middle">${esc(trendDateLabel(dated[index].timestamp, showTimes))}</text>`).join("")}</g>
+        <g class="trend-series">${paths}</g>
+      </svg>
+    </div><p class="trend-summary">${esc(summaryParts.join(" · "))}</p>`;
+  }
+
+  function hideTrendTooltip(tooltip) {
+    if (tooltip) tooltip.hidden = true;
+  }
+
+  function showTrendTooltip(link) {
+    const details = state.trendPointData.get(link.dataset.pointKey);
+    const tooltip = $(`#${link.getAttribute("aria-describedby")}`);
+    if (!details || !tooltip) return;
+    tooltip.replaceChildren();
+    const title = document.createElement("strong");
+    title.textContent = details.title;
+    const dataset = document.createElement("span");
+    dataset.textContent = `${details.dataset} · ${details.date}`;
+    const value = document.createElement("b");
+    value.textContent = details.valueLabel;
+    tooltip.append(title, dataset, value);
+    details.lines.forEach((line) => {
+      const row = document.createElement("small");
+      row.textContent = line;
+      tooltip.append(row);
+    });
+    if (details.lineage) {
+      const lineage = document.createElement("small");
+      lineage.textContent = details.lineage;
+      tooltip.append(lineage);
+    }
+    tooltip.hidden = false;
+    const panel = link.closest(".trend-panel");
+    const panelBox = panel.getBoundingClientRect();
+    const pointBox = link.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(12, pointBox.left + pointBox.width / 2 - panelBox.left - tooltip.offsetWidth / 2),
+      panelBox.width - tooltip.offsetWidth - 12
+    );
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${pointBox.bottom - panelBox.top + 9}px`;
+  }
+
+  function bindTrendPoints() {
+    $$(".trend-point-link").forEach((link) => {
+      const tooltip = $(`#${link.getAttribute("aria-describedby")}`);
+      link.addEventListener("pointerenter", () => showTrendTooltip(link));
+      link.addEventListener("pointerleave", () => hideTrendTooltip(tooltip));
+      link.addEventListener("focus", () => showTrendTooltip(link));
+      link.addEventListener("blur", () => hideTrendTooltip(tooltip));
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        openRun(link.dataset.runId);
+      });
+      link.addEventListener("keydown", (event) => {
+        if (event.key === " ") {
+          event.preventDefault();
+          openRun(link.dataset.runId);
+        }
+      });
+    });
+  }
+
+  function renderTrendCharts() {
+    const focusedPoint = document.activeElement?.dataset?.pointKey;
+    state.trendPointData = new Map();
+    renderTrendChart({
+      id: "trend-latency-chart", kind: "latency",
+      series: [
+        { key: "average", value: (run) => run.latency?.average_ms },
+        { key: "best", value: (run) => run.latency?.best_ms },
+        { key: "worst", value: (run) => run.latency?.worst_ms }
+      ]
+    });
+    renderTrendChart({
+      id: "trend-pass-chart", kind: "pass", rate: true,
+      series: [{ key: "pass", value: (run) => run.overall_attempt_pass_rate }]
+    });
+    renderTrendChart({
+      id: "trend-failure-chart", kind: "failure", rate: true,
+      series: [{ key: "failure", value: (run) => run.technical_failure_rate }]
+    });
+    bindTrendPoints();
+    if (focusedPoint) {
+      const replacement = document.querySelector(`[data-point-key="${CSS.escape(focusedPoint)}"]`);
+      if (replacement) replacement.focus();
+      else $("#trend-dataset-filters input:checked")?.focus();
+    }
+  }
+
+  function renderHistoryTrends() {
+    const datasets = trendDatasets();
+    syncTrendDatasets(datasets);
+    renderTrendFilters(datasets);
+    renderTrendCharts();
+  }
+
+  function renderTrendError(error) {
+    $("#trend-filter-status").textContent = "Trend history could not be loaded.";
+    ["trend-latency-chart", "trend-pass-chart", "trend-failure-chart"].forEach((id) => {
+      $(`#${id}`).innerHTML = `<div class="trend-empty error"><strong>Could not load trends.</strong><span>${esc(error.message)}</span></div>`;
+    });
   }
 
   async function loadCatalog() {
@@ -172,9 +477,14 @@
   }
 
   async function loadRuns() {
-    const payload = await api("/api/evaluations/runs");
-    state.runs = payload.runs;
-    renderRuns();
+    try {
+      const payload = await api("/api/evaluations/runs");
+      state.runs = payload.runs;
+      renderRuns();
+    } catch (error) {
+      renderTrendError(error);
+      throw error;
+    }
   }
 
   async function pollJob(jobId) {
@@ -1026,6 +1336,12 @@
   $$("[data-go]").forEach((item) => item.addEventListener("click", () => showView(item.dataset.go)));
   $("#dataset-search").addEventListener("input", renderDatasets);
   $("#refresh-runs").addEventListener("click", () => loadRuns().catch((error) => toast("Refresh failed", error.message)));
+  $("#trend-select-all").addEventListener("click", () => {
+    state.selectedTrendDatasets = new Set(state.trendDatasetKeys);
+    $("#trend-dataset-filters").querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = true; });
+    updateTrendFilterStatus();
+    renderTrendCharts();
+  });
   $("#dataset-import-form").addEventListener("submit", (event) => { event.preventDefault(); submitImport(event.currentTarget, "/api/evaluations/datasets", "Dataset"); });
   $("#profile-import-form").addEventListener("submit", (event) => { event.preventDefault(); submitImport(event.currentTarget, "/api/evaluations/profiles", "Profile"); });
   $("#evaluation-form").addEventListener("submit", launchEvaluation);

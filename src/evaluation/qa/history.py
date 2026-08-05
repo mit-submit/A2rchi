@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from .artifacts import iter_jsonl, read_json, read_jsonl, verify_hashes
-from .constants import SCHEMA_VERSION
+from .constants import ATTEMPT_LIFECYCLE_STATUSES, SCHEMA_VERSION
 from .preparation import load_preparation_records, load_preparation_rows
 from .tool_traces import serialize_tool_call_records
 
@@ -258,8 +259,195 @@ class EvaluationHistory:
         ]
         verify_hashes(path, manifest, declared_or_present)
 
+    @staticmethod
+    def _dataset_identity(
+        manifest: Dict[str, Any], metadata: Dict[str, Any]
+    ) -> Tuple[str, str]:
+        dataset_id = metadata.get("dataset_id")
+        if dataset_id is not None and (
+            not isinstance(dataset_id, str) or not dataset_id.strip()
+        ):
+            raise ValueError("console dataset ID must be a non-empty string")
+        snapshot = manifest["input"]["snapshot"]
+        dataset_key = dataset_id or f"snapshot:{manifest['artifacts'][snapshot]}"
+
+        dataset_name = metadata.get("dataset_name")
+        if dataset_name is not None and (
+            not isinstance(dataset_name, str) or not dataset_name.strip()
+        ):
+            raise ValueError("console dataset name must be a non-empty string")
+        if dataset_name is not None:
+            return dataset_key, dataset_name.strip()
+
+        source_path = manifest["input"].get("source_path")
+        if source_path is None:
+            return dataset_key, "CLI snapshot"
+        if not isinstance(source_path, str):
+            raise ValueError("manifest input source path must be a string")
+        basename = source_path.replace("\\", "/").rsplit("/", 1)[-1].strip()
+        return dataset_key, basename or "CLI snapshot"
+
+    @staticmethod
+    def _optional_count(summary: Dict[str, Any], field: str) -> Optional[int]:
+        value = summary.get(field)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"summary {field} must be a non-negative integer")
+        return value
+
+    @staticmethod
+    def _timestamp_sort_value(value: Any, *, context: str) -> Optional[float]:
+        if value in (None, ""):
+            return None
+        if not isinstance(value, str):
+            raise ValueError(f"{context} must be a string")
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError as exc:
+            raise ValueError(
+                f"{context} must be an ISO-8601 timestamp with a timezone"
+            ) from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError(
+                f"{context} must be an ISO-8601 timestamp with a timezone"
+            )
+        return parsed.timestamp()
+
+    @staticmethod
+    def _summary_trends(summary: Any) -> Dict[str, Any]:
+        if summary is None:
+            return {
+                "overall_attempt_pass_rate": None,
+                "passed_attempts": None,
+                "quality_accounted_attempts": None,
+                "attempt_lifecycle_counts": None,
+                "technical_failure_rate": None,
+            }
+        if not isinstance(summary, dict):
+            raise ValueError("summary must be an object")
+
+        pass_rate = summary.get("overall_attempt_pass_rate")
+        if pass_rate is not None and (
+            isinstance(pass_rate, bool)
+            or not isinstance(pass_rate, (int, float))
+            or not 0 <= pass_rate <= 1
+        ):
+            raise ValueError("summary overall_attempt_pass_rate must be from 0 to 1")
+        if pass_rate is not None:
+            pass_rate = float(pass_rate)
+
+        passed_attempts = EvaluationHistory._optional_count(summary, "passed_attempts")
+        quality_attempts = EvaluationHistory._optional_count(
+            summary, "quality_accounted_attempts"
+        )
+        if (passed_attempts is None) != (quality_attempts is None):
+            raise ValueError(
+                "summary pass counts must be present or unavailable together"
+            )
+        if passed_attempts is not None:
+            if passed_attempts > quality_attempts:
+                raise ValueError(
+                    "summary passed_attempts cannot exceed quality_accounted_attempts"
+                )
+            if quality_attempts == 0 and pass_rate is not None:
+                raise ValueError(
+                    "summary pass rate must be unavailable for a zero denominator"
+                )
+            if quality_attempts and pass_rate is not None:
+                expected_pass_rate = passed_attempts / quality_attempts
+                if abs(pass_rate - expected_pass_rate) > 1e-12:
+                    raise ValueError(
+                        "summary pass rate does not match its attempt counts"
+                    )
+
+        lifecycle = summary.get("attempt_lifecycle_counts")
+        technical_failure_rate = None
+        if lifecycle is not None:
+            if not isinstance(lifecycle, dict):
+                raise ValueError("summary attempt_lifecycle_counts must be an object")
+            _require_exact_fields(
+                lifecycle,
+                set(ATTEMPT_LIFECYCLE_STATUSES),
+                context="summary attempt_lifecycle_counts",
+            )
+            validated_lifecycle = {}
+            for status in ATTEMPT_LIFECYCLE_STATUSES:
+                count = EvaluationHistory._optional_count(lifecycle, status)
+                if count is None:
+                    raise ValueError(
+                        f"summary attempt_lifecycle_counts.{status} "
+                        "must be a non-negative integer"
+                    )
+                validated_lifecycle[status] = count
+            lifecycle = validated_lifecycle
+            terminal_attempts = sum(lifecycle.values())
+            if terminal_attempts:
+                technical_failure_rate = (
+                    lifecycle["execution_failed"] + lifecycle["evaluation_failed"]
+                ) / terminal_attempts
+            if quality_attempts is not None and quality_attempts != (
+                lifecycle["scored"] + lifecycle["execution_failed"]
+            ):
+                raise ValueError(
+                    "summary quality-accounted count does not match lifecycle counts"
+                )
+            if passed_attempts is not None and passed_attempts > lifecycle["scored"]:
+                raise ValueError(
+                    "summary passed-attempt count cannot exceed scored attempts"
+                )
+
+        return {
+            "overall_attempt_pass_rate": pass_rate,
+            "passed_attempts": passed_attempts,
+            "quality_accounted_attempts": quality_attempts,
+            "attempt_lifecycle_counts": lifecycle,
+            "technical_failure_rate": technical_failure_rate,
+        }
+
+    @staticmethod
+    def _latency_trend(
+        path: Path, manifest: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        filename = "answers.jsonl"
+        artifact = path / filename
+        if filename not in manifest["artifacts"] and not artifact.is_file():
+            return None
+        EvaluationHistory._verify_present(path, manifest, [filename])
+
+        total_attempts = 0
+        timed_attempts = 0
+        duration_sum = 0
+        best_ms = None
+        worst_ms = None
+        for index, answer in enumerate(iter_jsonl(artifact), 1):
+            total_attempts += 1
+            if "duration_ms" not in answer:
+                continue
+            duration_ms = answer["duration_ms"]
+            if (
+                isinstance(duration_ms, bool)
+                or not isinstance(duration_ms, int)
+                or duration_ms < 0
+            ):
+                raise ValueError(
+                    f"answer row {index} duration_ms must be a non-negative integer"
+                )
+            timed_attempts += 1
+            duration_sum += duration_ms
+            best_ms = duration_ms if best_ms is None else min(best_ms, duration_ms)
+            worst_ms = duration_ms if worst_ms is None else max(worst_ms, duration_ms)
+        return {
+            "total_attempts": total_attempts,
+            "timed_attempts": timed_attempts,
+            "average_ms": duration_sum / timed_attempts if timed_attempts else None,
+            "best_ms": best_ms,
+            "worst_ms": worst_ms,
+        }
+
     def list_runs(self) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
+        rows: List[Tuple[float, Dict[str, Any]]] = []
         for path in self._run_paths():
             history_id = _history_id(path)
             try:
@@ -275,53 +463,83 @@ class EvaluationHistory:
                     ["summary.json"],
                 )
                 phases = manifest.get("phases") or {}
-                timestamps = [
-                    phase.get("completed_at") or phase.get("started_at")
-                    for phase in phases.values()
-                    if isinstance(phase, dict)
-                ]
-                created_at = metadata.get("created_at") or max(
-                    (value for value in timestamps if value), default=""
+                phase_timestamps = []
+                for phase_name, phase in phases.items():
+                    if not isinstance(phase, dict):
+                        continue
+                    value = phase.get("completed_at") or phase.get("started_at")
+                    sort_value = self._timestamp_sort_value(
+                        value,
+                        context=f"manifest {phase_name} phase timestamp",
+                    )
+                    if sort_value is not None:
+                        phase_timestamps.append((sort_value, value))
+                metadata_created_at = metadata.get("created_at")
+                metadata_sort_value = self._timestamp_sort_value(
+                    metadata_created_at,
+                    context="run creation timestamp",
                 )
+                if metadata_sort_value is not None:
+                    created_at = metadata_created_at
+                    sort_value = metadata_sort_value
+                elif phase_timestamps:
+                    sort_value, created_at = max(phase_timestamps)
+                else:
+                    created_at = ""
+                    sort_value = float("-inf")
+                dataset_key, dataset_name = self._dataset_identity(manifest, metadata)
+                trend_summary = self._summary_trends(summary)
+                latency = self._latency_trend(path, manifest)
                 rows.append(
-                    {
-                        "id": history_id,
-                        "run_id": manifest.get("run_id"),
-                        "name": metadata.get("name") or manifest.get("run_id"),
-                        "status": manifest.get("status"),
-                        "created_at": created_at,
-                        "dataset_id": metadata.get("dataset_id"),
-                        "dataset_name": metadata.get("dataset_name"),
-                        "profile_id": metadata.get("profile_id"),
-                        "profile_name": metadata.get("profile_name"),
-                        "agent_spec": metadata.get("agent_spec"),
-                        "attempts": manifest.get("attempts"),
-                        "retry_of_history_id": metadata.get("retry_of_history_id"),
-                        "retry_number": metadata.get("retry_number"),
-                        "overall_attempt_pass_rate": (
-                            summary.get("overall_attempt_pass_rate")
-                            if isinstance(summary, dict)
-                            else None
-                        ),
-                        "schema_version": manifest["schema_version"],
-                        "capabilities": self._capabilities(
-                            manifest["schema_version"]
-                        ),
-                        "valid": True,
-                    }
+                    (
+                        sort_value,
+                        {
+                            "id": history_id,
+                            "run_id": manifest.get("run_id"),
+                            "name": metadata.get("name") or manifest.get("run_id"),
+                            "status": manifest.get("status"),
+                            "created_at": created_at,
+                            "dataset_id": metadata.get("dataset_id"),
+                            "dataset_key": dataset_key,
+                            "dataset_name": dataset_name,
+                            "profile_id": metadata.get("profile_id"),
+                            "profile_name": metadata.get("profile_name"),
+                            "agent_spec": metadata.get("agent_spec"),
+                            "attempts": manifest.get("attempts"),
+                            "retry_of_history_id": metadata.get(
+                                "retry_of_history_id"
+                            ),
+                            "retry_number": metadata.get("retry_number"),
+                            **trend_summary,
+                            "latency": latency,
+                            "schema_version": manifest["schema_version"],
+                            "capabilities": self._capabilities(
+                                manifest["schema_version"]
+                            ),
+                            "valid": True,
+                        },
+                    )
                 )
             except Exception as exc:
                 rows.append(
-                    {
-                        "id": history_id,
-                        "name": path.name,
-                        "status": "invalid",
-                        "created_at": "",
-                        "valid": False,
-                        "error": str(exc),
-                    }
+                    (
+                        float("-inf"),
+                        {
+                            "id": history_id,
+                            "name": path.name,
+                            "status": "invalid",
+                            "created_at": "",
+                            "valid": False,
+                            "error": str(exc),
+                        },
+                    )
                 )
-        return sorted(rows, key=lambda row: row.get("created_at") or "", reverse=True)
+        return [
+            row
+            for _sort_value, row in sorted(
+                rows, reverse=True, key=lambda item: item[0]
+            )
+        ]
 
     def get_run(self, history_id: str) -> Dict[str, Any]:
         path = self._resolve(history_id)

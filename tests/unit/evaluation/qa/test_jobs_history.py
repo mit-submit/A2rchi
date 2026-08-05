@@ -134,6 +134,74 @@ def _write_legacy_prepared_workspace(run_dir):
     return prepared
 
 
+def _write_scored_history_run(
+    run_dir,
+    *,
+    source_path="/private/evaluations/golden.json",
+    metadata=None,
+    durations=(100, 200, 500, None),
+):
+    run_dir.mkdir()
+    preparation_artifacts = _write_preparation_artifacts(run_dir)
+    answers = []
+    statuses = ("answer_ready", "answer_ready", "execution_failed", "answer_ready")
+    for ordinal, (status, duration_ms) in enumerate(zip(statuses, durations), 1):
+        answer = {
+            "item_id": "item",
+            "attempt_id": f"item-attempt-{ordinal}",
+            "ordinal": ordinal,
+            "status": status,
+        }
+        if duration_ms is not None:
+            answer["duration_ms"] = duration_ms
+        answers.append(answer)
+    write_jsonl(run_dir / "answers.jsonl", answers)
+    write_json(
+        run_dir / "summary.json",
+        {
+            "overall_attempt_pass_rate": 1 / 3,
+            "passed_attempts": 1,
+            "quality_accounted_attempts": 3,
+            "attempt_lifecycle_counts": {
+                "scored": 2,
+                "execution_failed": 1,
+                "evaluation_failed": 1,
+            },
+        },
+    )
+    (run_dir / "report.md").write_text("# Report\n")
+    artifact_names = preparation_artifacts | {
+        "answers.jsonl",
+        "summary.json",
+        "report.md",
+    }
+    if metadata is not None:
+        write_json(run_dir / "console_metadata.json", metadata)
+        artifact_names.add("console_metadata.json")
+    write_json(
+        run_dir / "manifest.json",
+        {
+            "schema_version": "qa-v1",
+            "run_id": run_dir.name,
+            "status": "scored",
+            "attempts": 4,
+            "input": {
+                "source_path": source_path,
+                "snapshot": "input.snapshot.json",
+            },
+            "artifacts": artifact_hashes(run_dir, artifact_names),
+            "phases": {
+                "prepare": {"status": "completed", "input_items": 1},
+                "run": {"status": "completed"},
+                "score": {
+                    "status": "completed",
+                    "completed_at": "2026-07-24T10:00:00+00:00",
+                },
+            },
+        },
+    )
+
+
 def test_console_job_exposes_current_atom_draft_status(tmp_path):
     service = EvaluationConsoleService(
         tmp_path,
@@ -390,6 +458,144 @@ def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
     assert "unsupported run schema" in invalid_row["error"]
 
 
+def test_history_projects_compact_latency_quality_and_failure_trends(tmp_path):
+    dataset_id = str(uuid.uuid4())
+    metadata = {
+        "name": "Trend run",
+        "dataset_id": dataset_id,
+        "dataset_name": "Reviewed golden set",
+        "created_at": "2026-07-24T09:00:00+00:00",
+        "retry_of_history_id": "a" * 24,
+        "retry_number": 2,
+    }
+    run = tmp_path / "trend-run"
+    _write_scored_history_run(run, metadata=metadata)
+    history = EvaluationHistory(tmp_path)
+
+    row = history.list_runs()[0]
+
+    assert row == {
+        "id": history.id_for_path(run),
+        "run_id": "trend-run",
+        "name": "Trend run",
+        "status": "scored",
+        "created_at": "2026-07-24T09:00:00+00:00",
+        "dataset_id": dataset_id,
+        "dataset_key": dataset_id,
+        "dataset_name": "Reviewed golden set",
+        "profile_id": None,
+        "profile_name": None,
+        "agent_spec": None,
+        "attempts": 4,
+        "retry_of_history_id": "a" * 24,
+        "retry_number": 2,
+        "overall_attempt_pass_rate": 1 / 3,
+        "passed_attempts": 1,
+        "quality_accounted_attempts": 3,
+        "attempt_lifecycle_counts": {
+            "scored": 2,
+            "execution_failed": 1,
+            "evaluation_failed": 1,
+        },
+        "technical_failure_rate": 0.5,
+        "latency": {
+            "total_attempts": 4,
+            "timed_attempts": 3,
+            "average_ms": 800 / 3,
+            "best_ms": 100,
+            "worst_ms": 500,
+        },
+        "schema_version": "qa-v1",
+        "capabilities": {"retry_failed": True},
+        "valid": True,
+    }
+
+
+def test_history_uses_snapshot_identity_and_basename_for_cli_runs(tmp_path):
+    run = tmp_path / "cli-run"
+    _write_scored_history_run(run, source_path=r"C:\private\sets\golden.json")
+    history = EvaluationHistory(tmp_path)
+    manifest = read_json(run / "manifest.json")
+
+    row = history.list_runs()[0]
+
+    assert row["dataset_key"] == (
+        f"snapshot:{manifest['artifacts']['input.snapshot.json']}"
+    )
+    assert row["dataset_name"] == "golden.json"
+    assert "private" not in json.dumps(row)
+
+
+def test_history_streams_latency_rows_without_loading_complete_answers(
+    tmp_path, monkeypatch
+):
+    run = tmp_path / "streamed-run"
+    _write_scored_history_run(run)
+    monkeypatch.setattr(
+        history_module,
+        "read_jsonl",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("compact history must stream answers")
+        ),
+    )
+
+    row = EvaluationHistory(tmp_path).list_runs()[0]
+
+    assert row["latency"]["timed_attempts"] == 3
+
+
+def test_history_isolates_invalid_attempt_duration_from_other_runs(tmp_path):
+    valid = tmp_path / "valid-trend"
+    _write_scored_history_run(valid)
+    invalid = tmp_path / "invalid-trend"
+    _write_scored_history_run(invalid, durations=(100, True, 500, None))
+    history = EvaluationHistory(tmp_path)
+
+    rows = history.list_runs()
+
+    assert sum(row["valid"] for row in rows) == 1
+    invalid_row = next(row for row in rows if not row["valid"])
+    assert invalid_row["name"] == "invalid-trend"
+    assert invalid_row["error"] == (
+        "answer row 2 duration_ms must be a non-negative integer"
+    )
+
+
+def test_history_isolates_invalid_timestamp_and_inconsistent_pass_counts(tmp_path):
+    valid = tmp_path / "valid-trend"
+    _write_scored_history_run(valid)
+    invalid_timestamp = tmp_path / "invalid-timestamp"
+    _write_scored_history_run(
+        invalid_timestamp,
+        metadata={
+            "created_at": "not-a-timestamp",
+            "dataset_name": "Invalid timestamp",
+        },
+    )
+    invalid_counts = tmp_path / "invalid-counts"
+    _write_scored_history_run(invalid_counts)
+    summary = read_json(invalid_counts / "summary.json")
+    summary["overall_attempt_pass_rate"] = 1.0
+    write_json(invalid_counts / "summary.json", summary)
+    manifest = read_json(invalid_counts / "manifest.json")
+    manifest["artifacts"] = artifact_hashes(
+        invalid_counts,
+        set(manifest["artifacts"]),
+    )
+    write_json(invalid_counts / "manifest.json", manifest)
+
+    rows = EvaluationHistory(tmp_path).list_runs()
+
+    assert sum(row["valid"] for row in rows) == 1
+    errors = {row["name"]: row["error"] for row in rows if not row["valid"]}
+    assert errors == {
+        "invalid-counts": "summary pass rate does not match its attempt counts",
+        "invalid-timestamp": (
+            "run creation timestamp must be an ISO-8601 timestamp with a timezone"
+        ),
+    }
+
+
 def test_history_reads_legacy_v0_runs_without_rewriting_artifacts(tmp_path):
     run = tmp_path / "legacy"
     run.mkdir()
@@ -487,6 +693,7 @@ def test_history_reads_legacy_v0_runs_without_rewriting_artifacts(tmp_path):
         },
     )
     original_manifest = (run / "manifest.json").read_bytes()
+    legacy_manifest = read_json(run / "manifest.json")
     history = EvaluationHistory(tmp_path)
 
     rows = history.list_runs()
@@ -500,7 +707,10 @@ def test_history_reads_legacy_v0_runs_without_rewriting_artifacts(tmp_path):
             "status": "scored",
             "created_at": "",
             "dataset_id": None,
-            "dataset_name": None,
+            "dataset_key": (
+                "snapshot:" + legacy_manifest["artifacts"]["input.snapshot.json"]
+            ),
+            "dataset_name": "CLI snapshot",
             "profile_id": None,
             "profile_name": None,
             "agent_spec": None,
@@ -508,6 +718,11 @@ def test_history_reads_legacy_v0_runs_without_rewriting_artifacts(tmp_path):
             "retry_of_history_id": None,
             "retry_number": None,
             "overall_attempt_pass_rate": 1.0,
+            "passed_attempts": None,
+            "quality_accounted_attempts": None,
+            "attempt_lifecycle_counts": None,
+            "technical_failure_rate": None,
+            "latency": None,
             "schema_version": "qa-v0",
             "capabilities": {"retry_failed": False},
             "valid": True,

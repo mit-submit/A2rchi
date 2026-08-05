@@ -62,6 +62,49 @@
           <article><small>Datasets</small><strong id="metric-datasets">—</strong><span>immutable snapshots</span></article>
           <article><small>Active provider job</small><strong id="metric-job">No</strong><span>one at a time</span></article>
         </div>
+        <section class="history-trends" aria-labelledby="history-trends-title">
+          <section class="panel trend-filter-panel">
+            <div>
+              <p class="eyebrow">All-history signals</p>
+              <h2 id="history-trends-title">History trends</h2>
+              <p>Compare persisted runs, isolate datasets, and open the evidence behind any point.</p>
+            </div>
+            <fieldset class="trend-filter-fieldset">
+              <legend>Datasets to visualize</legend>
+              <div class="trend-filter-actions">
+                <button class="button quiet" id="trend-select-all" type="button">Show all datasets</button>
+                <span id="trend-filter-status" aria-live="polite">Loading datasets…</span>
+              </div>
+              <div class="trend-dataset-filters" id="trend-dataset-filters"></div>
+            </fieldset>
+          </section>
+          <section class="panel trend-panel trend-panel-wide" aria-labelledby="trend-latency-title">
+            <div class="trend-panel-head">
+              <div><p class="eyebrow">Tested-agent execution</p><h2 id="trend-latency-title">Attempt latency</h2><p>Average, best, and worst terminal-attempt time per run.</p></div>
+              <div class="trend-series-legend" aria-label="Latency series">
+                <span><i class="average"></i>Average</span><span><i class="best"></i>Best</span><span><i class="worst"></i>Worst</span>
+              </div>
+            </div>
+            <div class="trend-chart-shell" id="trend-latency-chart" aria-live="polite"><div class="trend-loading">Loading latency history…</div></div>
+            <div class="trend-tooltip" id="trend-latency-tooltip" role="tooltip" hidden></div>
+          </section>
+          <section class="panel trend-panel" aria-labelledby="trend-pass-title">
+            <div class="trend-panel-head">
+              <div><p class="eyebrow">Quality-accounted attempts</p><h2 id="trend-pass-title">Pass rate</h2><p>Passed ÷ scored plus execution-failed attempts.</p></div>
+              <div class="trend-series-legend" aria-label="Pass-rate series"><span><i class="pass"></i>Pass rate</span></div>
+            </div>
+            <div class="trend-chart-shell" id="trend-pass-chart" aria-live="polite"><div class="trend-loading">Loading pass-rate history…</div></div>
+            <div class="trend-tooltip" id="trend-pass-tooltip" role="tooltip" hidden></div>
+          </section>
+          <section class="panel trend-panel" aria-labelledby="trend-failure-title">
+            <div class="trend-panel-head">
+              <div><p class="eyebrow">Technical reliability</p><h2 id="trend-failure-title">Technical failure rate</h2><p>Execution plus evaluation failures ÷ all terminal attempts.</p></div>
+              <div class="trend-series-legend" aria-label="Failure-rate series"><span><i class="failure"></i>Failure rate</span></div>
+            </div>
+            <div class="trend-chart-shell" id="trend-failure-chart" aria-live="polite"><div class="trend-loading">Loading failure history…</div></div>
+            <div class="trend-tooltip" id="trend-failure-tooltip" role="tooltip" hidden></div>
+          </section>
+        </section>
         <section class="panel">
           <div class="panel-head"><div><p class="eyebrow">Artifact index</p><h2>Past evaluations</h2></div><button class="button quiet" id="refresh-runs">Refresh</button></div>
           <div class="table-wrap">

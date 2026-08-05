@@ -602,6 +602,37 @@ Atom retries require `evaluations:manage`; evaluation retries require
 `evaluations:run`. A draft or run without retryable technical failures creates
 neither a job nor a new artifact.
 
+### Compare history trends
+
+The evaluation homepage charts every persisted run with an authoritative
+timestamp and metric value. One shared dataset selector controls all three
+graphs:
+
+- **Attempt latency** plots the average, best, and worst tested-agent latency
+  across the attempts recorded by each run.
+- **Pass rate** plots `passed_attempts / quality_accounted_attempts`.
+- **Technical failure rate** plots `(execution_failed + evaluation_failed) /
+  (scored + execution_failed + evaluation_failed)`. It is not the inverse of
+  pass rate; a scored attempt may fail its quality threshold without being a
+  technical failure.
+
+All datasets are selected initially. Clear dataset checkboxes to compare a
+subset, or choose **Show all datasets** to restore the complete history. Hover
+or focus a dot for the dataset, run, exact value, denominator, timestamp, and
+retry relationship. Click the dot, or focus it and press Enter or Space, to
+open that run's detail page.
+
+Retry successors appear as their own complete persisted runs and retain their
+lineage in the tooltip. CLI-created runs use their immutable input snapshot as
+the dataset identity and show only the input filename when available; the
+console does not expose its host path.
+
+Older or partial artifacts can lack timestamps, lifecycle counts, or latency.
+The graphs omit the unavailable point, leave a gap in its series line, and
+report the incomplete coverage; they never infer a value or replace missing
+data with zero. History aggregation streams answer artifacts, so the homepage
+remains bounded in memory as the number and size of runs grow.
+
 ### Inspect per-question latency
 
 Run detail displays tested-agent latency per question before the aggregate

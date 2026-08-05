@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from flask import Flask
 
+from src.evaluation.qa import artifacts as artifact_utils
 from src.evaluation.qa.catalog import EvaluationCatalog
 from src.evaluation.qa.console import EvaluationConsoleService
 from src.evaluation.qa.history import EvaluationHistory
@@ -97,6 +98,76 @@ def _partial_dataset():
     )
 
 
+def _write_trend_run(service):
+    run = service.catalog.runs_dir / "trend-run"
+    run.mkdir()
+    artifact_utils.write_json(run / "input.snapshot.json", [])
+    artifact_utils.write_jsonl(run / "preparation.jsonl", [])
+    artifact_utils.write_jsonl(
+        run / "answers.jsonl",
+        [
+            {
+                "item_id": "one",
+                "attempt_id": "one-attempt-1",
+                "ordinal": 1,
+                "status": "answer_ready",
+                "duration_ms": 240,
+                "answer": "private response that must not enter compact history",
+            }
+        ],
+    )
+    artifact_utils.write_json(
+        run / "summary.json",
+        {
+            "overall_attempt_pass_rate": 1.0,
+            "passed_attempts": 1,
+            "quality_accounted_attempts": 1,
+            "attempt_lifecycle_counts": {
+                "scored": 1,
+                "execution_failed": 0,
+                "evaluation_failed": 0,
+            },
+        },
+    )
+    (run / "report.md").write_text("# Trend report\n")
+    artifact_utils.write_json(
+        run / "console_metadata.json",
+        {
+            "name": "Trend run",
+            "dataset_id": "dataset-id",
+            "dataset_name": "Dataset",
+            "created_at": "2026-08-05T10:00:00+00:00",
+        },
+    )
+    artifacts = {
+        "input.snapshot.json",
+        "preparation.jsonl",
+        "answers.jsonl",
+        "summary.json",
+        "report.md",
+        "console_metadata.json",
+    }
+    artifact_utils.write_json(
+        run / "manifest.json",
+        {
+            "schema_version": "qa-v1",
+            "run_id": "trend-run",
+            "status": "scored",
+            "attempts": 1,
+            "input": {"snapshot": "input.snapshot.json"},
+            "artifacts": artifact_utils.artifact_hashes(run, artifacts),
+            "phases": {
+                "prepare": {"status": "completed", "input_items": 0},
+                "run": {"status": "completed"},
+                "score": {
+                    "status": "completed",
+                    "completed_at": "2026-08-05T10:00:00+00:00",
+                },
+            },
+        },
+    )
+
+
 def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
     app, service, permissions = _app(tmp_path)
     client = app.test_client()
@@ -160,6 +231,28 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
     assert launched_call[1]["attempts"] == 2
     assert launched_call[1]["run_workers"] == 4
     assert launched_call[1]["score_workers"] == 3
+
+
+def test_run_history_route_exposes_compact_trend_projection(tmp_path):
+    app, service, permissions = _app(tmp_path)
+    _write_trend_run(service)
+
+    response = app.test_client().get("/api/evaluations/runs")
+
+    assert response.status_code == 200
+    row = response.get_json()["runs"][0]
+    assert row["dataset_key"] == "dataset-id"
+    assert row["latency"] == {
+        "total_attempts": 1,
+        "timed_attempts": 1,
+        "average_ms": 240.0,
+        "best_ms": 240,
+        "worst_ms": 240,
+    }
+    assert row["overall_attempt_pass_rate"] == 1.0
+    assert row["technical_failure_rate"] == 0.0
+    assert "private response" not in response.get_data(as_text=True)
+    assert permissions == [Permission.Evaluations.VIEW]
 
 
 def test_launch_route_defaults_phase_workers_for_older_clients(tmp_path):

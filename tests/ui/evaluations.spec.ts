@@ -40,6 +40,330 @@ test.describe("QA evaluation console", () => {
     expect(sidebarBox!.y).toBe(headerBox!.y + headerBox!.height);
   });
 
+  test("filters history trends by dataset and opens points with keyboard", async ({ page }) => {
+    const runs = [
+      {
+        id: "trend-alpha",
+        run_id: "trend-alpha",
+        name: "Alpha baseline",
+        status: "scored",
+        created_at: "2026-08-01T10:00:00+00:00",
+        dataset_id: "dataset-alpha",
+        dataset_key: "dataset-alpha",
+        dataset_name: "Alpha set",
+        attempts: 4,
+        retry_of_history_id: null,
+        retry_number: null,
+        overall_attempt_pass_rate: 2 / 3,
+        passed_attempts: 2,
+        quality_accounted_attempts: 3,
+        attempt_lifecycle_counts: {
+          scored: 2,
+          execution_failed: 1,
+          evaluation_failed: 1,
+        },
+        technical_failure_rate: 0.5,
+        latency: {
+          total_attempts: 4,
+          timed_attempts: 3,
+          average_ms: 200,
+          best_ms: 100,
+          worst_ms: 300,
+        },
+        valid: true,
+      },
+      {
+        id: "trend-alpha-retry",
+        run_id: "trend-alpha-retry",
+        name: "Alpha retry",
+        status: "scored",
+        created_at: "2026-08-02T10:00:00+00:00",
+        dataset_id: "dataset-alpha",
+        dataset_key: "dataset-alpha",
+        dataset_name: "Alpha set",
+        attempts: 4,
+        retry_of_history_id: "trend-alpha",
+        retry_number: 1,
+        overall_attempt_pass_rate: 2 / 3,
+        passed_attempts: 2,
+        quality_accounted_attempts: 3,
+        attempt_lifecycle_counts: {
+          scored: 2,
+          execution_failed: 1,
+          evaluation_failed: 1,
+        },
+        technical_failure_rate: 0.5,
+        latency: {
+          total_attempts: 4,
+          timed_attempts: 3,
+          average_ms: 600,
+          best_ms: 250,
+          worst_ms: 900,
+        },
+        valid: true,
+      },
+      {
+        id: "trend-beta",
+        run_id: "trend-beta",
+        name: "Beta comparison",
+        status: "scored",
+        created_at: "2026-08-03T10:00:00+00:00",
+        dataset_id: "dataset-beta",
+        dataset_key: "dataset-beta",
+        dataset_name: "Beta set",
+        attempts: 2,
+        retry_of_history_id: null,
+        retry_number: null,
+        overall_attempt_pass_rate: 0.5,
+        passed_attempts: 1,
+        quality_accounted_attempts: 2,
+        attempt_lifecycle_counts: {
+          scored: 2,
+          execution_failed: 0,
+          evaluation_failed: 0,
+        },
+        technical_failure_rate: 0,
+        latency: {
+          total_attempts: 2,
+          timed_attempts: 2,
+          average_ms: 450,
+          best_ms: 400,
+          worst_ms: 500,
+        },
+        valid: true,
+      },
+    ];
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ runs }) });
+    });
+    await page.route("**/api/evaluations/runs/trend-alpha", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run: {
+            id: "trend-alpha",
+            metadata: { name: "Alpha baseline", dataset_name: "Alpha set" },
+            manifest: { run_id: "trend-alpha", schema_version: "qa-v1", status: "scored" },
+            summary: {
+              overall_attempt_pass_rate: 2 / 3,
+              passed_attempts: 2,
+              quality_accounted_attempts: 3,
+              attempt_lifecycle_counts: { scored: 2, execution_failed: 1, evaluation_failed: 1 },
+            },
+            prepared_items: [],
+            answers: [],
+            evaluation_results: [],
+            capabilities: { retry_failed: true },
+            report_available: false,
+          },
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+
+    await expect(page.getByRole("heading", { name: "History trends" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Attempt latency" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pass rate" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Technical failure rate" })).toBeVisible();
+    const alpha = page.getByRole("checkbox", { name: "Alpha set" });
+    const beta = page.getByRole("checkbox", { name: "Beta set" });
+    await expect(alpha).toBeChecked();
+    await expect(beta).toBeChecked();
+    await expect(page.locator('#trend-latency-chart [data-series="average"]')).toHaveCount(3);
+    await expect(page.locator('#trend-pass-chart [data-series="pass"]')).toHaveCount(3);
+    await expect(page.locator('#trend-failure-chart [data-series="failure"]')).toHaveCount(3);
+
+    const alphaAverage = page.getByRole("link", {
+      name: /Alpha baseline.*Alpha set.*Average latency 200 ms/,
+    });
+    await alphaAverage.hover();
+    const tooltip = page.locator("#trend-latency-tooltip");
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText("Alpha set");
+    await alphaAverage.focus();
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText("Alpha set");
+    await expect(tooltip).toContainText("3 of 4 attempts timed");
+
+    const retryPass = page.getByRole("link", {
+      name: /Alpha retry.*Alpha set.*Pass rate 66.7%/,
+    });
+    await retryPass.focus();
+    await expect(page.locator("#trend-pass-tooltip")).toContainText(
+      "2 of 3 quality-accounted attempts passed",
+    );
+    const retryFailure = page.getByRole("link", {
+      name: /Alpha retry.*Alpha set.*Technical failure rate 50.0%/,
+    });
+    await retryFailure.focus();
+    const failureTooltip = page.locator("#trend-failure-tooltip");
+    await expect(failureTooltip).toContainText("2 of 4 terminal attempts failed technically");
+    await expect(failureTooltip).toContainText("1 execution · 1 evaluation failures");
+    await expect(failureTooltip).toContainText("Retry of Alpha baseline");
+
+    const alphaPass = page.getByRole("link", {
+      name: /Alpha baseline.*Alpha set.*Pass rate 66.7%/,
+    });
+    await alphaPass.focus();
+    await expect(page.locator("#trend-pass-tooltip")).toContainText(
+      "2 of 3 quality-accounted attempts passed",
+    );
+    await alphaPass.press("Enter");
+    await expect(page.getByRole("heading", { name: "Alpha baseline" })).toBeVisible();
+    await page.getByRole("button", { name: "← All runs" }).click();
+
+    await beta.uncheck();
+    await expect(page.locator('#trend-latency-chart [data-series="average"]')).toHaveCount(2);
+    await expect(page.locator('#trend-pass-chart [data-series="pass"]')).toHaveCount(2);
+    await expect(page.locator('#trend-failure-chart [data-series="failure"]')).toHaveCount(2);
+    await alpha.click();
+    await expect(alpha).toBeChecked();
+    await page.getByRole("button", { name: "Show all datasets" }).click();
+    await expect(beta).toBeChecked();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const hasPageOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasPageOverflow).toBe(false);
+
+    await alphaAverage.focus();
+    await alphaAverage.press("Space");
+    await expect(page.getByRole("heading", { name: "Alpha baseline" })).toBeVisible();
+    await expect(page.getByText("Alpha set · resolved agent")).toBeVisible();
+  });
+
+  test("keeps missing metric samples as visible gaps", async ({ page }) => {
+    const runs = [
+      { id: "gap-before", name: "Before gap", created_at: "2026-08-01T10:00:00+00:00", latency: { total_attempts: 1, timed_attempts: 1, average_ms: 100, best_ms: 100, worst_ms: 100 } },
+      { id: "gap-missing", name: "Missing latency", created_at: "2026-08-02T10:00:00+00:00", latency: null },
+      { id: "gap-after", name: "After gap", created_at: "2026-08-03T10:00:00+00:00", latency: { total_attempts: 1, timed_attempts: 1, average_ms: 300, best_ms: 300, worst_ms: 300 } },
+    ].map((run) => ({
+      ...run,
+      run_id: run.id,
+      status: "scored",
+      dataset_key: "gap-dataset",
+      dataset_name: "Gap dataset",
+      overall_attempt_pass_rate: 1,
+      passed_attempts: 1,
+      quality_accounted_attempts: 1,
+      attempt_lifecycle_counts: { scored: 1, execution_failed: 0, evaluation_failed: 0 },
+      technical_failure_rate: 0,
+      valid: true,
+    }));
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ runs }),
+      });
+    });
+
+    await page.goto("/evaluations");
+
+    await expect(page.locator('#trend-latency-chart [data-series="average"]')).toHaveCount(2);
+    await expect(page.locator("#trend-latency-chart path.trend-average")).toHaveCount(0);
+    await expect(page.locator("#trend-latency-chart .trend-summary")).toHaveText(
+      "2 runs plotted · 1 without this metric",
+    );
+    await expect(page.getByRole("group", { name: "2 runs plotted; 1 without this metric" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Before gap.*Average latency 100 ms/ })).toBeVisible();
+  });
+
+  test("does not synthesize unavailable trends and honors reduced motion", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          runs: [
+            {
+              id: "legacy-dated",
+              run_id: "legacy-dated",
+              name: "Legacy dated run",
+              status: "scored",
+              created_at: "2026-07-01T10:00:00+00:00",
+              dataset_key: "legacy-set",
+              dataset_name: "Legacy set",
+              overall_attempt_pass_rate: null,
+              technical_failure_rate: null,
+              attempt_lifecycle_counts: null,
+              latency: null,
+              valid: true,
+            },
+            {
+              id: "missing-date",
+              run_id: "missing-date",
+              name: "Missing date",
+              status: "scored",
+              created_at: null,
+              dataset_key: "legacy-set",
+              dataset_name: "Legacy set",
+              overall_attempt_pass_rate: 1,
+              passed_attempts: 1,
+              quality_accounted_attempts: 1,
+              attempt_lifecycle_counts: {
+                scored: 1,
+                execution_failed: 0,
+                evaluation_failed: 0,
+              },
+              technical_failure_rate: 0,
+              latency: {
+                total_attempts: 1,
+                timed_attempts: 1,
+                average_ms: 10,
+                best_ms: 10,
+                worst_ms: 10,
+              },
+              valid: true,
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+
+    await expect(page.locator("#trend-latency-chart")).toContainText("Trend unavailable");
+    await expect(page.locator("#trend-pass-chart")).toContainText("Trend unavailable");
+    await expect(page.locator("#trend-failure-chart")).toContainText("Trend unavailable");
+    for (const id of ["trend-latency-chart", "trend-pass-chart", "trend-failure-chart"]) {
+      await expect(page.locator(`#${id}`)).toContainText("1 without this metric");
+      await expect(page.locator(`#${id}`)).toContainText("1 without a timestamp");
+    }
+    await expect(page.locator(".trend-point")).toHaveCount(0);
+
+    const filterMotion = await page.locator(".trend-dataset-option").evaluate((filter) => ({
+      transitionDuration: getComputedStyle(filter).transitionDuration,
+      transform: getComputedStyle(filter).transform,
+    }));
+    expect(filterMotion).toEqual({ transitionDuration: "0s", transform: "none" });
+  });
+
+  test("shows explicit graph errors when compact history cannot load", async ({ page }) => {
+    await page.route("**/api/evaluations/runs", async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "History storage is unavailable." }),
+      });
+    });
+
+    await page.goto("/evaluations");
+
+    await expect(page.locator("#trend-filter-status")).toHaveText(
+      "Trend history could not be loaded.",
+    );
+    for (const id of ["trend-latency-chart", "trend-pass-chart", "trend-failure-chart"]) {
+      await expect(page.locator(`#${id}`)).toContainText("Could not load trends.");
+      await expect(page.locator(`#${id}`)).toContainText("History storage is unavailable.");
+    }
+    await expect(page.locator(".trend-point")).toHaveCount(0);
+  });
+
   test("imports, reviews atoms, saves a child dataset, launches, and opens history", async ({ page }) => {
     await page.goto("/evaluations");
     await expect(page.getByRole("heading", { name: "Evidence, not dashboard theatre." })).toBeVisible();
