@@ -3,6 +3,68 @@ import { expect, test } from "@playwright/test";
 test.describe("QA evaluation console", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("stacks dataset and profile imports into spaced form rows", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/evaluations");
+
+    const expectStackedImportRows = async (formSelector: string) => {
+      const rows = page.locator(`${formSelector} > label, ${formSelector} > button`);
+      await expect(rows).toHaveCount(3);
+      const boxes = await rows.evaluateAll((elements) => elements.map((element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          x: Math.round(bounds.x),
+          y: Math.round(bounds.y),
+          width: Math.round(bounds.width),
+          height: Math.round(bounds.height),
+        };
+      }));
+
+      expect(boxes[1].y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height + 19);
+      expect(boxes[2].y).toBeGreaterThanOrEqual(boxes[1].y + boxes[1].height + 19);
+      expect(boxes[0].x).toBe(boxes[1].x);
+      expect(boxes[2].height).toBeGreaterThanOrEqual(44);
+    };
+
+    await page.getByRole("button", { name: /Datasets/ }).click();
+    await expectStackedImportRows("#dataset-import-form");
+
+    await page.getByRole("button", { name: /Profiles/ }).click();
+    await expectStackedImportRows("#profile-import-form");
+  });
+
+  test("aligns the start evaluation action to the launch card edge", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/evaluations");
+    await page.getByRole("button", { name: /New evaluation/ }).click();
+
+    const launchCard = page.locator(".launch-card");
+    const startButton = page.getByRole("button", { name: "Start evaluation" });
+    const desktopCardBox = await launchCard.boundingBox();
+    const desktopButtonBox = await startButton.boundingBox();
+    expect(desktopCardBox).not.toBeNull();
+    expect(desktopButtonBox).not.toBeNull();
+    const desktopRightInset = Math.round(
+      desktopCardBox!.x + desktopCardBox!.width - desktopButtonBox!.x - desktopButtonBox!.width,
+    );
+    expect(desktopRightInset).toBeGreaterThanOrEqual(21);
+    expect(desktopRightInset).toBeLessThanOrEqual(24);
+    expect(desktopButtonBox!.x).toBeGreaterThan(desktopCardBox!.x + desktopCardBox!.width / 2);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileCardBox = await launchCard.boundingBox();
+    const mobileButtonBox = await startButton.boundingBox();
+    expect(mobileCardBox).not.toBeNull();
+    expect(mobileButtonBox).not.toBeNull();
+    const mobileLeftInset = Math.round(mobileButtonBox!.x - mobileCardBox!.x);
+    const mobileRightInset = Math.round(
+      mobileCardBox!.x + mobileCardBox!.width - mobileButtonBox!.x - mobileButtonBox!.width,
+    );
+    expect(mobileLeftInset).toBeGreaterThanOrEqual(21);
+    expect(mobileLeftInset).toBeLessThanOrEqual(24);
+    expect(mobileRightInset).toBe(mobileLeftInset);
+  });
+
   test("uses the Archi page header and selected dark theme", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("archi_theme", "dark"));
     await page.goto("/evaluations");

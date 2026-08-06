@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Archi · QA evaluations</title>
+  <title>Archi · Evaluatio Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
           <path d="M22 19V3"></path>
           <path d="M2 19h22"></path>
         </svg>
-        <h1>QA Evaluations</h1>
+        <h1>Evaluation Console</h1>
       </div>
       <div class="header-right" aria-hidden="true"></div>
     </header>
@@ -53,21 +53,19 @@
 
       <section class="view active" id="view-runs">
         <header class="page-head">
-          <div><p class="eyebrow">Evaluation history</p><h1>Evidence, not dashboard theatre.</h1><p>Every result below is reconstructed from persisted QA artifacts.</p></div>
+          <div><h1>Evaluating Archi has never been simpler.</h1><p>Every result below is reconstructed from persisted JSON artifacts.</p></div>
           <button class="button primary" data-go="new">Run an evaluation</button>
         </header>
         <div class="metrics">
-          <article><small>Persisted runs</small><strong id="metric-runs">—</strong><span>valid and inspectable</span></article>
-          <article><small>Latest pass rate</small><strong id="metric-pass">—</strong><span>quality-accounted attempts</span></article>
-          <article><small>Datasets</small><strong id="metric-datasets">—</strong><span>immutable snapshots</span></article>
-          <article><small>Active provider job</small><strong id="metric-job">No</strong><span>one at a time</span></article>
+          <article><small>Persisted runs</small><strong id="metric-runs">—</strong></article>
+          <article><small>Latest pass rate</small><strong id="metric-pass">—</strong></article>
+          <article><small>Datasets</small><strong id="metric-datasets">—</strong></article>
+          <article><small>Evaluation running</small><strong id="metric-job">No</strong></article>
         </div>
         <section class="history-trends" aria-labelledby="history-trends-title">
           <section class="panel trend-filter-panel">
             <div>
-              <p class="eyebrow">All-history signals</p>
               <h2 id="history-trends-title">History trends</h2>
-              <p>Compare persisted runs, isolate datasets, and open the evidence behind any point.</p>
             </div>
             <fieldset class="trend-filter-fieldset">
               <legend>Datasets to visualize</legend>
@@ -80,7 +78,7 @@
           </section>
           <section class="panel trend-panel trend-panel-wide" aria-labelledby="trend-latency-title">
             <div class="trend-panel-head">
-              <div><p class="eyebrow">Tested-agent execution</p><h2 id="trend-latency-title">Attempt latency</h2><p>Average, best, and worst terminal-attempt time per run.</p></div>
+              <div><h2 id="trend-latency-title">Attempt latency</h2><p>Average, best, and worst terminal-attempt time per run.</p></div>
               <div class="trend-series-legend" aria-label="Latency series">
                 <span><i class="average"></i>Average</span><span><i class="best"></i>Best</span><span><i class="worst"></i>Worst</span>
               </div>
@@ -90,7 +88,7 @@
           </section>
           <section class="panel trend-panel" aria-labelledby="trend-pass-title">
             <div class="trend-panel-head">
-              <div><p class="eyebrow">Quality-accounted attempts</p><h2 id="trend-pass-title">Pass rate</h2><p>Passed ÷ scored plus execution-failed attempts.</p></div>
+              <div><h2 id="trend-pass-title">Pass rate</h2><p>Passed ÷ scored plus execution-failed attempts.</p></div>
               <div class="trend-series-legend" aria-label="Pass-rate series"><span><i class="pass"></i>Pass rate</span></div>
             </div>
             <div class="trend-chart-shell" id="trend-pass-chart" aria-live="polite"><div class="trend-loading">Loading pass-rate history…</div></div>
@@ -98,7 +96,7 @@
           </section>
           <section class="panel trend-panel" aria-labelledby="trend-failure-title">
             <div class="trend-panel-head">
-              <div><p class="eyebrow">Technical reliability</p><h2 id="trend-failure-title">Technical failure rate</h2><p>Execution plus evaluation failures ÷ all terminal attempts.</p></div>
+              <div><h2 id="trend-failure-title">Technical failure rate</h2><p>Execution plus evaluation failures ÷ all terminal attempts.</p></div>
               <div class="trend-series-legend" aria-label="Failure-rate series"><span><i class="failure"></i>Failure rate</span></div>
             </div>
             <div class="trend-chart-shell" id="trend-failure-chart" aria-live="polite"><div class="trend-loading">Loading failure history…</div></div>
@@ -106,7 +104,7 @@
           </section>
         </section>
         <section class="panel">
-          <div class="panel-head"><div><p class="eyebrow">Artifact index</p><h2>Past evaluations</h2></div><button class="button quiet" id="refresh-runs">Refresh</button></div>
+          <div class="panel-head"><div><h2>Past evaluations</h2></div><button class="button quiet" id="refresh-runs">Refresh</button></div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Evaluation</th><th>Dataset</th><th>Agent</th><th>Attempts</th><th>Pass rate</th><th>Status</th></tr></thead>
@@ -119,7 +117,7 @@
 
       <section class="view" id="view-datasets">
         <header class="page-head">
-          <div><p class="eyebrow">Golden-set library</p><h1>Review the gold before trusting the score.</h1><p>Imports are immutable. Atom reviews always save as a separate child dataset.</p></div>
+          <div><h1>Import datasets and generate golden atoms.</h1><p>Imports are immutable. Atom reviews always save as a separate child dataset.</p></div>
         </header>
         <div class="split">
           <div>
@@ -145,7 +143,7 @@
 
       <section class="view" id="view-profiles">
         <header class="page-head">
-          <div><p class="eyebrow">Evaluator library</p><h1>Make the judge reproducible.</h1><p>Profiles pin the extractor and comparator providers, models, and optional timeouts.</p></div>
+          <div><h1>Import an evaluator profile.</h1><p>Profiles pin the atoms extractor and comparator providers, models, and optional timeouts.</p></div>
         </header>
         <div class="split">
           <form class="panel import-panel" id="profile-import-form">
@@ -163,7 +161,7 @@
 
       <section class="view" id="view-new">
         <header class="page-head">
-          <div><p class="eyebrow">New evaluation</p><h1>Choose exact inputs. Preserve exact outputs.</h1><p>The dataset, profile, agent config, and agent spec are snapshotted into the run.</p></div>
+          <div><h1>Run a new evaluation.</h1><p>The dataset, profile, agent config, and agent spec are snapshotted into the run.</p></div>
         </header>
         <form class="launch-grid" id="evaluation-form">
           <div class="configuration-grid">
@@ -207,7 +205,7 @@
                 <aside class="selection-snapshot agent-snapshot" id="agent-snapshot" aria-label="Selected agent configuration">
                   <div class="snapshot-status" role="status">Select an agent spec to inspect it.</div>
                 </aside>
-                <p class="callout supporting-callout">The deployment’s resolved agent YAML is used. This Markdown spec is copied into the run.</p>
+                <p class="callout supporting-callout">At the moment, only the deployment’s resolved agent YAML is used. This Markdown spec is copied into the run.</p>
               </div>
             </section>
             <section class="panel form-card concurrency-card">
@@ -236,9 +234,6 @@
             </section>
           </div>
           <section class="panel launch-card">
-            <p class="eyebrow">Execution contract</p>
-            <h2>Parallel by phase. Ordered by design.</h2>
-            <ul><li>Run and evaluation phases never overlap</li><li>Higher worker counts increase provider calls and memory</li><li>Artifacts retain canonical question order</li><li>One background job remains active at a time</li></ul>
             <button class="button primary large" type="submit">Start evaluation</button>
           </section>
         </form>

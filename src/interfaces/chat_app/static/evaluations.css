@@ -207,8 +207,13 @@ td strong, td small { display: block; } td small { color: var(--muted); margin-t
 .empty strong, .empty span { display: block; }.empty strong { color: var(--ink); margin-bottom: 4px; }
 .split { display: grid; grid-template-columns: minmax(340px,.85fr) minmax(430px,1.15fr); gap: 16px; align-items: start; }
 .split > div { display: grid; gap: 16px; }
-.import-panel { padding: 20px; display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 12px; }
-.import-panel > div { grid-column: 1 / -1; }
+.import-panel { padding: 24px; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 20px; }
+.import-panel > div,
+.import-panel > label,
+.import-panel > .button { min-width: 0; grid-column: 1; }
+.import-panel > label { gap: 8px; }
+.import-panel > label input { min-height: 44px; }
+.import-panel > .button { min-height: 44px; justify-self: start; padding: 10px 24px; }
 label { display: grid; gap: 6px; color: var(--muted); font: 650 10px var(--mono); text-transform: uppercase; letter-spacing: .04em; }
 input, select, textarea {
   width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 7px; background: var(--field-bg);
@@ -254,6 +259,7 @@ input[type=file] { padding: 7px; font-size: 11px; }
 .form-card-body { min-width:0;display:flex;flex:1;flex-direction:column;gap:16px; }
 .step { color: var(--green); font: 700 11px var(--mono); }
 .launch-card { grid-column: 1 / -1; display: grid; grid-template-columns: 1.2fr 1fr .8fr; gap:20px; align-items:center; background:linear-gradient(135deg,var(--accent-light),var(--surface)); color:var(--ink); border-color:var(--accent-light); }
+.launch-card > .button { grid-column:3; justify-self:end; }
 .launch-card .eyebrow { grid-column:1/-1; margin-bottom:-14px; }.launch-card h2 { margin:0; font-size:25px; }
 .launch-card ul { margin:0; color:var(--muted); padding-left:18px; }
 .callout { padding:12px; background:var(--surface-2); border-left:3px solid var(--green); color:var(--muted); font-size:11px; }
@@ -476,7 +482,7 @@ dialog::backdrop { background:rgba(4,12,9,.72); backdrop-filter:blur(4px); }
   .nav-item:not(.active) b,.nav-item { font-size:0; }.nav-item { justify-content:center; }.nav-item span { font-size:9px; }
   .metrics,.evidence-grid { grid-template-columns:repeat(2,1fr); }.split { grid-template-columns:1fr; }.detail-panel { position:static; }
   .evidence-card:nth-child(odd) .metric-tooltip { left:0;right:auto; }.evidence-card:nth-child(even) .metric-tooltip { left:auto;right:0; }
-  .configuration-grid { grid-template-columns:1fr;grid-auto-rows:auto; }.launch-card { grid-column:auto;grid-template-columns:1fr; }.launch-card .eyebrow { grid-column:auto; }
+  .configuration-grid { grid-template-columns:1fr;grid-auto-rows:auto; }.launch-card { grid-column:auto;grid-template-columns:1fr; }.launch-card > .button,.launch-card .eyebrow { grid-column:auto; }
   .question-result > summary { grid-template-columns:minmax(0,1fr) minmax(220px,300px); }
   .trend-filter-panel { grid-template-columns:1fr;gap:16px; }
 }
@@ -492,7 +498,7 @@ dialog::backdrop { background:rgba(4,12,9,.72); backdrop-filter:blur(4px); }
   .trend-filter-panel { padding:15px; }.trend-filter-actions { align-items:flex-start;flex-direction:column; }
   .trend-panel-head { display:block;min-height:0; }.trend-series-legend { margin-top:12px;flex-wrap:wrap; }
   .trend-loading,.trend-empty { min-height:260px; }.trend-chart { min-width:500px; }
-  .import-panel { grid-template-columns:1fr; }.import-panel > div { grid-column:auto; }.profile-grid { grid-template-columns:1fr; }.evidence-grid { grid-template-columns:1fr 1fr; }
+  .import-panel { padding:20px; }.import-panel > .button { width:100%; }.profile-grid { grid-template-columns:1fr; }.evidence-grid { grid-template-columns:1fr 1fr; }
   .field-tooltip { width:min(280px,calc(100vw - 64px)); }
   .atom-item > summary { grid-template-columns:1fr;gap:6px;padding-right:42px; }.atom-summary-count { white-space:normal; }
   .atom-row { grid-template-columns:90px minmax(0,1fr); }.atom-row .required-toggle { grid-column:1/2; }.atom-row button { grid-column:2/3;justify-self:end; }
