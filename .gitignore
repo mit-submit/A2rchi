@@ -47,3 +47,4 @@ redo.sh
 #   BASE_URL=http://localhost:7870 npx playwright test tests/ui/playbooks.spec.ts
 tests/smoke/test_playbooks_integration.py
 tests/ui/playbooks.spec.ts
+.claude/
