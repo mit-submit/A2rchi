@@ -49,3 +49,4 @@ tests/smoke/test_playbooks_integration.py
 tests/ui/playbooks.spec.ts
 .claude/
 .okg/
+python/dist/

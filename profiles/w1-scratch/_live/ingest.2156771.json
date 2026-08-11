@@ -1,0 +1,38 @@
+{
+  "deployment": "w1-scratch",
+  "duration_ms": 3074.121476,
+  "limitations": [],
+  "pid": 2156771,
+  "policy": {
+    "deep_capture": {
+      "collectors": [],
+      "max_bundles": 20,
+      "mode": "manual",
+      "sample_rate": 0.0,
+      "slow_mcp_ms": 1000,
+      "slow_publish_ms": 30000,
+      "slow_viz_request_ms": 1000,
+      "targets": [
+        "publish",
+        "mcp",
+        "viz-request"
+      ]
+    },
+    "lightweight": {
+      "enabled": true,
+      "live_snapshot_stale_seconds": 60,
+      "ring_buffer_events": 10000,
+      "slow_query_ms": 250,
+      "wait_sample_hz": 2.0
+    }
+  },
+  "profile_run_id": "eb1f52dc33df",
+  "slow_queries": [],
+  "stage_p95_ms": {
+    "ingest.publish.commit": 1002.397768,
+    "source.bootstrap-fixture.run": 1892.595061,
+    "source.cmssw-releases.run": 1987.839805
+  },
+  "target_kind": "ingest",
+  "updated_at": "2026-08-11T21:05:51.244502+00:00"
+}
