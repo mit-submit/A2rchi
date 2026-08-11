@@ -1,3 +1,18 @@
+# Archi repo overrides (read first)
+
+The managed section below is okg's generic PACT boilerplate. Where it
+conflicts with this repo, these overrides win (they match
+`pact/project.yaml` and ADR 0001, `docs/adr/0001-archi-v3-program-spec.md`):
+
+- **PRs target `archi_v3`, never `dev` (which does not serve that role here)
+  and never `main`** — `main` serves live v2 deployments until cutover.
+- The repo-authoritative command is `okg` from an okg-bearing operator
+  environment (e.g. `/work/submit/lavezzo/okg-venv/bin/okg`); this repo has
+  no `uv run okg`.
+- References to `okg-workspace`, `okg dogfood`, and okg-repo runbooks
+  (`docs/runbooks/agent-*.md`) do not exist in this repo; the PACT graph
+  projection here is the interim `archi-pact` ledger deployment.
+
 <!-- BEGIN okg-pact-install -->
 ## PACT + OKG workflow
 

@@ -20,6 +20,14 @@ pr_policy:
     v2 deployments and receives only v2 bugfixes until cutover.
 agent_install_targets:
   - claude-code
+graph_projection:
+  deployment: archi-pact
+  stale_policy: >-
+    The archi-pact ledger deployment is interim host-local infrastructure
+    (submit82, rootless podman, port 5456; resolved via OKG_DEPLOYMENTS_DIR
+    and .okg/local.env). Treat stale or missing projection as context only;
+    live files and tests are implementation truth. Replace with a durable
+    team-reachable Postgres before other reviewers run decide/merge gates.
 generated_artifacts:
   noncanonical:
     - pact/changes/*/pact.md
