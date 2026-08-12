@@ -165,7 +165,7 @@ tasks:
     required: false
 - id: task.w2.auth
   title: "archi/auth \u2014 preflight, SSO, cache util"
-  status: todo
+  status: done
   verification: python/tests/auth/
   requirements:
   - req.w2.auth
@@ -274,3 +274,25 @@ evidence:
     ships in wheel, no operator paths, root build untouched'
   data:
     attached_at: '2026-08-11T21:05:27.249012+00:00'
+- id: ev.pytest.req-w2-auth.20260812T003827308891Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.auth
+  artifact: python/tests/auth/
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/auth/ -q
+  summary: 46/46 auth tests incl. review-fix regressions; no-operator-paths lint green
+    in packaging suite
+  data:
+    attached_at: '2026-08-12T00:38:27.308914+00:00'
+- id: ev.pytest.req-w2-auth.20260812T003850633918Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.auth
+  artifact: python/tests/auth/
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/auth/ -q
+  summary: 45/45 auth tests incl. two review-fix regressions (corrects prior entry's
+    46/46 typo); no-operator-paths lint green in packaging suite
+  data:
+    attached_at: '2026-08-12T00:38:50.633941+00:00'
