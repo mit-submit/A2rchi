@@ -6,7 +6,7 @@
     draft: null, openRunId: null, pollingJobId: null, reviewValidationActive: false,
     openToolCalls: new Map(), nextToolCallKey: 1, trendDatasetKeys: [],
     selectedTrendDatasets: new Set(), trendFiltersInitialized: false,
-    trendPointData: new Map(), agentSnapshotRequest: 0
+    trendPointData: new Map(), agentSnapshotRequest: 0, historyRange: "90d"
   };
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -526,13 +526,20 @@
   }
 
   async function loadRuns() {
+    const historyTrends = $(".history-trends");
+    const historyWindow = $("#history-window");
+    historyTrends.setAttribute("aria-busy", "true");
+    historyWindow.disabled = true;
     try {
-      const payload = await api("/api/evaluations/runs");
+      const payload = await api(`/api/evaluations/runs?range=${encodeURIComponent(state.historyRange)}`);
       state.runs = payload.runs;
       renderRuns();
     } catch (error) {
       renderTrendError(error);
       throw error;
+    } finally {
+      historyTrends.removeAttribute("aria-busy");
+      historyWindow.disabled = false;
     }
   }
 
@@ -1387,6 +1394,14 @@
   $("#launch-profile").addEventListener("change", renderProfileSnapshot);
   $("#launch-agent").addEventListener("change", renderAgentSnapshot);
   $("#refresh-runs").addEventListener("click", () => loadRuns().catch((error) => toast("Refresh failed", error.message)));
+  $("#history-window").addEventListener("change", async (event) => {
+    state.historyRange = event.currentTarget.value;
+    try {
+      await loadRuns();
+    } catch (error) {
+      toast("History could not load", error.message);
+    }
+  });
   $("#trend-select-all").addEventListener("click", () => {
     state.selectedTrendDatasets = new Set(state.trendDatasetKeys);
     $("#trend-dataset-filters").querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = true; });

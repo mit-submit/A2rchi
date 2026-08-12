@@ -145,7 +145,10 @@ h2 { font-size: 18px; letter-spacing: -.025em; margin-bottom: 5px; }
 .trend-filter-panel,.trend-panel-wide { grid-column:1/-1; }
 .trend-filter-panel { padding:18px;display:grid;grid-template-columns:minmax(260px,.7fr) minmax(420px,1.3fr);gap:24px;align-items:start; }
 .trend-filter-panel h2,.trend-filter-panel p { margin-bottom:0; }
-.trend-filter-panel > div > p:last-child { margin-top:5px;color:var(--muted);font-size:12px; }
+.trend-filter-panel > div > p { margin-top:5px;color:var(--muted);font-size:12px; }
+.history-window-field { display:block;max-width:190px;margin-top:16px; }
+.history-window-field span { display:block;margin-bottom:6px;color:var(--muted);font:700 9px var(--mono);letter-spacing:.08em;text-transform:uppercase; }
+.history-window-field select { width:100%; }
 .trend-filter-fieldset { min-width:0;margin:0;padding:0;border:0; }
 .trend-filter-fieldset legend { margin-bottom:8px;color:var(--muted);font:700 9px var(--mono);letter-spacing:.08em;text-transform:uppercase; }
 .trend-filter-actions { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px; }

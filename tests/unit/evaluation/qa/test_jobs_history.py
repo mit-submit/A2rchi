@@ -1,6 +1,7 @@
 import json
 import threading
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 
@@ -568,6 +569,72 @@ def test_history_streams_latency_rows_without_loading_complete_answers(
     row = EvaluationHistory(tmp_path).list_runs()[0]
 
     assert row["latency"]["timed_attempts"] == 3
+
+
+def test_history_skips_expensive_artifacts_before_utc_cutoff(tmp_path, monkeypatch):
+    old = tmp_path / "old-run"
+    _write_scored_history_run(
+        old,
+        metadata={"created_at": "2026-07-31T23:59:59+00:00"},
+    )
+    at_cutoff = tmp_path / "cutoff-run"
+    _write_scored_history_run(
+        at_cutoff,
+        metadata={"created_at": "2026-08-01T00:00:00+00:00"},
+    )
+    undated = tmp_path / "undated-run"
+    _write_scored_history_run(undated)
+    undated_manifest = read_json(undated / "manifest.json")
+    del undated_manifest["phases"]["score"]["completed_at"]
+    write_json(undated / "manifest.json", undated_manifest)
+
+    summary_reads = []
+    latency_reads = []
+    verified_artifacts = []
+    original_read_json = history_module.read_json
+    original_latency_trend = EvaluationHistory._latency_trend
+    original_verify_hashes = history_module.verify_hashes
+
+    def recording_read_json(path):
+        if path.name == "summary.json":
+            summary_reads.append(path.parent.name)
+        return original_read_json(path)
+
+    def recording_latency_trend(path, manifest):
+        latency_reads.append(path.name)
+        return original_latency_trend(path, manifest)
+
+    def recording_verify_hashes(path, artifacts, filenames):
+        verified_artifacts.extend((path.name, filename) for filename in filenames)
+        return original_verify_hashes(path, artifacts, filenames)
+
+    monkeypatch.setattr(history_module, "read_json", recording_read_json)
+    monkeypatch.setattr(
+        EvaluationHistory,
+        "_latency_trend",
+        staticmethod(recording_latency_trend),
+    )
+    monkeypatch.setattr(history_module, "verify_hashes", recording_verify_hashes)
+
+    rows = EvaluationHistory(tmp_path).list_runs(
+        cutoff=datetime(2026, 8, 1, tzinfo=timezone.utc)
+    )
+
+    assert {row["name"] for row in rows} == {"cutoff-run", "undated-run"}
+    assert set(summary_reads) == {"cutoff-run", "undated-run"}
+    assert set(latency_reads) == {"cutoff-run", "undated-run"}
+    assert not {
+        filename
+        for run_name, filename in verified_artifacts
+        if run_name == "old-run" and filename in {"summary.json", "answers.jsonl"}
+    }
+
+
+def test_history_rejects_naive_cutoff(tmp_path):
+    history = EvaluationHistory(tmp_path)
+
+    with pytest.raises(ValueError, match="cutoff must include a timezone"):
+        history.list_runs(cutoff=datetime(2026, 8, 1))
 
 
 def test_history_isolates_invalid_attempt_duration_from_other_runs(tmp_path):

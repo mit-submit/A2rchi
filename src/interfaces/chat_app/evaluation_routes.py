@@ -1,6 +1,9 @@
 # isort: skip_file
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+
 from flask import (  # isort: skip
     Blueprint,
     Response,
@@ -19,6 +22,34 @@ logger = get_logger(__name__)
 
 evaluations_bp = Blueprint("evaluations", __name__)
 _STATE_KEY = "EVALUATIONS_BLUEPRINT_STATE"
+
+
+class HistoryRange(str, Enum):
+    DAYS_7 = "7d"
+    DAYS_30 = "30d"
+    DAYS_90 = "90d"
+    DAYS_365 = "365d"
+
+    @property
+    def days(self) -> int:
+        return {
+            HistoryRange.DAYS_7: 7,
+            HistoryRange.DAYS_30: 30,
+            HistoryRange.DAYS_90: 90,
+            HistoryRange.DAYS_365: 365,
+        }[self]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _history_cutoff(value: str) -> datetime:
+    try:
+        history_range = HistoryRange(value)
+    except ValueError as exc:
+        raise ValueError("range must be one of: 7d, 30d, 90d, 365d") from exc
+    return _utc_now().astimezone(timezone.utc) - timedelta(days=history_range.days)
 
 
 def _state():
@@ -226,7 +257,13 @@ def agent_detail(agent_filename):
 def runs():
     service = _service()
     if request.method == "GET":
-        return jsonify({"runs": service.history.list_runs()})
+        try:
+            cutoff = _history_cutoff(
+                request.args.get("range", HistoryRange.DAYS_90.value)
+            )
+            return jsonify({"runs": service.history.list_runs(cutoff=cutoff)})
+        except Exception as exc:
+            return _error(exc)
     try:
         body = _json_body()
         job = service.start_evaluation(

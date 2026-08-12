@@ -65,6 +65,75 @@ test.describe("QA evaluation console", () => {
     expect(mobileRightInset).toBe(mobileLeftInset);
   });
 
+  test("reloads the run table and every trend from one bounded history window", async ({ page }) => {
+    const requestedRanges: string[] = [];
+    let releaseYear!: () => void;
+    const yearGate = new Promise<void>((resolve) => { releaseYear = resolve; });
+    const yearRun = {
+      id: "year-run",
+      run_id: "year-run",
+      name: "Year run",
+      status: "scored",
+      created_at: "2026-01-15T10:00:00+00:00",
+      dataset_key: "dataset-year",
+      dataset_name: "Year dataset",
+      attempts: 1,
+      overall_attempt_pass_rate: 1,
+      passed_attempts: 1,
+      quality_accounted_attempts: 1,
+      attempt_lifecycle_counts: {
+        scored: 1,
+        execution_failed: 0,
+        evaluation_failed: 0,
+      },
+      technical_failure_rate: 0,
+      latency: {
+        total_attempts: 1,
+        timed_attempts: 1,
+        average_ms: 120,
+        best_ms: 120,
+        worst_ms: 120,
+      },
+      valid: true,
+    };
+    await page.route("**/api/evaluations/runs?*", async (route) => {
+      const historyRange = new URL(route.request().url()).searchParams.get("range") || "";
+      requestedRanges.push(historyRange);
+      if (historyRange === "365d") await yearGate;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ runs: historyRange === "365d" ? [yearRun] : [] }),
+      });
+    });
+
+    await page.goto("/evaluations");
+
+    const historyWindow = page.getByLabel("History window");
+    await expect(historyWindow).toHaveValue("90d");
+    await expect(historyWindow.locator("option")).toHaveText([
+      "Last 7 days",
+      "Last 30 days",
+      "Last 90 days",
+      "Last 365 days",
+    ]);
+    await expect.poll(() => requestedRanges).toEqual(["90d"]);
+    await expect(page.locator("#runs-body tr")).toHaveCount(0);
+
+    await historyWindow.selectOption("365d");
+    await expect(historyWindow).toBeDisabled();
+    await expect(page.locator(".history-trends")).toHaveAttribute("aria-busy", "true");
+    releaseYear();
+
+    await expect(historyWindow).toBeEnabled();
+    await expect(page.locator(".history-trends")).not.toHaveAttribute("aria-busy", "true");
+    await expect.poll(() => requestedRanges).toEqual(["90d", "365d"]);
+    await expect(page.locator("#runs-body tr")).toHaveCount(1);
+    await expect(page.locator('#trend-latency-chart [data-series="average"]')).toHaveCount(1);
+    await expect(page.locator('#trend-pass-chart [data-series="pass"]')).toHaveCount(1);
+    await expect(page.locator('#trend-failure-chart [data-series="failure"]')).toHaveCount(1);
+    await expect(historyWindow.locator('option[value="all"]')).toHaveCount(0);
+  });
+
   test("uses the Archi page header and selected dark theme", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("archi_theme", "dark"));
     await page.goto("/evaluations");
@@ -171,7 +240,7 @@ test.describe("QA evaluation console", () => {
         }),
       });
     });
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({ contentType: "application/json", body: JSON.stringify({ runs: [] }) });
     });
     await page.route("**/api/evaluations/agents/*", async (route) => {
@@ -409,7 +478,7 @@ test.describe("QA evaluation console", () => {
         valid: true,
       },
     ];
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ runs }) });
     });
     await page.route("**/api/evaluations/runs/trend-alpha", async (route) => {
@@ -531,7 +600,7 @@ test.describe("QA evaluation console", () => {
       technical_failure_rate: 0,
       valid: true,
     }));
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -552,7 +621,7 @@ test.describe("QA evaluation console", () => {
 
   test("does not synthesize unavailable trends and honors reduced motion", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -622,7 +691,7 @@ test.describe("QA evaluation console", () => {
   });
 
   test("shows explicit graph errors when compact history cannot load", async ({ page }) => {
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         status: 503,
         contentType: "application/json",
@@ -984,7 +1053,7 @@ test.describe("QA evaluation console", () => {
         }),
       });
     });
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -1245,7 +1314,7 @@ test.describe("QA evaluation console", () => {
         }),
       });
     });
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -1353,7 +1422,7 @@ test.describe("QA evaluation console", () => {
         }),
       });
     });
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -1435,7 +1504,7 @@ test.describe("QA evaluation console", () => {
         }),
       });
     });
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -1517,7 +1586,7 @@ test.describe("QA evaluation console", () => {
         }),
       });
     });
-    await page.route("**/api/evaluations/runs", async (route) => {
+    await page.route("**/api/evaluations/runs?*", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({

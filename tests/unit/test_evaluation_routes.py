@@ -1,4 +1,5 @@
 import io
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -300,9 +301,15 @@ def test_agent_snapshot_route_reports_missing_selection_with_view_permission(tmp
     assert permissions == [Permission.Evaluations.VIEW]
 
 
-def test_run_history_route_exposes_compact_trend_projection(tmp_path):
+def test_run_history_route_exposes_compact_trend_projection(tmp_path, monkeypatch):
     app, service, permissions = _app(tmp_path)
     _write_trend_run(service)
+    monkeypatch.setattr(
+        evaluation_routes,
+        "_utc_now",
+        lambda: datetime(2026, 8, 12, 12, tzinfo=timezone.utc),
+        raising=False,
+    )
 
     response = app.test_client().get("/api/evaluations/runs")
 
@@ -320,6 +327,71 @@ def test_run_history_route_exposes_compact_trend_projection(tmp_path):
     assert row["technical_failure_rate"] == 0.0
     assert "private response" not in response.get_data(as_text=True)
     assert permissions == [Permission.Evaluations.VIEW]
+
+
+@pytest.mark.parametrize(
+    ("history_range", "days"),
+    [("7d", 7), ("30d", 30), ("90d", 90), ("365d", 365)],
+)
+def test_run_history_route_passes_explicit_utc_cutoff(
+    tmp_path, monkeypatch, history_range, days
+):
+    app, service, permissions = _app(tmp_path)
+    now = datetime(2026, 8, 12, 12, 30, tzinfo=timezone.utc)
+    cutoffs = []
+    monkeypatch.setattr(evaluation_routes, "_utc_now", lambda: now, raising=False)
+    monkeypatch.setattr(
+        service.history,
+        "list_runs",
+        lambda *, cutoff: cutoffs.append(cutoff) or [],
+    )
+
+    response = app.test_client().get(
+        "/api/evaluations/runs", query_string={"range": history_range}
+    )
+
+    assert response.status_code == 200
+    assert cutoffs == [now - timedelta(days=days)]
+    assert cutoffs[0].tzinfo is timezone.utc
+    assert permissions == [Permission.Evaluations.VIEW]
+
+
+def test_run_history_route_defaults_to_90_days(tmp_path, monkeypatch):
+    app, service, _permissions = _app(tmp_path)
+    now = datetime(2026, 8, 12, 12, 30, tzinfo=timezone.utc)
+    cutoffs = []
+    monkeypatch.setattr(evaluation_routes, "_utc_now", lambda: now, raising=False)
+    monkeypatch.setattr(
+        service.history,
+        "list_runs",
+        lambda *, cutoff: cutoffs.append(cutoff) or [],
+    )
+
+    response = app.test_client().get("/api/evaluations/runs")
+
+    assert response.status_code == 200
+    assert cutoffs == [now - timedelta(days=90)]
+
+
+@pytest.mark.parametrize("history_range", ["all", "30", "", "90D"])
+def test_run_history_route_rejects_unsupported_range(
+    tmp_path, monkeypatch, history_range
+):
+    app, service, _permissions = _app(tmp_path)
+    listed = []
+    monkeypatch.setattr(
+        service.history,
+        "list_runs",
+        lambda *, cutoff: listed.append(cutoff) or [],
+    )
+
+    response = app.test_client().get(
+        "/api/evaluations/runs", query_string={"range": history_range}
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "range must be one of: 7d, 30d, 90d, 365d"}
+    assert listed == []
 
 
 def test_launch_route_defaults_phase_workers_for_older_clients(tmp_path):

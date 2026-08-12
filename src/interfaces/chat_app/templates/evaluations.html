@@ -66,6 +66,16 @@
           <section class="panel trend-filter-panel">
             <div>
               <h2 id="history-trends-title">History trends</h2>
+              <p>The selected window applies to the run table and every graph.</p>
+              <label class="history-window-field" for="history-window">
+                <span>History window</span>
+                <select id="history-window">
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="90d" selected>Last 90 days</option>
+                  <option value="365d">Last 365 days</option>
+                </select>
+              </label>
             </div>
             <fieldset class="trend-filter-fieldset">
               <legend>Datasets to visualize</legend>

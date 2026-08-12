@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
@@ -387,23 +387,21 @@ class EvaluationHistory:
             "worst_ms": worst_ms,
         }
 
-    def list_runs(self) -> List[Dict[str, Any]]:
+    def list_runs(self, *, cutoff: Optional[datetime] = None) -> List[Dict[str, Any]]:
+        if cutoff is not None:
+            if not isinstance(cutoff, datetime):
+                raise ValueError("cutoff must be a datetime")
+            if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+                raise ValueError("cutoff must include a timezone")
+            cutoff_sort_value = cutoff.astimezone(timezone.utc).timestamp()
+        else:
+            cutoff_sort_value = None
         rows: List[Tuple[float, Dict[str, Any]]] = []
         for path in self._run_paths():
             history_id = _history_id(path)
             try:
                 manifest = self._load_manifest(path)
                 metadata = self._load_console_metadata(path, manifest)
-                summary = (
-                    read_json(path / "summary.json")
-                    if (path / "summary.json").is_file()
-                    else None
-                )
-                self._verify_present(
-                    path,
-                    manifest,
-                    ["summary.json"],
-                )
                 phase_timestamps = []
                 for phase_name, phase in manifest.phases.items():
                     if not isinstance(phase, dict):
@@ -430,6 +428,22 @@ class EvaluationHistory:
                 else:
                     created_at = ""
                     sort_value = float("-inf")
+                if (
+                    cutoff_sort_value is not None
+                    and created_at
+                    and sort_value < cutoff_sort_value
+                ):
+                    continue
+                summary = (
+                    read_json(path / "summary.json")
+                    if (path / "summary.json").is_file()
+                    else None
+                )
+                self._verify_present(
+                    path,
+                    manifest,
+                    ["summary.json"],
+                )
                 dataset_key, dataset_name = self._dataset_identity(manifest, metadata)
                 trend_summary = self._summary_trends(summary)
                 latency = self._latency_trend(path, manifest)

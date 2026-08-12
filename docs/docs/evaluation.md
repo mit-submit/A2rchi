@@ -604,10 +604,17 @@ neither a job nor a new artifact.
 
 ### Compare history trends
 
-The evaluation homepage charts valid, fully scored runs with an authoritative
-timestamp and metric value. Prepared or execution-complete runs remain in the
-run table while work continues, but do not appear in the trend dataset selector
-or graphs. One shared dataset selector controls all three graphs:
+The evaluation homepage requests one bounded history window from the server for
+the run table and all graphs. Choose the last 7, 30, 90, or 365 days; 90 days is
+the default and there is no unbounded option. The server computes an
+explicit UTC cutoff and excludes older timestamped runs before verifying their
+summary or answer artifacts. Runs without an authoritative timestamp remain in
+the table because their age cannot be established safely.
+
+Within that window, the homepage charts valid, fully scored runs with an
+authoritative timestamp and metric value. Prepared or execution-complete runs
+remain in the run table while work continues, but do not appear in the trend
+dataset selector or graphs. One shared dataset selector controls all three graphs:
 
 - **Attempt latency** plots the average, best, and worst tested-agent latency
   across the attempts recorded by each run.
@@ -631,8 +638,8 @@ console does not expose its host path.
 Older or partial artifacts can lack timestamps, lifecycle counts, or latency.
 The graphs omit the unavailable point, leave a gap in its series line, and
 report the incomplete coverage; they never infer a value or replace missing
-data with zero. History aggregation streams answer artifacts, so the homepage
-remains bounded in memory as the number and size of runs grow.
+data with zero. For runs inside the selected window, history aggregation streams
+answer artifacts rather than loading complete answer files into memory.
 
 ### Inspect per-question latency
 
