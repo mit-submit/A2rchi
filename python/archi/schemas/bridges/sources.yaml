@@ -1,0 +1,41 @@
+# Archi W2 — deployment bridge: edge narrowings for the ported
+# jira/docs source emissions (acc.w2.sources). Person and
+# DocumentChunk resolve from the co-loaded person and extraction
+# modules; JiraIssue / DocumentationPage / SoftwareRepository come
+# from schemas/sources_w2.yaml.
+classes:
+  EdgeNarrowings:
+    description: Narrowings for the ported jira/docs source emissions.
+    annotations:
+      okg_edge_narrowings: 'true'
+    attributes:
+      jira_issue_assigned_to_person:
+        annotations:
+          edge_archetype: assigned_to
+          src_subtypes: JiraIssue
+          dst_subtypes: Person
+      jira_issue_reported_by_person:
+        annotations:
+          edge_archetype: reported_by
+          src_subtypes: JiraIssue
+          dst_subtypes: Person
+      jira_issue_contains_chunk:
+        annotations:
+          edge_archetype: contains
+          src_subtypes: JiraIssue
+          dst_subtypes: DocumentChunk
+      chunk_references_jira_issue:
+        annotations:
+          edge_archetype: references
+          src_subtypes: DocumentChunk
+          dst_subtypes: JiraIssue
+      repo_contains_documentation_page:
+        annotations:
+          edge_archetype: contains
+          src_subtypes: SoftwareRepository
+          dst_subtypes: DocumentationPage
+      documentation_page_contains_chunk:
+        annotations:
+          edge_archetype: contains
+          src_subtypes: DocumentationPage
+          dst_subtypes: DocumentChunk
