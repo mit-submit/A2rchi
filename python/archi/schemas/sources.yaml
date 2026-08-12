@@ -1,0 +1,84 @@
+# Archi W2 — deployment-scoped schema slice for the ported jira/docs
+# sources (acc.w2.sources). Subtypes no substrate library module
+# declares: jira_issue, documentation_page, software_repository.
+# person and document_chunk come from the `person` and `extraction`
+# modules composed in deployment.yaml.
+id: https://archi-physics.org/okg/archi/w2-sources
+name: archi_w2_sources
+title: Archi W2 — ported source subtypes
+description: Deployment-scoped slice for JiraIssueSource / DocumentationSource emissions.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  archi: https://archi-physics.org/okg/archi/
+
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  JiraIssue:
+    description: A JIRA issue mirrored from a records cache.
+    class_uri: archi:JiraIssue
+    attributes:
+      issue_key:
+        required: true
+      summary:
+      description:
+      project:
+      status:
+      priority:
+      issue_type:
+      assignee:
+      reporter:
+      created:
+      updated:
+      url:
+      text:
+    annotations:
+      archetype: artifact
+      transient: "false"
+      okg_alias_fields: issue_key
+      okg_searchable_text_fields: issue_key,summary,description,status,priority,text
+
+  DocumentationPage:
+    description: A documentation page from a docs-site records cache.
+    class_uri: archi:DocumentationPage
+    attributes:
+      title:
+      url:
+        required: true
+      body:
+      source_repo:
+      site_name:
+      path:
+      text:
+    annotations:
+      archetype: artifact
+      transient: "false"
+      okg_alias_fields: url
+      okg_searchable_text_fields: title,body,url,text
+
+  SoftwareRepository:
+    description: A source repository that documentation pages belong to.
+    class_uri: archi:SoftwareRepository
+    attributes:
+      name:
+      full_name:
+      url:
+      text:
+    annotations:
+      archetype: artifact
+      transient: "false"
+      okg_alias_fields: full_name
+      okg_searchable_text_fields: name,full_name,url,text
+
+# EdgeNarrowings live in archi/schemas/bridges/sources.yaml — the
+# catalog composer only extracts subtypes from deployment
+# schemas/*.yaml; deployment-owned narrowings must come from
+# schemas/bridges/. Copy both packaged files into the deployment:
+# archi/schemas/sources.yaml -> <deployment>/schemas/sources.yaml and
+# archi/schemas/bridges/sources.yaml ->
+# <deployment>/schemas/bridges/sources.yaml.

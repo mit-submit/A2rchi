@@ -173,7 +173,7 @@ tasks:
   environment: []
 - id: task.w2.sources-parity
   title: 'Parity families: jira, docs (docsite + gitlab_docs + cmsweb)'
-  status: todo
+  status: done
   verification: python/tests/sources/test_jira.py and python/tests/sources/test_docs.py
   requirements:
   - req.w2.sources
@@ -296,3 +296,17 @@ evidence:
     46/46 typo); no-operator-paths lint green in packaging suite
   data:
     attached_at: '2026-08-12T00:38:50.633941+00:00'
+- id: ev.pytest.req-w2-sources.20260812T124326967398Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.sources
+  artifact: python/tests/sources/
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/sources/
+    -q
+  summary: '57 source tests pass (jira 30, docs 27) incl. 10 review-fix regressions;
+    scratch-instance ingest cycle proven (see parity-ingest-demonstration.md): lint
+    zero findings, publish gen 20260812T005035..., cross-source references edge, idempotent
+    re-run'
+  data:
+    attached_at: '2026-08-12T12:43:26.967431+00:00'
