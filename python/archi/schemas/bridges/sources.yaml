@@ -58,3 +58,41 @@ classes:
           edge_archetype: references
           src_subtypes: DocumentationPage
           dst_subtypes: DocumentationPage
+      # MONIT sources (archi.sources.monit). Every edge starts at a
+      # Site (or StorageEndpoint) node owned by the catalogs port,
+      # which has not landed; Dataset comes from the substrate
+      # `dataset` module. optional_when_subtypes_missing keeps catalog
+      # composition green until those subtypes are composed — but the
+      # monit sources' edges are then rejected at ingest, so deploy the
+      # family only together with a slice providing site (and
+      # storage_endpoint for monit_rucio_datasets).
+      site_hosts_monitoring_snapshot:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: Site
+          dst_subtypes: MonitoringSnapshot
+          optional_when_subtypes_missing: 'true'
+      site_hosts_transfer_job:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: Site
+          dst_subtypes: TransferJob
+          optional_when_subtypes_missing: 'true'
+      transfer_site_to_site:
+        annotations:
+          edge_archetype: transfers_to
+          src_subtypes: Site
+          dst_subtypes: Site
+          optional_when_subtypes_missing: 'true'
+      site_hosts_dataset:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: Site
+          dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
+      storage_endpoint_hosts_dataset:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: StorageEndpoint
+          dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
