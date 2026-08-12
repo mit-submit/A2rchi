@@ -33,9 +33,25 @@ keep byte parity with the ``twiki_eos`` corpus; the wisdqm flavor is
 
 Decisions: two-ingestor design + fidelity flags approved by the
 maintainer 2026-08-12; cern-twiki hardening excluded.
+
+Deliberate parity deviations from the cms original (TWiki is not in
+archi's v2 byte-parity corpus; the resulting chunk re-keying was
+accepted):
+
+- the cms ``=code=`` unwrap regex (``=([^=\\s][^=]*[^=\\s])=``) pairs
+  ``=`` signs across lines and assignments, so ``MAX=5 and MIN=2``
+  became ``MAX5 and MIN2``. Ours requires the classic single-line
+  inline-code form with non-word boundary context on both sides:
+  assignments survive untouched and ``=ls -la=`` still unwraps.
+- the cms heading regexes let ``\\s*`` span the newline, so a bare
+  ``---++`` marker line absorbed the following line (markdown mode
+  even promoted the next line to a heading title). Ours match within
+  a single line; a bare marker line is dropped entirely in both
+  heading styles.
 """
 from __future__ import annotations
 
+import functools
 import re
 from datetime import datetime, timezone
 from html import unescape
@@ -47,7 +63,9 @@ HEADING_STYLES = ("drop", "markdown")
 WHITESPACE_MODES = ("collapse", "preserve")
 
 # Snapshot filenames that are not real topic pages (cms twiki_eos.py).
-DEFAULT_SKIP_PATTERNS = [
+# Immutable on purpose: pass a custom tuple to is_real_page (or the
+# sources' skip_patterns param) instead of mutating module state.
+DEFAULT_SKIP_PATTERNS: tuple[str, ...] = (
     r"^[0-9]+\.txt$",
     r"^[0-9]{6,8}[A-Za-z]",
     r"^[0-9]{1,2}-[0-9]{1,2}-[0-9]{4}",
@@ -57,9 +75,12 @@ DEFAULT_SKIP_PATTERNS = [
     r"Rss|Search|SearchAdvanced|Statistics|TopicCreator|TopicEditTemplate|"
     r"TopicList|TopMenu|BottomBar)\.txt$",
     r"^(LastViewedTopics|TWeederSummaryViews|SearchResults)\.txt$",
-]
+)
 
-_SKIP_RE = re.compile("|".join(f"(?:{p})" for p in DEFAULT_SKIP_PATTERNS))
+
+@functools.lru_cache(maxsize=None)
+def _skip_re(patterns: tuple[str, ...]) -> re.Pattern[str]:
+    return re.compile("|".join(f"(?:{p})" for p in patterns))
 _META_TOPICINFO_RE = re.compile(r"%META:TOPICINFO\{([^}]*)\}%", re.IGNORECASE)
 _META_TOPICPARENT_RE = re.compile(
     r'%META:TOPICPARENT\{[^}]*name="([^"]+)"[^}]*\}%',
@@ -82,8 +103,15 @@ _BARE_WW_STRIP_PATTERNS = [
 _BARE_WIKIWORD_RE = re.compile(
     r"(?<![A-Za-z./_])([A-Z][a-z]+(?:[A-Z][a-z]*)+)(?![a-z])"
 )
-_HEADING_DROP_RE = re.compile(r"^\-{3}\+{1,6}!?\s*", re.MULTILINE)
-_HEADING_MARKDOWN_RE = re.compile(r"^\-{3}(\+{1,6})!?\s*(.*)$", re.MULTILINE)
+# Heading title match must stay on the marker's own line ([ \t]* +
+# [^\n]*, never \s*/.*$ whose \s* can cross the newline and absorb the
+# next line); a bare marker line is dropped entirely in both styles.
+_HEADING_RE = re.compile(r"^\-{3}(\+{1,6})!?[ \t]*([^\n]*)(\n?)", re.MULTILINE)
+# Inline =code= unwrap: single-line only, non-word boundary context on
+# both sides so assignments ('MAX=5 and MIN=2') are never paired up.
+_INLINE_CODE_RE = re.compile(
+    r"(?<![\w=])=([^=\s\n][^=\n]*[^=\s\n])=(?![\w=])"
+)
 _HTML_IMG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 _HTML_TABLE_RE = re.compile(r"<table\b.*?</table>", re.IGNORECASE | re.DOTALL)
 _HTML_ROW_RE = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
@@ -97,9 +125,16 @@ _HTML_ATTR_RE = re.compile(
 _TWIKI_VIEW_MARKERS = ("/twiki/bin/viewauth/", "/twiki/bin/view/")
 
 
-def is_real_page(filename: str) -> bool:
-    """True when *filename* is a real topic page, not a structural one."""
-    return not _SKIP_RE.search(filename)
+def is_real_page(
+    filename: str,
+    patterns: tuple[str, ...] = DEFAULT_SKIP_PATTERNS,
+) -> bool:
+    """True when *filename* is a real topic page, not a structural one.
+
+    ``patterns`` is a tuple of regex sources (compiled once per unique
+    tuple); it defaults to :data:`DEFAULT_SKIP_PATTERNS`.
+    """
+    return not _skip_re(tuple(patterns)).search(filename)
 
 
 def strip_twiki(
@@ -134,13 +169,10 @@ def strip_twiki(
     text = re.sub(r"%[A-Z][A-Z0-9_]*%", " ", text)
     text = re.sub(r"\[\[[^\]]+\]\[([^\]]+)\]\]", r"\1", text)
     text = re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)
-    if heading_style == "markdown":
-        text = _HEADING_MARKDOWN_RE.sub(
-            lambda m: f"{'#' * len(m.group(1))} {m.group(2).strip()}",
-            text,
-        )
-    else:
-        text = _HEADING_DROP_RE.sub("", text)
+    text = _HEADING_RE.sub(
+        lambda m: _heading_replacement(m, heading_style),
+        text,
+    )
     text = re.sub(
         r"</?(verbatim|pre|code|noautolink)>",
         " ",
@@ -155,12 +187,26 @@ def strip_twiki(
     if preserve_images:
         text = _HTML_IMG_RE.sub(_html_img_to_markdown, text)
     text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"=([^=\s][^=]*[^=\s])=", r"\1", text)
+    text = _INLINE_CODE_RE.sub(r"\1", text)
     text = re.sub(r"(?<=\s)[*_]([^*_\s][^*_]*[^*_\s])[*_](?=\s)", r"\1", text)
     if whitespace == "preserve":
         return _clean_body_text(text)
     text = re.sub(r"\s+", " ", text).strip()
     return _pg_text(text)
+
+
+def _heading_replacement(match: re.Match[str], heading_style: str) -> str:
+    """One ``---++``-style heading line -> its replacement.
+
+    A bare marker line (no title) is dropped entirely — marker and
+    newline — in both styles; it never absorbs the following line.
+    """
+    title = match.group(2).strip()
+    if not title:
+        return ""
+    if heading_style == "markdown":
+        return f"{'#' * len(match.group(1))} {title}{match.group(3)}"
+    return f"{match.group(2)}{match.group(3)}"
 
 
 def parse_meta(body: str) -> dict[str, str]:

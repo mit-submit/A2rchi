@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timezone
 
 import pytest
+import requests
 
 from okg.substrate.library.sources.base import EdgeFact, NodeFact
 from okg.substrate.library.sources.content_hash_probe import ContentHashProbe
@@ -48,6 +49,9 @@ META_FIXTURE = (
 )
 # Byte-for-byte output of the cms original's _strip_twiki on the fixture
 # (verified against okg-deployments cms/cms_sources/twiki_eos.py@f33a9c4).
+# The deliberate parser deviations (single-line =code= unwrap, single-line
+# heading titles — see the _twiki_parse module docstring) do not affect
+# this fixture, so the expectation is unchanged.
 META_FIXTURE_CMS_STRIP = (
     "! Twiki Ops Guide Transfers Use xrdcp for fast copies at T2_US_MIT. "
     "title= Contents See the PhEDEx docs and WebHome. raw block with "
@@ -86,6 +90,42 @@ def test_strip_twiki_markdown_preserve_keeps_structure():
     assert "#" not in cms
     assert "![" not in cms
     assert cms.startswith("Alpha Line one.")
+
+
+def test_strip_twiki_inline_code_ignores_assignments():
+    # Deliberate deviation from the cms original (documented in the
+    # module docstring): its regex paired the '=' of separate
+    # assignments, emitting 'MAX5 and MIN2' here.
+    assert strip_twiki("MAX=5 and MIN=2") == "MAX=5 and MIN=2"
+    # Assignments and real inline code coexist on one line.
+    assert strip_twiki("Set MAX=5 then run =ls -la= now") == (
+        "Set MAX=5 then run ls -la now"
+    )
+    # Inline-code '=' pairs never span lines.
+    assert strip_twiki("A=one\ntwo=B", whitespace="preserve") == (
+        "A=one\ntwo=B"
+    )
+    # The classic TWiki inline-code form still unwraps, including when
+    # wrapped in punctuation.
+    assert strip_twiki("Use =xrdcp= here") == "Use xrdcp here"
+    assert strip_twiki("(=ls -la=)") == "(ls -la)"
+
+
+def test_strip_twiki_bare_heading_marker_never_absorbs_next_line():
+    raw = "Intro line.\n---++\nNext line stays.\n"
+    # markdown mode: the bare marker line is dropped entirely — it is
+    # never promoted to a heading made of the following line.
+    md = strip_twiki(raw, heading_style="markdown", whitespace="preserve")
+    assert md == "Intro line.\nNext line stays."
+    assert "#" not in md
+    # drop mode: same — the next line is not absorbed.
+    assert strip_twiki(raw) == "Intro line. Next line stays."
+    # Titled headings still convert / lose only their marker.
+    assert strip_twiki(
+        "---++ Alpha\nBody.\n", heading_style="markdown",
+        whitespace="preserve",
+    ) == "## Alpha\nBody."
+    assert strip_twiki("---++ Alpha\nBody.\n") == "Alpha Body."
 
 
 def test_strip_twiki_rejects_unknown_flags():
@@ -163,6 +203,20 @@ def test_default_skip_patterns():
         assert not is_real_page(name), name
     for name in ("DataOps.txt", "WebHome.txt", "TopicOne.txt"):
         assert is_real_page(name), name
+
+
+def test_skip_patterns_are_immutable_and_overridable():
+    from archi.sources._twiki_parse import DEFAULT_SKIP_PATTERNS
+
+    # The default is an immutable tuple, not a mutable module-level
+    # list that callers could poison for everyone else.
+    assert isinstance(DEFAULT_SKIP_PATTERNS, tuple)
+    assert twiki_mod.DEFAULT_SKIP_PATTERNS is DEFAULT_SKIP_PATTERNS
+    custom = DEFAULT_SKIP_PATTERNS + (r"^SecretTopic\.txt$",)
+    assert is_real_page("SecretTopic.txt") is True
+    assert is_real_page("SecretTopic.txt", custom) is False
+    # Lists are accepted too (compiled per unique tuple).
+    assert is_real_page("SecretTopic.txt", list(custom)) is False
 
 
 # --- TwikiEOSSource ----------------------------------------------------------
@@ -370,6 +424,129 @@ def test_eos_seed_validation():
         TwikiEOSSource(eos_root="/nonexistent-any", seed_topics=["  "])
 
 
+def test_eos_max_files_validation(tmp_path):
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="max_files"):
+            TwikiEOSSource(eos_root="/nonexistent-any", max_files=bad)
+    # None stays "unlimited" and positive values still cap the listing.
+    root = _write_snapshot(tmp_path)
+    assert TwikiEOSSource(eos_root=str(root)).max_files is None
+    capped = TwikiEOSSource(eos_root=str(root), max_files=1)
+    assert len(list(capped.run("r").facts)) > 0
+    assert capped.preflight().record_count == 1
+
+
+def test_eos_missing_seed_fails_scope(tmp_path):
+    root = _write_snapshot(tmp_path)
+    source = TwikiEOSSource(
+        eos_root=str(root),
+        seed_topics=["TopicOne", "AbsentTopic"],
+        max_depth=1,
+    )
+    run = source.run("r", mode="scope_complete")
+    facts = list(run.facts)
+    # The found seed's subtree is still emitted...
+    assert {n.node_id for n in _nodes(facts, "documentation_page")} == {
+        "twiki:CMS:TopicOne",
+        "twiki:CMS:TopicTwo",
+    }
+    # ...but the absent seed forces an incomplete scope with a counted,
+    # named health reason (a silent skip would let scope_complete
+    # retract the whole missing subtree).
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "1/2" in run.health.reason
+    assert "CMS/AbsentTopic" in run.health.reason
+    assert "no complete scope claimed" in run.health.reason
+    assert run.health.record_count == 2
+
+
+def test_eos_all_seeds_missing_is_cache_missing(tmp_path):
+    root = _write_snapshot(tmp_path)
+    source = TwikiEOSSource(
+        eos_root=str(root),
+        seed_topics=["AbsentOne", "AbsentTwo"],
+        max_depth=1,
+    )
+    run = source.run("r", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "cache_missing"
+    assert "2/2" in run.health.reason
+    assert "CMS/AbsentOne" in run.health.reason
+    assert "CMS/AbsentTwo" in run.health.reason
+
+
+def test_eos_missing_followed_link_target_stays_silent(tmp_path):
+    # Documented wisdqm-parity behavior: only operator-configured seeds
+    # fail loudly; TopicOne's bare "MissingTopic" link target has no
+    # snapshot file and is skipped without affecting scope.
+    root = _write_snapshot(tmp_path)
+    source = TwikiEOSSource(
+        eos_root=str(root), seed_topics=["TopicOne"], max_depth=1
+    )
+    run = source.run("r", mode="scope_complete")
+    list(run.facts)
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+
+
+def test_eos_seeded_preflight_reports_subtree_metrics(tmp_path):
+    root = _write_snapshot(tmp_path)
+    whole = TwikiEOSSource(eos_root=str(root)).preflight()
+    assert whole.record_count == 3
+    seeded = TwikiEOSSource(
+        eos_root=str(root), seed_topics=["TopicOne"], max_depth=1
+    ).preflight()
+    # Preflight describes the seeded closure run() will emit (TopicOne
+    # + TopicTwo), not the whole tree.
+    assert seeded.status == "ok"
+    assert seeded.record_count == 2
+    assert seeded.content_hash != whole.content_hash
+    assert "seeded closure" in seeded.reason
+    # Missing seeds surface in the preflight reason too.
+    part_missing = TwikiEOSSource(
+        eos_root=str(root),
+        seed_topics=["TopicOne", "AbsentTopic"],
+        max_depth=0,
+    ).preflight()
+    assert part_missing.record_count == 1
+    assert "1 seeds missing" in part_missing.reason
+
+
+def test_eos_run_walks_the_tree_once(tmp_path, monkeypatch):
+    # run() must not redo the preflight whole-tree walk on top of its
+    # own listing.
+    root = _write_snapshot(tmp_path)
+    source = TwikiEOSSource(eos_root=str(root))
+    calls = {"n": 0}
+    original = TwikiEOSSource._paths
+
+    def counting(self):
+        calls["n"] += 1
+        return original(self)
+
+    monkeypatch.setattr(TwikiEOSSource, "_paths", counting)
+    run = source.run("r", mode="scope_complete")
+    list(run.facts)
+    assert run.health.status == "ok"
+    assert run.health.record_count == 3
+    assert calls["n"] == 1
+
+
+def test_eos_custom_skip_patterns_exclude_pages(tmp_path):
+    root = _write_snapshot(tmp_path)
+    source = TwikiEOSSource(
+        eos_root=str(root),
+        skip_patterns=twiki_mod.DEFAULT_SKIP_PATTERNS
+        + (r"^TopicTwo\.txt$",),
+    )
+    run = source.run("r", mode="scope_complete")
+    pages = {n.node_id for n in _nodes(list(run.facts), "documentation_page")}
+    assert pages == {"twiki:CMS:TopicOne", "twiki:CMS:Sub:SubTopicPage"}
+    assert source.preflight().record_count == 2
+
+
 def test_eos_missing_root_is_safe(monkeypatch, tmp_path):
     monkeypatch.delenv("ARCHI_T_TWIKI_ROOT", raising=False)
     source = TwikiEOSSource(eos_root_env="ARCHI_T_TWIKI_ROOT")
@@ -495,6 +672,10 @@ def test_crawl_required_params_and_validation():
         _crawl_source(seed_topics=["TopicWithoutWeb"])
     with pytest.raises(ValueError, match="max_depth"):
         _crawl_source(max_depth=-1)
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="max_pages"):
+            _crawl_source(max_pages=bad)
+    assert _crawl_source(max_pages=None).max_pages is None
 
 
 def test_crawl_seeded_depth_bounding_and_emission(monkeypatch):
@@ -553,7 +734,13 @@ def test_crawl_depth_zero_fetches_seeds_only(monkeypatch):
 
 
 def test_crawl_failure_never_claims_complete_scope(monkeypatch):
-    _fake_sessions(monkeypatch, _default_responses())
+    responses = _default_responses()
+    # A 5xx on a followed link is a real transport failure (unlike the
+    # default 404, which is a dangling wiki link).
+    responses[_raw_url("Ops/BrokenTopic")] = _FakeResponse(
+        500, "boom", _raw_url("Ops/BrokenTopic")
+    )
+    _fake_sessions(monkeypatch, responses)
     run = _crawl_source().run("r", mode="scope_complete")
     facts = list(run.facts)
     # The successful topics are still emitted...
@@ -569,6 +756,97 @@ def test_crawl_failure_never_claims_complete_scope(monkeypatch):
     assert f"{BASE_URL}/bin/view/Ops/BrokenTopic" in run.health.reason
     assert "no complete scope claimed" in run.health.reason
     assert run.health.record_count == 2
+
+
+def test_crawl_dangling_link_404_is_not_a_failure(monkeypatch):
+    # Default responses: BrokenTopic (a followed link, not a seed)
+    # 404s. That is a dangling wiki link on the linking page, not a
+    # crawl failure — the run stays ok and may claim complete scope,
+    # and no garbage node is emitted for the missing target.
+    _fake_sessions(monkeypatch, _default_responses())
+    run = _crawl_source().run("r", mode="scope_complete")
+    facts = list(run.facts)
+    assert {n.node_id for n in _nodes(facts, "documentation_page")} == {
+        "twiki:Ops:StartTopic",
+        "twiki:Ops:LinkedTopic",
+    }
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+    assert run.health.record_count == 2
+    assert "1 dangling wiki-link" in run.health.reason
+    assert "missing_link_targets" in run.health.reason
+
+
+def test_crawl_seed_404_is_a_failure(monkeypatch):
+    # Seeds are operator configuration: an absent seed keeps strict
+    # semantics.
+    responses = _default_responses()
+    responses[_raw_url("Ops/StartTopic")] = _FakeResponse(
+        404, "gone", _raw_url("Ops/StartTopic")
+    )
+    _fake_sessions(monkeypatch, responses)
+    run = _crawl_source().run("r", mode="scope_complete")
+    assert _nodes(list(run.facts), "documentation_page") == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "1/1" in run.health.reason
+    assert f"{BASE_URL}/bin/view/Ops/StartTopic" in run.health.reason
+
+
+def test_crawl_oops_redirect_on_followed_link_is_dangling(monkeypatch):
+    # Some TWiki deployments serve a missing topic as a 200 redirect to
+    # /bin/oops/...?template=oopsmissing instead of a 404.
+    responses = _default_responses()
+    responses[_raw_url("Ops/BrokenTopic")] = _FakeResponse(
+        200,
+        "<html>Create the topic?</html>",
+        f"{BASE_URL}/bin/oops/Ops/BrokenTopic?template=oopsmissing",
+    )
+    _fake_sessions(monkeypatch, responses)
+    run = _crawl_source().run("r", mode="scope_complete")
+    pages = {n.node_id for n in _nodes(list(run.facts), "documentation_page")}
+    assert "twiki:Ops:BrokenTopic" not in pages
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+    assert "1 dangling wiki-link" in run.health.reason
+
+
+def test_crawl_oops_body_is_never_ingested(monkeypatch):
+    # A 200 oops body (no %META:TOPICINFO, names the missing-topic
+    # template) must not become a documentation_page.
+    responses = _default_responses()
+    responses[_raw_url("Ops/BrokenTopic")] = _ok(
+        "Ops/BrokenTopic",
+        "The topic does not exist (TopicDoesNotExist / oopsmissing).",
+    )
+    # A real topic that merely *mentions* the template markers carries
+    # %META:TOPICINFO and is ingested normally.
+    responses[_raw_url("Ops/LinkedTopic")] = _ok(
+        "Ops/LinkedTopic",
+        '%META:TOPICINFO{author="jdoe" date="1700000000" version="1"}%\n'
+        "---+ Linked\nAbout the oopsmissing template.\n",
+    )
+    _fake_sessions(monkeypatch, responses)
+    run = _crawl_source().run("r", mode="scope_complete")
+    pages = {n.node_id for n in _nodes(list(run.facts), "documentation_page")}
+    assert "twiki:Ops:BrokenTopic" not in pages
+    assert "twiki:Ops:LinkedTopic" in pages
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+
+
+def test_crawl_oops_page_on_seed_is_a_failure(monkeypatch):
+    responses = _default_responses()
+    responses[_raw_url("Ops/StartTopic")] = _FakeResponse(
+        200,
+        "<html>Create the topic?</html>",
+        f"{BASE_URL}/bin/oops/Ops/StartTopic?template=oopsmissing",
+    )
+    _fake_sessions(monkeypatch, responses)
+    run = _crawl_source().run("r", mode="scope_complete")
+    assert _nodes(list(run.facts), "documentation_page") == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
 
 
 def test_crawl_login_bounce_counts_as_failure(monkeypatch):
@@ -612,6 +890,68 @@ def test_crawl_max_pages_cap(monkeypatch):
     run = _crawl_source(max_pages=1).run("r")
     pages = _nodes(list(run.facts), "documentation_page")
     assert [p.node_id for p in pages] == ["twiki:Ops:StartTopic"]
+
+
+def test_crawl_max_pages_truncation_never_claims_complete_scope(monkeypatch):
+    responses = _default_responses()
+    responses[_raw_url("Ops/BrokenTopic")] = _ok("Ops/BrokenTopic", "fine")
+    _fake_sessions(monkeypatch, responses)
+    # Every fetch succeeds, but max_pages stops the crawl with
+    # LinkedTopic and BrokenTopic still queued: the scope was not
+    # covered, so scope_complete mode must not claim it.
+    run = _crawl_source(max_pages=1).run("r", mode="scope_complete")
+    pages = _nodes(list(run.facts), "documentation_page")
+    assert [p.node_id for p in pages] == ["twiki:Ops:StartTopic"]
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "crawl truncated at max_pages=1 with 2 queued" in run.health.reason
+    assert "no complete scope claimed" in run.health.reason
+    # An uncapped crawl of the same responses still claims it.
+    run = _crawl_source().run("r", mode="scope_complete")
+    list(run.facts)
+    assert run.completed_scope is True
+
+
+def test_crawl_missing_charset_defaults_to_utf8(monkeypatch):
+    def _real_response(page_id, content, content_type):
+        # A genuine requests.Response, prepared the way the adapter
+        # would for this Content-Type (encoding from headers; text/*
+        # without charset historically yields ISO-8859-1).
+        resp = requests.Response()
+        resp.status_code = 200
+        resp._content = content
+        resp.headers["Content-Type"] = content_type
+        resp.encoding = requests.utils.get_encoding_from_headers(resp.headers)
+        resp.url = _raw_url(page_id)
+        return resp
+
+    responses = _default_responses()
+    responses[_raw_url("Ops/BrokenTopic")] = _ok("Ops/BrokenTopic", "fine")
+    responses[_raw_url("Ops/LinkedTopic")] = _real_response(
+        "Ops/LinkedTopic",
+        "---+ Linked\nCafé résumé naïve\n".encode("utf-8"),
+        "text/plain",  # no charset declared -> decode as UTF-8
+    )
+    _fake_sessions(monkeypatch, responses)
+    run = _crawl_source().run("r", mode="scope_complete")
+    chunk = [
+        c for c in _nodes(list(run.facts), "document_chunk")
+        if c.source_record_id["path"] == "Ops/LinkedTopic"
+    ][0]
+    assert "Café résumé naïve" in chunk.attrs["text"]
+    assert run.health.status == "ok"
+    # A declared charset is respected, not overridden.
+    responses[_raw_url("Ops/LinkedTopic")] = _real_response(
+        "Ops/LinkedTopic",
+        "---+ Linked\nDéjà vu\n".encode("iso-8859-1"),
+        "text/plain; charset=iso-8859-1",
+    )
+    run = _crawl_source().run("r", mode="scope_complete")
+    chunk = [
+        c for c in _nodes(list(run.facts), "document_chunk")
+        if c.source_record_id["path"] == "Ops/LinkedTopic"
+    ][0]
+    assert "Déjà vu" in chunk.attrs["text"]
 
 
 def test_crawl_public_web_needs_no_cookie(monkeypatch):
