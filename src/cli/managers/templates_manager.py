@@ -887,10 +887,15 @@ class TemplateManager:
                 "dimensions", embedding_dimensions
             )
         
+        from src.utils.mcp_auth_schema import MCP_AUTH_TABLES_SQL
+
         init_sql = init_sql_template.render(
             use_grafana=grafana_enabled,
             grafana_pg_password=grafana_pg_password,
             embedding_dimensions=embedding_dimensions,
+            # Canonical MCP/SSO auth DDL, shared with ConfigService's
+            # upgrade path so the two schema sources cannot drift.
+            mcp_auth_tables_sql=MCP_AUTH_TABLES_SQL,
             # Vector index settings (optional overrides)
             vector_index_type=data_manager_config.get("vector_index_type", "hnsw"),
             vector_index_hnsw_m=data_manager_config.get("vector_index_hnsw_m", 16),
@@ -926,6 +931,30 @@ class TemplateManager:
         # Compose template still expects optional lists
         template_vars.setdefault("prompt_files", [])
         template_vars.setdefault("rubrics", [])
+
+        # SSL cert file for HTTPS verification (e.g. CERN CA bundle)
+        chat_config = context.config_manager.config.get("services", {}).get("chat_app", {})
+        # CA bundle for outbound HTTPS (e.g. CERN-internal MCP servers). Honour an
+        # explicit config; otherwise auto-detect the host's system CA bundle and
+        # mount it to the conventional path ssl_verify() looks for, so TLS to
+        # internal servers works out of the box instead of failing on certifi.
+        _ssl_cert_host = chat_config.get("ssl_cert_host", "")
+        _ssl_cert_file = chat_config.get("ssl_cert_file", "")
+        if not _ssl_cert_host:
+            _container_ca_path = "/etc/ssl/certs/tls-ca-bundle.pem"
+            for _host_ca in (
+                "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  # RHEL/CentOS/Alma
+                "/etc/ssl/certs/ca-certificates.crt",                 # Debian/Ubuntu
+                "/etc/ssl/certs/ca-bundle.crt",
+            ):
+                if os.path.exists(_host_ca):
+                    _ssl_cert_host = _host_ca
+                    _ssl_cert_file = _ssl_cert_file or _container_ca_path
+                    logger.info(f"Auto-mounting host CA bundle {_host_ca} -> {_ssl_cert_file} "
+                                "for container TLS (set services.chat_app.ssl_cert_host to override)")
+                    break
+        template_vars.setdefault("ssl_cert_host", _ssl_cert_host)
+        template_vars.setdefault("ssl_cert_file", _ssl_cert_file)
 
         if context.plan.get_service("grader").enabled:
             template_vars["rubrics"] = self._get_grader_rubrics(context.config_manager)

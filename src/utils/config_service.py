@@ -229,6 +229,11 @@ class ConfigService:
                     ADD COLUMN IF NOT EXISTS active_agent_name VARCHAR(200)
                     """
                 )
+                # MCP/SSO auth tables — canonical DDL shared with the CLI's
+                # init.sql template, so pre-existing deployments get exactly
+                # the schema (incl. indexes) a fresh deployment would have.
+                from src.utils.mcp_auth_schema import MCP_AUTH_TABLES_SQL
+                cursor.execute(MCP_AUTH_TABLES_SQL)
                 conn.commit()
         except psycopg2.Error as e:
             logger.debug("Could not ensure config tables/columns: %s", e)

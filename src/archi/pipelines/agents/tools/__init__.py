@@ -14,7 +14,7 @@ from .local_files import (
     RemoteCatalogClient,
 )
 from .retriever import create_retriever_tool
-from .mcp import initialize_mcp_client
+from .mcp import has_user_scoped_servers, initialize_mcp_client
 from .monit_opensearch import (
     MONITOpenSearchClient,
     create_monit_opensearch_search_tool,
@@ -43,6 +43,7 @@ __all__ = [
     "create_metadata_schema_tool",
     "RemoteCatalogClient",
     "create_retriever_tool",
+    "has_user_scoped_servers",
     "initialize_mcp_client",
     "MONITOpenSearchClient",
     "create_monit_opensearch_search_tool",

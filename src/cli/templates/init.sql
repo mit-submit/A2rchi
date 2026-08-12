@@ -90,6 +90,14 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 
 -- ============================================================================
+-- 1.2 MCP / SSO AUTH TABLES
+-- Canonical DDL lives in src/utils/mcp_auth_schema.py, shared with
+-- ConfigService._ensure_config_tables so fresh and upgraded deployments
+-- cannot drift. Rendered in verbatim by templates_manager.
+-- ============================================================================
+{{ mcp_auth_tables_sql }}
+
+-- ============================================================================
 -- 2. STATIC CONFIGURATION (Deploy-Time)
 -- ============================================================================
 

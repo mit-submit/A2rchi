@@ -10,37 +10,16 @@ global:
   LOGGING:
     input_output_filename: "{{ global.LOGGING.input_output_filename | default('chain_input_output.log', true) }}"
 
+{#
+  Pass each server's config through verbatim (JSON is valid YAML) instead of
+  whitelisting fields — a whitelist silently drops any key it doesn't know
+  about (new archi options, transport-specific fields like headers/timeout).
+  The MCP client (mcp.py _archi_only_fields) is the single owner of which
+  keys are archi-only. Only `transport` is defaulted here.
+-#}
 mcp_servers:
   {%- for server_name, server_config in (mcp_servers | default({}, true)).items() %}
-  {{ server_name }}:
-    transport: {{ server_config.transport | default('streamable_http', true) }}
-    {%- if server_config.url is defined %}
-    url: {{ server_config.url }}
-    {%- endif %}
-    {%- if server_config.command is defined %}
-    command: {{ server_config.command }}
-    {%- endif %}
-    {%- if server_config.args is defined %}
-    args: {{ server_config.args | tojson }}
-    {%- endif %}
-    {%- if server_config.env is defined %}
-    env: {{ server_config.env | tojson }}
-    {%- endif %}
-    {%- if server_config.env_from_secrets is defined %}
-    env_from_secrets: {{ server_config.env_from_secrets | tojson }}
-    {%- endif %}
-    {%- if server_config.host_file_mounts is defined %}
-    host_file_mounts: {{ server_config.host_file_mounts | tojson }}
-    {%- endif %}
-    {%- if server_config.build_context is defined %}
-    build_context: {{ server_config.build_context }}
-    {%- endif %}
-    {%- if server_config.image is defined %}
-    image: {{ server_config.image }}
-    {%- endif %}
-    {%- if server_config.skill is defined %}
-    skill: {{ server_config.skill }}
-    {%- endif %}
+  {{ server_name }}: {{ dict(server_config, transport=server_config.transport | default('streamable_http', true)) | tojson }}
   {%- endfor %}
 
 services:
