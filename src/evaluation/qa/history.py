@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
@@ -9,6 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 from .artifacts import iter_jsonl, read_json, read_jsonl, verify_hashes
 from .constants import ATTEMPT_LIFECYCLE_STATUSES, SCHEMA_VERSION
 from .preparation import load_preparation_records, load_preparation_rows
+from .schema import ConsoleMetadata, RunManifest
 from .tool_traces import serialize_tool_call_records
 
 LEGACY_SCHEMA_VERSION = "qa-v0"
@@ -69,10 +69,10 @@ class EvaluationHistory:
         return self._resolve(history_id)
 
     @staticmethod
-    def _preparation_files(schema_version: str) -> Tuple[str, ...]:
+    def _preparation_files(schema_version: Any) -> Tuple[str, ...]:
         try:
             return _PREPARATION_FILES[schema_version]
-        except KeyError as exc:
+        except (KeyError, TypeError) as exc:
             raise ValueError("unsupported run schema") from exc
 
     @staticmethod
@@ -80,74 +80,31 @@ class EvaluationHistory:
         return {"retry_failed": schema_version == SCHEMA_VERSION}
 
     @staticmethod
-    def _load(path: Path) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        manifest = read_json(path / "manifest.json")
-        if not isinstance(manifest, dict):
+    def _load_manifest(path: Path) -> RunManifest:
+        raw_manifest = read_json(path / "manifest.json")
+        if not isinstance(raw_manifest, dict):
             raise ValueError("manifest must be an object")
-        schema_version = manifest.get("schema_version")
-        if not isinstance(schema_version, str):
-            raise ValueError("unsupported run schema")
-        preparation_files = EvaluationHistory._preparation_files(schema_version)
-        run_id = manifest.get("run_id")
-        if not isinstance(run_id, str) or not run_id.strip():
-            raise ValueError("manifest run_id must be a non-empty string")
-        status = manifest.get("status")
-        if status not in {"prepared", "run_completed", "scored"}:
-            raise ValueError("unsupported run status")
-        phases = manifest.get("phases")
-        if not isinstance(phases, dict):
-            raise ValueError("manifest phases must be an object")
-        required_phases = {
-            "prepared": ("prepare",),
-            "run_completed": ("prepare", "run"),
-            "scored": ("prepare", "run", "score"),
-        }[status]
-        if any(
-            not isinstance(phases.get(phase), dict)
-            or phases[phase].get("status") != "completed"
-            for phase in required_phases
-        ):
-            raise ValueError("manifest phase state is incomplete")
-        if status != "prepared":
-            attempts = manifest.get("attempts")
-            if (
-                isinstance(attempts, bool)
-                or not isinstance(attempts, int)
-                or attempts <= 0
-            ):
-                raise ValueError("manifest attempts must be a positive integer")
-        artifacts = manifest.get("artifacts")
-        if not isinstance(artifacts, dict):
-            raise ValueError("manifest artifacts must be an object")
-        if any(
-            not isinstance(name, str)
-            or Path(name).name != name
-            or not isinstance(digest, str)
-            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
-            for name, digest in artifacts.items()
-        ):
-            raise ValueError("manifest contains an invalid artifact entry")
-        input_details = manifest.get("input")
-        if not isinstance(input_details, dict):
-            raise ValueError("manifest input must be an object")
-        snapshot = input_details.get("snapshot")
-        if not isinstance(snapshot, str) or Path(snapshot).name != snapshot:
-            raise ValueError("manifest input snapshot is invalid")
-        if not {snapshot, *preparation_files}.issubset(artifacts):
-            raise ValueError("manifest is missing preparation artifacts")
-        if status == "scored" and not {
-            "summary.json",
-            "report.md",
-        }.issubset(artifacts):
-            raise ValueError("scored manifest is missing result artifacts")
-        metadata_path = path / "console_metadata.json"
-        metadata = {}
-        if metadata_path.is_file() and "console_metadata.json" in manifest["artifacts"]:
-            verify_hashes(path, manifest, ["console_metadata.json"])
-            metadata = read_json(metadata_path)
-        if not isinstance(metadata, dict):
-            metadata = {}
-        return manifest, metadata
+        preparation_files = EvaluationHistory._preparation_files(
+            raw_manifest.get("schema_version")
+        )
+        return RunManifest.from_dict(
+            raw_manifest,
+            supported_schema_versions=_PREPARATION_FILES,
+            preparation_files=preparation_files,
+        )
+
+    @staticmethod
+    def _load_console_metadata(
+        path: Path, manifest: RunManifest
+    ) -> Optional[ConsoleMetadata]:
+        filename = "console_metadata.json"
+        metadata_path = path / filename
+        if filename not in manifest.artifacts:
+            if metadata_path.is_file():
+                raise ValueError(f"run contains undeclared artifact: {filename}")
+            return None
+        verify_hashes(path, manifest.artifacts, [filename])
+        return ConsoleMetadata.from_dict(read_json(metadata_path))
 
     @staticmethod
     def _legacy_preparation_rows(path: Path) -> Iterator[Dict[str, Any]]:
@@ -228,11 +185,9 @@ class EvaluationHistory:
             raise ValueError("legacy prepared item has no matching preparation result")
 
     @staticmethod
-    def _load_preparation(
-        path: Path, manifest: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        expected_count = manifest["phases"]["prepare"]["input_items"]
-        if manifest["schema_version"] == LEGACY_SCHEMA_VERSION:
+    def _load_preparation(path: Path, manifest: RunManifest) -> List[Dict[str, Any]]:
+        expected_count = manifest.preparation_input_items
+        if manifest.schema_version == LEGACY_SCHEMA_VERSION:
             records = load_preparation_rows(
                 EvaluationHistory._legacy_preparation_rows(path),
                 expected_count=expected_count,
@@ -245,10 +200,10 @@ class EvaluationHistory:
 
     @staticmethod
     def _verify_present(
-        path: Path, manifest: Dict[str, Any], filenames: List[str]
+        path: Path, manifest: RunManifest, filenames: List[str]
     ) -> None:
         present = [name for name in filenames if (path / name).is_file()]
-        artifacts = manifest["artifacts"]
+        artifacts = manifest.artifacts
         undeclared = sorted(name for name in present if name not in artifacts)
         if undeclared:
             raise ValueError(
@@ -257,33 +212,23 @@ class EvaluationHistory:
         declared_or_present = [
             name for name in filenames if name in artifacts or (path / name).is_file()
         ]
-        verify_hashes(path, manifest, declared_or_present)
+        verify_hashes(path, artifacts, declared_or_present)
 
     @staticmethod
     def _dataset_identity(
-        manifest: Dict[str, Any], metadata: Dict[str, Any]
+        manifest: RunManifest, metadata: Optional[ConsoleMetadata]
     ) -> Tuple[str, str]:
-        dataset_id = metadata.get("dataset_id")
-        if dataset_id is not None and (
-            not isinstance(dataset_id, str) or not dataset_id.strip()
-        ):
-            raise ValueError("console dataset ID must be a non-empty string")
-        snapshot = manifest["input"]["snapshot"]
-        dataset_key = dataset_id or f"snapshot:{manifest['artifacts'][snapshot]}"
+        dataset_id = metadata.dataset_id if metadata is not None else None
+        snapshot = manifest.snapshot
+        dataset_key = dataset_id or f"snapshot:{manifest.artifacts[snapshot]}"
 
-        dataset_name = metadata.get("dataset_name")
-        if dataset_name is not None and (
-            not isinstance(dataset_name, str) or not dataset_name.strip()
-        ):
-            raise ValueError("console dataset name must be a non-empty string")
+        dataset_name = metadata.dataset_name if metadata is not None else None
         if dataset_name is not None:
             return dataset_key, dataset_name.strip()
 
-        source_path = manifest["input"].get("source_path")
+        source_path = manifest.source_path
         if source_path is None:
             return dataset_key, "CLI snapshot"
-        if not isinstance(source_path, str):
-            raise ValueError("manifest input source path must be a string")
         basename = source_path.replace("\\", "/").rsplit("/", 1)[-1].strip()
         return dataset_key, basename or "CLI snapshot"
 
@@ -310,9 +255,7 @@ class EvaluationHistory:
                 f"{context} must be an ISO-8601 timestamp with a timezone"
             ) from exc
         if parsed.tzinfo is None or parsed.utcoffset() is None:
-            raise ValueError(
-                f"{context} must be an ISO-8601 timestamp with a timezone"
-            )
+            raise ValueError(f"{context} must be an ISO-8601 timestamp with a timezone")
         return parsed.timestamp()
 
     @staticmethod
@@ -407,12 +350,10 @@ class EvaluationHistory:
         }
 
     @staticmethod
-    def _latency_trend(
-        path: Path, manifest: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _latency_trend(path: Path, manifest: RunManifest) -> Optional[Dict[str, Any]]:
         filename = "answers.jsonl"
         artifact = path / filename
-        if filename not in manifest["artifacts"] and not artifact.is_file():
+        if filename not in manifest.artifacts and not artifact.is_file():
             return None
         EvaluationHistory._verify_present(path, manifest, [filename])
 
@@ -451,7 +392,8 @@ class EvaluationHistory:
         for path in self._run_paths():
             history_id = _history_id(path)
             try:
-                manifest, metadata = self._load(path)
+                manifest = self._load_manifest(path)
+                metadata = self._load_console_metadata(path, manifest)
                 summary = (
                     read_json(path / "summary.json")
                     if (path / "summary.json").is_file()
@@ -462,9 +404,8 @@ class EvaluationHistory:
                     manifest,
                     ["summary.json"],
                 )
-                phases = manifest.get("phases") or {}
                 phase_timestamps = []
-                for phase_name, phase in phases.items():
+                for phase_name, phase in manifest.phases.items():
                     if not isinstance(phase, dict):
                         continue
                     value = phase.get("completed_at") or phase.get("started_at")
@@ -474,7 +415,9 @@ class EvaluationHistory:
                     )
                     if sort_value is not None:
                         phase_timestamps.append((sort_value, value))
-                metadata_created_at = metadata.get("created_at")
+                metadata_created_at = (
+                    metadata.created_at if metadata is not None else None
+                )
                 metadata_sort_value = self._timestamp_sort_value(
                     metadata_created_at,
                     context="run creation timestamp",
@@ -495,27 +438,38 @@ class EvaluationHistory:
                         sort_value,
                         {
                             "id": history_id,
-                            "run_id": manifest.get("run_id"),
-                            "name": metadata.get("name") or manifest.get("run_id"),
-                            "status": manifest.get("status"),
+                            "run_id": manifest.run_id,
+                            "name": (metadata.name if metadata is not None else None)
+                            or manifest.run_id,
+                            "status": manifest.status.value,
                             "created_at": created_at,
-                            "dataset_id": metadata.get("dataset_id"),
+                            "dataset_id": (
+                                metadata.dataset_id if metadata is not None else None
+                            ),
                             "dataset_key": dataset_key,
                             "dataset_name": dataset_name,
-                            "profile_id": metadata.get("profile_id"),
-                            "profile_name": metadata.get("profile_name"),
-                            "agent_spec": metadata.get("agent_spec"),
-                            "attempts": manifest.get("attempts"),
-                            "retry_of_history_id": metadata.get(
-                                "retry_of_history_id"
+                            "profile_id": (
+                                metadata.profile_id if metadata is not None else None
                             ),
-                            "retry_number": metadata.get("retry_number"),
+                            "profile_name": (
+                                metadata.profile_name if metadata is not None else None
+                            ),
+                            "agent_spec": (
+                                metadata.agent_spec if metadata is not None else None
+                            ),
+                            "attempts": manifest.attempts,
+                            "retry_of_history_id": (
+                                metadata.retry_of_history_id
+                                if metadata is not None
+                                else None
+                            ),
+                            "retry_number": (
+                                metadata.retry_number if metadata is not None else None
+                            ),
                             **trend_summary,
                             "latency": latency,
-                            "schema_version": manifest["schema_version"],
-                            "capabilities": self._capabilities(
-                                manifest["schema_version"]
-                            ),
+                            "schema_version": manifest.schema_version,
+                            "capabilities": self._capabilities(manifest.schema_version),
                             "valid": True,
                         },
                     )
@@ -536,16 +490,15 @@ class EvaluationHistory:
                 )
         return [
             row
-            for _sort_value, row in sorted(
-                rows, reverse=True, key=lambda item: item[0]
-            )
+            for _sort_value, row in sorted(rows, reverse=True, key=lambda item: item[0])
         ]
 
     def get_run(self, history_id: str) -> Dict[str, Any]:
         path = self._resolve(history_id)
-        manifest, metadata = self._load(path)
-        snapshot = manifest["input"]["snapshot"]
-        preparation_files = self._preparation_files(manifest["schema_version"])
+        manifest = self._load_manifest(path)
+        metadata = self._load_console_metadata(path, manifest)
+        snapshot = manifest.snapshot
+        preparation_files = self._preparation_files(manifest.schema_version)
         self._verify_present(
             path,
             manifest,
@@ -560,16 +513,14 @@ class EvaluationHistory:
         )
         payload: Dict[str, Any] = {
             "id": history_id,
-            "manifest": manifest,
-            "metadata": metadata,
-            "capabilities": self._capabilities(manifest["schema_version"]),
+            "manifest": manifest.to_dict(),
+            "metadata": metadata.to_dict() if metadata is not None else {},
+            "capabilities": self._capabilities(manifest.schema_version),
         }
         preparation = self._load_preparation(path, manifest)
         payload["preparation"] = preparation
         payload["prepared_items"] = [
-            record
-            for record in preparation
-            if record["status"] == "prepared"
+            record for record in preparation if record["status"] == "prepared"
         ]
         for filename, key in (
             ("summary.json", "summary"),
@@ -597,7 +548,7 @@ class EvaluationHistory:
 
     def get_report(self, history_id: str) -> str:
         path = self._resolve(history_id)
-        manifest, _metadata = self._load(path)
+        manifest = self._load_manifest(path)
         report = path / "report.md"
         if not report.is_file():
             raise LookupError("evaluation report not found")

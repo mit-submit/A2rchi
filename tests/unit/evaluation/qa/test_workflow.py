@@ -7,9 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
+import src.evaluation.qa.phases as phases_module
 import src.evaluation.qa.workflow as workflow_module
 from src.evaluation.qa.artifacts import read_json, read_jsonl
 from src.evaluation.qa.workflow import QAWorkflow
+from src.evaluation.qa.workspace import EvaluationWorkspace
 
 
 class _EvaluatorFactory:
@@ -558,9 +560,7 @@ def test_run_persists_agent_duration_for_success_and_failure(
         )
     )
     ticks = iter((10.0, 10.125, 20.0, 20.5))
-    monkeypatch.setattr(
-        workflow_module, "perf_counter", lambda: next(ticks), raising=False
-    )
+    monkeypatch.setattr(phases_module, "perf_counter", lambda: next(ticks))
     run_dir = tmp_path / "run"
     agent = _AgentFactory(
         failures={("failing question", 1)},
@@ -619,9 +619,7 @@ def test_run_stops_failure_timer_before_formatting_the_exception(
         )
     )
     clock = {"now": 20.0}
-    monkeypatch.setattr(
-        workflow_module, "perf_counter", lambda: clock["now"], raising=False
-    )
+    monkeypatch.setattr(phases_module, "perf_counter", lambda: clock["now"])
 
     class SlowStringError(RuntimeError):
         def __str__(self):
@@ -716,30 +714,37 @@ def test_score_validates_then_evaluates_answer_pairs_one_at_a_time(
     evaluator = _EvaluatorFactory()
     monkeypatch.setattr(workflow_module, "LangChainEvaluatorRuntime", evaluator)
     real_pairs = workflow._iter_answer_pairs
+    real_validate = EvaluationWorkspace.validate_answer_pairs
     real_load_preparation = workflow._load_preparation
-    state = {"iterations": 0, "second_pass_yields": 0}
+    state = {"validated": False, "scoring_yields": 0}
+
+    def guarded_validate(validate_run_dir, manifest):
+        assert evaluator.calls["compare"] == 0
+        real_validate(validate_run_dir, manifest)
+        state["validated"] = True
 
     def guarded_pairs(pair_run_dir, manifest):
-        state["iterations"] += 1
-        iteration = state["iterations"]
+        assert state["validated"]
         for prepared, answer in real_pairs(pair_run_dir, manifest):
-            if iteration == 1:
-                assert evaluator.calls["compare"] == 0
-            else:
-                assert evaluator.calls["compare"] == state["second_pass_yields"]
-                state["second_pass_yields"] += 1
+            assert evaluator.calls["compare"] == state["scoring_yields"]
+            state["scoring_yields"] += 1
             yield prepared, answer
 
     def guarded_load_preparation(load_run_dir, manifest):
         assert evaluator.calls["compare"] == 4
         return real_load_preparation(load_run_dir, manifest)
 
+    monkeypatch.setattr(
+        EvaluationWorkspace,
+        "validate_answer_pairs",
+        guarded_validate,
+    )
     monkeypatch.setattr(workflow, "_iter_answer_pairs", guarded_pairs)
     monkeypatch.setattr(workflow, "_load_preparation", guarded_load_preparation)
 
     workflow.score(run_dir)
 
-    assert state == {"iterations": 2, "second_pass_yields": 4}
+    assert state == {"validated": True, "scoring_yields": 4}
     assert evaluator.calls == Counter({"compare": 4})
     assert len(read_jsonl(run_dir / "evaluation_results.jsonl")) == 4
 
@@ -1435,9 +1440,7 @@ def test_retry_creates_complete_successor_and_invokes_only_failed_phases(
     )
     retry_workflow = QAWorkflow()
     ticks = iter((30.0, 30.4))
-    monkeypatch.setattr(
-        workflow_module, "perf_counter", lambda: next(ticks), raising=False
-    )
+    monkeypatch.setattr(phases_module, "perf_counter", lambda: next(ticks))
 
     manifest = retry_workflow.retry(parent, successor)
 

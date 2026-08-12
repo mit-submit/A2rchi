@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import tempfile
+import typing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, TextIO
@@ -173,11 +174,8 @@ def artifact_hashes(run_dir: Path, names: Iterable[str]) -> Dict[str, str]:
 
 
 def verify_hashes(
-    run_dir: Path, manifest: Dict[str, Any], names: Iterable[str]
+    run_dir: Path, expected: typing.Mapping[str, str], names: Iterable[str]
 ) -> None:
-    expected = manifest.get("artifacts")
-    if not isinstance(expected, dict):
-        raise ValueError("manifest artifacts must be an object")
     for name in names:
         path = run_dir / name
         if not path.exists() or not path.is_file():

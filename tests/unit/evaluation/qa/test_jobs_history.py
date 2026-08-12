@@ -6,11 +6,17 @@ import pytest
 
 import src.evaluation.qa.console as console_module
 import src.evaluation.qa.history as history_module
-from src.evaluation.qa.artifacts import (artifact_hashes, read_json,
-                                         write_json, write_jsonl)
 from src.evaluation.qa.console import EvaluationConsoleService
 from src.evaluation.qa.history import EvaluationHistory
 from src.evaluation.qa.jobs import EvaluationJobManager, JobConflictError
+from src.evaluation.qa.schema import ConsoleMetadata, RunManifest
+
+from src.evaluation.qa.artifacts import (  # isort: skip
+    artifact_hashes,
+    read_json,
+    write_json,
+    write_jsonl,
+)
 
 
 class _RetryWorkflow:
@@ -458,6 +464,26 @@ def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
     assert "unsupported run schema" in invalid_row["error"]
 
 
+def test_history_loads_manifest_and_console_metadata_as_typed_models(tmp_path):
+    metadata_payload = {
+        "name": "Typed run",
+        "dataset_id": "dataset-1",
+        "run_workers": 2,
+        "extension": {"kept": True},
+    }
+    run = tmp_path / "typed-run"
+    _write_scored_history_run(run, metadata=metadata_payload)
+    history = EvaluationHistory(tmp_path)
+
+    manifest = history._load_manifest(run)
+    metadata = history._load_console_metadata(run, manifest)
+
+    assert isinstance(manifest, RunManifest)
+    assert isinstance(metadata, ConsoleMetadata)
+    assert metadata.to_dict() == metadata_payload
+    assert history.get_run(history.id_for_path(run))["metadata"] == metadata_payload
+
+
 def test_history_projects_compact_latency_quality_and_failure_trends(tmp_path):
     dataset_id = str(uuid.uuid4())
     metadata = {
@@ -634,9 +660,7 @@ def test_history_reads_legacy_v0_runs_without_rewriting_artifacts(tmp_path):
                 "answer_mode": None,
                 "answer_source": None,
                 "atom_source": "supplied",
-                "gold_atoms": [
-                    {"id": "A1", "text": "Answer", "required": True}
-                ],
+                "gold_atoms": [{"id": "A1", "text": "Answer", "required": True}],
             }
         ],
     )
@@ -818,9 +842,7 @@ def test_history_derives_prepared_items_from_canonical_preparation(
                 "question": "Question",
                 "answer": "Answer",
                 "time_sensitive": False,
-                "expected_atoms": [
-                    {"id": "A1", "text": "Answer", "required": True}
-                ],
+                "expected_atoms": [{"id": "A1", "text": "Answer", "required": True}],
             }
         ],
     )
@@ -849,9 +871,7 @@ def test_history_derives_prepared_items_from_canonical_preparation(
             "artifacts": artifact_hashes(
                 run, {"input.snapshot.json", "preparation.jsonl"}
             ),
-            "phases": {
-                "prepare": {"status": "completed", "input_items": 1}
-            },
+            "phases": {"prepare": {"status": "completed", "input_items": 1}},
         },
     )
     history = EvaluationHistory(tmp_path)

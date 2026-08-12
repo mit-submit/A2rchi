@@ -2,22 +2,16 @@
 from __future__ import annotations
 
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from itertools import islice
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import local
-from time import perf_counter
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from .artifacts import (  # isort: skip
     AtomicJsonlWriter,
     artifact_hashes,
     copy_file_atomic,
     iter_jsonl,
-    read_json,
-    read_jsonl,
     sha256_file,
     utc_now,
     verify_hashes,
@@ -35,21 +29,17 @@ from .constants import (  # isort: skip
     SCORING_VERSION,
 )
 from .profile import load_profile
+from .phases import execute_attempts, score_attempts
 from .preparation import (
-    AnswerComparator,
     PreparationRecord,
     iter_preparation_records,
-    load_preparation_records,
     prepare_dataset_item,
 )
 from .runtime import ArchiAgentRuntime, LangChainEvaluatorRuntime, load_agent_inputs
-from .scoring import build_summary, render_report, score_attempt
-from .tool_traces import serialize_tool_call_records
-from .validation import (  # isort: skip
-    dataset_source_format,
-    iter_dataset_items,
-    validate_judgments,
-)
+from .schema import RunManifest
+from .scoring import build_summary, render_report
+from .validation import dataset_source_format, iter_dataset_items
+from .workspace import EvaluationWorkspace
 
 
 class QAWorkflow:
@@ -71,60 +61,6 @@ class QAWorkflow:
             raise ValueError(
                 f"{field} must be an integer from 1 to {cls.MAX_PHASE_WORKERS}"
             )
-
-    @staticmethod
-    def _batches(items: Iterable[Any], size: int) -> Iterator[List[Any]]:
-        iterator = iter(items)
-        while True:
-            batch = list(islice(iterator, size))
-            if not batch:
-                return
-            yield batch
-
-    @staticmethod
-    def _duration_ms(started_at: float) -> int:
-        return max(0, int(round((perf_counter() - started_at) * 1000)))
-
-    @staticmethod
-    def _tool_calls(runtime: Any) -> List[Dict[str, Any]]:
-        return serialize_tool_call_records(
-            runtime.tool_calls,
-            context="tested-agent tool_calls",
-        )
-
-    @staticmethod
-    def _validate_answer_tool_calls(answer: Dict[str, Any], *, context: str) -> None:
-        if "tool_calls" in answer:
-            answer["tool_calls"] = serialize_tool_call_records(
-                answer["tool_calls"],
-                context=f"{context}.tool_calls",
-            )
-
-    def _run_attempt(
-        self,
-        runtime: Any,
-        question: str,
-        base: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        attempt_started_at = perf_counter()
-        try:
-            answer = runtime.run(question)
-        except Exception as exc:
-            duration_ms = self._duration_ms(attempt_started_at)
-            return {
-                **base,
-                "status": "execution_failed",
-                "duration_ms": duration_ms,
-                "tool_calls": self._tool_calls(runtime),
-                "error": {"type": type(exc).__name__, "message": str(exc)},
-            }
-        return {
-            **base,
-            "status": "answer_ready",
-            "duration_ms": self._duration_ms(attempt_started_at),
-            "tool_calls": self._tool_calls(runtime),
-            "answer": answer,
-        }
 
     @staticmethod
     def _remove_owned(run_dir: Path, names: set) -> None:
@@ -150,131 +86,29 @@ class QAWorkflow:
 
     @staticmethod
     def _load_manifest(run_dir: Path) -> Dict[str, Any]:
-        path = run_dir / "manifest.json"
-        if not path.exists():
-            raise ValueError(f"run workspace has no manifest: {run_dir}")
-        manifest = read_json(path)
-        if (
-            not isinstance(manifest, dict)
-            or manifest.get("schema_version") != SCHEMA_VERSION
-        ):
-            raise ValueError("run workspace manifest has an unsupported schema")
-        return manifest
+        return EvaluationWorkspace.load_manifest(run_dir).to_dict()
 
     @staticmethod
     def _phase_complete(manifest: Dict[str, Any], phase: str) -> None:
-        phases = manifest.get("phases")
-        if (
-            not isinstance(phases, dict)
-            or (phases.get(phase) or {}).get("status") != "completed"
-        ):
-            raise ValueError(f"run workspace {phase} phase is not complete")
+        RunManifest.from_dict(manifest).require_phase_complete(phase)
 
     @staticmethod
     def _load_preparation(
         run_dir: Path, manifest: Dict[str, Any]
     ) -> List[PreparationRecord]:
-        return load_preparation_records(
-            run_dir / "preparation.jsonl",
-            expected_count=manifest["phases"]["prepare"]["input_items"],
+        return EvaluationWorkspace.load_preparation(
+            run_dir,
+            RunManifest.from_dict(manifest),
         )
 
     @staticmethod
     def _iter_answer_pairs(
         run_dir: Path, manifest: Dict[str, Any]
     ) -> Iterator[Tuple[PreparationRecord, Dict[str, Any]]]:
-        answers = iter_jsonl(run_dir / "answers.jsonl")
-        allowed_statuses = {"answer_ready", "execution_failed"}
-        for prepared in iter_preparation_records(
-            run_dir / "preparation.jsonl",
-            expected_count=manifest["phases"]["prepare"]["input_items"],
-        ):
-            if prepared.status != "prepared":
-                continue
-            for ordinal in range(1, manifest["attempts"] + 1):
-                try:
-                    answer = next(answers)
-                except StopIteration:
-                    raise ValueError(
-                        "run contains fewer terminal slots than the prepared workspace"
-                    ) from None
-                if not isinstance(answer, dict):
-                    raise ValueError("run answer row must be an object")
-                QAWorkflow._validate_answer_tool_calls(
-                    answer,
-                    context=f"run answer {answer.get('attempt_id', ordinal)}",
-                )
-                if answer.get("status") not in allowed_statuses:
-                    raise ValueError(
-                        "run contains a non-terminal or unsupported attempt status"
-                    )
-                expected_identity = (
-                    prepared.item_id,
-                    ordinal,
-                    f"{prepared.item_id}-attempt-{ordinal}",
-                )
-                actual_identity = (
-                    answer.get("item_id"),
-                    answer.get("ordinal"),
-                    answer.get("attempt_id"),
-                )
-                if actual_identity != expected_identity:
-                    raise ValueError(
-                        "run attempt slot identities do not match the prepared workspace"
-                    )
-                yield prepared, answer
-
-        try:
-            next(answers)
-        except StopIteration:
-            return
-        raise ValueError("run contains more terminal slots than the prepared workspace")
-
-    @staticmethod
-    def _attempt_base(row: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            key: row[key]
-            for key in (
-                "item_id",
-                "attempt_id",
-                "ordinal",
-                "agent_config_sha256",
-                "agent_spec_sha256",
-            )
-        }
-
-    @staticmethod
-    def _score_answer(
-        answer_row: Dict[str, Any],
-        prepared: PreparationRecord,
-        evaluator: AnswerComparator,
-    ) -> Dict[str, Any]:
-        base = QAWorkflow._attempt_base(answer_row)
-        gold_atoms = prepared.prepared_gold_atoms
-        try:
-            judgments = validate_judgments(
-                evaluator.compare(
-                    prepared.prepared_question, gold_atoms, answer_row["answer"]
-                ),
-                gold_atoms=gold_atoms,
-                context=f"comparison for attempt {answer_row['attempt_id']}",
-            )
-            if any(judgment.outcome == "unjudgeable" for judgment in judgments):
-                raise ValueError("comparator returned an unjudgeable outcome")
-            metrics = score_attempt(gold_atoms, judgments)
-            return {
-                **base,
-                "status": "scored",
-                "answer": answer_row["answer"],
-                "judgments": [judgment.to_dict() for judgment in judgments],
-                **metrics,
-            }
-        except Exception as exc:
-            return {
-                **base,
-                "status": "evaluation_failed",
-                "error": str(exc),
-            }
+        yield from EvaluationWorkspace.iter_answer_pairs(
+            run_dir,
+            RunManifest.from_dict(manifest),
+        )
 
     def _load_retry_parent(self, run_dir: Path) -> Tuple[
         Dict[str, Any],
@@ -282,95 +116,11 @@ class QAWorkflow:
         Dict[str, Dict[str, Any]],
         List[Dict[str, Any]],
     ]:
-        manifest = self._load_manifest(run_dir)
-        if manifest.get("status") != "scored":
-            raise ValueError("evaluation retry requires a complete scored run")
-        for phase in ("prepare", "run", "score"):
-            self._phase_complete(manifest, phase)
-        if manifest.get("versions") != {
-            "scoring": SCORING_VERSION,
-            "prompts": PROMPT_VERSIONS,
-        }:
-            raise ValueError("evaluation retry requires current QA artifact versions")
-        snapshot = manifest["input"]["snapshot"]
-        required_artifacts = {
-            snapshot,
-            "preparation.jsonl",
-            "evaluator_profile.resolved.yaml",
-            "agent_config.resolved.yaml",
-            "agent_spec.resolved.md",
-            "answers.jsonl",
-            "evaluation_results.jsonl",
-            "summary.json",
-            "report.md",
-        }
-        verify_hashes(run_dir, manifest, required_artifacts)
-        preparation = self._load_preparation(run_dir, manifest)
-        prepared_records = [
-            record for record in preparation if record.status == "prepared"
-        ]
-        answers = read_jsonl(run_dir / "answers.jsonl")
-        results = read_jsonl(run_dir / "evaluation_results.jsonl")
-        for index, answer in enumerate(answers, 1):
-            if not isinstance(answer, dict):
-                raise ValueError(f"parent answer row {index} must be an object")
-            self._validate_answer_tool_calls(
-                answer,
-                context=f"parent answer row {index}",
-            )
-        attempts = manifest.get("attempts")
-        self._require_positive_attempts(attempts)
-        expected_identities = {
-            (
-                prepared.item_id,
-                ordinal,
-                f"{prepared.item_id}-attempt-{ordinal}",
-            )
-            for prepared in prepared_records
-            for ordinal in range(1, attempts + 1)
-        }
-        answer_identities = {
-            (row.get("item_id"), row.get("ordinal"), row.get("attempt_id"))
-            for row in answers
-        }
-        result_identities = {
-            (row.get("item_id"), row.get("ordinal"), row.get("attempt_id"))
-            for row in results
-        }
-        if (
-            len(answers) != len(expected_identities)
-            or len(results) != len(expected_identities)
-            or answer_identities != expected_identities
-            or result_identities != expected_identities
-        ):
-            raise ValueError(
-                "parent run attempt identities do not match the prepared workspace"
-            )
-        answers_by_id = {row["attempt_id"]: row for row in answers}
-        if len(answers_by_id) != len(answers):
-            raise ValueError("parent run contains duplicate attempt answers")
-        config_hash = manifest["artifacts"]["agent_config.resolved.yaml"]
-        spec_hash = manifest["artifacts"]["agent_spec.resolved.md"]
-        for result in results:
-            answer = answers_by_id[result["attempt_id"]]
-            status = result.get("status")
-            if status not in {"scored", "execution_failed", "evaluation_failed"}:
-                raise ValueError("parent run contains an unsupported result status")
-            expected_answer_status = (
-                "execution_failed" if status == "execution_failed" else "answer_ready"
-            )
-            if answer.get("status") != expected_answer_status:
-                raise ValueError(
-                    "parent run answer and evaluation result statuses disagree"
-                )
-            for row in (answer, result):
-                if (
-                    row.get("agent_config_sha256") != config_hash
-                    or row.get("agent_spec_sha256") != spec_hash
-                ):
-                    raise ValueError("parent run attempt provenance is inconsistent")
+        manifest, preparation, answers_by_id, results = (
+            EvaluationWorkspace.load_retry_parent(run_dir)
+        )
         return (
-            manifest,
+            manifest.to_dict(),
             preparation,
             answers_by_id,
             results,
@@ -501,7 +251,7 @@ class QAWorkflow:
         snapshot = manifest["input"]["snapshot"]
         verify_hashes(
             run_dir,
-            manifest,
+            manifest["artifacts"],
             {
                 snapshot,
                 "preparation.jsonl",
@@ -547,7 +297,7 @@ class QAWorkflow:
         started_at = utc_now()
         attempt_slots = 0
 
-        def tasks() -> Iterator[Tuple[PreparationRecord, int]]:
+        def tasks() -> Iterator[Tuple[PreparationRecord, Dict[str, Any]]]:
             for prepared in iter_preparation_records(
                 preparation_path,
                 expected_count=preparation_count,
@@ -555,49 +305,23 @@ class QAWorkflow:
                 if prepared.status != "prepared":
                     continue
                 for ordinal in range(1, attempts + 1):
-                    yield prepared, ordinal
-
-        def execute_attempt(
-            runtime: Any, prepared: PreparationRecord, ordinal: int
-        ) -> Dict[str, Any]:
-            return self._run_attempt(
-                runtime,
-                prepared.prepared_question,
-                {
-                    "item_id": prepared.item_id,
-                    "attempt_id": f"{prepared.item_id}-attempt-{ordinal}",
-                    "ordinal": ordinal,
-                    "agent_config_sha256": config_hash,
-                    "agent_spec_sha256": spec_hash,
-                },
-            )
+                    yield prepared, {
+                        "item_id": prepared.item_id,
+                        "attempt_id": f"{prepared.item_id}-attempt-{ordinal}",
+                        "ordinal": ordinal,
+                        "agent_config_sha256": config_hash,
+                        "agent_spec_sha256": spec_hash,
+                    }
 
         with AtomicJsonlWriter(run_dir / "answers.jsonl") as answer_writer:
-            if run_workers == 1:
-                runtime = ArchiAgentRuntime(config, spec, pipeline_class)
-                for prepared, ordinal in tasks():
-                    attempt_slots += 1
-                    answer_writer.write(execute_attempt(runtime, prepared, ordinal))
-            else:
-                worker_state = local()
-
-                def execute_parallel(
-                    task: Tuple[PreparationRecord, int],
-                ) -> Dict[str, Any]:
-                    runtime = worker_state.__dict__.get("runtime")
-                    if runtime is None:
-                        runtime = ArchiAgentRuntime(config, spec, pipeline_class)
-                        worker_state.runtime = runtime
-                    return execute_attempt(runtime, *task)
-
-                with ThreadPoolExecutor(
-                    max_workers=run_workers,
-                    thread_name_prefix="archi-qa-run",
-                ) as executor:
-                    for batch in self._batches(tasks(), run_workers * 2):
-                        for answer_row in executor.map(execute_parallel, batch):
-                            attempt_slots += 1
-                            answer_writer.write(answer_row)
+            for answer_row in execute_attempts(
+                tasks(),
+                lambda: ArchiAgentRuntime(config, spec, pipeline_class),
+                run_workers,
+                thread_name_prefix="archi-qa-run",
+            ):
+                attempt_slots += 1
+                answer_writer.write(answer_row)
         manifest["attempts"] = attempts
         manifest["agent"] = {
             "agent_class": chat["agent_class"],
@@ -631,7 +355,7 @@ class QAWorkflow:
         self._phase_complete(manifest, "run")
         verify_hashes(
             run_dir,
-            manifest,
+            manifest["artifacts"],
             {
                 manifest["input"]["snapshot"],
                 "preparation.jsonl",
@@ -656,10 +380,10 @@ class QAWorkflow:
                     "supplied evaluator profile does not match the prepared profile"
                 )
         profile = stored_profile
-        has_answer_ready = False
-        for _prepared, answer in self._iter_answer_pairs(run_dir, manifest):
-            if answer["status"] == "answer_ready":
-                has_answer_ready = True
+        EvaluationWorkspace.validate_answer_pairs(
+            run_dir,
+            RunManifest.from_dict(manifest),
+        )
         if overwrite:
             self._remove_owned(run_dir, SCORE_FILES)
             manifest["phases"].pop("score", None)
@@ -667,50 +391,14 @@ class QAWorkflow:
                 manifest["artifacts"].pop(name, None)
         started_at = utc_now()
 
-        def score_pair(
-            pair: Tuple[PreparationRecord, Dict[str, Any]],
-            evaluator: Optional[AnswerComparator],
-        ) -> Dict[str, Any]:
-            prepared, answer_row = pair
-            base = self._attempt_base(answer_row)
-            if answer_row["status"] == "execution_failed":
-                return {
-                    **base,
-                    "status": "execution_failed",
-                    "error": answer_row["error"],
-                }
-            assert evaluator is not None
-            return self._score_answer(answer_row, prepared, evaluator)
-
         with AtomicJsonlWriter(run_dir / "evaluation_results.jsonl") as result_writer:
-            if score_workers == 1:
-                evaluator = (
-                    LangChainEvaluatorRuntime(profile) if has_answer_ready else None
-                )
-                for pair in self._iter_answer_pairs(run_dir, manifest):
-                    result_writer.write(score_pair(pair, evaluator))
-            else:
-                worker_state = local()
-
-                def score_parallel(
-                    pair: Tuple[PreparationRecord, Dict[str, Any]],
-                ) -> Dict[str, Any]:
-                    if pair[1]["status"] == "execution_failed":
-                        return score_pair(pair, None)
-                    evaluator = worker_state.__dict__.get("evaluator")
-                    if evaluator is None:
-                        evaluator = LangChainEvaluatorRuntime(profile)
-                        worker_state.evaluator = evaluator
-                    return score_pair(pair, evaluator)
-
-                with ThreadPoolExecutor(
-                    max_workers=score_workers,
-                    thread_name_prefix="archi-qa-score",
-                ) as executor:
-                    pairs = self._iter_answer_pairs(run_dir, manifest)
-                    for batch in self._batches(pairs, score_workers * 2):
-                        for result in executor.map(score_parallel, batch):
-                            result_writer.write(result)
+            for result in score_attempts(
+                self._iter_answer_pairs(run_dir, manifest),
+                lambda: LangChainEvaluatorRuntime(profile),
+                score_workers,
+                thread_name_prefix="archi-qa-score",
+            ):
+                result_writer.write(result)
 
         preparation = self._load_preparation(run_dir, manifest)
         summary = build_summary(
@@ -811,43 +499,32 @@ class QAWorkflow:
         write_json(output_dir / "manifest.json", manifest)
 
         started_at = utc_now()
-        execution_tasks = [
-            result for result in parent_results if result["attempt_id"] in execution_ids
-        ]
-
-        def retry_execution(
-            runtime: Any, parent_result: Dict[str, Any]
-        ) -> Dict[str, Any]:
-            parent_answer = parent_answers[parent_result["attempt_id"]]
-            prepared = prepared_by_id[parent_result["item_id"]]
-            return self._run_attempt(
-                runtime,
-                prepared.prepared_question,
-                self._attempt_base(parent_answer),
+        execution_tasks = (
+            (
+                prepared_by_id[result["item_id"]],
+                {
+                    key: parent_answers[result["attempt_id"]][key]
+                    for key in (
+                        "item_id",
+                        "attempt_id",
+                        "ordinal",
+                        "agent_config_sha256",
+                        "agent_spec_sha256",
+                    )
+                },
             )
-
-        retried_answers: Dict[str, Dict[str, Any]] = {}
-        if execution_tasks and run_workers == 1:
-            runtime = ArchiAgentRuntime(config, spec, pipeline_class)
-            for task in execution_tasks:
-                retried_answers[task["attempt_id"]] = retry_execution(runtime, task)
-        elif execution_tasks:
-            worker_state = local()
-
-            def retry_execution_parallel(task: Dict[str, Any]) -> Dict[str, Any]:
-                runtime = worker_state.__dict__.get("runtime")
-                if runtime is None:
-                    runtime = ArchiAgentRuntime(config, spec, pipeline_class)
-                    worker_state.runtime = runtime
-                return retry_execution(runtime, task)
-
-            with ThreadPoolExecutor(
-                max_workers=run_workers,
+            for result in parent_results
+            if result["attempt_id"] in execution_ids
+        )
+        retried_answers = {
+            answer["attempt_id"]: answer
+            for answer in execute_attempts(
+                execution_tasks,
+                lambda: ArchiAgentRuntime(config, spec, pipeline_class),
+                run_workers,
                 thread_name_prefix="archi-qa-retry-run",
-            ) as executor:
-                for batch in self._batches(execution_tasks, run_workers * 2):
-                    for answer_row in executor.map(retry_execution_parallel, batch):
-                        retried_answers[answer_row["attempt_id"]] = answer_row
+            )
+        }
 
         successor_answers = [
             retried_answers.get(
@@ -871,56 +548,23 @@ class QAWorkflow:
         profile = load_profile(output_dir / "evaluator_profile.resolved.yaml")
         successor_answers_by_id = {row["attempt_id"]: row for row in successor_answers}
         started_at = utc_now()
-        score_tasks = [
-            result for result in parent_results if result["attempt_id"] in retry_ids
-        ]
-
-        def retry_score(
-            evaluator: Optional[AnswerComparator], parent_result: Dict[str, Any]
-        ) -> Dict[str, Any]:
-            answer_row = successor_answers_by_id[parent_result["attempt_id"]]
-            if answer_row["status"] == "execution_failed":
-                return {
-                    **self._attempt_base(answer_row),
-                    "status": "execution_failed",
-                    "error": answer_row["error"],
-                }
-            assert evaluator is not None
-            return self._score_answer(
-                answer_row,
-                prepared_by_id[answer_row["item_id"]],
-                evaluator,
+        score_tasks = (
+            (
+                prepared_by_id[result["item_id"]],
+                successor_answers_by_id[result["attempt_id"]],
             )
-
-        retried_results: Dict[str, Dict[str, Any]] = {}
-        if score_tasks and score_workers == 1:
-            evaluator = None
-            for task in score_tasks:
-                answer_row = successor_answers_by_id[task["attempt_id"]]
-                if answer_row["status"] != "execution_failed" and evaluator is None:
-                    evaluator = LangChainEvaluatorRuntime(profile)
-                result = retry_score(evaluator, task)
-                retried_results[result["attempt_id"]] = result
-        elif score_tasks:
-            worker_state = local()
-
-            def retry_score_parallel(task: Dict[str, Any]) -> Dict[str, Any]:
-                answer_row = successor_answers_by_id[task["attempt_id"]]
-                if answer_row["status"] == "execution_failed":
-                    return retry_score(None, task)
-                evaluator = worker_state.__dict__.get("evaluator")
-                if evaluator is None:
-                    evaluator = LangChainEvaluatorRuntime(profile)
-                    worker_state.evaluator = evaluator
-                return retry_score(evaluator, task)
-
-            with ThreadPoolExecutor(
-                max_workers=score_workers,
+            for result in parent_results
+            if result["attempt_id"] in retry_ids
+        )
+        retried_results = {
+            result["attempt_id"]: result
+            for result in score_attempts(
+                score_tasks,
+                lambda: LangChainEvaluatorRuntime(profile),
+                score_workers,
                 thread_name_prefix="archi-qa-retry-score",
-            ) as executor:
-                for batch in self._batches(score_tasks, score_workers * 2):
-                    for result in executor.map(retry_score_parallel, batch):
-                        retried_results[result["attempt_id"]] = result
+            )
+        }
 
         successor_results = [
             retried_results.get(result["attempt_id"], result)
