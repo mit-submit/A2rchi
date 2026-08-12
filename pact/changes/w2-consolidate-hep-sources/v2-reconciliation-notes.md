@@ -58,3 +58,6 @@ discipline); the compops files are index-level field guides for the live tools:
 - `rucio_mcp.md` / `dbs.md`: describe MCP sidecars (registry.cern.ch images)
   absent from v3 — revisit with the sidecar decision; dbs.md carries a vocms0014
   drafting marker to strip if ported.
+
+## TWiki parser bugs shared by the canonical cms original (fixed in v3, upstream candidates)
+- =code= regex strips = from assignments across lines (cms twiki_eos.py:442) and title-less heading markers absorb the next line — both fixed in archi with documented deviation; cms/okg-deployments may want the same fixes.
