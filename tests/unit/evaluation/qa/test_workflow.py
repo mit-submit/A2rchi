@@ -65,7 +65,7 @@ class _AgentFactory:
         self.malformed_questions = malformed_questions or set()
         self.tool_calls = tool_calls or []
 
-    def __call__(self, config, spec, pipeline_class):
+    def __call__(self, config, spec, pipeline_class, vectorstore=None):
         factory = self
 
         class Agent:
@@ -277,6 +277,24 @@ def test_run_and_score_workers_overlap_with_isolated_runtimes_and_ordered_artifa
     workflow = QAWorkflow()
     workflow.prepare(dataset, run_dir)
 
+    shared_vectorstore = object()
+    vectorstore_initializations = []
+    monkeypatch.setattr(
+        workflow_module,
+        "LazyVectorstore",
+        lambda config: vectorstore_initializations.append(config) or shared_vectorstore,
+    )
+    monkeypatch.setattr(
+        workflow_module,
+        "load_agent_inputs",
+        lambda config_path, spec_path: (
+            agent_inputs,
+            SimpleNamespace(tools=["search_vectorstore_hybrid"]),
+            "---\nname: Fake\ntools: [search_vectorstore_hybrid]\n---\nPrompt\n",
+            object,
+        ),
+    )
+
     class AgentFactory:
         def __init__(self):
             self.instances = 0
@@ -285,9 +303,10 @@ def test_run_and_score_workers_overlap_with_isolated_runtimes_and_ordered_artifa
             self.lock = threading.Lock()
             self.started = threading.Barrier(2)
 
-        def __call__(self, config, spec, pipeline_class):
+        def __call__(self, config, spec, pipeline_class, vectorstore=None):
             factory = self
             factory.instances += 1
+            assert vectorstore is shared_vectorstore
 
             class Agent:
                 def __init__(self):
@@ -327,6 +346,7 @@ def test_run_and_score_workers_overlap_with_isolated_runtimes_and_ordered_artifa
     assert [row["item_id"] for row in answers] == ["slow", "fast"]
     assert agent_factory.maximum_active == 2
     assert agent_factory.instances == 2
+    assert vectorstore_initializations == [agent_inputs]
 
     class EvaluatorFactory:
         def __init__(self):
@@ -627,7 +647,7 @@ def test_run_stops_failure_timer_before_formatting_the_exception(
             return "agent failed"
 
     class FailingAgentFactory:
-        def __call__(self, config, spec, pipeline_class):
+        def __call__(self, config, spec, pipeline_class, vectorstore=None):
             class Agent:
                 def __init__(self):
                     self.tool_calls = []
@@ -833,7 +853,7 @@ def test_run_runtime_construction_failure_aborts_without_attempt_artifacts(
     monkeypatch.setattr(
         workflow_module,
         "ArchiAgentRuntime",
-        lambda config, spec, pipeline_class: (_ for _ in ()).throw(
+        lambda config, spec, pipeline_class, vectorstore=None: (_ for _ in ()).throw(
             RuntimeError("agent runtime failed to initialize")
         ),
     )
@@ -1302,7 +1322,7 @@ def test_run_persists_admin_visible_answer_without_redaction(
     run_dir = tmp_path / "run"
 
     class SecretAgentFactory:
-        def __call__(self, config, spec, pipeline_class):
+        def __call__(self, config, spec, pipeline_class, vectorstore=None):
             class Agent:
                 tool_calls = []
 

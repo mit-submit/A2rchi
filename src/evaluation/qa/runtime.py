@@ -319,6 +319,26 @@ def load_agent_inputs(
     return config, spec, spec_text, pipeline_class
 
 
+class LazyVectorstore:
+    """Thread-safe, lazy vector-store cache owned by one workflow phase."""
+
+    def __init__(self, config: Dict[str, Any]):
+        self._config = config
+        self._vectorstore: Optional[Any] = None
+        self._lock = Lock()
+
+    def _load(self) -> Any:
+        from src.archi.utils.vectorstore_connector import VectorstoreConnector
+
+        return VectorstoreConnector(self._config).get_vectorstore()
+
+    def get(self) -> Any:
+        with self._lock:
+            if self._vectorstore is None:
+                self._vectorstore = self._load()
+            return self._vectorstore
+
+
 # TODO: Remove this evaluation-specific runtime once the generic `archi`
 # runtime is refactored to initialize vector-store connections and other tool
 # dependencies only when they are selected by the resolved agent config/spec.
@@ -330,6 +350,7 @@ class ArchiAgentRuntime:
         config: Dict[str, Any],
         spec: Any,
         pipeline_class: type,
+        vectorstore: Optional[LazyVectorstore] = None,
     ):
         self.config = config
         self.spec = spec
@@ -338,22 +359,23 @@ class ArchiAgentRuntime:
         self._pipeline: Optional[Any] = None
         self._vectorstore: Optional[Any] = None
         self._selected_tool_names = set(getattr(self.spec, "tools", []) or [])
-
-    def _load_vectorstore(self) -> Any:
-        from src.archi.utils.vectorstore_connector import VectorstoreConnector
-
-        return VectorstoreConnector(self.config).get_vectorstore()
+        self._shared_vectorstore = vectorstore
+        if (
+            "search_vectorstore_hybrid" in self._selected_tool_names
+            and self._shared_vectorstore is None
+        ):
+            raise ValueError("vector-search runtime requires a shared vector store")
 
     def _runtime_for_attempt(self) -> Tuple[Any, Optional[Any]]:
         if self._pipeline is not None:
             return self._pipeline, self._vectorstore
 
         chat = self.config["services"]["chat_app"]
-        vectorstore = (
-            self._load_vectorstore()
-            if "search_vectorstore_hybrid" in self._selected_tool_names
-            else None
-        )
+        if "search_vectorstore_hybrid" in self._selected_tool_names:
+            assert self._shared_vectorstore is not None
+            vectorstore = self._shared_vectorstore.get()
+        else:
+            vectorstore = None
         pipeline = self.pipeline_class(
             config=deepcopy(self.config),
             agent_spec=deepcopy(self.spec),

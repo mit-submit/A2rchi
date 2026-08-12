@@ -35,7 +35,12 @@ from .preparation import (
     iter_preparation_records,
     prepare_dataset_item,
 )
-from .runtime import ArchiAgentRuntime, LangChainEvaluatorRuntime, load_agent_inputs
+from .runtime import (
+    ArchiAgentRuntime,
+    LangChainEvaluatorRuntime,
+    LazyVectorstore,
+    load_agent_inputs,
+)
 from .schema import RunManifest
 from .scoring import build_summary, render_report
 from .validation import dataset_source_format, iter_dataset_items
@@ -294,6 +299,11 @@ class QAWorkflow:
         config_hash = sha256_file(run_dir / "agent_config.resolved.yaml")
         spec_hash = sha256_file(run_dir / "agent_spec.resolved.md")
         chat = config["services"]["chat_app"]
+        vectorstore = (
+            LazyVectorstore(config)
+            if "search_vectorstore_hybrid" in spec.tools
+            else None
+        )
         started_at = utc_now()
         attempt_slots = 0
 
@@ -316,7 +326,12 @@ class QAWorkflow:
         with AtomicJsonlWriter(run_dir / "answers.jsonl") as answer_writer:
             for answer_row in execute_attempts(
                 tasks(),
-                lambda: ArchiAgentRuntime(config, spec, pipeline_class),
+                lambda: ArchiAgentRuntime(
+                    config,
+                    spec,
+                    pipeline_class,
+                    vectorstore,
+                ),
                 run_workers,
                 thread_name_prefix="archi-qa-run",
             ):
@@ -459,6 +474,13 @@ class QAWorkflow:
                 parent_run_dir / "agent_config.resolved.yaml",
                 parent_run_dir / "agent_spec.resolved.md",
             )
+            vectorstore = (
+                LazyVectorstore(config)
+                if "search_vectorstore_hybrid" in spec.tools
+                else None
+            )
+        else:
+            vectorstore = None
 
         output_dir.mkdir(parents=True, exist_ok=True)
         snapshot = parent_manifest["input"]["snapshot"]
@@ -520,7 +542,12 @@ class QAWorkflow:
             answer["attempt_id"]: answer
             for answer in execute_attempts(
                 execution_tasks,
-                lambda: ArchiAgentRuntime(config, spec, pipeline_class),
+                lambda: ArchiAgentRuntime(
+                    config,
+                    spec,
+                    pipeline_class,
+                    vectorstore,
+                ),
                 run_workers,
                 thread_name_prefix="archi-qa-retry-run",
             )

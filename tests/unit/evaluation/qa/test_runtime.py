@@ -7,6 +7,7 @@ from src.evaluation.qa import runtime
 from src.evaluation.qa.runtime import (
     ArchiAgentRuntime,
     LangChainEvaluatorRuntime,
+    LazyVectorstore,
     ToolTimingCallback,
 )
 from src.evaluation.qa.profile import load_profile
@@ -50,13 +51,10 @@ def test_load_agent_inputs_uses_selected_config_and_spec(monkeypatch, tmp_path):
     assert pipeline_class is _FakePipeline
 
 
-def test_load_agent_inputs_does_not_police_admin_config_content(
-    monkeypatch, tmp_path
-):
+def test_load_agent_inputs_does_not_police_admin_config_content(monkeypatch, tmp_path):
     config, spec = _files(
         tmp_path,
-        "    api_key: sk-production-secret\n"
-        "    agents_dir: /tmp/agents\n",
+        "    api_key: sk-production-secret\n" "    agents_dir: /tmp/agents\n",
     )
     spec.write_text(
         "---\nname: Test\ntools: [search]\n---\nUse sk-production-secret.\n"
@@ -292,7 +290,33 @@ def test_archi_runtime_reuses_pipeline_with_fresh_attempt_history():
     ]
 
 
-def test_archi_runtime_reuses_vectorstore_with_cached_pipeline(monkeypatch):
+def test_lazy_vectorstore_initializes_once(monkeypatch):
+    vectorstore = object()
+    loads = []
+    shared = LazyVectorstore(_config())
+    monkeypatch.setattr(
+        shared,
+        "_load",
+        lambda: loads.append(True) or vectorstore,
+    )
+
+    assert shared.get() is vectorstore
+    assert shared.get() is vectorstore
+    assert loads == [True]
+
+
+def test_archi_runtime_requires_shared_vectorstore_for_vector_search():
+    with pytest.raises(
+        ValueError, match="vector-search runtime requires a shared vector store"
+    ):
+        ArchiAgentRuntime(
+            _config(),
+            SimpleNamespace(tools=["search_vectorstore_hybrid"]),
+            object,
+        )
+
+
+def test_archi_runtime_reuses_shared_vectorstore_with_cached_pipeline(monkeypatch):
     vectorstore = object()
     loads = []
     received_vectorstores = []
@@ -305,19 +329,13 @@ def test_archi_runtime_reuses_vectorstore_with_cached_pipeline(monkeypatch):
             received_vectorstores.append(kwargs["vectorstore"])
             return _Output("final answer")
 
-    def load_vectorstore(self):
-        loads.append(True)
-        return vectorstore
-
-    monkeypatch.setattr(
-        ArchiAgentRuntime,
-        "_load_vectorstore",
-        load_vectorstore,
-    )
+    shared = LazyVectorstore(_config())
+    monkeypatch.setattr(shared, "_load", lambda: loads.append(True) or vectorstore)
     agent = ArchiAgentRuntime(
         _config(),
         SimpleNamespace(tools=["search_vectorstore_hybrid"]),
         Pipeline,
+        shared,
     )
 
     agent.run("first question")
@@ -340,21 +358,19 @@ def test_archi_runtime_does_not_cache_failed_initialization(monkeypatch):
         def invoke(self, **kwargs):
             return _Output("final answer")
 
-    def load_vectorstore(self):
+    def load_vectorstore():
         loads.append(True)
         if len(loads) == 1:
             raise RuntimeError("vector store is starting")
         return vectorstore
 
-    monkeypatch.setattr(
-        ArchiAgentRuntime,
-        "_load_vectorstore",
-        load_vectorstore,
-    )
+    shared = LazyVectorstore(_config())
+    monkeypatch.setattr(shared, "_load", load_vectorstore)
     agent = ArchiAgentRuntime(
         _config(),
         SimpleNamespace(tools=["search_vectorstore_hybrid"]),
         Pipeline,
+        shared,
     )
 
     with pytest.raises(RuntimeError, match="vector store is starting"):
@@ -368,12 +384,13 @@ def test_archi_runtime_does_not_cache_failed_initialization(monkeypatch):
 def test_archi_runtime_reports_vectorstore_failure_from_attempt(monkeypatch):
     spec = SimpleNamespace(tools=["search_vectorstore_hybrid"])
 
-    def fail_vectorstore(self):
+    def fail_vectorstore():
         raise RuntimeError("vector store is offline")
 
-    monkeypatch.setattr(ArchiAgentRuntime, "_load_vectorstore", fail_vectorstore)
+    shared = LazyVectorstore(_config())
+    monkeypatch.setattr(shared, "_load", fail_vectorstore)
 
-    agent = ArchiAgentRuntime(_config(), spec, object)
+    agent = ArchiAgentRuntime(_config(), spec, object, shared)
 
     with pytest.raises(RuntimeError, match="vector store is offline"):
         agent.run("question")
@@ -391,13 +408,13 @@ def test_archi_runtime_uses_normal_pipeline_invocation(monkeypatch):
             observed["invoke"] = kwargs
             return _Output("final answer")
 
-    monkeypatch.setattr(
-        ArchiAgentRuntime, "_load_vectorstore", lambda self: vectorstore
-    )
+    shared = LazyVectorstore(_config())
+    monkeypatch.setattr(shared, "_load", lambda: vectorstore)
     answer = ArchiAgentRuntime(
         _config(),
         SimpleNamespace(tools=["search_vectorstore_hybrid"]),
         Pipeline,
+        shared,
     ).run("question")
 
     assert answer == "final answer"

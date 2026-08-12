@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from click.testing import CliRunner
 
 import src.cli.qa_eval as qa_cli_module
@@ -151,7 +153,7 @@ def test_composite_cli_runs_local_dataset_to_report_with_four_attempts(
         "load_agent_inputs",
         lambda config_path, spec_path: (
             config,
-            object(),
+            SimpleNamespace(tools=["fake"]),
             "---\nname: Fake\ntools: [fake]\n---\nPrompt\n",
             object,
         ),
