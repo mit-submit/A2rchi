@@ -343,11 +343,22 @@ class CERNPreflightSource:
                 ),
                 checked_at=_checked_at(),
             )
-        reason = (
-            f"X.509 proxy valid until {expiry.isoformat()}"
-            if expiry is not None
-            else "X.509 proxy file present; expiry could not be read"
-        )
+        if expiry is None:
+            return SourcePreflightResult(
+                source_name=self.name,
+                status="auth_failed",
+                mode=mode,
+                required=self.required,
+                credential_refs=(self._credential_ref(),),
+                alias_refs=result.alias_refs,
+                reason=(
+                    "X.509 proxy file present but its certificate could not "
+                    "be decoded; re-create the proxy (this offline kind has "
+                    "no live-probe backstop, so an unreadable proxy must not "
+                    "pass as healthy)"
+                ),
+                checked_at=_checked_at(),
+            )
         return SourcePreflightResult(
             source_name=self.name,
             status="ok",
@@ -355,7 +366,7 @@ class CERNPreflightSource:
             required=self.required,
             credential_refs=(self._credential_ref(),),
             alias_refs=result.alias_refs,
-            reason=reason,
+            reason=f"X.509 proxy valid until {expiry.isoformat()}",
             checked_at=_checked_at(),
         )
 
@@ -373,10 +384,27 @@ class CERNPreflightSource:
         cookie_path = _credential_file_path(
             self._credential_ref(), self.aliases,
         )
-        try:
-            session = requests.Session()
-            if cookie_path is not None:
+        session = requests.Session()
+        if cookie_path is not None:
+            try:
                 _load_cookie_file(session, cookie_path)
+            except Exception as exc:  # noqa: BLE001
+                return SourcePreflightResult(
+                    source_name=self.name,
+                    status="auth_failed",
+                    mode=mode,
+                    required=self.required,
+                    credential_refs=(self._credential_ref(),),
+                    alias_refs=file_result.alias_refs,
+                    endpoint=endpoint,
+                    reason=redact_text(
+                        f"SSO cookie file could not be parsed — re-acquire "
+                        f"it (no request was sent): "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                    checked_at=_checked_at(),
+                )
+        try:
             response = session.get(
                 endpoint,
                 timeout=self.timeout,

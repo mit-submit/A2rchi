@@ -197,7 +197,9 @@ def test_x509_proxy_kind(monkeypatch, tmp_path):
     assert "expired at" in result.reason
 
 
-def test_x509_proxy_unreadable_expiry_still_ok(monkeypatch, tmp_path):
+def test_x509_proxy_undecodable_is_auth_failed(monkeypatch, tmp_path):
+    """An offline kind has no live-probe backstop, so an unreadable proxy
+    must not pass as healthy (code-review finding, 2026-08-11)."""
     proxy_path = tmp_path / "proxy.pem"
     proxy_path.write_text("not a certificate")
     source = CERNPreflightSource(
@@ -205,8 +207,27 @@ def test_x509_proxy_unreadable_expiry_still_ok(monkeypatch, tmp_path):
     )
     monkeypatch.setenv("ARCHI_T_PROXY", str(proxy_path))
     result = source.preflight()
-    assert result.status == "ok"
-    assert "could not be read" in result.reason
+    assert result.status == "auth_failed"
+    assert "could not be decoded" in result.reason
+
+
+def test_cern_sso_http_corrupt_cookie_is_auth_failed(monkeypatch, tmp_path):
+    """A cookie file that fails to parse is a credential problem, not an
+    endpoint problem — no request may be sent (code-review finding)."""
+    cookie_path = tmp_path / "sso.txt"
+    cookie_path.write_text("<html>this is not a cookie file</html>")
+    monkeypatch.setenv("ARCHI_T_COOKIE", str(cookie_path))
+    calls = _fake_http(monkeypatch, response=_FakeResponse(200, "x", "u"))
+    source = CERNPreflightSource(
+        source_name="sso_http",
+        kind="cern_sso_http",
+        credential_ref="ARCHI_T_COOKIE",
+        endpoint="https://docs.example.cern.ch/",
+    )
+    result = source.preflight()
+    assert result.status == "auth_failed"
+    assert "no request was sent" in result.reason
+    assert calls == []
 
 
 def test_cern_sso_http_authenticated(monkeypatch, tmp_path):
