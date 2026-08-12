@@ -36,7 +36,7 @@ spike (`pact/changes/w1-prove-the-seam/spike/`) is the seed: its
 | `hypernews.py` (586) | `archi/sources/hypernews.py` | discovery_crawl | cookie | forum threads. |
 | `github_repos.py` (193) | `archi/sources/github_repos.py` | reference_catalog | `GITHUB_TOKEN` (optional) | repo identity nodes. |
 | `preflight.py` CMSPreflightSource (674) | `archi/auth/preflight.py` | live_overlay | the whole credential surface | emits no graph facts; generic CERN auth probes (SSO cookie, X509, TLS, tokens). |
-| `_cache.py` (207) | `archi/sources/_cache.py` | — | — | unify the wisdqm 55-LOC fork; keep `resolve_repo_path` deployment-relative (no hardcoded operator paths — lint for `/Users/`, `/root/`, `/home/` literals). |
+| `_cache.py` (207) | `archi/auth/cache.py` (landed there with task.w2.auth; matrix originally said `archi/sources/_cache.py`) | — | — | unified with the wisdqm 55-LOC fork; `resolve_repo_path` base is explicit param → `ARCHI_DATA_ROOT` → cwd (no repo-layout assumptions, no hardcoded operator paths). `json_record_count`/`cache_preflight_result`/`cache_source_health` deliberately dropped — they move with the individual source ports. |
 | `alias.py` CMSProjectionAliasBackend (192) | `archi/enrichment/alias.py` | — | — | type-aware alias resolution. |
 
 ## From archi v2 (take `origin/dev` for anything scraper-shaped)

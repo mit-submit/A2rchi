@@ -4,19 +4,16 @@ change:
   id: w2-consolidate-hep-sources
   title: 'W2: consolidate HEP sources into the archi package'
   status: proposal
-  rationale: >-
-    ADR 0001 W2: the domain layer is consolidation, not construction. The HEP
-    source code exists in three places — okg-deployments/cms/cms_sources/
-    (22 adapter classes, 9,328 LOC), archi origin/dev's Scrapy layer (the
-    current scraper design), and cooper (deferred) — and TWiki parsing alone
-    exists three times. This change consolidates it into the pip-installable
-    archi package proven by w1-prove-the-seam, per the porting matrix
-    (porting-matrix.md in this change).
-  root_cause: >-
-    v2 scattered HEP ingestion across archi's collectors, agent tools, and the
-    CMS OKG deployment's local package; nothing is shareable across instances
-    without copy-paste (the wisdqm _cache.py and TWiki-parser forks are the
-    live evidence).
+  rationale: "ADR 0001 W2: the domain layer is consolidation, not construction. The\
+    \ HEP source code exists in three places \u2014 okg-deployments/cms/cms_sources/\
+    \ (22 adapter classes, 9,328 LOC), archi origin/dev's Scrapy layer (the current\
+    \ scraper design), and cooper (deferred) \u2014 and TWiki parsing alone exists\
+    \ three times. This change consolidates it into the pip-installable archi package\
+    \ proven by w1-prove-the-seam, per the porting matrix (porting-matrix.md in this\
+    \ change)."
+  root_cause: v2 scattered HEP ingestion across archi's collectors, agent tools, and
+    the CMS OKG deployment's local package; nothing is shareable across instances
+    without copy-paste (the wisdqm _cache.py and TWiki-parser forks are the live evidence).
   affected_areas:
   - python/
   - pact/changes/w2-consolidate-hep-sources
@@ -25,10 +22,9 @@ change:
 requirements:
 - id: req.w2.packaging
   title: v3 package builds without touching the v2 build
-  statement: >-
-    The archi v3 distribution builds as a wheel from python/ (its own
-    pyproject) while the v2 root build (setup.py/pyproject.toml, src/) remains
-    untouched and v2 unit tests keep passing on archi_v3.
+  statement: The archi v3 distribution builds as a wheel from python/ (its own pyproject)
+    while the v2 root build (setup.py/pyproject.toml, src/) remains untouched and
+    v2 unit tests keep passing on archi_v3.
   evidence_policy:
     required:
     - executed_test
@@ -44,16 +40,19 @@ requirements:
     and: []
   acceptance:
   - id: acc.w2.packaging
-    description: CI builds the python/ wheel and runs existing tests/unit/ green in the same pipeline.
+    description: python/tests/test_packaging.py passes (wheel builds from python/,
+      v3 never imports v2, schema data ships in the wheel, no operator paths, root
+      build files untouched). CI wiring is deferred by maintainer decision (2026-08-11,
+      "let's not worry about those actions for now") and returns with the OKG_REPO_TOKEN
+      secret.
     evidence:
     - executed_test
 - id: req.w2.auth
   title: CERN auth plumbing is package code, credentials are instance data
-  statement: >-
-    archi/auth/ consolidates the preflight probes, CERN SSO flows, and the
-    cache utility; no module contains a hardcoded operator path (/Users/,
-    /root/, /home/ literals) or a credential value; credentials arrive only by
-    environment/credential_refs indirection.
+  statement: archi/auth/ consolidates the preflight probes, CERN SSO flows, and the
+    cache utility; no module contains a hardcoded operator path (/Users/, /root/,
+    /home/ literals) or a credential value; credentials arrive only by environment/credential_refs
+    indirection.
   evidence_policy:
     required:
     - executed_test
@@ -69,18 +68,18 @@ requirements:
     and: []
   acceptance:
   - id: acc.w2.auth
-    description: A lint test asserts no hardcoded operator paths or credential literals in python/archi.
+    description: A lint test asserts no hardcoded operator paths or credential literals
+      in python/archi.
     evidence:
     - executed_test
 - id: req.w2.sources
   title: The source families port against the current adapter contract
-  statement: >-
-    Every source in the porting matrix lands rewritten against the current
-    SourceAdapter + registry contract (sound change probe, producer authority,
-    admission mode), with offline unit tests, a documented registry-entry
-    template, and okg deployment lint green on a scratch registry entry. The
-    parity families (jira, docsite, gitlab_docs) come first; the TWiki
-    three-way merge produces exactly one parser.
+  statement: Every source in the porting matrix lands rewritten against the current
+    SourceAdapter + registry contract (sound change probe, producer authority, admission
+    mode), with offline unit tests, a documented registry-entry template, and okg
+    deployment lint green on a scratch registry entry. The parity families (jira,
+    docsite, gitlab_docs) come first; the TWiki three-way merge produces exactly one
+    parser.
   evidence_policy:
     required:
     - executed_test
@@ -96,19 +95,17 @@ requirements:
     and: []
   acceptance:
   - id: acc.w2.sources
-    description: >-
-      Per-source fixture-driven unit tests pass offline; at least the parity
-      families demonstrate a scratch-instance ingest cycle; provenance
-      (source repo + ref + what changed) is recorded per port.
+    description: Per-source fixture-driven unit tests pass offline; at least the parity
+      families demonstrate a scratch-instance ingest cycle; provenance (source repo
+      + ref + what changed) is recorded per port.
     evidence:
     - executed_test
 - id: req.w2.enrichment
   title: Enrichers and identifier/link defaults are importable package data
-  statement: >-
-    The five CMS enrichers, the alias backend, and the extractor/linker/
-    identifier-pattern defaults move into archi/enrichment/, consumable by an
-    instance's config as selectable defaults (wisdqm's DQM patterns included —
-    the second call site exists).
+  statement: "The five CMS enrichers, the alias backend, and the extractor/linker/\
+    \ identifier-pattern defaults move into archi/enrichment/, consumable by an instance's\
+    \ config as selectable defaults (wisdqm's DQM patterns included \u2014 the second\
+    \ call site exists)."
   evidence_policy:
     required:
     - executed_test
@@ -124,15 +121,15 @@ requirements:
     and: []
   acceptance:
   - id: acc.w2.enrichment
-    description: Unit tests load the defaults from the installed wheel and validate their shape.
+    description: Unit tests load the defaults from the installed wheel and validate
+      their shape.
     evidence:
     - executed_test
 - id: req.w2.compops-unbroken
   title: The comp-ops instance stays green throughout
-  statement: >-
-    W2 does not switch okg-deployments/cms to the package (that is W7); its
-    lint and checks must pass unchanged at every W2 merge (ADR 0001 D10 —
-    breaking comp-ops is a blocking regression).
+  statement: "W2 does not switch okg-deployments/cms to the package (that is W7);\
+    \ its lint and checks must pass unchanged at every W2 merge (ADR 0001 D10 \u2014\
+    \ breaking comp-ops is a blocking regression)."
   evidence_policy:
     required:
     - executed_test
@@ -148,13 +145,14 @@ requirements:
     and: []
   acceptance:
   - id: acc.w2.compops
-    description: The comp-ops lint baseline is recorded before W2 starts and re-checked per merge.
+    description: The comp-ops lint baseline is recorded before W2 starts and re-checked
+      per merge.
     evidence:
     - executed_test
 tasks:
 - id: task.w2.packaging
   title: python/ package skeleton + CI wheel lane
-  status: todo
+  status: done
   verification: python/tests/test_packaging.py
   requirements:
   - req.w2.packaging
@@ -166,8 +164,8 @@ tasks:
     description: CI secret for okg-dependent test lanes (Luca to add to the repo).
     required: false
 - id: task.w2.auth
-  title: archi/auth — preflight, SSO, cache util
-  status: todo
+  title: "archi/auth \u2014 preflight, SSO, cache util"
+  status: done
   verification: python/tests/auth/
   requirements:
   - req.w2.auth
@@ -198,7 +196,8 @@ tasks:
   evidence: []
   environment: []
 - id: task.w2.sources-catalogs
-  title: 'Catalogs: cric, cmssw (merge W1 spike), dbs, conddb, dqm, gocdb, siteconf, wmstats, github_repos, hypernews, indico'
+  title: 'Catalogs: cric, cmssw (merge W1 spike), dbs, conddb, dqm, gocdb, siteconf,
+    wmstats, github_repos, hypernews, indico'
   status: todo
   verification: python/tests/sources/
   requirements:
@@ -206,7 +205,7 @@ tasks:
   evidence: []
   environment: []
 - id: task.w2.enrichment
-  title: archi/enrichment — enrichers, alias backend, defaults
+  title: "archi/enrichment \u2014 enrichers, alias backend, defaults"
   status: todo
   verification: python/tests/enrichment/
   requirements:
@@ -221,11 +220,7 @@ tasks:
   - req.w2.compops-unbroken
   evidence: []
   environment: []
-dependencies:
-- from: task.w2.packaging
-  to: task.w1-prove-the-seam
-  kind: requires
-  rationale: The python/ package seeds from the w1-prove-the-seam spike.
+dependencies: []
 test_plan:
 - id: test.req-w2-packaging.python-tests-test-packaging
   requirement: req.w2.packaging
@@ -254,4 +249,50 @@ test_plan:
   - graph_report
 formal: []
 waivers: []
-evidence: []
+evidence:
+- id: ev.pytest.req-w2-packaging.20260811T210431898899Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.packaging
+  artifact: python/tests/test_packaging.py
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_packaging.py
+    -q
+  summary: '7/7: wheel builds from python/ (hatchling), v3 never imports v2, schema
+    ships in wheel, no operator paths, root build untouched'
+  data:
+    attached_at: '2026-08-11T21:04:31.898947+00:00'
+- id: ev.pytest.req-w2-packaging.20260811T210527248898Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.packaging
+  artifact: python/tests/test_packaging.py
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_packaging.py
+    -q
+  summary: '7/7: wheel builds from python/ (hatchling), v3 never imports v2, schema
+    ships in wheel, no operator paths, root build untouched'
+  data:
+    attached_at: '2026-08-11T21:05:27.249012+00:00'
+- id: ev.pytest.req-w2-auth.20260812T003827308891Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.auth
+  artifact: python/tests/auth/
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/auth/ -q
+  summary: 46/46 auth tests incl. review-fix regressions; no-operator-paths lint green
+    in packaging suite
+  data:
+    attached_at: '2026-08-12T00:38:27.308914+00:00'
+- id: ev.pytest.req-w2-auth.20260812T003850633918Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.auth
+  artifact: python/tests/auth/
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/auth/ -q
+  summary: 45/45 auth tests incl. two review-fix regressions (corrects prior entry's
+    46/46 typo); no-operator-paths lint green in packaging suite
+  data:
+    attached_at: '2026-08-12T00:38:50.633941+00:00'
