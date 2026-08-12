@@ -75,6 +75,10 @@ classes:
       okg_alias_fields: full_name
       okg_searchable_text_fields: name,full_name,url,text
 
-# EdgeNarrowings live in schemas/bridges/w2_sources.yaml — the catalog
-# composer only extracts subtypes from deployment schemas/*.yaml;
-# deployment-owned narrowings must come from schemas/bridges/.
+# EdgeNarrowings live in archi/schemas/bridges/sources.yaml — the
+# catalog composer only extracts subtypes from deployment
+# schemas/*.yaml; deployment-owned narrowings must come from
+# schemas/bridges/. Copy both packaged files into the deployment:
+# archi/schemas/sources.yaml -> <deployment>/schemas/sources.yaml and
+# archi/schemas/bridges/sources.yaml ->
+# <deployment>/schemas/bridges/sources.yaml.

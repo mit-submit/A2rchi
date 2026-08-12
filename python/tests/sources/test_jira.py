@@ -217,6 +217,36 @@ def test_reference_edges_from_chunks(tmp_path):
     assert all(e.confidence == 0.95 for e in refs)
 
 
+def test_omitted_project_keys_bound_extraction_to_cache_projects(tmp_path):
+    """Without project_keys, regex extraction only accepts keys whose
+    project prefix exists in the records cache: free text like COVID-19
+    must not become an issue key, while in-family keys still resolve."""
+    records = [
+        {
+            "key": "ARCHI-1",
+            "summary": "cluster upgrade",
+            "issue_links": ["relates to ARCHI-7 during COVID-19 response"],
+        },
+        {"key": "ARCHI-7", "summary": "baseline"},
+    ]
+    (tmp_path / "data" / "jira").mkdir(parents=True)
+    (tmp_path / "data" / "jira" / "records.json").write_text(
+        json.dumps(records)
+    )
+    source = JiraIssueSource(
+        records_path="data/jira/records.json",
+        meta_path="data/jira/meta.json",
+        base=str(tmp_path),
+    )
+    _, facts = _run_facts(source)
+    by_issue = {
+        c.source_record_id["issue_key"]: c.attrs["text"]
+        for c in _nodes(facts, "document_chunk")
+    }
+    assert "issue_links: ARCHI-7" in by_issue["ARCHI-1"]
+    assert "COVID-19" not in by_issue["ARCHI-1"]
+
+
 def test_no_reference_targets_configured_means_no_reference_edges(tmp_path):
     records = [dict(FLAT_ISSUE, issue_links=[])]
     source = _write_caches(tmp_path, records)
@@ -269,6 +299,16 @@ def test_preflight_cache_missing_reports_expected_count(tmp_path):
     assert result.required is True
     assert "metadata reports 72000 records" in result.reason
     assert result.credential_refs == ("CERN_JIRA_TOKEN",)
+
+
+def test_preflight_corrupt_meta_reports_instead_of_raising(tmp_path):
+    source = _write_caches(tmp_path, records=None)
+    (tmp_path / "data" / "jira" / "meta.json").write_text(
+        '{"record_count": 72'  # truncated JSON
+    )
+    result = source.preflight()
+    assert result.status == "cache_missing"
+    assert "metadata reports" not in result.reason
 
 
 def test_preflight_ok(tmp_path):

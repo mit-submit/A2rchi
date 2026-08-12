@@ -40,7 +40,9 @@ Changes from the cms original:
   are constructor parameters. The hardcoded CMS project-key regex is
   replaced by :func:`issue_key_pattern` built from ``project_keys``
   (validated with :func:`parse_jira_project_keys`); without
-  ``project_keys`` a generic ``KEY-123`` pattern is used.
+  ``project_keys`` extraction is bounded to the project prefixes of
+  the issue keys present in the records cache (a bare generic
+  ``KEY-123`` pattern would match strings like ``COVID-19``).
 - Change probe: the original declared ``change_probe_kind =
   "content_hash"`` over its own cache, which silently skips when the
   cache is absent. Per the W2 porting matrix this mutable upstream now
@@ -101,6 +103,10 @@ are required or ingest fails after a green lint:
             - {src_subtype: jira_issue, edge_type: reported_by, dst_subtype: person}
             - {src_subtype: jira_issue, edge_type: contains, dst_subtype: document_chunk}
             - {src_subtype: document_chunk, edge_type: references, dst_subtype: jira_issue}
+            # Uncomment together with the matching params below:
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: cmssw_release}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: site}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: infrastructure_service}
         output_scope_summary:
           summary: JIRA issues, participants, and issue-text chunks from the records cache
           nodes: [jira_issue, person, document_chunk]
@@ -109,6 +115,10 @@ are required or ingest fails after a green lint:
             - jira_issue reported_by person
             - jira_issue contains document_chunk
             - document_chunk references jira_issue
+            # Uncomment together with the matching params below:
+            # - document_chunk references cmssw_release
+            # - document_chunk references site
+            # - document_chunk references infrastructure_service
       source_class: mutable_api
       record_identity_kind: remote_id
       record_identity_fields: [issue_key]
@@ -125,9 +135,17 @@ are required or ingest fails after a green lint:
         base_url: https://its.cern.ch/jira
         project_keys: [CMSCOMPPR, CMSPROD, CMSRUCIO, CMSALCA, CMSDM,
                        CMSTRANSF, CMSMONIT, CMSVOC, CMSTZ, PRCAMPAIGNS]
-        sites_path: data/cric/sites.json          # optional
-        releases_path: data/cmssw-releases/records.json  # optional
-        services_path: data/cric-core/services.json      # optional
+        # Optional reference-target caches — commented out on purpose.
+        # WARNING: enabling any of them requires (a) uncommenting the
+        # matching document_chunk references edges in output_signature
+        # AND output_scope_summary above, and (b) the target subtype +
+        # narrowing in the deployment schema: cmssw_release ships in
+        # archi/schemas/operations_w1.yaml with its narrowing in
+        # archi/schemas/bridges/sources.yaml; site and
+        # infrastructure_service arrive with the catalogs port.
+        # sites_path: data/cric/sites.json
+        # releases_path: data/cmssw-releases/records.json
+        # services_path: data/cric-core/services.json
       sync:
         triggers: [manual, reconcile]
         default_event_mode: scope_complete
@@ -162,6 +180,8 @@ DEFAULT_CHUNKER_NAME = "cms_jira_window_v1"
 
 JIRA_PROJECT_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _GENERIC_ISSUE_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9_]*-\d+\b")
+_ISSUE_KEY_PREFIX_RE = re.compile(r"([A-Z][A-Z0-9_]*)-\d+")
+_MATCH_NO_KEY_RE = re.compile(r"(?!)")  # never matches
 
 
 def parse_jira_project_keys(value: object, error_message: str) -> list[str]:
@@ -527,10 +547,18 @@ class JiraIssueSource:
             raise ValueError(
                 f"{self.records_path}: expected a JSON list of JIRA records"
             )
+        items = [item for item in payload if isinstance(item, dict)]
+        # Without configured project_keys the generic KEY-123 pattern
+        # would extract strings like COVID-19 from free text; mirror
+        # docs.py's intersect-with-known-keys discipline by bounding
+        # extraction to the project prefixes present in this cache.
+        key_re = (
+            self.issue_key_re
+            if self.project_keys
+            else _cache_bounded_key_pattern(items)
+        )
         records: list[JiraIssueRecord] = []
-        for item in payload:
-            if not isinstance(item, dict):
-                continue
+        for item in items:
             key = _pg_text(str(item.get("key") or item.get("issue_key") or ""))
             if not key:
                 continue
@@ -592,10 +620,12 @@ class JiraIssueSource:
                     or fields.get("fix_versions")
                 )),
                 issue_links=tuple(self._issue_keys_from_value(
-                    item.get("issue_links") or fields.get("issuelinks")
+                    item.get("issue_links") or fields.get("issuelinks"),
+                    key_re,
                 )),
                 subtasks=tuple(self._issue_keys_from_value(
-                    item.get("subtasks") or fields.get("subtasks")
+                    item.get("subtasks") or fields.get("subtasks"),
+                    key_re,
                 )),
                 recent_comments=tuple(_comment_texts(
                     item.get("recent_comments")
@@ -605,9 +635,34 @@ class JiraIssueSource:
             ))
         return records
 
-    def _issue_keys_from_value(self, value: Any) -> list[str]:
+    def _issue_keys_from_value(
+        self, value: Any, key_re: re.Pattern[str] | None = None
+    ) -> list[str]:
+        pattern = self.issue_key_re if key_re is None else key_re
         text = " ".join(_strings_from_value(value))
-        return sorted(set(self.issue_key_re.findall(text)))
+        return sorted(set(pattern.findall(text)))
+
+
+def _cache_bounded_key_pattern(
+    items: Sequence[dict[str, Any]],
+) -> re.Pattern[str]:
+    """Issue-key pattern bounded to the project prefixes in *items*.
+
+    Used when ``project_keys`` is omitted: extraction only accepts keys
+    whose project prefix belongs to an issue actually present in the
+    records cache, so free text like ``COVID-19`` cannot masquerade as
+    an issue key.
+    """
+    prefixes: set[str] = set()
+    for item in items:
+        key = _pg_text(str(item.get("key") or item.get("issue_key") or ""))
+        match = _ISSUE_KEY_PREFIX_RE.fullmatch(key)
+        if match:
+            prefixes.add(match.group(1))
+    if not prefixes:
+        return _MATCH_NO_KEY_RE
+    alternation = "|".join(re.escape(prefix) for prefix in sorted(prefixes))
+    return re.compile(rf"\b(?:{alternation})-\d+\b")
 
 
 def _checked_at() -> str:
@@ -618,7 +673,12 @@ def _expected_count(path: str, *, base: str | None = None) -> int | None:
     p = resolve_repo_path(path, base=base)
     if not p.is_file():
         return None
-    payload = load_json(path, base=base)
+    try:
+        payload = load_json(path, base=base)
+    except (ValueError, OSError):
+        # The count is informational; corrupt/unreadable meta must
+        # degrade the preflight report, not crash it.
+        return None
     if not isinstance(payload, dict):
         return None
     value = payload.get("record_count")

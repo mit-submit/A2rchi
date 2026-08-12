@@ -21,11 +21,20 @@ Changes from the original:
   handling goes through :mod:`archi.auth.cookies` (jar loading,
   offline freshness in preflight, login-bounce detection during the
   crawl — the original ingested SSO login pages it was bounced to).
+- ``SSOCookieDocsSource.run`` reports a missing/unreadable cookie as
+  ``auth_failed`` and any per-page fetch failure or login bounce as a
+  partial crawl; neither may claim ``completed_scope`` — the original
+  reported ``ok``/complete in both cases, which under
+  ``missing_from_completed_scope`` deletion semantics would retract
+  previously ingested pages. A bounce means landing on an SSO host (or
+  a redirect to a login-looking body), never just ``/login`` in a
+  page's own path or ``auth.cern.ch`` in its text.
 - ``DocumentationSource.run`` reports ``cache_missing`` health when the
   records cache is absent instead of raising from ``load_json``.
 - The reference-target caches (sites / releases / jira / services) are
-  optional (default ``None`` -> no reference edges of that kind); the
-  original raised if the sites or releases caches were missing.
+  optional (default ``None`` -> no reference edges of that kind). As in
+  the original, a *configured* sites/releases/services path whose file
+  is missing raises; only unconfigured caches are skipped silently.
 - The CMS project-key regex for issue references is generalized to any
   JIRA-style key; matches are still bounded by intersection with the
   keys actually present in the configured jira records cache.
@@ -64,6 +73,10 @@ ingest); (2) ``output_scope_summary`` must accompany
             - {src_subtype: software_repository, edge_type: contains, dst_subtype: documentation_page}
             - {src_subtype: documentation_page, edge_type: contains, dst_subtype: document_chunk}
             - {src_subtype: document_chunk, edge_type: references, dst_subtype: jira_issue}
+            # Uncomment together with the matching params below:
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: cmssw_release}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: site}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: infrastructure_service}
         output_scope_summary:
           summary: documentation pages, their repos, and text chunks from the records cache
           nodes: [documentation_page, software_repository, document_chunk]
@@ -71,6 +84,10 @@ ingest); (2) ``output_scope_summary`` must accompany
             - software_repository contains documentation_page
             - documentation_page contains document_chunk
             - document_chunk references jira_issue
+            # Uncomment together with the matching params below:
+            # - document_chunk references cmssw_release
+            # - document_chunk references site
+            # - document_chunk references infrastructure_service
       source_class: discovery_crawl
       record_identity_kind: scoped_locator
       record_identity_fields: [url]
@@ -82,6 +99,17 @@ ingest); (2) ``output_scope_summary`` must accompany
         source_name: docsite
         required: true
         records_path: data/docsite/records.json
+        # Optional reference-target caches — commented out on purpose.
+        # WARNING: enabling any of them requires (a) uncommenting the
+        # matching document_chunk references edges in output_signature
+        # AND output_scope_summary above, and (b) the target subtype +
+        # narrowing in the deployment schema: cmssw_release ships in
+        # archi/schemas/operations_w1.yaml with its narrowing in
+        # archi/schemas/bridges/sources.yaml; site and
+        # infrastructure_service arrive with the catalogs port.
+        # sites_path: data/cric/sites.json
+        # releases_path: data/cmssw-releases/records.json
+        # services_path: data/cric-core/services.json
 
     gitlab_docs:
       module: archi.sources.docs
@@ -174,7 +202,6 @@ from archi.auth.cookies import (
     check_cookie_file,
     load_cookie_jar,
     looks_like_login_page,
-    looks_like_login_url,
 )
 
 _CHUNK_SIZE = 4000
@@ -443,7 +470,32 @@ class SSOCookieDocsSource(DocumentationSource):
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        session = self._cookie_session()
+        if session is None:
+            # A missing/unreadable cookie is an auth failure, not an
+            # empty-but-complete crawl: with completed_scope=True the
+            # registry's missing_from_completed_scope semantics would
+            # retract every previously ingested page.
+            return SourceRun(
+                facts=(),
+                completed_scope=False,
+                run_mode=mode,
+                health=SourceHealth(
+                    status="auth_failed",
+                    mode="live",
+                    credential_refs=(self.cookie_file_env,),
+                    record_count=0,
+                    content_hash=None,
+                    reason=(
+                        f"SSO cookie file referenced by "
+                        f"{self.cookie_file_env} is missing or unreadable; "
+                        "no pages fetched and no complete scope claimed"
+                    ),
+                    checked_at=_checked_at(),
+                ),
+            )
+        crawl = self._crawl(session)
+        records = list(crawl.records)
         record_hash = _records_hash(records)
         revision = {
             "run_id": run_id,
@@ -462,6 +514,29 @@ class SSOCookieDocsSource(DocumentationSource):
                 chunker_name=self.chunker_name,
             )
 
+        if crawl.failed_urls:
+            # A partially failed crawl must never claim a complete scope
+            # (missing_from_completed_scope would retract the failed
+            # pages' records); emit what succeeded and report the rest.
+            samples = ", ".join(crawl.failed_urls[:3])
+            return SourceRun(
+                facts=_facts(),
+                completed_scope=False,
+                run_mode=mode,
+                health=SourceHealth(
+                    status="endpoint_failed",
+                    mode="live",
+                    credential_refs=(self.cookie_file_env,),
+                    record_count=len(records),
+                    content_hash=record_hash,
+                    reason=(
+                        f"partial crawl: {len(crawl.failed_urls)}/"
+                        f"{crawl.total_urls} sitemap pages failed (fetch "
+                        f"error or SSO login bounce), e.g. {samples}; "
+                        "no complete scope claimed"
+                    ),
+                ),
+            )
         return SourceRun(
             facts=_facts(),
             completed_scope=(mode in {"scope_complete", "reconcile"}),
@@ -476,15 +551,25 @@ class SSOCookieDocsSource(DocumentationSource):
             ),
         )
 
-    def _records(self) -> list[DocumentationRecord]:
+    def _cookie_session(self) -> requests.Session | None:
+        """Session carrying the SSO cookie jar; ``None`` when the cookie
+        env var is unset or the file is missing/unparseable."""
         cookie_file = os.environ.get(self.cookie_file_env, "")
         if not cookie_file or not Path(cookie_file).is_file():
-            return []
+            return None
+        try:
+            jar = load_cookie_jar(cookie_file)
+        except Exception:  # noqa: BLE001
+            return None
         session = requests.Session()
-        session.cookies = load_cookie_jar(cookie_file)
+        session.cookies = jar
+        return session
+
+    def _crawl(self, session: requests.Session) -> _CrawlOutcome:
         sitemap = session.get(self.sitemap_url, timeout=30)
         sitemap.raise_for_status()
         if _login_bounce(
+            self.sitemap_url,
             str(getattr(sitemap, "url", "") or ""),
             getattr(sitemap, "text", "") or "",
         ):
@@ -497,15 +582,18 @@ class SSOCookieDocsSource(DocumentationSource):
         if self.max_pages is not None:
             urls = urls[: self.max_pages]
         records: list[DocumentationRecord] = []
+        failed_urls: list[str] = []
         for url in urls:
             try:
                 resp = session.get(url, timeout=30)
                 resp.raise_for_status()
             except Exception:  # noqa: BLE001
+                failed_urls.append(url)
                 continue
             final_url = str(getattr(resp, "url", url) or url)
             text = getattr(resp, "text", "") or ""
-            if _login_bounce(final_url, text):
+            if _login_bounce(url, final_url, text):
+                failed_urls.append(url)
                 continue
             title = _extract_title(text) or urlparse(url).path.rstrip(
                 "/"
@@ -521,11 +609,45 @@ class SSOCookieDocsSource(DocumentationSource):
                     site_name=urlparse(url).netloc,
                 )
             )
-        return records
+        return _CrawlOutcome(
+            records=tuple(records),
+            failed_urls=tuple(failed_urls),
+            total_urls=len(urls),
+        )
 
 
-def _login_bounce(url: str, text: str) -> bool:
-    return looks_like_login_url(url) or looks_like_login_page(text[:2000])
+@dataclass(frozen=True)
+class _CrawlOutcome:
+    """One sitemap crawl: emitted records plus the pages that failed."""
+
+    records: tuple[DocumentationRecord, ...]
+    failed_urls: tuple[str, ...]
+    total_urls: int
+
+
+_SSO_LOGIN_HOSTS = frozenset({"auth.cern.ch", "login.cern.ch"})
+
+
+def _is_sso_login_host(url: str) -> bool:
+    host = urlparse(url).hostname or ""
+    return host.lower() in _SSO_LOGIN_HOSTS
+
+
+def _login_bounce(requested_url: str, final_url: str, text: str) -> bool:
+    """True only when the fetch actually landed on CERN SSO.
+
+    A bounce means the final response URL's host *is* an SSO login host,
+    or the request was redirected away from *requested_url* and the body
+    reads as a login page. A non-redirected 200 whose own path merely
+    contains ``/login`` or ``/sso/``, or whose body just mentions
+    ``auth.cern.ch``, is a legitimate docs page — the pre-fix substring
+    checks silently dropped such pages.
+    """
+    if _is_sso_login_host(final_url):
+        return True
+    if final_url and final_url != requested_url:
+        return looks_like_login_page(text[:2000])
+    return False
 
 
 def _checked_at() -> str:
@@ -661,6 +783,12 @@ def _page_node(
             "site_name": record.site_name,
             "path": record.path,
             "text": " ".join(filter(None, [record.title, record.body])),
+            # Parity with the original's optional-attr filter: of the
+            # github_file_content extras only these two survived its
+            # ``value not in ("", 0)`` check on docsite/gitlab/SSO pages
+            # (record_kind is always set; ``[]`` passes the filter).
+            "record_kind": "documentation_page",
+            "service_aliases": [],
         },
         source_record_id=record.source_record_id,
         source_revision=revision,
@@ -745,13 +873,37 @@ def _reference_targets(
     services_path: str | None = None,
     base: str | None = None,
 ) -> dict[str, Any]:
-    """Known reference targets; every cache is optional (empty when absent)."""
+    """Known reference targets.
+
+    Unconfigured caches (``None``) are skipped silently (no reference
+    edges of that kind). A *configured* sites/releases/services path
+    whose file is missing raises, as in the original — a silently empty
+    target set would drop every reference edge of that kind without a
+    trace. The jira cache keeps the original's skip-when-absent
+    behavior.
+    """
     return {
         "site": _known_sites(sites_path, base=base),
         "release": _known_releases(releases_path, base=base),
         "jira": _known_jira(jira_records_path, base=base),
         "service": _known_services(services_path, base=base),
     }
+
+
+def _configured_json(path: str | None, *, base: str | None = None) -> Any:
+    """Load a configured reference cache; ``None`` means not configured.
+
+    A configured-but-missing file raises so misconfiguration surfaces
+    instead of yielding a silently empty reference-target set.
+    """
+    if not path:
+        return None
+    resolved = resolve_repo_path(path, base=base)
+    if not resolved.is_file():
+        raise FileNotFoundError(
+            f"{path}: configured reference cache is missing ({resolved})"
+        )
+    return load_json(path, base=base)
 
 
 def _optional_json(path: str | None, *, base: str | None = None) -> Any:
@@ -761,14 +913,14 @@ def _optional_json(path: str | None, *, base: str | None = None) -> Any:
 
 
 def _known_sites(path: str | None, *, base: str | None = None) -> set[str]:
-    payload = _optional_json(path, base=base)
+    payload = _configured_json(path, base=base)
     if isinstance(payload, dict):
         return {str(k) for k in payload}
     return set()
 
 
 def _known_releases(path: str | None, *, base: str | None = None) -> set[str]:
-    payload = _optional_json(path, base=base)
+    payload = _configured_json(path, base=base)
     if not isinstance(payload, list):
         return set()
     return {
@@ -792,7 +944,7 @@ def _known_jira(path: str | None, *, base: str | None = None) -> set[str]:
 def _known_services(
     path: str | None, *, base: str | None = None
 ) -> dict[str, set[str]]:
-    payload = _optional_json(path, base=base)
+    payload = _configured_json(path, base=base)
     if not isinstance(payload, dict):
         return {}
     lookup: dict[str, set[str]] = {}

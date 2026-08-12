@@ -101,6 +101,10 @@ def test_page_node_ids_and_attrs(tmp_path):
     assert plain.attrs["text"].startswith("Ops Guide ")
     assert plain.source_record_id == {"url": PAGE_PLAIN["url"]}
     assert plain.source_revision["run_id"] == "run-1"
+    # Parity attrs the original emitted on every documentation_page.
+    for page in pages.values():
+        assert page.attrs["record_kind"] == "documentation_page"
+        assert page.attrs["service_aliases"] == []
 
 
 def test_payload_dedup_and_junk_tolerance(tmp_path):
@@ -183,9 +187,26 @@ def test_reference_edges_all_four_kinds(tmp_path):
 
 
 def test_missing_reference_caches_mean_no_reference_edges(tmp_path):
+    # Unconfigured (None) reference caches are skipped silently.
     source = _write_docsite(tmp_path, [PAGE_PLAIN], with_targets=False)
     facts = list(source.run("r").facts)
     assert _edges(facts, "references") == []
+
+
+@pytest.mark.parametrize(
+    "param", ["sites_path", "releases_path", "services_path"]
+)
+def test_configured_but_missing_reference_cache_raises(tmp_path, param):
+    # A configured path whose file is absent must raise (as the original
+    # did), not silently emit zero reference edges of that kind.
+    _write_docsite(tmp_path, [PAGE_PLAIN])
+    source = DocumentationSource(
+        records_path="data/docsite/records.json",
+        base=str(tmp_path),
+        **{param: "data/absent/cache.json"},
+    )
+    with pytest.raises(FileNotFoundError, match="data/absent/cache.json"):
+        source.run("r")
 
 
 # --- DocumentationSource: record-set/deletion + preflight + probe -----------
@@ -374,10 +395,128 @@ def test_sso_run_wires_cookie_jar_and_crawls_sitemap(monkeypatch, tmp_path):
     assert page_a.attrs["site_name"] == "docs.example.cern.ch"
     assert "Alpha body" in page_a.attrs["body"]
     assert page_a.source_revision["sitemap_url"] == SITEMAP_URL
-    assert run.health.status == "ok"
+    # bounce + HTTP error are per-page failures -> partial health.
+    assert run.health.status == "endpoint_failed"
+    assert "partial crawl: 2/5" in run.health.reason
     assert run.health.mode == "live"
     assert run.health.record_count == 2
     assert run.health.credential_refs == (COOKIE_ENV,)
+
+
+def test_sso_partial_crawl_never_claims_complete_scope(monkeypatch, tmp_path):
+    cookie_path = tmp_path / "sso.txt"
+    _write_cookie_file(cookie_path)
+    monkeypatch.setenv(COOKIE_ENV, str(cookie_path))
+    _fake_sessions(monkeypatch, _default_responses())
+    run = _sso_source().run("r", mode="scope_complete")
+    facts = list(run.facts)
+    # The successful pages are still emitted...
+    assert {n.attrs["url"] for n in _nodes(facts, "documentation_page")} == {
+        "https://docs.example.cern.ch/a/",
+        "https://docs.example.cern.ch/b/",
+    }
+    # ...but a partially failed crawl must never claim a complete scope
+    # (missing_from_completed_scope would retract the failed pages).
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "2/5" in run.health.reason
+    assert "https://docs.example.cern.ch/bounced/" in run.health.reason
+    assert "https://docs.example.cern.ch/broken/" in run.health.reason
+
+
+def test_sso_clean_crawl_claims_complete_scope(monkeypatch, tmp_path):
+    cookie_path = tmp_path / "sso.txt"
+    _write_cookie_file(cookie_path)
+    monkeypatch.setenv(COOKIE_ENV, str(cookie_path))
+    sitemap = (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        b"  <url><loc>https://docs.example.cern.ch/a/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/empty/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/b/</loc></url>\n"
+        b"</urlset>\n"
+    )
+    responses = _default_responses()
+    responses[SITEMAP_URL] = _FakeResponse(200, "", SITEMAP_URL, sitemap)
+    _fake_sessions(monkeypatch, responses)
+    run = _sso_source().run("r", mode="scope_complete")
+    pages = _nodes(list(run.facts), "documentation_page")
+    # Zero failures: empty-body pages are skipped without counting as
+    # failures, so the run may claim the complete scope.
+    assert {p.attrs["url"] for p in pages} == {
+        "https://docs.example.cern.ch/a/",
+        "https://docs.example.cern.ch/b/",
+    }
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+
+
+def test_sso_login_lookalike_pages_are_ingested_not_bounced(
+    monkeypatch, tmp_path
+):
+    cookie_path = tmp_path / "sso.txt"
+    _write_cookie_file(cookie_path)
+    monkeypatch.setenv(COOKIE_ENV, str(cookie_path))
+    sitemap = (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        b"  <url><loc>https://docs.example.cern.ch/login-guide/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/sso/usage/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/auth-mention/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/real-bounce/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/proxy-bounce/</loc></url>\n"
+        b"</urlset>\n"
+    )
+    responses = {
+        SITEMAP_URL: _FakeResponse(200, "", SITEMAP_URL, sitemap),
+        # Non-redirected 200s whose path contains /login or /sso/, or
+        # whose body merely mentions auth.cern.ch: legit docs pages.
+        "https://docs.example.cern.ch/login-guide/": _FakeResponse(
+            200,
+            "<html><title>Login Guide</title><body>How to log in"
+            " to the cluster.</body></html>",
+            "https://docs.example.cern.ch/login-guide/",
+        ),
+        "https://docs.example.cern.ch/sso/usage/": _FakeResponse(
+            200,
+            "<html><title>SSO Usage</title><body>Configuring service"
+            " accounts.</body></html>",
+            "https://docs.example.cern.ch/sso/usage/",
+        ),
+        "https://docs.example.cern.ch/auth-mention/": _FakeResponse(
+            200,
+            "<html><title>Tokens</title><body>Point your browser at"
+            " auth.cern.ch to fetch a token.</body></html>",
+            "https://docs.example.cern.ch/auth-mention/",
+        ),
+        # Redirected to an SSO host: a real bounce.
+        "https://docs.example.cern.ch/real-bounce/": _FakeResponse(
+            200,
+            "<html><title>Sign in to CERN</title></html>",
+            "https://auth.cern.ch/auth/realms/cern",
+        ),
+        # Redirected away + login-looking body: also a bounce.
+        "https://docs.example.cern.ch/proxy-bounce/": _FakeResponse(
+            200,
+            "<html><title>Sign in to CERN</title><body>Sign in to CERN"
+            "</body></html>",
+            "https://sso-proxy.example.org/gate?next=proxy-bounce",
+        ),
+    }
+    _fake_sessions(monkeypatch, responses)
+    run = _sso_source().run("r", mode="scope_complete")
+    pages = {
+        n.attrs["url"] for n in _nodes(list(run.facts), "documentation_page")
+    }
+    assert pages == {
+        "https://docs.example.cern.ch/login-guide/",
+        "https://docs.example.cern.ch/sso/usage/",
+        "https://docs.example.cern.ch/auth-mention/",
+    }
+    # The two real bounces count as failures: partial, incomplete scope.
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "2/5" in run.health.reason
 
 
 def test_sso_run_honors_max_pages(monkeypatch, tmp_path):
@@ -411,7 +550,33 @@ def test_sso_run_without_cookie_yields_no_records(monkeypatch):
     monkeypatch.delenv(COOKIE_ENV, raising=False)
     run = _sso_source().run("r")
     assert list(run.facts) == []
+    # A missing cookie is an auth failure, never a healthy empty crawl
+    # that could retract every page via missing_from_completed_scope.
+    assert run.completed_scope is False
+    assert run.health.status == "auth_failed"
     assert run.health.record_count == 0
+    assert run.health.mode == "live"
+    assert run.health.credential_refs == (COOKIE_ENV,)
+    assert "no complete scope" in run.health.reason
+
+
+def test_sso_run_missing_or_unparseable_cookie_never_completes_scope(
+    monkeypatch, tmp_path
+):
+    # Env var set but the file does not exist.
+    monkeypatch.setenv(COOKIE_ENV, str(tmp_path / "absent.txt"))
+    run = _sso_source().run("r", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "auth_failed"
+    # File exists but is not a Netscape cookie jar.
+    bad = tmp_path / "bad.txt"
+    bad.write_text("definitely not a cookie jar")
+    monkeypatch.setenv(COOKIE_ENV, str(bad))
+    run = _sso_source().run("r", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "auth_failed"
 
 
 def test_sso_probe_declarations():
