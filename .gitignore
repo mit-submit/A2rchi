@@ -50,3 +50,4 @@ tests/ui/playbooks.spec.ts
 .claude/
 .okg/
 python/dist/
+profiles/
