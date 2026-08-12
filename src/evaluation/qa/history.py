@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 from .artifacts import iter_jsonl, read_json, read_jsonl, verify_hashes
 from .constants import ATTEMPT_LIFECYCLE_STATUSES, SCHEMA_VERSION
 from .preparation import load_preparation_records, load_preparation_rows
-from .schema import ConsoleMetadata, RunManifest
+from .schema import CanceledRunRecord, ConsoleMetadata, RunManifest
 from .tool_traces import serialize_tool_call_records
 
 LEGACY_SCHEMA_VERSION = "qa-v0"
@@ -105,6 +105,42 @@ class EvaluationHistory:
             return None
         verify_hashes(path, manifest.artifacts, [filename])
         return ConsoleMetadata.from_dict(read_json(metadata_path))
+
+    @staticmethod
+    def _load_canceled(path: Path) -> Optional[CanceledRunRecord]:
+        canceled_path = path / "canceled.json"
+        if not canceled_path.is_file():
+            return None
+        return CanceledRunRecord.from_dict(read_json(canceled_path))
+
+    @staticmethod
+    def _canceled_row(history_id: str, canceled: CanceledRunRecord) -> Dict[str, Any]:
+        metadata = canceled.metadata
+        return {
+            "id": history_id,
+            "run_id": canceled.run_id,
+            "name": metadata.name or canceled.run_id,
+            "status": "canceled",
+            "created_at": metadata.created_at or canceled.canceled_at,
+            "dataset_id": metadata.dataset_id,
+            "dataset_key": metadata.dataset_id or f"canceled:{canceled.run_id}",
+            "dataset_name": metadata.dataset_name or "CLI snapshot",
+            "profile_id": metadata.profile_id,
+            "profile_name": metadata.profile_name,
+            "agent_spec": metadata.agent_spec,
+            "attempts": canceled.attempts,
+            "retry_of_history_id": metadata.retry_of_history_id,
+            "retry_number": metadata.retry_number,
+            "overall_attempt_pass_rate": None,
+            "passed_attempts": None,
+            "quality_accounted_attempts": None,
+            "attempt_lifecycle_counts": None,
+            "technical_failure_rate": None,
+            "latency": None,
+            "schema_version": SCHEMA_VERSION,
+            "capabilities": {"retry_failed": False},
+            "valid": True,
+        }
 
     @staticmethod
     def _legacy_preparation_rows(path: Path) -> Iterator[Dict[str, Any]]:
@@ -400,6 +436,16 @@ class EvaluationHistory:
         for path in self._run_paths():
             history_id = _history_id(path)
             try:
+                canceled = self._load_canceled(path)
+                if canceled is not None:
+                    row = self._canceled_row(history_id, canceled)
+                    sort_value = self._timestamp_sort_value(
+                        row["created_at"], context="canceled run creation timestamp"
+                    )
+                    assert sort_value is not None
+                    if cutoff_sort_value is None or sort_value >= cutoff_sort_value:
+                        rows.append((sort_value, row))
+                    continue
                 manifest = self._load_manifest(path)
                 metadata = self._load_console_metadata(path, manifest)
                 phase_timestamps = []
@@ -509,6 +555,24 @@ class EvaluationHistory:
 
     def get_run(self, history_id: str) -> Dict[str, Any]:
         path = self._resolve(history_id)
+        canceled = self._load_canceled(path)
+        if canceled is not None:
+            return {
+                "id": history_id,
+                "manifest": {
+                    "schema_version": SCHEMA_VERSION,
+                    "run_id": canceled.run_id,
+                    "status": "canceled",
+                    "phases": {},
+                },
+                "metadata": canceled.metadata.to_dict(),
+                "capabilities": {"retry_failed": False},
+                "cancellation": {"canceled_at": canceled.canceled_at},
+                "prepared_items": [],
+                "answers": [],
+                "evaluation_results": [],
+                "report_available": False,
+            }
         manifest = self._load_manifest(path)
         metadata = self._load_console_metadata(path, manifest)
         snapshot = manifest.snapshot
@@ -562,6 +626,8 @@ class EvaluationHistory:
 
     def get_report(self, history_id: str) -> str:
         path = self._resolve(history_id)
+        if self._load_canceled(path) is not None:
+            raise LookupError("evaluation report not found")
         manifest = self._load_manifest(path)
         report = path / "report.md"
         if not report.is_file():

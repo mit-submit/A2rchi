@@ -65,6 +65,73 @@ test.describe("QA evaluation console", () => {
     expect(mobileRightInset).toBe(mobileLeftInset);
   });
 
+  test("cancels the active evaluation and records it in history", async ({ page }) => {
+    let canceled = false;
+    const activeJob = {
+      id: "job-active",
+      kind: "evaluation",
+      status: "running",
+      context: { name: "Mistaken run", workspace_id: "workspace-active", attempts: 1 },
+    };
+    const canceledRun = {
+      id: "history-canceled",
+      run_id: "workspace-active",
+      name: "Mistaken run",
+      status: "canceled",
+      created_at: "2026-08-12T10:00:00+00:00",
+      dataset_name: "Reviewed set",
+      agent_spec: "agent.md",
+      attempts: 1,
+      overall_attempt_pass_rate: null,
+      valid: true,
+    };
+    await page.route("**/api/evaluations/catalog", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          datasets: [], profiles: [], agents: [],
+          jobs: canceled ? [{ ...activeJob, status: "canceled" }] : [activeJob],
+        }),
+      });
+    });
+    await page.route("**/api/evaluations/runs?*", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ runs: canceled ? [canceledRun] : [] }),
+      });
+    });
+    await page.route("**/api/evaluations/jobs/job-active", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ job: { ...activeJob, status: canceled ? "canceled" : "running" } }),
+      });
+    });
+    await page.route("**/api/evaluations/jobs/job-active/cancel", async (route) => {
+      canceled = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          job: { ...activeJob, status: "canceled", completed_at: "2026-08-12T10:01:00+00:00" },
+          history_id: "history-canceled",
+        }),
+      });
+    });
+
+    await page.goto("/evaluations");
+    const cancelButton = page.getByRole("button", { name: "Cancel evaluation" });
+    await expect(cancelButton).toBeVisible();
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain("requests already accepted by a remote provider");
+      await dialog.accept();
+    });
+    await cancelButton.click();
+
+    await expect(page.locator("#job-banner")).toBeHidden();
+    await expect(page.locator("#runs-body")).toContainText("Mistaken run");
+    await expect(page.locator("#runs-body .status.canceled")).toHaveText("canceled");
+    await expect(page.locator("#toast")).toContainText("Evaluation canceled");
+  });
+
   test("reloads the run table and every trend from one bounded history window", async ({ page }) => {
     const requestedRanges: string[] = [];
     let releaseYear!: () => void;
@@ -521,6 +588,9 @@ test.describe("QA evaluation console", () => {
     await expect(page.locator('#trend-latency-chart [data-series="average"]')).toHaveCount(3);
     await expect(page.locator('#trend-pass-chart [data-series="pass"]')).toHaveCount(3);
     await expect(page.locator('#trend-failure-chart [data-series="failure"]')).toHaveCount(3);
+    await expect(
+      page.locator("#trend-latency-chart .trend-line.trend-average").first(),
+    ).toHaveCSS("stroke-dasharray", "none");
 
     const alphaAverage = page.getByRole("link", {
       name: /Alpha baseline.*Alpha set.*Average latency 200 ms/,

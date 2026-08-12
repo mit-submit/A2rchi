@@ -9,6 +9,7 @@ from pathlib import Path
 from flask import Flask
 
 import src.evaluation.qa.console as console_module
+import src.evaluation.qa.jobs as jobs_module
 from src.evaluation.qa.artifacts import (
     artifact_hashes,
     read_json,
@@ -18,6 +19,7 @@ from src.evaluation.qa.artifacts import (
     write_text,
 )
 from src.evaluation.qa.console import EvaluationConsoleService
+from src.evaluation.qa.workflow import QAWorkflow as ProductionQAWorkflow
 from src.interfaces.chat_app.evaluation_routes import register_evaluations
 
 
@@ -42,6 +44,8 @@ class FakeEvaluator:
 
 
 class FakeWorkflow:
+    require_worker_count = staticmethod(ProductionQAWorkflow.require_worker_count)
+
     def composite(
         self,
         dataset,
@@ -409,11 +413,20 @@ def create_app():
         "    default_provider: fake\n    default_model: fake-model\n",
     )
     console_module.LangChainEvaluatorRuntime = lambda profile: FakeEvaluator()
+    console_module.QAWorkflow = FakeWorkflow
+    production_popen = jobs_module.subprocess.Popen
+
+    def evaluation_test_popen(command, *args, **kwargs):
+        command = list(command)
+        if command[1:3] == ["-m", "src.evaluation.qa.worker"]:
+            command[2] = "tests.ui.evaluation_test_worker"
+        return production_popen(command, *args, **kwargs)
+
+    jobs_module.subprocess.Popen = evaluation_test_popen
     service = EvaluationConsoleService(
         root,
         agent_config_path=config_path,
         agents_dir=repository / "examples/agents",
-        workflow_factory=FakeWorkflow,
     )
 
     def allow(_permission):

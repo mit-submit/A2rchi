@@ -6,6 +6,7 @@ import pytest
 from flask import Flask
 
 from src.evaluation.qa import artifacts as artifact_utils
+from src.evaluation.qa import console as console_module
 from src.evaluation.qa.catalog import EvaluationCatalog
 from src.evaluation.qa.console import EvaluationConsoleService
 from src.evaluation.qa.history import EvaluationHistory
@@ -63,6 +64,13 @@ class _Service:
     def start_evaluation_retry(self, history_id):
         self.started.append(("evaluation-retry", history_id))
         return {"id": "job-evaluation-retry", "status": "queued"}
+
+    def cancel_evaluation(self, job_id):
+        self.started.append(("cancel", job_id))
+        return {
+            "job": {"id": job_id, "kind": "evaluation", "status": "canceled"},
+            "history_id": "canceled-history-id",
+        }
 
 
 def _app(tmp_path, denied_permissions=None):
@@ -425,18 +433,21 @@ def test_launch_route_defaults_phase_workers_for_older_clients(tmp_path):
     ]
 
 
-def test_partial_dataset_review_never_starts_generation_or_provider(tmp_path):
+def test_partial_dataset_review_never_starts_generation_or_provider(
+    monkeypatch, tmp_path
+):
     workflow_calls = []
 
     def workflow_factory():
         workflow_calls.append("created")
         raise AssertionError("the provider workflow must not be created")
 
+    monkeypatch.setattr(console_module, "QAWorkflow", workflow_factory)
+
     service = EvaluationConsoleService(
         tmp_path,
         agent_config_path=tmp_path / "config.yaml",
         agents_dir=tmp_path,
-        workflow_factory=workflow_factory,
     )
     dataset, _created = service.catalog.import_dataset(
         "Partial", "partial.json", _partial_dataset()
@@ -551,3 +562,29 @@ def test_retry_routes_enforce_manage_and_run_permissions(tmp_path):
     assert run_service.started == []
     assert atom_permissions == [Permission.Evaluations.MANAGE]
     assert run_permissions == [Permission.Evaluations.RUN]
+
+
+def test_cancel_route_uses_run_permission_and_returns_canceled_history(tmp_path):
+    app, service, permissions = _app(tmp_path)
+
+    response = app.test_client().post("/api/evaluations/jobs/job-run/cancel")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "job": {"id": "job-run", "kind": "evaluation", "status": "canceled"},
+        "history_id": "canceled-history-id",
+    }
+    assert service.started == [("cancel", "job-run")]
+    assert permissions == [Permission.Evaluations.RUN]
+
+
+def test_cancel_route_denies_user_without_run_permission(tmp_path):
+    app, service, permissions = _app(
+        tmp_path, denied_permissions={Permission.Evaluations.RUN}
+    )
+
+    response = app.test_client().post("/api/evaluations/jobs/job-run/cancel")
+
+    assert response.status_code == 403
+    assert service.started == []
+    assert permissions == [Permission.Evaluations.RUN]

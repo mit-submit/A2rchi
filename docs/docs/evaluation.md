@@ -567,7 +567,10 @@ rows, or import a dataset with zero atoms and generate all of them.
 6. Select **Start evaluation**.
 7. Watch the background job or leave the page; the run continues in the chat
    service.
-8. Open **Runs** to inspect status, answers, judgments, metrics, and the
+8. If the launch was accidental or takes too long, select **Cancel evaluation**
+   in the active-job banner and confirm. The local evaluation worker stops and
+   the run remains visible as `canceled`.
+9. Open **Runs** to inspect status, answers, judgments, metrics, and the
    report. The underlying run API and workspace also preserve the manifest,
    preparation records, and other raw artifacts listed below.
 
@@ -575,6 +578,11 @@ Only one atom-generation or evaluation job runs at a time in the v0 job
 manager. A conflicting launch returns HTTP 409. If the chat service restarts,
 a previously queued or running job is marked `interrupted`; it is not resumed
 automatically.
+
+Canceling stops the local evaluation process and its local child processes. It
+cannot recall a request a remote model provider has already accepted or undo an
+external tool side effect. Canceled runs have no score, trend point, report, or
+retry action.
 
 The Runs page is reconstructed from persisted artifacts. A malformed,
 unsupported, missing, or hash-mismatched workspace appears as an isolated
@@ -694,13 +702,15 @@ agent phase is complete, not that the overall evaluation passed.
 
 ### Console job states
 
-| Job status      | Meaning                                                        |
-| --------------- | -------------------------------------------------------------- |
-| `queued`      | Accepted by the console and waiting for its worker             |
-| `running`     | Background work is executing                                   |
-| `completed`   | The complete requested operation returned successfully         |
-| `failed`      | The operation raised an error; inspect the job's error field   |
-| `interrupted` | The service restarted before a queued or running job completed |
+| Job status          | Meaning                                                        |
+| ------------------- | -------------------------------------------------------------- |
+| `queued`            | Accepted by the console and waiting for its worker             |
+| `running`           | Background work is executing                                   |
+| `cancel_requested`  | Cancellation was accepted and worker termination is in progress |
+| `canceled`          | The evaluation worker stopped and canceled history was persisted |
+| `completed`         | The complete requested operation returned successfully         |
+| `failed`            | The operation raised an error; inspect the job's error field   |
+| `interrupted`       | The service restarted before a non-terminal job completed      |
 
 For a console evaluation, the job normally remains `running` while the
 workspace progresses through `prepared` and `run_completed`. The job becomes
@@ -857,8 +867,10 @@ original artifact from a trusted copy, or rerun the appropriate phase with
 ### The console says another job is active
 
 Atom generation and evaluation share a single-flight worker. Wait for the
-active job to finish. If the service restarted, refresh the catalog and verify
-that the old job was marked `interrupted`.
+active job to finish, or cancel it from the active-job banner when it is an
+evaluation. A `cancel_requested` job remains active until its process exits. If
+the service restarted, refresh the catalog and verify that the old job was
+marked `interrupted`.
 
 For exact command flags, see [`archi eval qa` in the CLI
 reference](cli_reference.md#archi-eval-qa). For deployment-level paths and

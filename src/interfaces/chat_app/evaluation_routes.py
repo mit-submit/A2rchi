@@ -67,6 +67,10 @@ def _authorize():
     elif request.method == "POST" and (
         request.path == "/api/evaluations/runs"
         or (
+            request.path.startswith("/api/evaluations/jobs/")
+            and request.path.endswith("/cancel")
+        )
+        or (
             request.path.startswith("/api/evaluations/runs/")
             and request.path.endswith("/retry-failed")
         )
@@ -315,6 +319,17 @@ def run_report(history_id):
 def job_detail(job_id):
     try:
         return jsonify({"job": _service().get_job(job_id)})
+    except Exception as exc:
+        return _error(exc)
+
+
+@evaluations_bp.route(
+    "/api/evaluations/jobs/<job_id>/cancel",
+    methods=["POST"],
+)
+def cancel_job(job_id):
+    try:
+        return jsonify(_service().cancel_evaluation(job_id))
     except Exception as exc:
         return _error(exc)
 

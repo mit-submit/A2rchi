@@ -49,16 +49,25 @@
   }
 
   function activeJob() {
-    return state.jobs.find((job) => ["queued", "running"].includes(job.status));
+    return state.jobs.find((job) => ["queued", "running", "cancel_requested"].includes(job.status));
   }
 
   function renderRuntime() {
     const job = activeJob();
-    const progress = job?.progress?.status;
+    const progress = job?.status === "cancel_requested" ? null : job?.progress?.status;
     $("#runtime-label").textContent = job ? `${job.kind.replace("_", " ")} · ${progress || job.status}` : "Ready";
     $("#metric-job").textContent = job ? "Yes" : "No";
     $("#job-banner").hidden = !job;
-    if (job) $("#job-banner").textContent = `${job.kind.replace("_", " ")} is ${progress || job.status}. This page can be closed; state is persisted.`;
+    const cancelButton = $("#cancel-evaluation");
+    if (job) {
+      $("#job-banner-message").textContent = `${job.kind.replace("_", " ")} is ${progress || job.status}. This page can be closed; state is persisted.`;
+      cancelButton.hidden = job.kind !== "evaluation";
+      cancelButton.disabled = job.status === "cancel_requested";
+      cancelButton.textContent = job.status === "cancel_requested" ? "Canceling…" : "Cancel evaluation";
+    } else {
+      $("#job-banner-message").textContent = "";
+      cancelButton.hidden = true;
+    }
   }
 
   function renderLaunchOptions() {
@@ -200,7 +209,7 @@
       <td><code>${esc(run.agent_spec || "resolved artifact")}</code></td>
       <td>${run.attempts ?? "—"}</td>
       <td>${percent(run.overall_attempt_pass_rate)}</td>
-      <td><span class="status ${run.valid ? (run.status === "scored" ? "good" : "run") : "bad"}">${esc(run.status)}</span></td>
+      <td><span class="status ${run.valid ? (run.status === "scored" ? "good" : (run.status === "canceled" ? "canceled" : "run")) : "bad"}">${esc(run.status)}</span></td>
     </tr>`).join("");
     $$("[data-run-id]").forEach((row) => row.addEventListener("click", () => openRun(row.dataset.runId)));
     renderHistoryTrends();
@@ -381,7 +390,7 @@
         return groups;
       }, []);
       const path = segments.filter((segment) => segment.length > 1)
-        .map((segment) => `<path class="trend-line trend-${definition.key}" pathLength="1" d="${svgPath(segment)}"></path>`)
+        .map((segment) => `<path class="trend-line trend-${definition.key}" d="${svgPath(segment)}"></path>`)
         .join("");
       const dots = points.map((point) => {
         const pointKey = `${kind}:${definition.key}:${point.run.id}`;
@@ -549,7 +558,8 @@
       const existing = state.jobs.findIndex((item) => item.id === job.id);
       if (existing >= 0) state.jobs[existing] = job; else state.jobs.unshift(job);
       renderRuntime();
-      if (["completed", "failed", "interrupted"].includes(job.status)) {
+      if (["completed", "failed", "interrupted", "canceled"].includes(job.status)) {
+        if (job.status === "canceled") return { canceled: true };
         if (job.status !== "completed") throw new Error(job.error || `Job ${job.status}`);
         return job.result || {};
       }
@@ -561,6 +571,11 @@
     state.pollingJobId = jobId;
     try {
       const result = await pollJob(jobId);
+      if (result.canceled) {
+        toast("Evaluation canceled", "The stopped run is recorded in history.");
+        await Promise.all([loadCatalog(), loadRuns()]);
+        return;
+      }
       toast("Background job completed", result.draft_id ? "The atom draft is ready to resume." : "The evaluation is available in history.");
       await Promise.all([loadCatalog(), loadRuns()]);
     } catch (error) {
@@ -901,7 +916,7 @@
       toast("Evaluation queued", "The run continues even if you leave this page.");
       const result = await pollJob(payload.job.id);
       await loadRuns();
-      await openRun(result.history_id);
+      if (result.canceled) showView("runs"); else await openRun(result.history_id);
     } catch (error) { toast("Could not run evaluation", error.message); }
   }
 
@@ -1316,6 +1331,12 @@
       $("#run-subtitle").textContent = `${meta.dataset_name || "CLI dataset snapshot"} · ${meta.agent_spec || manifest.agent?.agent_class || "resolved agent"}`;
       $("#report-link").href = `/api/evaluations/runs/${encodeURIComponent(id)}/report`;
       $("#report-link").hidden = !run.report_available;
+      if (manifest.status === "canceled") {
+        $("#retry-failed-evaluation").hidden = true;
+        $("#run-detail-content").innerHTML = `<section class="panel empty"><strong>This evaluation was canceled.</strong><span>No score or report was produced. Canceled ${esc(when(run.cancellation?.canceled_at))}.</span></section>`;
+        showView("run-detail");
+        return;
+      }
       const counts = summary.attempt_lifecycle_counts || {};
       const retryableCount = (counts.execution_failed || 0) + (counts.evaluation_failed || 0);
       const retryButton = $("#retry-failed-evaluation");
@@ -1380,7 +1401,7 @@
       toast("Evaluation retry queued", "Only technically failed attempts will invoke providers.");
       const result = await pollJob(payload.job.id);
       await loadRuns();
-      await openRun(result.history_id);
+      if (result.canceled) showView("runs"); else await openRun(result.history_id);
     } catch (error) {
       button.disabled = false;
       button.textContent = idleLabel;
@@ -1413,6 +1434,25 @@
   $("#evaluation-form").addEventListener("submit", launchEvaluation);
   $("#retry-failed-atoms").addEventListener("click", retryFailedAtoms);
   $("#retry-failed-evaluation").addEventListener("click", retryFailedEvaluation);
+  $("#cancel-evaluation").addEventListener("click", async () => {
+    const job = activeJob();
+    if (!job || job.kind !== "evaluation") return;
+    if (!window.confirm("Cancel this evaluation? Local evaluation work will stop, but requests already accepted by a remote provider cannot be recalled.")) return;
+    job.status = "cancel_requested";
+    renderRuntime();
+    try {
+      const payload = await api(`/api/evaluations/jobs/${encodeURIComponent(job.id)}/cancel`, { method: "POST" });
+      const index = state.jobs.findIndex((item) => item.id === payload.job.id);
+      if (index >= 0) state.jobs[index] = payload.job;
+      renderRuntime();
+      toast("Evaluation canceled", "The stopped run is recorded in history.");
+      await Promise.all([loadCatalog(), loadRuns()]);
+      showView("runs");
+    } catch (error) {
+      toast("Could not cancel evaluation", error.message);
+      await loadCatalog();
+    }
+  });
   $("#save-reviewed-dataset").addEventListener("click", saveReviewedDataset);
   $("#reviewed-dataset-name").addEventListener("input", () => {
     if ($("#reviewed-dataset-name-error")) validateReviewedDatasetName(false);

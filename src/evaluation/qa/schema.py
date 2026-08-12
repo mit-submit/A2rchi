@@ -70,6 +70,7 @@ class ConsoleMetadata:
     profile_id: Optional[str] = None
     profile_name: Optional[str] = None
     agent_spec: Optional[str] = None
+    attempts: Optional[int] = None
     run_workers: Optional[int] = None
     score_workers: Optional[int] = None
     created_at: Optional[str] = None
@@ -94,7 +95,7 @@ class ConsoleMetadata:
             "retry_of_history_id",
             "retry_root_name",
         }
-        integer_fields = {"run_workers", "score_workers", "retry_number"}
+        integer_fields = {"attempts", "run_workers", "score_workers", "retry_number"}
         known_fields = string_fields | integer_fields
         return cls(
             name=_optional_string(raw.get("name"), "console metadata name"),
@@ -112,6 +113,9 @@ class ConsoleMetadata:
             ),
             agent_spec=_optional_string(
                 raw.get("agent_spec"), "console metadata agent_spec"
+            ),
+            attempts=_optional_positive_integer(
+                raw.get("attempts"), "console metadata attempts"
             ),
             run_workers=_optional_positive_integer(
                 raw.get("run_workers"), "console metadata run_workers"
@@ -149,6 +153,7 @@ class ConsoleMetadata:
             "profile_id": self.profile_id,
             "profile_name": self.profile_name,
             "agent_spec": self.agent_spec,
+            "attempts": self.attempts,
             "run_workers": self.run_workers,
             "score_workers": self.score_workers,
             "created_at": self.created_at,
@@ -164,6 +169,49 @@ class ConsoleMetadata:
             }
         )
         return raw
+
+
+@dataclass(frozen=True)
+class CanceledRunRecord:
+    run_id: str
+    job_id: str
+    canceled_at: str
+    attempts: int
+    metadata: ConsoleMetadata
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> "CanceledRunRecord":
+        expected = {
+            "schema_version",
+            "status",
+            "run_id",
+            "job_id",
+            "canceled_at",
+            "attempts",
+            "metadata",
+        }
+        if not isinstance(raw, dict) or set(raw) != expected:
+            raise ValueError("canceled run record has invalid fields")
+        if raw["schema_version"] != SCHEMA_VERSION or raw["status"] != "canceled":
+            raise ValueError("canceled run record has an unsupported schema or status")
+        return cls(
+            run_id=_nonempty_string(raw["run_id"], "canceled run_id"),
+            job_id=_nonempty_string(raw["job_id"], "canceled job_id"),
+            canceled_at=_nonempty_string(raw["canceled_at"], "canceled timestamp"),
+            attempts=_positive_integer(raw["attempts"], "canceled attempts"),
+            metadata=ConsoleMetadata.from_dict(raw["metadata"]),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "status": "canceled",
+            "run_id": self.run_id,
+            "job_id": self.job_id,
+            "canceled_at": self.canceled_at,
+            "attempts": self.attempts,
+            "metadata": self.metadata.to_dict(),
+        }
 
 
 @dataclass

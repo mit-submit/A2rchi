@@ -1,12 +1,16 @@
 import json
+import os
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
 import src.evaluation.qa.console as console_module
 import src.evaluation.qa.history as history_module
+import src.evaluation.qa.jobs as jobs_module
 from src.evaluation.qa.console import EvaluationConsoleService
 from src.evaluation.qa.history import EvaluationHistory
 from src.evaluation.qa.jobs import EvaluationJobManager, JobConflictError
@@ -55,6 +59,19 @@ class _RetryWorkflow:
 class _NoRetryWorkflow:
     def retry_plan(self, _parent_path):
         raise ValueError("evaluation run has no failed attempts to retry")
+
+
+def _use_process_workflow(monkeypatch, workflow_name):
+    production_popen = jobs_module.subprocess.Popen
+
+    def test_popen(command, *args, **kwargs):
+        command = list(command)
+        assert command[1:3] == ["-m", "src.evaluation.qa.worker"]
+        command[2] = "tests.unit.evaluation.qa.worker_process"
+        return production_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(jobs_module.subprocess, "Popen", test_popen)
+    monkeypatch.setenv("ARCHI_TEST_WORKFLOW", workflow_name)
 
 
 def _write_preparation_artifacts(run_dir):
@@ -319,18 +336,11 @@ def test_console_rejects_invalid_phase_workers_before_catalog_or_job(
     service.jobs.close()
 
 
-def test_console_persists_and_passes_phase_workers(tmp_path):
-    calls = []
-
-    class Workflow:
-        def composite(self, **kwargs):
-            calls.append(kwargs)
-            return {
-                "run_id": "run-1",
-                "status": "scored",
-                "artifacts": {},
-            }
-
+def test_console_persists_and_passes_phase_workers(monkeypatch, tmp_path):
+    _use_process_workflow(
+        monkeypatch,
+        "recording",
+    )
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir()
     (agents_dir / "agent.md").write_text(
@@ -342,7 +352,6 @@ def test_console_persists_and_passes_phase_workers(tmp_path):
         tmp_path / "console",
         agent_config_path=config_path,
         agents_dir=agents_dir,
-        workflow_factory=Workflow,
     )
     dataset, _created = service.catalog.import_dataset(
         "Dataset",
@@ -364,8 +373,16 @@ def test_console_persists_and_passes_phase_workers(tmp_path):
     assert completed["status"] == "completed"
     assert job["context"]["run_workers"] == 4
     assert job["context"]["score_workers"] == 3
-    assert calls[0]["run_workers"] == 4
-    assert calls[0]["score_workers"] == 3
+    worker_arguments = read_json(
+        service.catalog.runs_dir
+        / job["context"]["workspace_id"]
+        / "worker_arguments.json"
+    )
+    assert worker_arguments == {
+        "evaluator_profile_path": None,
+        "run_workers": 4,
+        "score_workers": 3,
+    }
     metadata = read_json(
         service.catalog.runs_dir
         / job["context"]["workspace_id"]
@@ -386,7 +403,7 @@ def test_job_manager_enforces_single_flight_and_persists_result(tmp_path):
     )
 
     with pytest.raises(JobConflictError, match="already"):
-        manager.start("evaluation", lambda: {})
+        manager.start("generate_atoms", lambda: {})
     release.set()
     completed = manager.wait(job["id"], timeout=2)
 
@@ -406,6 +423,243 @@ def test_job_manager_marks_stale_work_interrupted(tmp_path):
 
     assert manager.get(job_id)["status"] == "interrupted"
     manager.close()
+
+
+def test_job_manager_terminates_running_evaluation_process(monkeypatch, tmp_path):
+    _use_process_workflow(
+        monkeypatch,
+        "slow",
+    )
+    manager = EvaluationJobManager(tmp_path)
+    terminal_callback_statuses = []
+    request = {
+        "operation": "composite",
+        "output_dir": str(tmp_path / "run"),
+        "dataset": str(tmp_path / "dataset.json"),
+        "agent_config": str(tmp_path / "config.yaml"),
+        "agent_spec": str(tmp_path / "agent.md"),
+        "evaluator_profile_path": str(tmp_path / "profile.yaml"),
+        "attempts": 1,
+        "run_workers": 1,
+        "score_workers": 1,
+    }
+    job = manager.start_process(
+        request,
+        context={"workspace_id": "run", "attempts": 1},
+    )
+    deadline = time.monotonic() + 5
+    while manager.get(job["id"])["status"] != "running":
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    process_id = manager._processes[job["id"]].pid
+
+    def on_terminated(terminated_job):
+        terminal_callback_statuses.append(terminated_job["status"])
+        with pytest.raises(JobConflictError, match="already cancel_requested"):
+            manager.start("generate_atoms", lambda: {})
+
+    canceled = manager.cancel(job["id"], on_terminated=on_terminated)
+
+    assert canceled["status"] == "canceled"
+    assert terminal_callback_statuses == ["cancel_requested"]
+    assert manager.wait(job["id"], timeout=2)["status"] == "canceled"
+    with pytest.raises(ProcessLookupError):
+        os.kill(process_id, 0)
+    manager.close()
+
+
+def test_job_manager_kills_signal_resistant_evaluation_descendants(
+    monkeypatch, tmp_path
+):
+    _use_process_workflow(
+        monkeypatch,
+        "descendant",
+    )
+    monkeypatch.setattr(jobs_module, "PROCESS_TERMINATION_GRACE_SECONDS", 0.2)
+    manager = EvaluationJobManager(tmp_path / "jobs")
+    output_dir = tmp_path / "run"
+    output_dir.mkdir()
+    request = {
+        "operation": "composite",
+        "output_dir": str(output_dir),
+        "dataset": str(tmp_path / "dataset.json"),
+        "agent_config": str(tmp_path / "config.yaml"),
+        "agent_spec": str(tmp_path / "agent.md"),
+        "evaluator_profile_path": str(tmp_path / "profile.yaml"),
+        "attempts": 1,
+        "run_workers": 1,
+        "score_workers": 1,
+    }
+    job = manager.start_process(
+        request,
+        context={"workspace_id": "run", "attempts": 1},
+    )
+    child_pid_path = output_dir / "child.pid"
+    deadline = time.monotonic() + 5
+    while not child_pid_path.is_file():
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    child_pid = int(child_pid_path.read_text())
+
+    canceled = manager.cancel(job["id"])
+
+    assert canceled["status"] == "canceled"
+    status_path = Path(f"/proc/{child_pid}/stat")
+    try:
+        child_state = status_path.read_text().split()[2]
+    except FileNotFoundError:
+        child_state = None
+    assert child_state in {None, "Z"}
+    manager.close()
+
+
+def test_job_manager_preserves_completed_state_when_cancel_loses_race(
+    monkeypatch, tmp_path
+):
+    _use_process_workflow(
+        monkeypatch,
+        "recording",
+    )
+    manager = EvaluationJobManager(tmp_path / "jobs")
+    output_dir = tmp_path / "runs" / "run"
+    output_dir.mkdir(parents=True)
+    write_json(output_dir / "console_metadata.json", {"name": "Completed run"})
+    request = {
+        "operation": "composite",
+        "output_dir": str(output_dir),
+        "dataset": str(tmp_path / "dataset.json"),
+        "agent_config": str(tmp_path / "config.yaml"),
+        "agent_spec": str(tmp_path / "agent.md"),
+        "evaluator_profile_path": str(tmp_path / "profile.yaml"),
+        "attempts": 1,
+        "run_workers": 1,
+        "score_workers": 1,
+    }
+    completed_job = manager.start_process(
+        request, context={"workspace_id": "run", "attempts": 1}
+    )
+    completed = manager.wait(completed_job["id"], timeout=2)
+
+    with pytest.raises(JobConflictError, match="already completed"):
+        manager.cancel(completed_job["id"])
+
+    assert manager.get(completed_job["id"])["status"] == "completed"
+    manager.close()
+
+
+def test_console_conflicting_launch_leaves_no_history_workspace(tmp_path):
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "agent.md").write_text("---\nname: Agent\ntools: []\n---\nPrompt\n")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("services: {}\n")
+    service = EvaluationConsoleService(
+        tmp_path / "console",
+        agent_config_path=config_path,
+        agents_dir=agents_dir,
+    )
+    dataset, _created = service.catalog.import_dataset(
+        "Dataset",
+        "dataset.json",
+        b'[{"id":"item","question":"Q","answer":"A","time_sensitive":false}]',
+    )
+    release = threading.Event()
+    active = service.jobs.start("generate_atoms", lambda: release.wait(2))
+
+    with pytest.raises(JobConflictError, match="already"):
+        service.start_evaluation(
+            name="Conflicting run",
+            dataset_id=dataset["id"],
+            profile_id="builtin",
+            agent_spec="agent.md",
+            attempts=1,
+        )
+
+    assert list(service.catalog.runs_dir.iterdir()) == []
+    release.set()
+    service.jobs.wait(active["id"], timeout=2)
+    service.jobs.close()
+
+
+def test_console_cancellation_persists_valid_unscored_history(monkeypatch, tmp_path):
+    _use_process_workflow(
+        monkeypatch,
+        "slow",
+    )
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "agent.md").write_text("---\nname: Agent\ntools: []\n---\nPrompt\n")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("services: {}\n")
+    service = EvaluationConsoleService(
+        tmp_path / "console",
+        agent_config_path=config_path,
+        agents_dir=agents_dir,
+    )
+    dataset, _created = service.catalog.import_dataset(
+        "Dataset",
+        "dataset.json",
+        b'[{"id":"item","question":"Q","answer":"A","time_sensitive":false}]',
+    )
+    job = service.start_evaluation(
+        name="Canceled run",
+        dataset_id=dataset["id"],
+        profile_id="builtin",
+        agent_spec="agent.md",
+        attempts=2,
+    )
+    deadline = time.monotonic() + 5
+    while service.get_job(job["id"])["status"] != "running":
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+
+    payload = service.cancel_evaluation(job["id"])
+    rows = service.history.list_runs()
+    detail = service.history.get_run(payload["history_id"])
+    metadata = read_json(
+        service.catalog.runs_dir
+        / job["context"]["workspace_id"]
+        / "console_metadata.json"
+    )
+
+    assert payload["job"]["status"] == "canceled"
+    assert service.cancel_evaluation(job["id"]) == payload
+    assert rows == [
+        {
+            "id": payload["history_id"],
+            "run_id": job["context"]["workspace_id"],
+            "name": "Canceled run",
+            "status": "canceled",
+            "created_at": metadata["created_at"],
+            "dataset_id": dataset["id"],
+            "dataset_key": dataset["id"],
+            "dataset_name": "Dataset",
+            "profile_id": "builtin",
+            "profile_name": "Built-in QA profile",
+            "agent_spec": "agent.md",
+            "attempts": 2,
+            "retry_of_history_id": None,
+            "retry_number": None,
+            "overall_attempt_pass_rate": None,
+            "passed_attempts": None,
+            "quality_accounted_attempts": None,
+            "attempt_lifecycle_counts": None,
+            "technical_failure_rate": None,
+            "latency": None,
+            "schema_version": "qa-v1",
+            "capabilities": {"retry_failed": False},
+            "valid": True,
+        }
+    ]
+    assert detail["manifest"]["status"] == "canceled"
+    assert detail["report_available"] is False
+    assert detail["capabilities"] == {"retry_failed": False}
+    with pytest.raises(LookupError, match="report not found"):
+        service.history.get_report(payload["history_id"])
+
+    next_job = service.jobs.start("generate_atoms", lambda: {"draft_id": "next"})
+    assert service.jobs.wait(next_job["id"], timeout=2)["status"] == "completed"
+    service.jobs.close()
 
 
 def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
@@ -870,7 +1124,7 @@ def test_history_rejects_tampered_legacy_v0_preparation(tmp_path):
         history.get_run(history.id_for_path(run))
 
 
-def test_console_rejects_legacy_v0_retry_before_workflow_or_job(tmp_path):
+def test_console_rejects_legacy_v0_retry_before_workflow_or_job(monkeypatch, tmp_path):
     workflow_constructed = False
 
     def workflow_factory():
@@ -878,11 +1132,12 @@ def test_console_rejects_legacy_v0_retry_before_workflow_or_job(tmp_path):
         workflow_constructed = True
         return _RetryWorkflow()
 
+    monkeypatch.setattr(console_module, "QAWorkflow", workflow_factory)
+
     service = EvaluationConsoleService(
         tmp_path,
         agent_config_path=tmp_path / "config.yaml",
         agents_dir=tmp_path,
-        workflow_factory=workflow_factory,
     )
     run = service.catalog.runs_dir / "legacy"
     run.mkdir()
@@ -1123,12 +1378,16 @@ def test_history_rejects_tampered_declared_artifacts(tmp_path):
     assert "hash mismatch" in row["error"]
 
 
-def test_console_retry_keeps_root_name_across_retry_generations(tmp_path):
+def test_console_retry_keeps_root_name_across_retry_generations(monkeypatch, tmp_path):
+    _use_process_workflow(
+        monkeypatch,
+        "retry",
+    )
+    monkeypatch.setattr(console_module, "QAWorkflow", _RetryWorkflow)
     service = EvaluationConsoleService(
         tmp_path,
         agent_config_path=tmp_path / "config.yaml",
         agents_dir=tmp_path,
-        workflow_factory=_RetryWorkflow,
     )
     parent = service.catalog.runs_dir / "parent"
     parent.mkdir()
@@ -1177,12 +1436,14 @@ def test_console_retry_keeps_root_name_across_retry_generations(tmp_path):
     service.jobs.close()
 
 
-def test_console_retry_without_failures_creates_no_job_or_successor(tmp_path):
+def test_console_retry_without_failures_creates_no_job_or_successor(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(console_module, "QAWorkflow", _NoRetryWorkflow)
     service = EvaluationConsoleService(
         tmp_path,
         agent_config_path=tmp_path / "config.yaml",
         agents_dir=tmp_path,
-        workflow_factory=_NoRetryWorkflow,
     )
     parent = service.catalog.runs_dir / "parent"
     parent.mkdir()

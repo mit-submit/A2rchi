@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.archi.pipelines.agents import agent_spec as agent_spec_utils
 
-from .artifacts import read_json, sha256_file, utc_now, write_json
+from .artifacts import read_json, utc_now, write_json
 from .catalog import EvaluationCatalog
 from .history import EvaluationHistory
 from .jobs import EvaluationJobManager
 from .profile import load_profile
 from .runtime import LangChainEvaluatorRuntime
+from .schema import CanceledRunRecord, ConsoleMetadata
 from .workflow import QAWorkflow
 
 MAX_AGENT_SNAPSHOT_BYTES = 256 * 1024
@@ -26,14 +27,12 @@ class EvaluationConsoleService:
         *,
         agent_config_path: Path,
         agents_dir: Path,
-        workflow_factory: Callable[[], QAWorkflow] = QAWorkflow,
     ):
         self.catalog = EvaluationCatalog(root)
         self.history = EvaluationHistory(self.catalog.runs_dir)
         self.jobs = EvaluationJobManager(self.catalog.jobs_dir)
         self.agent_config_path = Path(agent_config_path)
         self.agents_dir = Path(agents_dir)
-        self.workflow_factory = workflow_factory
 
     def list_agents(self) -> List[Dict[str, str]]:
         return [
@@ -190,55 +189,53 @@ class EvaluationConsoleService:
             "profile_id": profile_id,
             "profile_name": profile["name"],
             "agent_spec": agent_spec,
+            "attempts": attempts,
             "run_workers": run_workers,
             "score_workers": score_workers,
             "created_at": utc_now(),
         }
 
-        def work() -> Dict[str, Any]:
-            run_dir.mkdir()
-            write_json(run_dir / "console_metadata.json", metadata)
-            manifest = self.workflow_factory().composite(
-                dataset=dataset_path,
-                agent_config=self.agent_config_path,
-                agent_spec=agent_path,
-                output_dir=run_dir,
-                evaluator_profile_path=profile_path,
-                attempts=attempts,
-                run_workers=run_workers,
-                score_workers=score_workers,
-                overwrite=False,
+        metadata_path = run_dir / "console_metadata.json"
+        run_dir.mkdir()
+        try:
+            write_json(metadata_path, metadata)
+            return self.jobs.start_process(
+                {
+                    "operation": "composite",
+                    "output_dir": str(run_dir),
+                    "dataset": str(dataset_path),
+                    "agent_config": str(self.agent_config_path),
+                    "agent_spec": str(agent_path),
+                    "evaluator_profile_path": (
+                        str(profile_path) if profile_path is not None else None
+                    ),
+                    "attempts": attempts,
+                    "run_workers": run_workers,
+                    "score_workers": score_workers,
+                },
+                context={
+                    "name": name.strip(),
+                    "dataset_id": dataset_id,
+                    "profile_id": profile_id,
+                    "agent_spec": agent_spec,
+                    "attempts": attempts,
+                    "run_workers": run_workers,
+                    "score_workers": score_workers,
+                    "workspace_id": run_dir.name,
+                },
             )
-            manifest["artifacts"]["console_metadata.json"] = sha256_file(
-                run_dir / "console_metadata.json"
-            )
-            write_json(run_dir / "manifest.json", manifest)
-            return {
-                "run_id": manifest["run_id"],
-                "history_id": self.history.id_for_path(run_dir),
-            }
-
-        return self.jobs.start(
-            "evaluation",
-            work,
-            context={
-                "name": name.strip(),
-                "dataset_id": dataset_id,
-                "profile_id": profile_id,
-                "agent_spec": agent_spec,
-                "attempts": attempts,
-                "run_workers": run_workers,
-                "score_workers": score_workers,
-                "workspace_id": run_dir.name,
-            },
-        )
+        except Exception:
+            if metadata_path.is_file():
+                metadata_path.unlink()
+            run_dir.rmdir()
+            raise
 
     def start_evaluation_retry(self, history_id: str) -> Dict[str, Any]:
         parent_path = self.history.run_path(history_id)
         parent = self.history.get_run(history_id)
         if not parent["capabilities"]["retry_failed"]:
             raise ValueError("legacy evaluation runs cannot be retried")
-        workflow = self.workflow_factory()
+        workflow = QAWorkflow()
         plan = workflow.retry_plan(parent_path)
         parent_metadata = parent["metadata"]
         parent_name = parent_metadata.get("name") or parent["manifest"]["run_id"]
@@ -260,30 +257,54 @@ class EvaluationConsoleService:
                 "retry_of_history_id": history_id,
                 "retry_number": retry_number,
                 "retry_root_name": retry_root_name,
+                "attempts": parent["manifest"]["attempts"],
             }
         )
 
-        def work() -> Dict[str, Any]:
-            run_dir.mkdir()
-            write_json(run_dir / "console_metadata.json", metadata)
-            manifest = self.workflow_factory().retry(parent_path, run_dir)
-            manifest["artifacts"]["console_metadata.json"] = sha256_file(
-                run_dir / "console_metadata.json"
+        metadata_path = run_dir / "console_metadata.json"
+        run_dir.mkdir()
+        try:
+            write_json(metadata_path, metadata)
+            return self.jobs.start_process(
+                {
+                    "operation": "retry",
+                    "output_dir": str(run_dir),
+                    "parent_path": str(parent_path),
+                },
+                context={
+                    "name": metadata["name"],
+                    "retry_of_history_id": history_id,
+                    "retry_attempt_ids": plan["retry_attempt_ids"],
+                    "attempts": parent["manifest"]["attempts"],
+                    "workspace_id": run_dir.name,
+                },
             )
-            write_json(run_dir / "manifest.json", manifest)
-            return {
-                "run_id": manifest["run_id"],
-                "history_id": self.history.id_for_path(run_dir),
-                "retry_of_history_id": history_id,
-            }
+        except Exception:
+            if metadata_path.is_file():
+                metadata_path.unlink()
+            run_dir.rmdir()
+            raise
 
-        return self.jobs.start(
-            "evaluation",
-            work,
-            context={
-                "name": metadata["name"],
-                "retry_of_history_id": history_id,
-                "retry_attempt_ids": plan["retry_attempt_ids"],
-                "workspace_id": run_dir.name,
-            },
-        )
+    def cancel_evaluation(self, job_id: str) -> Dict[str, Any]:
+        def persist_canceled(job: Dict[str, Any]) -> None:
+            context = job["context"]
+            workspace_id = context["workspace_id"]
+            run_dir = self.catalog.runs_dir / workspace_id
+            metadata = ConsoleMetadata.from_dict(
+                read_json(run_dir / "console_metadata.json")
+            )
+            canceled = CanceledRunRecord(
+                run_id=workspace_id,
+                job_id=job_id,
+                canceled_at=job["completed_at"],
+                attempts=context["attempts"],
+                metadata=metadata,
+            )
+            write_json(run_dir / "canceled.json", canceled.to_dict())
+
+        job = self.jobs.cancel(job_id, on_terminated=persist_canceled)
+        run_dir = self.catalog.runs_dir / job["context"]["workspace_id"]
+        return {
+            "job": job,
+            "history_id": self.history.id_for_path(run_dir),
+        }
