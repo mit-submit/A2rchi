@@ -51,3 +51,10 @@ classes:
           edge_archetype: contains
           src_subtypes: DocumentationPage
           dst_subtypes: DocumentChunk
+      # TWiki sources (archi.sources.twiki): topic-to-topic references
+      # (topic_parent / wiki_link / bare_wikiword).
+      documentation_page_references_documentation_page:
+        annotations:
+          edge_archetype: references
+          src_subtypes: DocumentationPage
+          dst_subtypes: DocumentationPage

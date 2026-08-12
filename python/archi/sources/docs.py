@@ -200,7 +200,7 @@ from archi.auth.cache import (
 )
 from archi.auth.cookies import (
     check_cookie_file,
-    load_cookie_jar,
+    load_cookie_jar_from_env,
     looks_like_login_page,
 )
 
@@ -554,12 +554,8 @@ class SSOCookieDocsSource(DocumentationSource):
     def _cookie_session(self) -> requests.Session | None:
         """Session carrying the SSO cookie jar; ``None`` when the cookie
         env var is unset or the file is missing/unparseable."""
-        cookie_file = os.environ.get(self.cookie_file_env, "")
-        if not cookie_file or not Path(cookie_file).is_file():
-            return None
-        try:
-            jar = load_cookie_jar(cookie_file)
-        except Exception:  # noqa: BLE001
+        jar = load_cookie_jar_from_env(self.cookie_file_env)
+        if jar is None:
             return None
         session = requests.Session()
         session.cookies = jar
