@@ -1,0 +1,257 @@
+pact_version: 4
+target_pact_version: 4
+change:
+  id: w2-consolidate-hep-sources
+  title: 'W2: consolidate HEP sources into the archi package'
+  status: proposal
+  rationale: >-
+    ADR 0001 W2: the domain layer is consolidation, not construction. The HEP
+    source code exists in three places — okg-deployments/cms/cms_sources/
+    (22 adapter classes, 9,328 LOC), archi origin/dev's Scrapy layer (the
+    current scraper design), and cooper (deferred) — and TWiki parsing alone
+    exists three times. This change consolidates it into the pip-installable
+    archi package proven by w1-prove-the-seam, per the porting matrix
+    (porting-matrix.md in this change).
+  root_cause: >-
+    v2 scattered HEP ingestion across archi's collectors, agent tools, and the
+    CMS OKG deployment's local package; nothing is shareable across instances
+    without copy-paste (the wisdqm _cache.py and TWiki-parser forks are the
+    live evidence).
+  affected_areas:
+  - python/
+  - pact/changes/w2-consolidate-hep-sources
+  affected_code:
+  - python/archi/**
+requirements:
+- id: req.w2.packaging
+  title: v3 package builds without touching the v2 build
+  statement: >-
+    The archi v3 distribution builds as a wheel from python/ (its own
+    pyproject) while the v2 root build (setup.py/pyproject.toml, src/) remains
+    untouched and v2 unit tests keep passing on archi_v3.
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w2.packaging.coexist
+    title: Both builds coexist on one branch
+    given:
+    - the archi_v3 branch with python/ added
+    when:
+    - the v3 wheel is built and the v2 unit suite runs
+    then:
+    - both succeed with no file overlap between the two builds
+    and: []
+  acceptance:
+  - id: acc.w2.packaging
+    description: CI builds the python/ wheel and runs existing tests/unit/ green in the same pipeline.
+    evidence:
+    - executed_test
+- id: req.w2.auth
+  title: CERN auth plumbing is package code, credentials are instance data
+  statement: >-
+    archi/auth/ consolidates the preflight probes, CERN SSO flows, and the
+    cache utility; no module contains a hardcoded operator path (/Users/,
+    /root/, /home/ literals) or a credential value; credentials arrive only by
+    environment/credential_refs indirection.
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w2.auth.no-paths
+    title: No operator paths or secrets in package code
+    given:
+    - archi/auth and archi/sources fully ported
+    when:
+    - the path/secret lint test runs over python/archi
+    then:
+    - zero findings
+    and: []
+  acceptance:
+  - id: acc.w2.auth
+    description: A lint test asserts no hardcoded operator paths or credential literals in python/archi.
+    evidence:
+    - executed_test
+- id: req.w2.sources
+  title: The source families port against the current adapter contract
+  statement: >-
+    Every source in the porting matrix lands rewritten against the current
+    SourceAdapter + registry contract (sound change probe, producer authority,
+    admission mode), with offline unit tests, a documented registry-entry
+    template, and okg deployment lint green on a scratch registry entry. The
+    parity families (jira, docsite, gitlab_docs) come first; the TWiki
+    three-way merge produces exactly one parser.
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w2.sources.lint
+    title: Each ported source lints and ingests on scratch
+    given:
+    - a ported source registered in the w1-style scratch deployment
+    when:
+    - okg deployment lint and okg ingest run
+    then:
+    - lint has no blocker/warning findings for the source and the run is OK
+    and: []
+  acceptance:
+  - id: acc.w2.sources
+    description: >-
+      Per-source fixture-driven unit tests pass offline; at least the parity
+      families demonstrate a scratch-instance ingest cycle; provenance
+      (source repo + ref + what changed) is recorded per port.
+    evidence:
+    - executed_test
+- id: req.w2.enrichment
+  title: Enrichers and identifier/link defaults are importable package data
+  statement: >-
+    The five CMS enrichers, the alias backend, and the extractor/linker/
+    identifier-pattern defaults move into archi/enrichment/, consumable by an
+    instance's config as selectable defaults (wisdqm's DQM patterns included —
+    the second call site exists).
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w2.enrichment.defaults
+    title: An instance selects packaged defaults
+    given:
+    - archi/enrichment/defaults shipped in the wheel
+    when:
+    - a scratch deployment config references them
+    then:
+    - catalog load composes them without copying files into the deployment
+    and: []
+  acceptance:
+  - id: acc.w2.enrichment
+    description: Unit tests load the defaults from the installed wheel and validate their shape.
+    evidence:
+    - executed_test
+- id: req.w2.compops-unbroken
+  title: The comp-ops instance stays green throughout
+  statement: >-
+    W2 does not switch okg-deployments/cms to the package (that is W7); its
+    lint and checks must pass unchanged at every W2 merge (ADR 0001 D10 —
+    breaking comp-ops is a blocking regression).
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w2.compops.green
+    title: comp-ops lint unchanged
+    given:
+    - any W2 merge to archi_v3
+    when:
+    - okg deployment lint runs on okg-deployments/cms
+    then:
+    - findings are identical to the pre-W2 baseline
+    and: []
+  acceptance:
+  - id: acc.w2.compops
+    description: The comp-ops lint baseline is recorded before W2 starts and re-checked per merge.
+    evidence:
+    - executed_test
+tasks:
+- id: task.w2.packaging
+  title: python/ package skeleton + CI wheel lane
+  status: todo
+  verification: python/tests/test_packaging.py
+  requirements:
+  - req.w2.packaging
+  evidence: []
+  environment:
+  - id: env.w2.okg-repo-token
+    kind: env_var
+    env: OKG_REPO_TOKEN
+    description: CI secret for okg-dependent test lanes (Luca to add to the repo).
+    required: false
+- id: task.w2.auth
+  title: archi/auth — preflight, SSO, cache util
+  status: todo
+  verification: python/tests/auth/
+  requirements:
+  - req.w2.auth
+  evidence: []
+  environment: []
+- id: task.w2.sources-parity
+  title: 'Parity families: jira, docs (docsite + gitlab_docs + cmsweb)'
+  status: todo
+  verification: python/tests/sources/test_jira.py and python/tests/sources/test_docs.py
+  requirements:
+  - req.w2.sources
+  evidence: []
+  environment: []
+- id: task.w2.sources-twiki
+  title: TWiki three-way merge (cms twiki_eos + cern-twiki + wisdqm parsers)
+  status: todo
+  verification: python/tests/sources/test_twiki.py
+  requirements:
+  - req.w2.sources
+  evidence: []
+  environment: []
+- id: task.w2.sources-monit
+  title: MONIT sources + archi/tools/monit.py live tools
+  status: todo
+  verification: python/tests/sources/test_monit.py and python/tests/tools/test_monit_live.py
+  requirements:
+  - req.w2.sources
+  evidence: []
+  environment: []
+- id: task.w2.sources-catalogs
+  title: 'Catalogs: cric, cmssw (merge W1 spike), dbs, conddb, dqm, gocdb, siteconf, wmstats, github_repos, hypernews, indico'
+  status: todo
+  verification: python/tests/sources/
+  requirements:
+  - req.w2.sources
+  evidence: []
+  environment: []
+- id: task.w2.enrichment
+  title: archi/enrichment — enrichers, alias backend, defaults
+  status: todo
+  verification: python/tests/enrichment/
+  requirements:
+  - req.w2.enrichment
+  evidence: []
+  environment: []
+- id: task.w2.compops-baseline
+  title: Record comp-ops lint baseline and re-check per merge
+  status: todo
+  verification: okg deployment lint on okg-deployments/cms compared to recorded baseline
+  requirements:
+  - req.w2.compops-unbroken
+  evidence: []
+  environment: []
+dependencies:
+- from: task.w2.packaging
+  to: task.w1-prove-the-seam
+  kind: requires
+  rationale: The python/ package seeds from the w1-prove-the-seam spike.
+test_plan:
+- id: test.req-w2-packaging.python-tests-test-packaging
+  requirement: req.w2.packaging
+  test_id: python/tests/test_packaging.py
+  evidence:
+  - pytest
+- id: test.req-w2-auth.python-tests-auth
+  requirement: req.w2.auth
+  test_id: python/tests/auth/
+  evidence:
+  - pytest
+- id: test.req-w2-sources.python-tests-sources
+  requirement: req.w2.sources
+  test_id: python/tests/sources/
+  evidence:
+  - pytest
+- id: test.req-w2-enrichment.python-tests-enrichment
+  requirement: req.w2.enrichment
+  test_id: python/tests/enrichment/
+  evidence:
+  - pytest
+- id: test.req-w2-compops-unbroken.compops-lint-baseline
+  requirement: req.w2.compops-unbroken
+  test_id: pact/changes/w2-consolidate-hep-sources/compops-lint-baseline.json
+  evidence:
+  - graph_report
+formal: []
+waivers: []
+evidence: []

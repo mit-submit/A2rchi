@@ -1,0 +1,37 @@
+pact_version: 4
+project: archi
+default_change_status: proposal
+canonical_change_file: pact.yaml
+pact_defaults:
+  artifact_format_version: 4
+  target_pact_version: 4
+  review_policy: pact_v4_decision_ledger
+command_authority:
+  repo_command: okg
+  bare_okg_policy: non_authoritative_for_agent_work
+  rationale: >-
+    Archi is a consumer of OKG's PACT tooling; use the okg CLI from the
+    operator environment (e.g. the shared venv) until archi declares okg
+    as a dev dependency.
+pr_policy:
+  base: archi_v3
+  rationale: >-
+    All v3 work lands on archi_v3 (ADR 0001 invariant 2). main serves live
+    v2 deployments and receives only v2 bugfixes until cutover.
+agent_install_targets:
+  - claude-code
+graph_projection:
+  deployment: archi-pact
+  stale_policy: >-
+    The archi-pact ledger deployment is interim host-local infrastructure
+    (submit82, rootless podman, port 5456; resolved via OKG_DEPLOYMENTS_DIR
+    and .okg/local.env). Treat stale or missing projection as context only;
+    live files and tests are implementation truth. Replace with a durable
+    team-reachable Postgres before other reviewers run decide/merge gates.
+generated_artifacts:
+  noncanonical:
+    - pact/changes/*/pact.md
+    - pact/archive/*/pact.md
+    - pact/changes/*/pact.yaml.lock
+    - pact/archive/*/pact.yaml.lock
+  policy: Render or lock locally as needed; do not commit generated review views or locks.
