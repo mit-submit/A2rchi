@@ -3,7 +3,7 @@
 # DocumentChunk resolve from the co-loaded person and extraction
 # modules; JiraIssue / DocumentationPage / SoftwareRepository come
 # from archi/schemas/sources.yaml and CMSSWRelease from
-# archi/schemas/operations_w1.yaml. Copy this file into the
+# archi/schemas/operations.yaml. Copy this file into the
 # deployment as <deployment>/schemas/bridges/sources.yaml, alongside
 # archi/schemas/sources.yaml -> <deployment>/schemas/sources.yaml
 # (the catalog composer only honors narrowings under schemas/bridges/).
@@ -34,8 +34,8 @@ classes:
           src_subtypes: DocumentChunk
           dst_subtypes: JiraIssue
       # chunk -> site and chunk -> infrastructure_service narrowings
-      # land with the catalogs port (those subtypes are not composed
-      # yet); CMSSWRelease already ships in operations_w1.yaml.
+      # ship in archi/schemas/bridges/operations.yaml (the catalogs
+      # port); CMSSWRelease already ships in operations.yaml.
       chunk_references_cmssw_release:
         annotations:
           edge_archetype: references
