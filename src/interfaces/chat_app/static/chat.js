@@ -50,6 +50,7 @@ const CONFIG = {
     AGENTS_LIST: '/api/agents/list',
     AGENT_SPEC: '/api/agents/spec',
     AGENT_ACTIVE: '/api/agents/active',
+    MCP_STATUS: '/api/mcp/status',
     USER_ME: '/api/users/me',
     USER_PREFERENCES: '/api/users/me/preferences',
     LIKE: '/api/like',
@@ -1278,6 +1279,9 @@ const UI = {
     document.querySelectorAll('.settings-nav-item').forEach(btn => {
       btn.addEventListener('click', (e) => this.switchSettingsSection(e.target.closest('.settings-nav-item')));
     });
+
+    // MCP Servers panel: manual refresh
+    document.getElementById('mcp-refresh-btn')?.addEventListener('click', () => this.loadMcpStatus());
   },
 
   openSettings() {
@@ -1316,9 +1320,181 @@ const UI = {
       targetSection.hidden = false;
     }
 
+    if (sectionId === 'mcp') {
+      this.loadMcpStatus();
+    }
     if (sectionId === 'playbooks' && typeof Chat !== 'undefined') {
       Chat.enterPlaybooksSection();
     }
+  },
+
+  // Per-request tool cap enforced by the agent; the authoritative value
+  // arrives in the /api/mcp/status payload (tool_limit) — this is only the
+  // fallback for older backends.
+  MCP_TOOL_LIMIT: 128,
+
+  MCP_STATE_META: {
+    active:        { label: 'Active',              cls: 'mcp-state-active' },
+    needs_auth:    { label: 'Needs authorization', cls: 'mcp-state-needs-auth' },
+    headless_only: { label: 'Headless only',       cls: 'mcp-state-muted' },
+    no_secret:     { label: 'No service token',    cls: 'mcp-state-muted' },
+    failed:        { label: 'Failed',              cls: 'mcp-state-failed' },
+  },
+
+  async loadMcpStatus() {
+    const container = document.getElementById('mcp-status-list');
+    const summary = document.getElementById('mcp-status-summary');
+    const refreshBtn = document.getElementById('mcp-refresh-btn');
+    if (!container) return;
+    refreshBtn?.classList.add('is-loading');
+    if (summary) summary.hidden = true;
+    container.innerHTML = '<p class="settings-description mcp-loading">Loading MCP servers…</p>';
+    try {
+      const data = await API.fetchJson(CONFIG.ENDPOINTS.MCP_STATUS);
+      if (!data) return; // 401 -> fetchJson already redirected to login
+      this.renderMcpStatus(container, summary, data.servers || [], data.tool_limit);
+    } catch (err) {
+      if (summary) summary.hidden = true;
+      container.innerHTML = '<p class="settings-description mcp-empty">Failed to load MCP server status. Try refreshing.</p>';
+    } finally {
+      refreshBtn?.classList.remove('is-loading');
+    }
+  },
+
+  // The server computes the write flag (and strips the marker from the
+  // description) — the marker convention lives in exactly one place.
+  isWriteTool(tool) {
+    return tool.write === true;
+  },
+
+  mcpToolDesc(tool) {
+    return (tool.description || '').split('\n')[0].trim();
+  },
+
+  renderMcpStatus(container, summary, servers, toolLimit) {
+    if (!servers.length) {
+      if (summary) summary.hidden = true;
+      container.innerHTML = '<p class="settings-description mcp-empty">No MCP servers are configured for this deployment.</p>';
+      return;
+    }
+
+    const authLabels = { sso: 'per-user SSO', service: 'service account', none: 'no auth' };
+    const activeCount = servers.filter(s => s.state === 'active').length;
+    const needsAuthCount = servers.filter(s => s.state === 'needs_auth').length;
+    const failedCount = servers.filter(s => s.state === 'failed').length;
+    const totalTools = servers.reduce((n, s) => n + (s.tools ? s.tools.length : 0), 0);
+
+    // Summary bar
+    if (summary) {
+      const pills = [
+        `<span class="mcp-summary-pill">${servers.length} server${servers.length === 1 ? '' : 's'}</span>`,
+        `<span class="mcp-summary-pill mcp-summary-active"><span class="mcp-dot mcp-dot-active"></span>${activeCount} active</span>`,
+        `<span class="mcp-summary-pill">${totalTools} tool${totalTools === 1 ? '' : 's'}</span>`,
+      ];
+      if (needsAuthCount) pills.push(`<span class="mcp-summary-pill mcp-summary-warn">${needsAuthCount} need auth</span>`);
+      if (failedCount) pills.push(`<span class="mcp-summary-pill mcp-summary-fail">${failedCount} failed</span>`);
+      summary.innerHTML = pills.join('');
+      summary.hidden = false;
+    }
+
+    // Truncation warning: the model is offered at most `limit` tools per
+    // request, so a large active surface means some tools silently won't reach it.
+    const limit = toolLimit || this.MCP_TOOL_LIMIT;
+    const noticeHtml = totalTools > limit
+      ? `<div class="mcp-notice mcp-notice-warn">
+           <strong>${totalTools} tools exceed the ${limit}-tool request limit.</strong>
+           The agent is offered at most ${limit} tools per message, so some of these are
+           dropped from any given request. Consider narrowing the enabled servers.
+         </div>`
+      : '';
+
+    container.innerHTML = noticeHtml + servers.map((srv, i) => this.mcpServerCard(srv, i, authLabels)).join('');
+
+    // Wire per-server tool search + write-only toggles (innerHTML wiped listeners).
+    container.querySelectorAll('.mcp-server-card').forEach(card => {
+      const search = card.querySelector('.mcp-tool-search');
+      const writeToggle = card.querySelector('.mcp-write-toggle');
+      const apply = () => this.filterMcpTools(card, search?.value || '', writeToggle?.checked || false);
+      search?.addEventListener('input', apply);
+      writeToggle?.addEventListener('change', apply);
+    });
+  },
+
+  mcpServerCard(srv, index, authLabels) {
+    const meta = this.MCP_STATE_META[srv.state] || { label: srv.state, cls: 'mcp-state-muted' };
+    const tools = srv.tools || [];
+    const writeCount = tools.filter(t => this.isWriteTool(t)).length;
+
+    const authorizeHtml = srv.state === 'needs_auth'
+      ? `<a class="mcp-authorize-btn" href="/mcp/authorize?server=${encodeURIComponent(srv.name)}&next=/chat">Connect</a>`
+      : '';
+    const detailHtml = srv.detail && srv.state !== 'active'
+      ? `<p class="settings-description mcp-server-detail">${Utils.escapeHtml(srv.detail)}</p>`
+      : '';
+
+    let toolsHtml = '';
+    if (tools.length) {
+      const rows = tools.map(t => {
+        const isWrite = this.isWriteTool(t);
+        const badge = isWrite
+          ? '<span class="mcp-tool-badge mcp-tool-write">write</span>'
+          : '<span class="mcp-tool-badge mcp-tool-read">read</span>';
+        const haystack = `${t.name} ${this.mcpToolDesc(t)}`.toLowerCase();
+        return `<li class="mcp-tool-row" data-tool="${Utils.escapeHtml(haystack)}" data-write="${isWrite ? '1' : '0'}">
+                  ${badge}
+                  <code>${Utils.escapeHtml(t.name)}</code>
+                  <span class="mcp-tool-desc">${Utils.escapeHtml(this.mcpToolDesc(t))}</span>
+                </li>`;
+      }).join('');
+      const writeControl = writeCount
+        ? `<label class="mcp-write-toggle-label" title="Show only tools that can modify remote state">
+             <input type="checkbox" class="mcp-write-toggle"> write only
+           </label>`
+        : '';
+      const summaryCount = `${tools.length} tool${tools.length === 1 ? '' : 's'}` +
+        (writeCount ? ` · <span class="mcp-write-count">${writeCount} write</span>` : '');
+      toolsHtml = `
+        <details class="mcp-server-tools"${index === 0 && tools.length <= 30 ? ' open' : ''}>
+          <summary><span class="mcp-tools-summary-count">${summaryCount}</span></summary>
+          <div class="mcp-tools-controls">
+            <input type="search" class="mcp-tool-search" placeholder="Filter ${tools.length} tools…" aria-label="Filter tools">
+            ${writeControl}
+          </div>
+          <ul class="mcp-tool-list">${rows}</ul>
+          <p class="mcp-tools-empty" hidden>No tools match.</p>
+        </details>`;
+    }
+
+    return `
+      <div class="settings-group settings-group-bordered mcp-server-card">
+        <div class="mcp-server-head">
+          <span class="mcp-dot ${meta.cls.replace('mcp-state', 'mcp-dot')}"></span>
+          <span class="settings-label mcp-server-name">${Utils.escapeHtml(srv.name)}</span>
+          <span class="mcp-auth-tag">${authLabels[srv.auth] || srv.auth}</span>
+          <span class="mcp-state-chip ${meta.cls}">${meta.label}</span>
+        </div>
+        <p class="settings-description mcp-server-meta">
+          <code>${Utils.escapeHtml(srv.url || '')}</code> · ${Utils.escapeHtml(srv.transport || '')}
+        </p>
+        ${detailHtml}
+        ${authorizeHtml}
+        ${toolsHtml}
+      </div>`;
+  },
+
+  filterMcpTools(card, query, writeOnly) {
+    const q = query.trim().toLowerCase();
+    const rows = card.querySelectorAll('.mcp-tool-row');
+    let visible = 0;
+    rows.forEach(row => {
+      const matchesText = !q || row.dataset.tool.includes(q);
+      const matchesWrite = !writeOnly || row.dataset.write === '1';
+      const show = matchesText && matchesWrite;
+      row.hidden = !show;
+      if (show) visible++;
+    });
+    const empty = card.querySelector('.mcp-tools-empty');
+    if (empty) empty.hidden = visible !== 0;
   },
 
   closeSettings() {

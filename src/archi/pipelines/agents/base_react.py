@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List, Optional, Sequence, Iterator, AsyncIterator, Set, Tuple
 import re
+import threading
 import time
 import uuid
 import json
@@ -21,10 +22,14 @@ from src.archi.providers.base import ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
 from src.archi.pipelines.agents.utils.run_memory import RunMemory
 from src.archi.pipelines.agents.utils.mcp_utils import AsyncLoopThread
-from src.archi.pipelines.agents.tools import initialize_mcp_client
+from src.archi.pipelines.agents.tools import has_user_scoped_servers, initialize_mcp_client
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# OpenAI enforces a hard per-request tool limit; exposed to the UI via
+# /api/mcp/status so the warning there can't drift from what we enforce.
+OPENAI_MAX_TOOLS = 128
 
 class BaseReActAgent:
     """
@@ -61,6 +66,11 @@ class BaseReActAgent:
         self._static_middleware: Optional[List[Callable]] = None
         self._active_middleware: List[Callable] = []
         self.agent: Optional[CompiledStateGraph] = None
+        # Request-scoped agent slot: agents built with per-user MCP Bearer
+        # tokens live here (one per serving thread) and are never published
+        # on self.agent, so concurrent requests cannot pick up another
+        # user's credentials.
+        self._request_local = threading.local()
         self.agent_llm: Optional[Any] = None
         self.agent_prompt: Optional[str] = None
 
@@ -266,16 +276,23 @@ class BaseReActAgent:
                 return str(reasoning_content)
         return ""
 
+    def _current_agent(self) -> Optional[CompiledStateGraph]:
+        """Return this thread's request-scoped agent if one was built
+        (per-user MCP auth), else the shared agent."""
+        agent = getattr(self._request_local, "agent", None)
+        return agent if agent is not None else self.agent
+
     def invoke(self, **kwargs) -> PipelineOutput:
         """Synchronously invoke the agent graph and return the final output."""
         logger.debug("Invoking %s", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
-        if self.agent is None:
-            self.refresh_agent(force=True)
+        agent = self._current_agent()
+        if agent is None:
+            agent = self.refresh_agent(force=True)
         logger.debug("Agent refreshed, invoking now")
         recursion_limit = self._recursion_limit()
         try:
-            answer_output = self.agent.invoke(agent_inputs, {"recursion_limit": recursion_limit})
+            answer_output = agent.invoke(agent_inputs, {"recursion_limit": recursion_limit})
             logger.debug("Agent invocation completed")
             logger.debug(answer_output)
             messages = self._extract_messages(answer_output)
@@ -300,8 +317,9 @@ class BaseReActAgent:
         """Stream agent updates synchronously with structured trace events."""
         logger.debug("Streaming %s", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
-        if self.agent is None:
-            self.refresh_agent(force=True)
+        agent = self._current_agent()
+        if agent is None:
+            agent = self.refresh_agent(force=True)
         recursion_limit = self._recursion_limit()
 
         all_messages: List[BaseMessage] = []  # Accumulated full messages
@@ -318,7 +336,7 @@ class BaseReActAgent:
         last_response_metadata: Optional[Dict[str, Any]] = None
         
         try:
-            for event in self.agent.stream(
+            for event in agent.stream(
                 agent_inputs,
                 stream_mode="messages",
                 config={"recursion_limit": recursion_limit},
@@ -612,8 +630,9 @@ class BaseReActAgent:
         """Stream agent updates asynchronously with structured trace events."""
         logger.debug("Streaming %s asynchronously", self.__class__.__name__)
         agent_inputs = self._prepare_agent_inputs(**kwargs)
-        if self.agent is None:
-            self.refresh_agent(force=True)
+        agent = self._current_agent()
+        if agent is None:
+            agent = self.refresh_agent(force=True)
         recursion_limit = self._recursion_limit()
 
         all_messages: List[BaseMessage] = []
@@ -630,7 +649,7 @@ class BaseReActAgent:
         last_response_metadata: Optional[Dict[str, Any]] = None
         
         try:
-            async for event in self.agent.astream(
+            async for event in agent.astream(
                 agent_inputs,
                 stream_mode="messages",
                 config={"recursion_limit": recursion_limit},
@@ -1073,22 +1092,58 @@ class BaseReActAgent:
         extra_tools: Optional[Sequence[Callable]] = None,
         middleware: Optional[Sequence[Callable]] = None,
         force: bool = False,
+        user_id: Optional[str] = None,
     ) -> CompiledStateGraph:
         """Ensure the LangGraph agent reflects the latest tool set."""
         base_tools = list(static_tools) if static_tools is not None else self.tools
-        toolset: List[Callable] = list(base_tools)
 
+        mcp_tools: List[Callable] = []
         if "mcp" in self.selected_tool_names:
-            if self._mcp_tools is None:
-                built = self._build_mcp_tools()
-                self._mcp_tools = list(built or [])
-            toolset.extend(self._mcp_tools)
+            # A per-user rebuild only matters when some server's toolset
+            # depends on who is asking (sso_auth/service_auth). Otherwise the
+            # per-user toolset is identical to the shared one — skip the
+            # reconnect + recompile and use the cache.
+            if user_id and not has_user_scoped_servers():
+                user_id = None
+            # When user_id is present, always rebuild so each request fetches a
+            # fresh (possibly refreshed) token from the DB for SSO-auth servers.
+            # Without a user_id (anonymous), cache the tools as before.
+            if self._mcp_tools is None or user_id:
+                built = self._build_mcp_tools(user_id=user_id)
+                if not user_id:
+                    self._mcp_tools = list(built or [])
+                mcp_tools = list(built or [])
+            else:
+                mcp_tools = list(self._mcp_tools)
 
-        if extra_tools:
-            toolset.extend(extra_tools)
+        extra_list: List[Callable] = list(extra_tools) if extra_tools else []
+
+        # Keep all static/extra tools; trim only the MCP portion.
+        n_static = len(base_tools) + len(extra_list)
+        if n_static + len(mcp_tools) > OPENAI_MAX_TOOLS:
+            mcp_budget = max(0, OPENAI_MAX_TOOLS - n_static)
+            logger.warning(
+                f"Toolset has {n_static + len(mcp_tools)} tools, exceeding OpenAI max of "
+                f"{OPENAI_MAX_TOOLS}. Truncating MCP tools to {mcp_budget}. "
+                f"Static/extra tools ({n_static}) are preserved."
+            )
+            mcp_tools = mcp_tools[:mcp_budget]
+
+        toolset: List[Callable] = list(base_tools) + mcp_tools + extra_list
 
         middleware = list(middleware) if middleware is not None else self.middleware
 
+        if user_id:
+            # Per-user MCP Bearer tokens are baked into the tool objects, so
+            # this agent must stay request-scoped: never publish it on
+            # self.agent where a concurrent request could execute tools with
+            # another user's credentials.
+            logger.debug("Building request-scoped agent %s for user", self.__class__.__name__)
+            agent = self._create_agent(toolset, middleware)
+            self._request_local.agent = agent
+            return agent
+
+        self._request_local.agent = None
         requires_refresh = (
             force
             or self.agent is None
@@ -1134,14 +1189,14 @@ class BaseReActAgent:
         static_names = [name for name in selected if name != "mcp"]
         return self._select_tools_from_registry(static_names)
 
-    def _build_mcp_tools(self) -> List[Callable]:
+    def _build_mcp_tools(self, user_id: Optional[str] = None) -> List[Callable]:
         """Retrieve MCP tools from servers defined in the config and keep those server connections alive"""
         try:
             self._async_runner = AsyncLoopThread.get_instance()
 
             # Initialize MCP client on the background loop
             # The client and sessions will live on this loop
-            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client())
+            client, mcp_tools, skills_text = self._async_runner.run(initialize_mcp_client(user_id=user_id))
             if client is None:
                 logger.info("No MCP servers configured.")
                 return None
@@ -1285,7 +1340,8 @@ class BaseReActAgent:
         if hasattr(self, "_vector_tools"):
             extra_tools = self._vector_tools if self._vector_tools else None  # type: ignore[attr-defined]
 
-        self.refresh_agent(extra_tools=extra_tools)
+        user_id = kwargs.get("user_id")
+        self.refresh_agent(extra_tools=extra_tools, user_id=user_id)
 
         inputs = self._prepare_inputs(history=kwargs.get("history"))
         history_messages = inputs["history"]
@@ -1598,7 +1654,7 @@ class BaseReActAgent:
             if trimmed:
                 try:
                     trimmed_inputs = {**agent_inputs, "messages": trimmed}
-                    answer_output = self.agent.invoke(
+                    answer_output = self._current_agent().invoke(
                         trimmed_inputs, {"recursion_limit": 10}
                     )
                     messages_out: List[BaseMessage] = list(

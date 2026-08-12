@@ -2346,7 +2346,7 @@ class ChatWrapper:
             requested_config = self._resolve_config_name(config_name)
             self.update_config(config_name=requested_config)
 
-            result = self.archi(history=context.history, conversation_id=context.conversation_id)
+            result = self.archi(history=context.history, conversation_id=context.conversation_id, user_id=user_id)
             timestamps["chain_finished_ts"] = datetime.now(timezone.utc)
 
             # keep track of total number of queries and log this amount
@@ -2461,7 +2461,7 @@ class ChatWrapper:
                 pipeline_name=self.archi.pipeline_name if hasattr(self.archi, 'pipeline_name') else None,
             )
 
-            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id,model=context.model_used):
+            for output in self.archi.stream(history=context.history, conversation_id=context.conversation_id, user_id=user_id, model=context.model_used):
                 if client_timeout and time.time() - stream_start_time > client_timeout:
                     if trace_id:
                         total_duration_ms = int((time.time() - stream_start_time) * 1000)
@@ -2782,6 +2782,7 @@ class FlaskAppWrapper(object):
         self.add_endpoint('/api/load_conversation', 'load_conversation', self.require_auth(self.load_conversation), methods=["POST"])
         self.add_endpoint('/api/new_conversation', 'new_conversation', self.require_auth(self.new_conversation), methods=["POST"])
         self.add_endpoint('/api/delete_conversation', 'delete_conversation', self.require_auth(self.delete_conversation), methods=["POST"])
+        self.add_endpoint('/api/mcp/status', 'mcp_client_status', self.require_auth(self.mcp_client_status), methods=["GET"])
 
         # A/B testing endpoints
         logger.info("Adding A/B testing API endpoints")
@@ -2894,6 +2895,10 @@ class FlaskAppWrapper(object):
             
             if self.sso_enabled:
                 self.add_endpoint('/redirect', 'sso_callback', self.sso_callback)
+                # Per-user OAuth to external MCP servers (opt-in, triggered from
+                # the Settings > MCP Servers panel — not a login-time gate).
+                self.add_endpoint('/mcp/authorize', 'mcp_authorize', self.mcp_authorize, methods=['GET'])
+                self.add_endpoint('/mcp/callback', 'mcp_callback', self.mcp_callback, methods=['GET'])
 
     def _set_user_session(self, email: str, name: str, username: str, user_id: str = '', auth_method: str = 'sso', roles: list = None):
         """Set user session with well-defined structure."""
@@ -2950,6 +2955,141 @@ class FlaskAppWrapper(object):
         )
         
         logger.info(f"SSO configured with server: {server_metadata_url}")
+
+        # Per-user OAuth2 client for external MCP servers configured with
+        # `sso_auth: true`. Handles discovery, dynamic registration, PKCE, token
+        # exchange/refresh, and the encrypted per-user token store.
+        from src.utils.mcp_oauth_service import MCPOAuthService
+        session_lifetime_days = self.chat_app_config.get('auth', {}).get('session_lifetime_days', 30)
+        # Base URL the external server redirects back to (/mcp/callback). Static
+        # fallback; the authorize route overrides it per-request from the actual
+        # forwarded host so tunnels/proxies work.
+        app_base_url = f"http://localhost:{self.chat_app_config.get('port', 7861)}"
+        self.mcp_oauth_service = MCPOAuthService(
+            pg_config=self.pg_config,
+            app_base_url=app_base_url,
+            session_lifetime_days=int(session_lifetime_days),
+        )
+
+    # ------------------------------------------------------------------
+    # Per-user OAuth to external MCP servers (opt-in via the Settings panel)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _safe_next_url(candidate: str) -> str:
+        """Only allow same-app relative paths as post-auth redirect targets."""
+        if candidate and candidate.startswith('/') and not candidate.startswith('//'):
+            return candidate
+        return url_for('index')
+
+    def mcp_authorize(self):
+        """Start the OAuth2 dance to authorize an external MCP server for this
+        user. Triggered by the Settings > MCP Servers panel's Connect button."""
+        if not session.get('logged_in'):
+            return redirect(url_for('login'))
+
+        server_name = request.args.get('server', '')
+        next_url = self._safe_next_url(request.args.get('next', ''))
+
+        from src.utils.config_access import get_mcp_servers_config as _get_mcp
+        server_cfg = (_get_mcp() or {}).get(server_name)
+        if not server_cfg or not server_cfg.get('sso_auth'):
+            logger.warning(f"mcp_authorize: unknown or non-sso_auth server '{server_name}'")
+            return redirect(next_url)
+
+        # Derive the OAuth callback base from how the browser actually reached us
+        # (tunnels/reverse proxies set X-Forwarded-*), overriding the static
+        # startup fallback so the redirect_uri is one the browser can return to.
+        fwd_proto = request.headers.get('X-Forwarded-Proto') or request.scheme
+        fwd_host = request.headers.get('X-Forwarded-Host') or request.host
+        self.mcp_oauth_service.app_base_url = f"{fwd_proto}://{fwd_host}".rstrip('/')
+
+        result = self.mcp_oauth_service.get_authorization_url(server_name, server_cfg.get('url', ''))
+        if not result:
+            logger.error(f"mcp_authorize: could not build auth URL for '{server_name}'")
+            flash(f"Could not connect to MCP server '{server_name}'. Check logs for details.")
+            return redirect(next_url)
+
+        auth_url, state, code_verifier = result
+        session[f'mcp_state_{server_name}'] = state
+        session[f'mcp_verifier_{server_name}'] = code_verifier
+        session['mcp_pending_server'] = server_name
+        session['mcp_next_url'] = next_url
+        logger.info(f"Redirecting user to MCP OAuth for server '{server_name}'")
+        return redirect(auth_url)
+
+    def mcp_callback(self):
+        """Handle the OAuth2 callback from an external MCP server and persist the
+        per-user token, then return to where the user started (the panel)."""
+        if not session.get('logged_in'):
+            return redirect(url_for('login'))
+
+        code = request.args.get('code', '')
+        state = request.args.get('state', '')
+        error = request.args.get('error', '')
+
+        server_name = session.pop('mcp_pending_server', '')
+        next_url = self._safe_next_url(session.pop('mcp_next_url', ''))
+
+        if error or not code or not server_name:
+            logger.warning(f"MCP callback error for '{server_name}': error={error!r}, code present={bool(code)}")
+            flash(f"MCP authorization failed for '{server_name}': {error or 'missing code'}")
+            return redirect(next_url)
+
+        expected_state = session.pop(f'mcp_state_{server_name}', '')
+        code_verifier = session.pop(f'mcp_verifier_{server_name}', '')
+
+        if state != expected_state:
+            logger.error(f"MCP callback state mismatch for '{server_name}'")
+            flash("MCP authorization failed: state mismatch.")
+            return redirect(next_url)
+
+        token_data = self.mcp_oauth_service.exchange_code(server_name, code, code_verifier)
+        if not token_data or not token_data.get('access_token'):
+            logger.error(f"MCP token exchange failed for '{server_name}'")
+            flash(f"MCP authorization failed for '{server_name}': token exchange error.")
+            return redirect(next_url)
+
+        # Key tokens by the SSO subject id — the same identifier upserted into the
+        # users row (FK target) and passed as user_id on chat requests.
+        user_id = session.get('user', {}).get('id', '')
+        stored = self.mcp_oauth_service.store_user_token(
+            user_id=user_id,
+            server_name=server_name,
+            access_token=token_data['access_token'],
+            refresh_token=token_data.get('refresh_token'),
+            expires_in=int(token_data.get('expires_in') or 3600),
+        )
+        if not stored:
+            logger.error(f"MCP token for user={user_id!r}, server='{server_name}' could not be persisted")
+            flash(f"Authorization with '{server_name}' succeeded but the token could not be stored — "
+                  "check BYOK_ENCRYPTION_KEY and server logs.")
+            return redirect(next_url)
+        logger.info(f"MCP OAuth complete for user={user_id!r}, server='{server_name}'")
+        flash(f"Connected to '{server_name}'.")
+        return redirect(next_url)
+
+    def mcp_client_status(self):
+        """Status of the configured external MCP servers for the current user
+        (GET /api/mcp/status): auth mode, availability, and tool list for
+        reachable servers. Backs the Settings > MCP Servers panel."""
+        import asyncio
+        from src.archi.pipelines.agents.base_react import OPENAI_MAX_TOOLS
+        from src.archi.pipelines.agents.tools.mcp import get_mcp_server_status
+
+        user_id = session.get('user', {}).get('id') or None
+        try:
+            servers = asyncio.run(get_mcp_server_status(user_id=user_id))
+        except Exception as e:
+            logger.error(f"MCP status check failed: {e}")
+            return jsonify({"error": "MCP status check failed"}), 500
+        return jsonify({
+            "servers": servers,
+            "user_scoped": bool(user_id),
+            # The per-request cap the agent enforces — lets the UI warn about
+            # overflow without hardcoding its own copy.
+            "tool_limit": OPENAI_MAX_TOOLS,
+        })
 
     def login(self):
         """Unified login endpoint supporting multiple auth methods"""

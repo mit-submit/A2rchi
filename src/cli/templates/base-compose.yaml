@@ -146,6 +146,9 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics
       {% endif %}
+      {% if ssl_cert_file -%}
+      SSL_CERT_FILE: {{ ssl_cert_file }}
+      {%- endif %}
     env_file:
       - .env
     {% if gpu_ids and not use_podman -%}
@@ -173,6 +176,9 @@ services:
       {% endfor %}
       {% if gpu_ids -%}
       - archi-models:/root/models/
+      {%- endif %}
+      {% if ssl_cert_host and ssl_cert_file -%}
+      - {{ ssl_cert_host }}:{{ ssl_cert_file }}:ro
       {%- endif %}
       {%- for srv_name, srv_cfg in (mcp_servers | default({})).items() %}
       {%- if srv_cfg.transport == 'stdio' and srv_cfg.path is defined %}
