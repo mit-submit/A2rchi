@@ -72,7 +72,7 @@ test.describe("QA evaluation console", () => {
     const header = page.locator(".evaluation-header");
     const backToChat = page.getByRole("link", { name: "Back to Chat" });
     await expect(header).toBeVisible();
-    await expect(header.getByRole("heading", { name: "QA Evaluations" })).toBeVisible();
+    await expect(header.getByRole("heading", { name: "Evaluation Console" })).toBeVisible();
     await expect(backToChat).toBeVisible();
     await expect(backToChat).toHaveAttribute("href", "/chat");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -644,7 +644,7 @@ test.describe("QA evaluation console", () => {
 
   test("imports, reviews atoms, saves a child dataset, launches, and opens history", async ({ page }) => {
     await page.goto("/evaluations");
-    await expect(page.getByRole("heading", { name: "Evidence, not dashboard theatre." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Evaluating Archi has never been simpler." })).toBeVisible();
 
     await page.getByRole("button", { name: /Datasets/ }).click();
     await page.getByLabel("Name").first().fill("Mock dataset");
