@@ -425,6 +425,44 @@ def test_job_manager_marks_stale_work_interrupted(tmp_path):
     manager.close()
 
 
+def test_console_projects_validated_evaluation_runtime_phase(monkeypatch, tmp_path):
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+    )
+    workspace_id = "runtime-phase"
+    run_dir = service.catalog.runs_dir / workspace_id
+    run_dir.mkdir()
+    write_json(
+        run_dir / "manifest.json",
+        {
+            "status": "prepared",
+            "runtime_phase": "checking_live_answers",
+            "phases": {"prepare": {"status": "completed"}},
+        },
+    )
+    monkeypatch.setattr(
+        service.jobs,
+        "get",
+        lambda _job_id: {
+            "id": "job-id",
+            "kind": "evaluation",
+            "status": "running",
+            "context": {"workspace_id": workspace_id},
+        },
+    )
+
+    job = service.get_job("job-id")
+
+    assert job["progress"] == {
+        "status": "prepared",
+        "runtime_phase": "checking_live_answers",
+        "phases": {"prepare": {"status": "completed"}},
+    }
+    service.jobs.close()
+
+
 def test_job_manager_terminates_running_evaluation_process(monkeypatch, tmp_path):
     _use_process_workflow(
         monkeypatch,

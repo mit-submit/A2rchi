@@ -59,11 +59,16 @@
 
   function renderRuntime() {
     const job = activeJob();
-    const progress = job?.status === "cancel_requested" ? null : job?.progress?.status;
+    const runtimePhase = job?.progress?.runtime_phase;
+    const progress = job?.status === "cancel_requested"
+      ? null
+      : (runtimePhase ? runtimePhase.replaceAll("_", " ") : job?.progress?.status);
     const canRun = state.permissions.can_run !== false;
     const canSeeAttention = canRun || state.permissions.can_manage;
     const attention = job?.status === "attention_required" && canSeeAttention;
-    const checkingLiveAnswers = job?.kind === "evaluation" && ["queued", "running"].includes(job.status);
+    const checkingLiveAnswers = job?.kind === "evaluation"
+      && ["queued", "running"].includes(job.status)
+      && runtimePhase === "checking_live_answers";
     $("#runtime-label").textContent = checkingLiveAnswers
       ? "Checking live answers…"
       : (job ? `${job.kind.replace("_", " ")} · ${progress || job.status}` : "Ready");

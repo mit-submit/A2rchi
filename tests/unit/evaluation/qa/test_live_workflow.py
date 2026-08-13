@@ -155,6 +155,83 @@ def _run(monkeypatch, tmp_path, values, runtimes, *, include_static=False):
 
 
 class TestLiveWorkflow:
+    def test_persists_truthful_runtime_phase_at_each_active_boundary(
+        self, monkeypatch, tmp_path, runtimes
+    ):
+        dataset = tmp_path / "dataset.json"
+        run_dir = tmp_path / "run"
+        _dataset(dataset)
+        baseline = {"value": 7, "revision": "r1"}
+        preparation_invoker = SequenceInvoker([baseline])
+        monkeypatch.setattr(
+            workflow_module.EvaluatorMCPRegistry,
+            "load",
+            classmethod(lambda cls, path=None: preparation_invoker),
+        )
+        workflow = QAWorkflow()
+        workflow.prepare(dataset, run_dir)
+
+        observed_phases = []
+
+        class PhaseCheckingInvoker(SequenceInvoker):
+            def invoke(self, call):
+                observed_phases.append(
+                    read_json(run_dir / "manifest.json")["runtime_phase"]
+                )
+                return super().invoke(call)
+
+        class PhaseCheckingAgent:
+            tool_calls = []
+
+            def run(self, _question):
+                observed_phases.append(
+                    read_json(run_dir / "manifest.json")["runtime_phase"]
+                )
+                return "agent answer"
+
+        class PhaseCheckingEvaluator:
+            def compare(self, _question, atoms, _answer):
+                observed_phases.append(
+                    read_json(run_dir / "manifest.json")["runtime_phase"]
+                )
+                return {
+                    "judgments": [
+                        {
+                            "atom_id": atom.id,
+                            "outcome": "entailed",
+                            "rationale": "deterministic",
+                        }
+                        for atom in atoms
+                    ]
+                }
+
+        run_invoker = PhaseCheckingInvoker([baseline, baseline])
+        monkeypatch.setattr(
+            workflow_module.EvaluatorMCPRegistry,
+            "load",
+            classmethod(lambda cls, path=None: run_invoker),
+        )
+        monkeypatch.setattr(
+            workflow_module,
+            "ArchiAgentRuntime",
+            lambda *_args, **_kwargs: PhaseCheckingAgent(),
+        )
+        workflow.run(run_dir, tmp_path / "agent.yaml", tmp_path / "agent.md")
+        monkeypatch.setattr(
+            workflow_module,
+            "LangChainEvaluatorRuntime",
+            lambda _profile: PhaseCheckingEvaluator(),
+        )
+        workflow.score(run_dir)
+
+        assert observed_phases == [
+            "checking_live_answers",
+            "running_attempts",
+            "running_attempts",
+            "scoring",
+        ]
+        assert "runtime_phase" not in read_json(run_dir / "manifest.json")
+
     def test_live_extractor_failure_never_persists_selected_truth(
         self, monkeypatch, tmp_path
     ):

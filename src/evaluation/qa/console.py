@@ -10,6 +10,7 @@ from src.archi.pipelines.agents import agent_spec as agent_spec_utils
 
 from .artifacts import read_json, sha256_file, utc_now, write_json
 from .catalog import MAX_IMPORT_BYTES, DatasetRole, EvaluationCatalog, dataset_role
+from .constants import EvaluationRuntimePhase
 from .history import EvaluationHistory
 from .jobs import EvaluationJobManager
 from .live_checks import iter_precheck_decisions
@@ -73,10 +74,15 @@ class EvaluationConsoleService:
             if manifest_path.is_file():
                 try:
                     manifest = read_json(manifest_path)
+                    runtime_phase = manifest.get("runtime_phase")
+                    if runtime_phase is not None:
+                        runtime_phase = EvaluationRuntimePhase(runtime_phase).value
                     job["progress"] = {
                         "status": manifest.get("status"),
                         "phases": manifest.get("phases") or {},
                     }
+                    if runtime_phase is not None:
+                        job["progress"]["runtime_phase"] = runtime_phase
                 except ValueError:
                     pass
         if job.get("status") == "attention_required" and not (

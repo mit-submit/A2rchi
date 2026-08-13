@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+from enum import Enum
+
+
+class EvaluationRuntimePhase(str, Enum):
+    CHECKING_LIVE_ANSWERS = "checking_live_answers"
+    RUNNING_ATTEMPTS = "running_attempts"
+    SCORING = "scoring"
+
+
 SCHEMA_VERSION = "qa-v2"
 LEGACY_RUN_SCHEMA_VERSIONS = ("qa-v0", "qa-v1")
 SCORING_VERSION = "1"

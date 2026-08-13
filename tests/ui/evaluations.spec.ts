@@ -122,6 +122,7 @@ test.describe("QA evaluation console", () => {
       id: "job-live-running", kind: "evaluation", status: "running",
       created_at: "2026-08-13T08:00:00+00:00", started_at: "2026-08-13T08:00:01+00:00",
       context: { dataset_id: "approved-live" },
+      progress: { status: "prepared", runtime_phase: "checking_live_answers" },
     };
     await page.route("**/api/evaluations/catalog", (route) => route.fulfill({
       json: { datasets: [], profiles: [], agents: [], jobs: [job], permissions: { can_manage: true } },
@@ -133,6 +134,26 @@ test.describe("QA evaluation console", () => {
 
     await expect(page.locator("#runtime-label")).toHaveText("Checking live answers…");
     await expect(page.getByText("Agent attempts start only after the fresh pre-check completes.", { exact: false })).toBeVisible();
+    await expect(page.locator("#metric-job")).toHaveText("Yes");
+  });
+
+  test("shows ordinary progress for static evaluation attempts", async ({ page }) => {
+    const job = {
+      id: "job-running-attempts", kind: "evaluation", status: "running",
+      created_at: "2026-08-13T08:00:00+00:00", started_at: "2026-08-13T08:00:01+00:00",
+      context: { dataset_id: "static-dataset" },
+      progress: { status: "prepared", runtime_phase: "running_attempts" },
+    };
+    await page.route("**/api/evaluations/catalog", (route) => route.fulfill({
+      json: { datasets: [], profiles: [], agents: [], jobs: [job], permissions: { can_manage: true } },
+    }));
+    await page.route("**/api/evaluations/runs?*", (route) => route.fulfill({ json: { runs: [] } }));
+    await page.route("**/api/evaluations/jobs/job-running-attempts", (route) => route.fulfill({ json: { job } }));
+
+    await page.goto("/evaluations");
+
+    await expect(page.locator("#runtime-label")).toHaveText("evaluation · running attempts");
+    await expect(page.getByText("Agent attempts start only after the fresh pre-check completes.", { exact: false })).toHaveCount(0);
     await expect(page.locator("#metric-job")).toHaveText("Yes");
   });
 

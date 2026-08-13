@@ -22,6 +22,7 @@ from .artifacts import (  # isort: skip
     write_yaml,
 )
 from .constants import (  # isort: skip
+    EvaluationRuntimePhase,
     OWNED_FILES,
     PROMPT_VERSIONS,
     RUN_FILES,
@@ -361,6 +362,12 @@ class QAWorkflow:
             else None
         )
         started_at = utc_now()
+        manifest["runtime_phase"] = (
+            EvaluationRuntimePhase.CHECKING_LIVE_ANSWERS.value
+            if has_prepared_live
+            else EvaluationRuntimePhase.RUNNING_ATTEMPTS.value
+        )
+        write_json(run_dir / "manifest.json", manifest)
         actual_answers = 0
         live_item_count = 0
         invalid_pre_check_count = 0
@@ -481,8 +488,12 @@ class QAWorkflow:
                     > invalid_pre_check_count,
                 }
                 manifest["status"] = "attention_required"
+                manifest.pop("runtime_phase", None)
                 write_json(run_dir / "manifest.json", manifest)
                 return manifest
+
+            manifest["runtime_phase"] = EvaluationRuntimePhase.RUNNING_ATTEMPTS.value
+            write_json(run_dir / "manifest.json", manifest)
 
             def admitted_records() -> Iterator[PreparationRecord]:
                 pre_checks = iter_live_checks(
@@ -575,6 +586,7 @@ class QAWorkflow:
         }
         manifest["status"] = "run_completed"
         manifest.pop("attention_required", None)
+        manifest.pop("runtime_phase", None)
         write_json(run_dir / "manifest.json", manifest)
         return manifest
 
@@ -777,6 +789,8 @@ class QAWorkflow:
             for name in SCORE_FILES:
                 manifest["artifacts"].pop(name, None)
         started_at = utc_now()
+        manifest["runtime_phase"] = EvaluationRuntimePhase.SCORING.value
+        write_json(run_dir / "manifest.json", manifest)
 
         scoring_pairs = (
             self._iter_scoring_pairs(run_dir, manifest)
@@ -836,6 +850,7 @@ class QAWorkflow:
             }
             write_summary(run_dir / "summary.json", summary, iter_jsonl(item_rows_path))
             manifest["status"] = "scored"
+            manifest.pop("runtime_phase", None)
             write_report(
                 run_dir / "report.md",
                 summary,
