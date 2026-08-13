@@ -237,6 +237,35 @@ original Golden Set v2 values are accepted directly. A row with
 Canonical answers and gold atoms are stored in the evaluation workspace and are
 never passed to the tested agent.
 
+For live-state questions, use Dataset V2 and an evaluator-only MCP registry:
+
+```json
+{
+  "schema_version": "qa-dataset-v2",
+  "items": [{
+    "id": "current-quota",
+    "question": "How much quota remains?",
+    "time_sensitive": true,
+    "oracle": {
+      "kind": "mcp",
+      "calls": [{
+        "id": "quota",
+        "server": "operations-readonly",
+        "tool": "get_quota",
+        "arguments": {},
+        "answer_fields": {"remaining": "/remaining"}
+      }]
+    }
+  }]
+}
+```
+
+Pass `--mcp-config qa_evaluation_mcp.yaml` to the composite, `prepare`, and `run`
+commands. The registry maps the recipe alias to a deployment-owned MCP
+transport and environment-backed credentials; it is never added to the tested
+agent configuration. `--skip-live` on the composite or `prepare` command omits
+live rows without making MCP or model calls. `score` accepts neither option.
+
 The same workflow can be run as three separate stages. This is useful when you
 want to inspect the generated atoms before running Archi or inspect Archi's
 answers before scoring them.
@@ -246,6 +275,7 @@ answers before scoring them.
 ```bash
 archi eval qa prepare questions.jsonl \
   --evaluator-profile evaluator.yaml \
+  --mcp-config qa_evaluation_mcp.yaml \
   --output-dir evaluation-run/
 ```
 
@@ -272,6 +302,7 @@ does not run Archi or generate answers.
 archi eval qa run evaluation-run/ \
   --agent-config agent.yaml \
   --agent-spec agent.md \
+  --mcp-config qa_evaluation_mcp.yaml \
   --attempts 4 \
   --run-workers 4
 ```
@@ -311,10 +342,10 @@ summary to `report.md`. It does not invoke Archi again.
 
 #### Understanding the output
 
-Current commands write workspace schema `qa-v1`. Earlier `qa-v0` workspaces
-that used separate preparation files are left unchanged. Current run, score,
-and retry commands do not accept them, but the browser history console can
-inspect intact `qa-v0` workspaces through a read-only in-memory projection.
+Current commands write workspace schema `qa-v2`. Earlier `qa-v0` and `qa-v1`
+workspaces are left unchanged and remain readable through compatibility
+projections. Dataset V1 behavior is unchanged; Dataset V2 adds strict live
+recipes, materialized answers, and `live_checks.jsonl` evidence.
 
 At the end of a successful evaluation, the main result for a person to inspect
 is `report.md` in the selected output directory:

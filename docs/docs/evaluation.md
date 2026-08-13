@@ -55,6 +55,7 @@ and artifact formats.
 | Agent config      | Yes for the run phase | Local`.yaml` or `.yml`   | Complete Archi runtime configuration for the agent being tested                                 |
 | Agent spec        | Yes for the run phase | Local`.md`                 | Agent name, enabled tools, and system prompt                                                    |
 | Evaluator profile | No                    | YAML                         | Models used for atom extraction and answer comparison; omitting it selects the built-in profile |
+| Evaluator MCP registry | For live items | YAML | Evaluator-only aliases, transports, and environment-backed authentication used by Dataset V2 oracle recipes |
 | Output directory  | Yes                   | Directory path               | New or explicitly overwritten workspace where all run artifacts are stored                      |
 
 The dataset and agent files are inputs. The output directory is not a config
@@ -93,8 +94,11 @@ upload agent configs or specs: those are deployment-controlled files.
 The dataset is strict: unknown fields are rejected. It must be non-empty and
 UTF-8 encoded.
 
-- A `.json` file contains one JSON array of row objects.
-- A `.jsonl` file contains one row object per non-blank line.
+- Dataset V1 `.json` contains one JSON array of row objects; V1 `.jsonl`
+  contains one row object per non-blank line.
+- Dataset V2 `.json` contains a `qa-dataset-v2` envelope; V2 `.jsonl` starts
+  with `{"schema_version":"qa-dataset-v2"}` and then contains one item per
+  non-blank line.
 
 ### Row fields
 
@@ -192,6 +196,63 @@ line:
 ```
 
 Do not wrap JSONL rows in an array and do not add trailing commas.
+
+### Dataset V2 live items
+
+Dataset V2 requires an explicit stable `id` on every item. Static items keep a
+string `answer` and no `oracle`. Unresolved live items use
+`time_sensitive: true`, an inline `oracle`, and contain neither `answer` nor
+`expected_atoms`:
+
+```json
+{
+  "schema_version": "qa-dataset-v2",
+  "items": [{
+    "id": "service-capacity",
+    "question": "What is the current service capacity?",
+    "time_sensitive": true,
+    "oracle": {
+      "kind": "mcp",
+      "calls": [{
+        "id": "capacity",
+        "server": "operations-readonly",
+        "tool": "get_capacity",
+        "arguments": {"service": "primary"},
+        "answer_fields": {"available": "/available"},
+        "metadata_fields": {"revision": "/revision"}
+      }]
+    }
+  }]
+}
+```
+
+The evaluator resolves calls in order, canonicalizes the selected answer data,
+and hashes it. Metadata is recorded for provenance but does not participate in
+equality or atom extraction. External imports may not claim to be materialized
+live children by including an answer or atoms; only an approved internal
+catalog child is trusted for launch.
+
+### Evaluator MCP registry
+
+Recipes name only a server alias and tool. Deployment operators own the strict
+registry that maps aliases to `stdio` or `streamable_http` connections. Secrets
+are environment-variable names, never inline values:
+
+```yaml
+schema_version: qa-evaluation-mcp-v1
+servers:
+  operations-readonly:
+    transport: streamable_http
+    url: https://mcp.example.test/mcp
+    authentication:
+      mode: bearer
+      token_env: EVALUATION_MCP_TOKEN
+```
+
+`none`, `bearer`, `basic`, and OAuth client-credentials authentication are
+supported. A server is initialized lazily on first use; tool discovery and
+calls use a fixed 120-second timeout and are not retried automatically. The
+registry is structurally separate from tested-agent MCP configuration.
 
 ## Evaluator profile format
 
@@ -325,6 +386,7 @@ services:
   chat_app:
     evaluations:
       agent_config_path: /root/archi/configs/config.yaml
+      mcp_config_path: /root/archi/configs/qa_evaluation_mcp.yaml
 ```
 
 All console-launched evaluations use that config. To compare different runtime
@@ -375,6 +437,7 @@ archi eval qa \
   --agent-config agent.yaml \
   --agent-spec agent.md \
   --evaluator-profile evaluator.yaml \
+  --mcp-config qa_evaluation_mcp.yaml \
   --output-dir evaluation-run/ \
   --attempts 4 \
   --run-workers 4 \
@@ -391,6 +454,13 @@ all attempts before the score phase begins. Each worker owns one runtime, and
 artifacts remain in canonical question and attempt order even when calls finish
 out of order. Start low and raise each value only within your provider's rate
 limits and the deployment's available memory.
+
+For Dataset V2 live rows, the composite and `prepare` commands accept
+`--skip-live` to omit every live question intentionally. The composite,
+`prepare`, and `run` commands accept `--mcp-config`; `score` deliberately does
+not. A normal run resolves every live item before agent work and once again
+after the global agent-attempt barrier. Only items whose two observations match
+the approved baseline are scored.
 
 Omit `--evaluator-profile` to use the built-in profile:
 
@@ -415,6 +485,7 @@ before paying for evaluator calls.
 ```bash
 archi eval qa prepare questions.json \
   --evaluator-profile evaluator.yaml \
+  --mcp-config qa_evaluation_mcp.yaml \
   --output-dir evaluation-run/
 ```
 
@@ -437,6 +508,7 @@ the subsequent run refuses to start because there are no prepared items.
 archi eval qa run evaluation-run/ \
   --agent-config agent.yaml \
   --agent-spec agent.md \
+  --mcp-config qa_evaluation_mcp.yaml \
   --attempts 4 \
   --run-workers 4
 ```
@@ -491,6 +563,7 @@ services:
       enabled: true
       root: /root/archi/evaluations
       agent_config_path: /root/archi/configs/config.yaml
+      mcp_config_path: /root/archi/configs/qa_evaluation_mcp.yaml
 ```
 
 Both `archi create` and the chat runtime treat an omitted evaluation block,
@@ -547,6 +620,13 @@ retain the normal unrestricted local-development behavior.
 Saving never mutates the imported parent. It creates an immutable child dataset
 with reviewed `expected_atoms` and records the parent dataset ID.
 
+For Dataset V2, **Generate Atoms** resolves live rows and shows their read-only
+resolved answer, recipe summary, metadata, and call evidence beside editable
+atoms. The unchecked **Create a static-only dataset** option omits live
+questions. A complete approved child exposes **Refresh live snapshot**; a
+static-only child exposes **Add live questions from parent**. Both create a new
+review draft and publish a new immutable sibling after approval.
+
 The console intentionally does not auto-generate atoms for a partially
 annotated dataset. Review the existing atoms and manually fill its missing
 rows, or import a dataset with zero atoms and generate all of them.
@@ -567,17 +647,21 @@ rows, or import a dataset with zero atoms and generate all of them.
 6. Select **Start evaluation**.
 7. Watch the background job or leave the page; the run continues in the chat
    service.
-8. If the launch was accidental or takes too long, select **Cancel evaluation**
+8. A live run first shows **Checking live answers…**. If a value changed or
+   cannot be resolved, the persisted job enters `attention_required` and states
+   **No agent attempts have started.** Refresh the live snapshot, continue with
+   only currently valid questions, or cancel. Continue repeats the complete
+   pre-check before starting any agent call.
+9. If the launch was accidental or takes too long, select **Cancel evaluation**
    in the active-job banner and confirm. The local evaluation worker stops and
    the run remains visible as `canceled`.
-9. Open **Runs** to inspect status, answers, judgments, metrics, and the
+10. Open **Runs** to inspect status, answers, judgments, metrics, and the
    report. The underlying run API and workspace also preserve the manifest,
    preparation records, and other raw artifacts listed below.
 
-Only one atom-generation or evaluation job runs at a time in the v0 job
-manager. A conflicting launch returns HTTP 409. If the chat service restarts,
-a previously queued or running job is marked `interrupted`; it is not resumed
-automatically.
+Only one provider-consuming atom-generation or evaluation job runs at a time.
+A conflicting launch returns HTTP 409. `attention_required` releases that lock
+and survives restart; stale queued or running jobs become `interrupted`.
 
 Canceling stops the local evaluation process and its local child processes. It
 cannot recall a request a remote model provider has already accepted or undo an
@@ -595,7 +679,8 @@ The console exposes retry actions only for provider or runtime failures:
 - an open generated atom draft with `preparation_failed` rows can retry those
   rows in place without regenerating successful candidates or modifying the
   imported parent dataset;
-- a scored run with `execution_failed` or `evaluation_failed` attempts can
+- a scored run with `execution_failed`, `evaluation_failed`, or
+  `live_validation_failed` attempts can
   create a complete successor run. Execution failures rerun Archi and the
   comparator, while evaluation failures reuse the verified terminal answer and
   rerun only the comparator.
@@ -605,6 +690,10 @@ remains immutable, the successor records its direct parent and retry selection,
 and both runs remain visible in history. Evaluation retries inherit the parent's
 run and score worker counts. Scored attempts that merely fail the quality
 threshold are not retryable.
+
+A live-validation retry always resolves the item again, never reuses a prior
+answer for that item, runs fresh agent work only after a matching pre-check, and
+requires a matching post-check before comparison.
 
 Atom retries require `evaluations:manage`; evaluation retries require
 `evaluations:run`. A draft or run without retryable technical failures creates
@@ -744,12 +833,8 @@ evaluator failures are not mistaken for good quality.
 
 ## Run workspace artifacts
 
-The current workspace schema is `qa-v1`. It introduced the canonical
-`preparation.jsonl` artifact. Current run, score, and retry workflows require
-`qa-v1`. The history console reads intact `qa-v0` workspaces through a
-read-only adapter that joins their separate `prepared_items.jsonl` and
-`preparation_results.jsonl` artifacts in memory. It never rewrites those
-historical workspaces, and they cannot be retried.
+The current workspace schema is `qa-v2`. Intact `qa-v0` and `qa-v1`
+workspaces remain immutable and readable through compatibility adapters.
 
 | File                                  | Written in            | Contents                                                                                        |
 | ------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- |
@@ -759,6 +844,7 @@ historical workspaces, and they cannot be retried.
 | `agent_config.resolved.yaml`        | Run                   | Exact tested Archi config                                                                       |
 | `agent_spec.resolved.md`            | Run                   | Exact tested agent spec and prompt                                                              |
 | `answers.jsonl`                     | Run                   | One terminal `answer_ready` or `execution_failed` row per attempt slot, including tested-agent `duration_ms` and complete ordered tool-call query/response/error records with optional duration |
+| `live_checks.jsonl`                  | Run                   | Ordered pre-run and post-run oracle observations, normalized answers, hashes, metadata, bounded call evidence, or item-scoped live failures |
 | `evaluation_results.jsonl`          | Score                 | Answers, atom judgments, rationales, metrics, or terminal failures                              |
 | `summary.json`                      | Score                 | Machine-readable aggregate and per-item metrics plus provenance hashes                          |
 | `report.md`                         | Score                 | Human-readable result summary                                                                   |
@@ -796,6 +882,8 @@ Preparation is item-scoped:
 - `prepared`: the row has a valid fixed atom set;
 - `skipped_time_sensitive`: the row was deliberately excluded;
 - `preparation_failed`: atom extraction or validation failed for that row.
+- `skipped_live`: a Dataset V2 live row was intentionally omitted with
+  `--skip-live` or static-only generation.
 
 Agent and evaluator work is attempt-scoped:
 
@@ -805,6 +893,9 @@ Agent and evaluator work is attempt-scoped:
 - `scored`: comparison succeeded;
 - `evaluation_failed`: the evaluator response was invalid, incomplete,
   unjudgeable, or otherwise failed.
+- `live_validation_failed`: the pre-run or post-run live observation was
+  unavailable or did not match the approved baseline. It is excluded from both
+  quality and technical-failure denominators.
 
 A composite operation may reach `scored` even when individual rows or attempts
 failed, because those failures are preserved as evidence. Decide acceptance

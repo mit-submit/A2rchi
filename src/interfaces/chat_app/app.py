@@ -2699,6 +2699,12 @@ class FlaskAppWrapper(object):
                 agents_dir=Path(
                     self.chat_app_config.get("agents_dir") or "/root/archi/agents"
                 ),
+                mcp_config_path=Path(
+                    evaluations_config.get(
+                        "mcp_config_path",
+                        "/root/archi/configs/qa_evaluation_mcp.yaml",
+                    )
+                ),
             )
         self.salt = read_secret("UPLOADER_SALT")
         # Persist an auto-generated key in the DATA_PATH volume when none is configured, so signed

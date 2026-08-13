@@ -41,6 +41,7 @@ def test_generated_evaluation_console_requires_explicit_enablement(
         "enabled": expected_enabled,
         "root": "/root/archi/evaluations",
         "agent_config_path": "/root/archi/configs/config.yaml",
+        "mcp_config_path": "/root/archi/configs/qa_evaluation_mcp.yaml",
     }
 
 

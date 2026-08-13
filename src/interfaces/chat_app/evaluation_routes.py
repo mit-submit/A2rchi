@@ -11,12 +11,14 @@ from flask import (  # isort: skip
     jsonify,
     render_template,
     request,
+    session,
 )
 
 from src.evaluation.qa.catalog import MAX_IMPORT_BYTES
 from src.evaluation.qa.jobs import JobConflictError
 from src.utils.logging import get_logger
 from src.utils.rbac.permission_enum import Permission
+from src.utils.rbac.permissions import has_permission
 
 logger = get_logger(__name__)
 
@@ -60,6 +62,27 @@ def _service():
     return _state()["service"]
 
 
+def _can_manage() -> bool:
+    return not session.get("logged_in") or has_permission(Permission.Evaluations.MANAGE)
+
+
+def _can_run() -> bool:
+    return not session.get("logged_in") or has_permission(Permission.Evaluations.RUN)
+
+
+def _approval_actor() -> str:
+    if not session.get("logged_in"):
+        return "local-operator"
+    user = session.get("user") or {}
+    if not isinstance(user, dict):
+        raise ValueError("authenticated approval identity is unavailable")
+    for field in ("email", "username", "sub", "id"):
+        value = user.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    raise ValueError("authenticated approval identity is unavailable")
+
+
 @evaluations_bp.before_request
 def _authorize():
     if request.path.startswith("/api/evaluations/atom-drafts"):
@@ -68,7 +91,7 @@ def _authorize():
         request.path == "/api/evaluations/runs"
         or (
             request.path.startswith("/api/evaluations/jobs/")
-            and request.path.endswith("/cancel")
+            and request.path.endswith(("/cancel", "/continue"))
         )
         or (
             request.path.startswith("/api/evaluations/runs/")
@@ -92,10 +115,25 @@ def _authorize():
 
 
 def _json_body():
-    value = request.get_json(silent=True)
+    if request.content_length is not None and request.content_length > MAX_IMPORT_BYTES:
+        raise ValueError("request body exceeds the 25 MB limit")
+    blob = request.stream.read(MAX_IMPORT_BYTES + 1)
+    if len(blob) > MAX_IMPORT_BYTES:
+        raise ValueError("request body exceeds the 25 MB limit")
+    try:
+        value = current_app.json.loads(blob)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("request body must be a JSON object") from exc
     if not isinstance(value, dict):
         raise ValueError("request body must be a JSON object")
     return value
+
+
+def _bounded_json_response(value, *, status=200):
+    blob = current_app.json.dumps(value).encode("utf-8")
+    if len(blob) > MAX_IMPORT_BYTES:
+        raise ValueError("structured response exceeds the 25 MB limit")
+    return Response(blob, status=status, mimetype="application/json")
 
 
 def _read_upload(upload, kind):
@@ -124,12 +162,19 @@ def evaluations_page():
 @evaluations_bp.route("/api/evaluations/catalog")
 def catalog():
     service = _service()
+    can_run = _can_run()
+    can_manage = _can_manage()
     return jsonify(
         {
-            "datasets": service.catalog.list_datasets(),
+            "datasets": (
+                service.list_datasets()
+                if hasattr(service, "list_datasets")
+                else service.catalog.list_datasets()
+            ),
             "profiles": service.catalog.list_profiles(),
             "agents": service.list_agents(),
-            "jobs": service.list_jobs(),
+            "jobs": service.list_jobs(include_run=can_run),
+            "permissions": {"can_run": can_run, "can_manage": can_manage},
         }
     )
 
@@ -138,7 +183,15 @@ def catalog():
 def datasets():
     service = _service()
     if request.method == "GET":
-        return jsonify({"datasets": service.catalog.list_datasets()})
+        return jsonify(
+            {
+                "datasets": (
+                    service.list_datasets()
+                    if hasattr(service, "list_datasets")
+                    else service.catalog.list_datasets()
+                )
+            }
+        )
     try:
         upload = request.files.get("file")
         if upload is None or not upload.filename:
@@ -169,7 +222,27 @@ def dataset_detail(dataset_id):
 def generate_atoms(dataset_id):
     try:
         body = _json_body()
+        static_only = body.get("static_only", False)
+        if not isinstance(static_only, bool):
+            raise ValueError("static_only must be a boolean")
+        generate_options = {"static_only": True} if static_only else {}
         job = _service().start_atom_generation(
+            dataset_id,
+            body.get("profile_id") or "builtin",
+            **generate_options,
+        )
+        return jsonify({"job": job}), 202
+    except Exception as exc:
+        return _error(exc)
+
+
+@evaluations_bp.route(
+    "/api/evaluations/datasets/<dataset_id>/refresh-live", methods=["POST"]
+)
+def refresh_live(dataset_id):
+    try:
+        body = _json_body()
+        job = _service().start_live_refresh(
             dataset_id, body.get("profile_id") or "builtin"
         )
         return jsonify({"job": job}), 202
@@ -183,7 +256,7 @@ def generate_atoms(dataset_id):
 def review_atoms(dataset_id):
     try:
         draft = _service().catalog.create_atom_review_draft(dataset_id)
-        return jsonify({"draft": draft}), 201
+        return _bounded_json_response({"draft": draft}, status=201)
     except Exception as exc:
         return _error(exc)
 
@@ -191,7 +264,9 @@ def review_atoms(dataset_id):
 @evaluations_bp.route("/api/evaluations/atom-drafts/<draft_id>")
 def atom_draft(draft_id):
     try:
-        return jsonify({"draft": _service().catalog.get_atom_draft(draft_id)})
+        return _bounded_json_response(
+            {"draft": _service().catalog.get_atom_draft(draft_id)}
+        )
     except Exception as exc:
         return _error(exc)
 
@@ -208,12 +283,27 @@ def retry_failed_atoms(draft_id):
         return _error(exc)
 
 
+@evaluations_bp.route(
+    "/api/evaluations/atom-drafts/<draft_id>/static-only",
+    methods=["POST"],
+)
+def make_atom_draft_static_only(draft_id):
+    try:
+        draft = _service().catalog.make_atom_draft_static_only(draft_id)
+        return _bounded_json_response({"draft": draft})
+    except Exception as exc:
+        return _error(exc)
+
+
 @evaluations_bp.route("/api/evaluations/atom-drafts/<draft_id>/save", methods=["POST"])
 def save_atom_draft(draft_id):
     try:
         body = _json_body()
         dataset = _service().catalog.save_reviewed_dataset(
-            draft_id, body.get("name"), body.get("reviewed_items")
+            draft_id,
+            body.get("name"),
+            body.get("reviewed_items"),
+            approval_actor=_approval_actor(),
         )
         return jsonify({"dataset": dataset}), 201
     except Exception as exc:
@@ -287,7 +377,7 @@ def runs():
 @evaluations_bp.route("/api/evaluations/runs/<history_id>")
 def run_detail(history_id):
     try:
-        return jsonify({"run": _service().history.get_run(history_id)})
+        return _bounded_json_response({"run": _service().history.get_run(history_id)})
     except Exception as exc:
         return _error(exc)
 
@@ -318,7 +408,17 @@ def run_report(history_id):
 @evaluations_bp.route("/api/evaluations/jobs/<job_id>")
 def job_detail(job_id):
     try:
-        return jsonify({"job": _service().get_job(job_id)})
+        service = _service()
+        job = (
+            service.get_job_detail(
+                job_id,
+                include_run=_can_run(),
+                include_hidden=_can_manage(),
+            )
+            if hasattr(service, "get_job_detail")
+            else service.get_job(job_id)
+        )
+        return _bounded_json_response({"job": job})
     except Exception as exc:
         return _error(exc)
 
@@ -330,6 +430,17 @@ def job_detail(job_id):
 def cancel_job(job_id):
     try:
         return jsonify(_service().cancel_evaluation(job_id))
+    except Exception as exc:
+        return _error(exc)
+
+
+@evaluations_bp.route(
+    "/api/evaluations/jobs/<job_id>/continue",
+    methods=["POST"],
+)
+def continue_job(job_id):
+    try:
+        return jsonify({"job": _service().continue_evaluation(job_id)}), 202
     except Exception as exc:
         return _error(exc)
 

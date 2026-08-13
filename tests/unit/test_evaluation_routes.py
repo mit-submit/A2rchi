@@ -16,7 +16,7 @@ from src.utils.rbac.permission_enum import Permission
 
 
 class _Jobs:
-    def list(self):
+    def list(self, **_kwargs):
         return []
 
     def get(self, job_id):
@@ -43,7 +43,8 @@ class _Service:
             "content": "---\nname: Agent\ntools: [search]\n---\nAnswer carefully.",
         }
 
-    def list_jobs(self):
+    def list_jobs(self, **kwargs):
+        self.list_job_options = kwargs
         return self.jobs.list()
 
     def get_job(self, job_id):
@@ -309,6 +310,71 @@ def test_agent_snapshot_route_reports_missing_selection_with_view_permission(tmp
     assert permissions == [Permission.Evaluations.VIEW]
 
 
+def test_attention_detail_requests_hidden_evidence_only_for_managers(
+    tmp_path, monkeypatch
+):
+    app, service, _permissions = _app(tmp_path)
+    app.secret_key = "test-only"
+    requested = []
+
+    def get_job_detail(job_id, *, include_run, include_hidden):
+        requested.append((job_id, include_run, include_hidden))
+        job = {"id": job_id, "status": "attention_required", "result": {}}
+        if include_run or include_hidden:
+            job["result"]["attention_required"] = {
+                "affected_items": [
+                    {
+                        "item_id": "live-item",
+                        "phase": "pre_run",
+                        "reason": "answer_changed",
+                    }
+                ]
+            }
+        if include_hidden:
+            job["result"]["attention_required"]["affected_items"][0][
+                "current_answer"
+            ] = {"secret": 7}
+        return job
+
+    service.get_job_detail = get_job_detail
+    client = app.test_client()
+    with client.session_transaction() as browser_session:
+        browser_session["logged_in"] = True
+        browser_session["user"] = {"email": "runner@example.test"}
+    allowed = set()
+    monkeypatch.setattr(
+        evaluation_routes,
+        "has_permission",
+        lambda permission: permission in allowed,
+    )
+
+    view_payload = client.get("/api/evaluations/jobs/attention-job").get_json()
+    assert "attention_required" not in view_payload["job"]["result"]
+
+    allowed.add(Permission.Evaluations.MANAGE)
+    manager_payload = client.get("/api/evaluations/jobs/attention-job").get_json()
+    assert manager_payload["job"]["result"]["attention_required"]["affected_items"][0][
+        "current_answer"
+    ] == {"secret": 7}
+
+    allowed.clear()
+    allowed.add(Permission.Evaluations.RUN)
+    run_payload = client.get("/api/evaluations/jobs/attention-job").get_json()
+    assert run_payload["job"]["result"]["attention_required"]["affected_items"] == [
+        {
+            "item_id": "live-item",
+            "phase": "pre_run",
+            "reason": "answer_changed",
+        }
+    ]
+
+    assert requested == [
+        ("attention-job", False, False),
+        ("attention-job", False, True),
+        ("attention-job", True, False),
+    ]
+
+
 def test_run_history_route_exposes_compact_trend_projection(tmp_path, monkeypatch):
     app, service, permissions = _app(tmp_path)
     _write_trend_run(service)
@@ -521,6 +587,35 @@ def test_dataset_upload_is_bounded_before_catalog_validation(tmp_path, monkeypat
 
     assert response.status_code == 400
     assert response.get_json() == {"error": "dataset upload exceeds the 25 MB limit"}
+
+
+def test_json_request_is_bounded_by_observed_bytes(tmp_path, monkeypatch):
+    monkeypatch.setattr(evaluation_routes, "MAX_IMPORT_BYTES", 8)
+    app, service, _permissions = _app(tmp_path)
+
+    response = app.test_client().post(
+        "/api/evaluations/runs",
+        data=b'{"name":"too large"}',
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "request body exceeds the 25 MB limit"}
+    assert service.started == []
+
+
+def test_run_detail_bounds_actual_serialized_response(tmp_path, monkeypatch):
+    app, service, _permissions = _app(tmp_path)
+    service.history.get_run = lambda _history_id: {"answer": "selected truth"}
+    payload = app.json.dumps({"run": service.history.get_run("run")}).encode("utf-8")
+    monkeypatch.setattr(evaluation_routes, "MAX_IMPORT_BYTES", len(payload) - 1)
+
+    response = app.test_client().get("/api/evaluations/runs/run")
+
+    assert response.status_code == 400
+    assert response.get_json() == {
+        "error": "structured response exceeds the 25 MB limit"
+    }
 
 
 def test_view_only_user_cannot_import_a_dataset(tmp_path):

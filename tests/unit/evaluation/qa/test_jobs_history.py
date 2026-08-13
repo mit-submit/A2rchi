@@ -26,7 +26,7 @@ from src.evaluation.qa.artifacts import (  # isort: skip
 
 class _RetryWorkflow:
     def retry_plan(self, _parent_path):
-        return {"retry_attempt_ids": ["item-1::attempt-1"]}
+        return {"retry_attempt_count": 1}
 
     def retry(self, parent_path, output_dir):
         for name in ("input.snapshot.json", "preparation.jsonl"):
@@ -581,6 +581,97 @@ def test_console_conflicting_launch_leaves_no_history_workspace(tmp_path):
     service.jobs.close()
 
 
+def test_console_launch_rejects_a_tampered_catalog_source(tmp_path):
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "agent.md").write_text(
+        "---\nname: Agent\ntools: []\n---\nPrompt\n", encoding="utf-8"
+    )
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("services: {}\n", encoding="utf-8")
+    service = EvaluationConsoleService(
+        tmp_path / "console",
+        agent_config_path=config_path,
+        agents_dir=agents_dir,
+    )
+    dataset, _created = service.catalog.import_dataset(
+        "Dataset",
+        "dataset.json",
+        b'[{"id":"item","question":"Q","answer":"A","time_sensitive":false}]',
+    )
+    service.catalog.dataset_path(dataset["id"]).write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="integrity verification failed"):
+        service.start_evaluation(
+            name="Tampered run",
+            dataset_id=dataset["id"],
+            profile_id="builtin",
+            agent_spec="agent.md",
+            attempts=1,
+        )
+
+    assert list(service.catalog.runs_dir.iterdir()) == []
+    service.jobs.close()
+
+
+def test_console_launch_rejects_tampered_catalog_approval_metadata(tmp_path):
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "agent.md").write_text(
+        "---\nname: Agent\ntools: []\n---\nPrompt\n", encoding="utf-8"
+    )
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("services: {}\n", encoding="utf-8")
+    service = EvaluationConsoleService(
+        tmp_path / "console",
+        agent_config_path=config_path,
+        agents_dir=agents_dir,
+    )
+    dataset, _created = service.catalog.import_dataset(
+        "Live definition",
+        "dataset.json",
+        json.dumps(
+            {
+                "schema_version": "qa-dataset-v2",
+                "items": [
+                    {
+                        "id": "live",
+                        "question": "Current value?",
+                        "time_sensitive": True,
+                        "oracle": {
+                            "kind": "mcp",
+                            "calls": [
+                                {
+                                    "id": "lookup",
+                                    "server": "inventory",
+                                    "tool": "current_value",
+                                    "arguments": {},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ).encode("utf-8"),
+    )
+    metadata_path = service.catalog.datasets_dir / dataset["id"] / "metadata.json"
+    metadata = read_json(metadata_path)
+    metadata["generation_scope"] = "complete"
+    write_json(metadata_path, metadata)
+
+    with pytest.raises(ValueError, match="integrity verification failed"):
+        service.start_evaluation(
+            name="Tampered approval",
+            dataset_id=dataset["id"],
+            profile_id="builtin",
+            agent_spec="agent.md",
+            attempts=1,
+        )
+
+    assert list(service.catalog.runs_dir.iterdir()) == []
+    service.jobs.close()
+
+
 def test_console_cancellation_persists_valid_unscored_history(monkeypatch, tmp_path):
     _use_process_workflow(
         monkeypatch,
@@ -646,7 +737,7 @@ def test_console_cancellation_persists_valid_unscored_history(monkeypatch, tmp_p
             "attempt_lifecycle_counts": None,
             "technical_failure_rate": None,
             "latency": None,
-            "schema_version": "qa-v1",
+            "schema_version": "qa-v2",
             "capabilities": {"retry_failed": False},
             "valid": True,
         }
@@ -792,6 +883,26 @@ def test_history_projects_compact_latency_quality_and_failure_trends(tmp_path):
     }
 
 
+def test_history_projects_live_failures_without_changing_technical_denominator():
+    projection = EvaluationHistory._summary_trends(
+        {
+            "overall_attempt_pass_rate": 0.5,
+            "passed_attempts": 1,
+            "quality_accounted_attempts": 2,
+            "attempt_lifecycle_counts": {
+                "scored": 1,
+                "execution_failed": 1,
+                "evaluation_failed": 1,
+                "live_validation_failed": 4,
+            },
+        }
+    )
+
+    assert projection["attempt_lifecycle_counts"]["live_validation_failed"] == 4
+    assert projection["live_validation_failed_attempts"] == 4
+    assert projection["technical_failure_rate"] == 2 / 3
+
+
 def test_history_uses_snapshot_identity_and_basename_for_cli_runs(tmp_path):
     run = tmp_path / "cli-run"
     _write_scored_history_run(run, source_path=r"C:\private\sets\golden.json")
@@ -846,13 +957,16 @@ def test_history_skips_expensive_artifacts_before_utc_cutoff(tmp_path, monkeypat
     latency_reads = []
     verified_artifacts = []
     original_read_json = history_module.read_json
+    original_summary_projection = EvaluationHistory._summary_projection
     original_latency_trend = EvaluationHistory._latency_trend
     original_verify_hashes = history_module.verify_hashes
 
     def recording_read_json(path):
-        if path.name == "summary.json":
-            summary_reads.append(path.parent.name)
         return original_read_json(path)
+
+    def recording_summary_projection(path):
+        summary_reads.append(path.parent.name)
+        return original_summary_projection(path)
 
     def recording_latency_trend(path, manifest):
         latency_reads.append(path.name)
@@ -863,6 +977,11 @@ def test_history_skips_expensive_artifacts_before_utc_cutoff(tmp_path, monkeypat
         return original_verify_hashes(path, artifacts, filenames)
 
     monkeypatch.setattr(history_module, "read_json", recording_read_json)
+    monkeypatch.setattr(
+        EvaluationHistory,
+        "_summary_projection",
+        staticmethod(recording_summary_projection),
+    )
     monkeypatch.setattr(
         EvaluationHistory,
         "_latency_trend",
@@ -1151,6 +1270,70 @@ def test_console_rejects_legacy_v0_retry_before_workflow_or_job(monkeypatch, tmp
     service.jobs.close()
 
 
+def test_compact_dataset_live_advisory_reads_latest_manifest_only(
+    monkeypatch, tmp_path
+):
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+    )
+    dataset = {
+        "id": "approved-live",
+        "contains_live_answers": True,
+    }
+    monkeypatch.setattr(service.catalog, "list_datasets", lambda: [dict(dataset)])
+    run_dir = service.catalog.runs_dir / "workspace"
+    run_dir.mkdir()
+    write_json(
+        run_dir / "manifest.json",
+        {
+            "status": "attention_required",
+            "attention_required": {"checked_at": "2026-08-13T08:00:00+00:00"},
+            "phases": {
+                "run": {
+                    "status": "attention_required",
+                    "live_check_status": "change_observed",
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(
+        service.jobs,
+        "list",
+        lambda: [
+            {
+                "kind": "evaluation",
+                "created_at": "2026-08-13T08:00:00+00:00",
+                "context": {
+                    "dataset_id": dataset["id"],
+                    "workspace_id": "workspace",
+                },
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        console_module,
+        "iter_precheck_decisions",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("compact advisory must not hydrate detail artifacts")
+        ),
+    )
+
+    projected = service.list_datasets()
+
+    assert projected[0]["last_live_check"] == {
+        "status": "change_observed",
+        "checked_at": "2026-08-13T08:00:00+00:00",
+    }
+    (run_dir / "manifest.json").unlink()
+    assert service.list_datasets()[0]["last_live_check"] == {
+        "status": "not_checked",
+        "checked_at": None,
+    }
+    service.jobs.close()
+
+
 def test_history_derives_prepared_items_from_canonical_preparation(
     monkeypatch, tmp_path
 ):
@@ -1425,6 +1608,7 @@ def test_console_retry_keeps_root_name_across_retry_generations(monkeypatch, tmp
     history_id = service.history.id_for_path(parent)
 
     job = service.start_evaluation_retry(history_id)
+    assert job["context"]["retry_attempt_count"] == 1
     completed = service.jobs.wait(job["id"], timeout=2)
 
     assert completed["status"] == "completed"
