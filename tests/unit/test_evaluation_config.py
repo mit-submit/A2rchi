@@ -110,6 +110,11 @@ def test_evaluation_console_routes_require_explicit_enablement(
         "require_perm",
         lambda self, _permission: lambda view: view,
     )
+    monkeypatch.setattr(
+        chat_app_module.FlaskAppWrapper,
+        "authorize_request",
+        lambda self, _permission: None,
+    )
 
     repository = Path(__file__).resolve().parents[2]
     flask_app = Flask(

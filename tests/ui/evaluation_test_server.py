@@ -510,9 +510,9 @@ def create_app():
         return jsonify({"value": value})
 
     def allow(_permission):
-        return lambda view: view
+        return None
 
-    register_evaluations(app, require_perm=allow, service=service)
+    register_evaluations(app, authorize_request=allow, service=service)
     return app
 
 

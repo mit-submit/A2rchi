@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.archi.pipelines.agents import agent_spec as agent_spec_utils
 
@@ -38,7 +39,7 @@ class EvaluationConsoleService:
     ):
         self.catalog = EvaluationCatalog(root)
         self.history = EvaluationHistory(self.catalog.runs_dir)
-        self.jobs = EvaluationJobManager(self.catalog.jobs_dir)
+        self.job_manager = EvaluationJobManager(self.catalog.jobs_dir)
         self.agent_config_path = Path(agent_config_path)
         self.agents_dir = Path(agents_dir)
         self.mcp_config_path = mcp_config_path
@@ -57,7 +58,7 @@ class EvaluationConsoleService:
         include_hidden: bool = False,
         include_detail: bool = False,
     ) -> Dict[str, Any]:
-        job = self.jobs.get(job_id)
+        job = self.job_manager.get(job_id)
         result = job.get("result") or {}
         draft_id = result.get("draft_id")
         if job.get("kind") == "generate_atoms" and draft_id:
@@ -148,7 +149,8 @@ class EvaluationConsoleService:
 
     def list_jobs(self, *, include_run: bool = False) -> List[Dict[str, Any]]:
         return [
-            self.get_job(job["id"], include_run=include_run) for job in self.jobs.list()
+            self.get_job(job["id"], include_run=include_run)
+            for job in self.job_manager.list()
         ]
 
     def get_job_detail(
@@ -165,7 +167,7 @@ class EvaluationConsoleService:
         """Return catalog summaries with a non-authoritative live-check projection."""
         datasets = self.catalog.list_datasets()
         latest_job_by_dataset: Dict[str, Dict[str, Any]] = {}
-        for job in self.jobs.list():
+        for job in self.job_manager.list():
             if job.get("kind") != "evaluation":
                 continue
             dataset_id = (job.get("context") or {}).get("dataset_id")
@@ -207,6 +209,58 @@ class EvaluationConsoleService:
                         projection = {"status": status, "checked_at": checked_at}
             dataset["last_live_check"] = projection
         return datasets
+
+    def import_dataset(
+        self, name: str, filename: str, blob: bytes
+    ) -> Tuple[Dict[str, Any], bool]:
+        return self.catalog.import_dataset(name, filename, blob)
+
+    def get_dataset(self, dataset_id: str) -> Dict[str, Any]:
+        return self.catalog.get_dataset(dataset_id)
+
+    def create_atom_review_draft(self, dataset_id: str) -> Dict[str, Any]:
+        return self.catalog.create_atom_review_draft(dataset_id)
+
+    def get_atom_draft(self, draft_id: str) -> Dict[str, Any]:
+        return self.catalog.get_atom_draft(draft_id)
+
+    def make_atom_draft_static_only(self, draft_id: str) -> Dict[str, Any]:
+        return self.catalog.make_atom_draft_static_only(draft_id)
+
+    def save_reviewed_dataset(
+        self,
+        draft_id: str,
+        name: str,
+        reviewed_items: Any,
+        *,
+        approval_actor: str,
+    ) -> Dict[str, Any]:
+        return self.catalog.save_reviewed_dataset(
+            draft_id,
+            name,
+            reviewed_items,
+            approval_actor=approval_actor,
+        )
+
+    def list_profiles(self) -> List[Dict[str, Any]]:
+        return self.catalog.list_profiles()
+
+    def import_profile(
+        self, name: str, filename: str, blob: bytes
+    ) -> Tuple[Dict[str, Any], bool]:
+        return self.catalog.import_profile(name, filename, blob)
+
+    def get_profile(self, profile_id: str) -> Dict[str, Any]:
+        return self.catalog.get_profile(profile_id)
+
+    def list_runs(self, *, cutoff: datetime) -> List[Dict[str, Any]]:
+        return self.history.list_runs(cutoff=cutoff)
+
+    def get_run(self, history_id: str) -> Dict[str, Any]:
+        return self.history.get_run(history_id)
+
+    def get_report(self, history_id: str) -> str:
+        return self.history.get_report(history_id)
 
     def _agent_path(self, agent_filename: str) -> Path:
         if (
@@ -279,7 +333,7 @@ class EvaluationConsoleService:
             )
             return {"draft_id": draft["id"]}
 
-        return self.jobs.start(
+        return self.job_manager.start(
             "generate_atoms",
             work,
             context={
@@ -306,7 +360,7 @@ class EvaluationConsoleService:
                 "retried_item_ids": details["item_ids"],
             }
 
-        return self.jobs.start(
+        return self.job_manager.start(
             "generate_atoms",
             work,
             context={
@@ -334,7 +388,7 @@ class EvaluationConsoleService:
             )
             return {"draft_id": draft["id"]}
 
-        return self.jobs.start(
+        return self.job_manager.start(
             "generate_atoms",
             work,
             context={
@@ -343,6 +397,22 @@ class EvaluationConsoleService:
                 "refresh": True,
             },
         )
+
+    def refresh_attention_evaluation(
+        self, job_id: str, profile_id: str
+    ) -> Dict[str, Any]:
+        job = self.job_manager.get(job_id)
+        if job["kind"] != "evaluation" or job["status"] != "attention_required":
+            raise ValueError("evaluation is not awaiting attention")
+        dataset_id = job["context"]["dataset_id"]
+        self.catalog.get_dataset(dataset_id)
+        self.catalog.profile_path(profile_id)
+        closed_evaluation = self.cancel_evaluation(job_id)
+        refresh_job = self.start_live_refresh(dataset_id, profile_id)
+        return {
+            "closed_evaluation": closed_evaluation,
+            "job": refresh_job,
+        }
 
     def start_evaluation(
         self,
@@ -397,7 +467,7 @@ class EvaluationConsoleService:
         run_dir.mkdir()
         try:
             write_json(metadata_path, metadata)
-            return self.jobs.start_process(
+            return self.job_manager.start_process(
                 {
                     "operation": "composite",
                     "output_dir": str(run_dir),
@@ -436,7 +506,7 @@ class EvaluationConsoleService:
             raise
 
     def continue_evaluation(self, job_id: str) -> Dict[str, Any]:
-        job = self.jobs.get(job_id)
+        job = self.job_manager.get(job_id)
         if job.get("status") != "attention_required":
             raise ValueError("evaluation is not awaiting attention")
         context = job["context"]
@@ -450,7 +520,7 @@ class EvaluationConsoleService:
         dataset_id = context["dataset_id"]
         profile_id = context["profile_id"]
         agent_filename = context["agent_spec"]
-        return self.jobs.continue_process(
+        return self.job_manager.continue_process(
             job_id,
             {
                 "operation": "continue",
@@ -511,7 +581,7 @@ class EvaluationConsoleService:
             }
             if self.mcp_config_path is not None:
                 request["mcp_config_path"] = str(self.mcp_config_path)
-            return self.jobs.start_process(
+            return self.job_manager.start_process(
                 request,
                 context={
                     "name": metadata["name"],
@@ -544,7 +614,7 @@ class EvaluationConsoleService:
             )
             write_json(run_dir / "canceled.json", canceled.to_dict())
 
-        job = self.jobs.cancel(job_id, on_terminated=persist_canceled)
+        job = self.job_manager.cancel(job_id, on_terminated=persist_canceled)
         run_dir = self.catalog.runs_dir / job["context"]["workspace_id"]
         return {
             "job": job,

@@ -74,6 +74,7 @@ test.describe("QA evaluation console", () => {
 
   test("preserves manager-only live evidence after refreshing the catalog", async ({ page }) => {
     let continueRequests = 0;
+    let refreshRequests = 0;
     const sanitizedJob = {
       id: "job-manager-attention", kind: "evaluation", status: "attention_required",
       created_at: "2026-08-13T08:00:00+00:00", started_at: "2026-08-13T08:00:01+00:00",
@@ -104,6 +105,37 @@ test.describe("QA evaluation console", () => {
       continueRequests += 1;
       route.fulfill({ json: { job: { ...detailedJob, status: "queued", result: undefined } } });
     });
+    await page.route("**/api/evaluations/jobs/job-manager-attention/refresh-live", (route) => {
+      refreshRequests += 1;
+      route.fulfill({
+        status: 202,
+        json: {
+          closed_evaluation: {
+            job: { ...detailedJob, status: "canceled", result: undefined },
+            history_id: "run-live",
+          },
+          job: {
+            id: "job-live-refresh", kind: "generate_atoms", status: "completed",
+            context: { dataset_id: "approved-live", refresh: true },
+            result: { draft_id: "draft-live-refresh" },
+          },
+        },
+      });
+    });
+    await page.route("**/api/evaluations/jobs/job-live-refresh", (route) => route.fulfill({ json: {
+      job: {
+        id: "job-live-refresh", kind: "generate_atoms", status: "completed",
+        context: { dataset_id: "approved-live", refresh: true },
+        result: { draft_id: "draft-live-refresh" },
+      },
+    } }));
+    await page.route("**/api/evaluations/atom-drafts/draft-live-refresh", (route) => route.fulfill({ json: {
+      draft: {
+        id: "draft-live-refresh", status: "open", dataset_name: "Approved live",
+        schema_version: "qa-dataset-v2", dataset_role: "approved_child",
+        generation_scope: "refresh_live", items: [], failure_summary: {},
+      },
+    } }));
 
     await page.goto("/evaluations");
 
@@ -113,8 +145,11 @@ test.describe("QA evaluation console", () => {
     await expect(page.getByText('"capacity": 4', { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Refresh live snapshot" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue with valid questions" })).toHaveCount(0);
-    expect(continueRequests).toBe(0);
     await expect(page.getByText("No agent attempts have started.", { exact: false }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Refresh live snapshot" }).click();
+    await expect(page.getByRole("heading", { name: "Review atoms" })).toBeVisible();
+    expect(refreshRequests).toBe(1);
+    expect(continueRequests).toBe(0);
   });
 
   test("announces the live pre-check while an evaluation worker is active", async ({ page }) => {

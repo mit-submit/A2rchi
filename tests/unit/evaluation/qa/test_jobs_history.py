@@ -250,7 +250,7 @@ def test_console_job_exposes_current_atom_draft_status(tmp_path):
     assert service.get_job(job_id)["result"]["draft_status"] == "open"
     write_json(draft_path, {"id": draft_id, "status": "saved"})
     assert service.get_job(job_id)["result"]["draft_status"] == "saved"
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_console_atom_generation_constructs_evaluator_directly(monkeypatch, tmp_path):
@@ -290,7 +290,7 @@ def test_console_atom_generation_constructs_evaluator_directly(monkeypatch, tmp_
     )
 
     job = service.start_atom_generation(dataset["id"], "builtin")
-    completed = service.jobs.wait(job["id"], timeout=2)
+    completed = service.job_manager.wait(job["id"], timeout=2)
     draft = service.catalog.get_atom_draft(completed["result"]["draft_id"])
 
     assert completed["status"] == "completed"
@@ -298,7 +298,7 @@ def test_console_atom_generation_constructs_evaluator_directly(monkeypatch, tmp_
     assert draft["items"][0]["atoms"] == [
         {"id": "A1", "text": "Answer", "required": True},
     ]
-    service.jobs.close()
+    service.job_manager.close()
 
 
 @pytest.mark.parametrize(
@@ -332,8 +332,8 @@ def test_console_rejects_invalid_phase_workers_before_catalog_or_job(
             **values,
         )
 
-    assert service.jobs.list() == []
-    service.jobs.close()
+    assert service.job_manager.list() == []
+    service.job_manager.close()
 
 
 def test_console_persists_and_passes_phase_workers(monkeypatch, tmp_path):
@@ -368,7 +368,7 @@ def test_console_persists_and_passes_phase_workers(monkeypatch, tmp_path):
         run_workers=4,
         score_workers=3,
     )
-    completed = service.jobs.wait(job["id"], timeout=2)
+    completed = service.job_manager.wait(job["id"], timeout=2)
 
     assert completed["status"] == "completed"
     assert job["context"]["run_workers"] == 4
@@ -390,7 +390,7 @@ def test_console_persists_and_passes_phase_workers(monkeypatch, tmp_path):
     )
     assert metadata["run_workers"] == 4
     assert metadata["score_workers"] == 3
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_job_manager_enforces_single_flight_and_persists_result(tmp_path):
@@ -443,7 +443,7 @@ def test_console_projects_validated_evaluation_runtime_phase(monkeypatch, tmp_pa
         },
     )
     monkeypatch.setattr(
-        service.jobs,
+        service.job_manager,
         "get",
         lambda _job_id: {
             "id": "job-id",
@@ -460,7 +460,7 @@ def test_console_projects_validated_evaluation_runtime_phase(monkeypatch, tmp_pa
         "runtime_phase": "checking_live_answers",
         "phases": {"prepare": {"status": "completed"}},
     }
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_job_manager_terminates_running_evaluation_process(monkeypatch, tmp_path):
@@ -602,7 +602,7 @@ def test_console_conflicting_launch_leaves_no_history_workspace(tmp_path):
         b'[{"id":"item","question":"Q","answer":"A","time_sensitive":false}]',
     )
     release = threading.Event()
-    active = service.jobs.start("generate_atoms", lambda: release.wait(2))
+    active = service.job_manager.start("generate_atoms", lambda: release.wait(2))
 
     with pytest.raises(JobConflictError, match="already"):
         service.start_evaluation(
@@ -615,8 +615,8 @@ def test_console_conflicting_launch_leaves_no_history_workspace(tmp_path):
 
     assert list(service.catalog.runs_dir.iterdir()) == []
     release.set()
-    service.jobs.wait(active["id"], timeout=2)
-    service.jobs.close()
+    service.job_manager.wait(active["id"], timeout=2)
+    service.job_manager.close()
 
 
 def test_console_launch_rejects_a_tampered_catalog_source(tmp_path):
@@ -649,7 +649,7 @@ def test_console_launch_rejects_a_tampered_catalog_source(tmp_path):
         )
 
     assert list(service.catalog.runs_dir.iterdir()) == []
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_console_launch_rejects_tampered_catalog_approval_metadata(tmp_path):
@@ -707,7 +707,7 @@ def test_console_launch_rejects_tampered_catalog_approval_metadata(tmp_path):
         )
 
     assert list(service.catalog.runs_dir.iterdir()) == []
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_console_cancellation_persists_valid_unscored_history(monkeypatch, tmp_path):
@@ -786,9 +786,108 @@ def test_console_cancellation_persists_valid_unscored_history(monkeypatch, tmp_p
     with pytest.raises(LookupError, match="report not found"):
         service.history.get_report(payload["history_id"])
 
-    next_job = service.jobs.start("generate_atoms", lambda: {"draft_id": "next"})
-    assert service.jobs.wait(next_job["id"], timeout=2)["status"] == "completed"
-    service.jobs.close()
+    next_job = service.job_manager.start("generate_atoms", lambda: {"draft_id": "next"})
+    assert service.job_manager.wait(next_job["id"], timeout=2)["status"] == "completed"
+    service.job_manager.close()
+
+
+def test_attention_refresh_validates_job_then_closes_and_refreshes(
+    monkeypatch, tmp_path
+):
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+    )
+    events = []
+    attention_job = {
+        "id": "attention-job",
+        "kind": "evaluation",
+        "status": "attention_required",
+        "context": {"dataset_id": "approved-live"},
+    }
+    monkeypatch.setattr(service.job_manager, "get", lambda job_id: attention_job)
+    monkeypatch.setattr(
+        service.catalog,
+        "get_dataset",
+        lambda dataset_id: events.append(("dataset", dataset_id)) or {},
+    )
+    monkeypatch.setattr(
+        service.catalog,
+        "profile_path",
+        lambda profile_id: events.append(("profile", profile_id)),
+    )
+    monkeypatch.setattr(
+        service,
+        "cancel_evaluation",
+        lambda job_id: events.append(("cancel", job_id))
+        or {"job": {"id": job_id, "status": "canceled"}},
+    )
+    monkeypatch.setattr(
+        service,
+        "start_live_refresh",
+        lambda dataset_id, profile_id: events.append(
+            ("refresh", dataset_id, profile_id)
+        )
+        or {"id": "refresh-job", "status": "queued"},
+    )
+
+    result = service.refresh_attention_evaluation("attention-job", "builtin")
+
+    assert result == {
+        "closed_evaluation": {"job": {"id": "attention-job", "status": "canceled"}},
+        "job": {"id": "refresh-job", "status": "queued"},
+    }
+    assert events == [
+        ("dataset", "approved-live"),
+        ("profile", "builtin"),
+        ("cancel", "attention-job"),
+        ("refresh", "approved-live", "builtin"),
+    ]
+    service.job_manager.close()
+
+
+@pytest.mark.parametrize(
+    "job",
+    [
+        {
+            "id": "atom-job",
+            "kind": "generate_atoms",
+            "status": "attention_required",
+            "context": {"dataset_id": "approved-live"},
+        },
+        {
+            "id": "completed-job",
+            "kind": "evaluation",
+            "status": "completed",
+            "context": {"dataset_id": "approved-live"},
+        },
+    ],
+)
+def test_attention_refresh_rejects_non_attention_evaluation_without_side_effects(
+    monkeypatch, tmp_path, job
+):
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=tmp_path / "config.yaml",
+        agents_dir=tmp_path,
+    )
+    monkeypatch.setattr(service.job_manager, "get", lambda job_id: job)
+    monkeypatch.setattr(
+        service,
+        "cancel_evaluation",
+        lambda job_id: pytest.fail("invalid job must not be canceled"),
+    )
+    monkeypatch.setattr(
+        service,
+        "start_live_refresh",
+        lambda dataset_id, profile_id: pytest.fail("refresh must not start"),
+    )
+
+    with pytest.raises(ValueError, match="evaluation is not awaiting attention"):
+        service.refresh_attention_evaluation(job["id"], "builtin")
+
+    service.job_manager.close()
 
 
 def test_history_lists_valid_runs_and_isolates_invalid_ones(tmp_path):
@@ -1304,8 +1403,8 @@ def test_console_rejects_legacy_v0_retry_before_workflow_or_job(monkeypatch, tmp
         service.start_evaluation_retry(service.history.id_for_path(run))
 
     assert workflow_constructed is False
-    assert service.jobs.list() == []
-    service.jobs.close()
+    assert service.job_manager.list() == []
+    service.job_manager.close()
 
 
 def test_compact_dataset_live_advisory_reads_latest_manifest_only(
@@ -1337,7 +1436,7 @@ def test_compact_dataset_live_advisory_reads_latest_manifest_only(
         },
     )
     monkeypatch.setattr(
-        service.jobs,
+        service.job_manager,
         "list",
         lambda: [
             {
@@ -1369,7 +1468,7 @@ def test_compact_dataset_live_advisory_reads_latest_manifest_only(
         "status": "not_checked",
         "checked_at": None,
     }
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_history_derives_prepared_items_from_canonical_preparation(
@@ -1647,7 +1746,7 @@ def test_console_retry_keeps_root_name_across_retry_generations(monkeypatch, tmp
 
     job = service.start_evaluation_retry(history_id)
     assert job["context"]["retry_attempt_count"] == 1
-    completed = service.jobs.wait(job["id"], timeout=2)
+    completed = service.job_manager.wait(job["id"], timeout=2)
 
     assert completed["status"] == "completed"
     successor = service.history.run_path(completed["result"]["history_id"])
@@ -1655,7 +1754,7 @@ def test_console_retry_keeps_root_name_across_retry_generations(monkeypatch, tmp
     assert metadata["name"] == "Original run · retry 2"
     assert metadata["retry_root_name"] == "Original run"
     assert metadata["retry_number"] == 2
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_console_retry_without_failures_creates_no_job_or_successor(
@@ -1695,9 +1794,9 @@ def test_console_retry_without_failures_creates_no_job_or_successor(
     with pytest.raises(ValueError, match="no failed attempts"):
         service.start_evaluation_retry(history_id)
 
-    assert service.jobs.list() == []
+    assert service.job_manager.list() == []
     assert list(service.catalog.runs_dir.iterdir()) == [parent]
-    service.jobs.close()
+    service.job_manager.close()
 
 
 def test_history_rejects_missing_declared_artifact(tmp_path):

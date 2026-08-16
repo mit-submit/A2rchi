@@ -103,18 +103,10 @@ def _authorize():
         permission = Permission.Evaluations.VIEW
     else:
         permission = Permission.Evaluations.MANAGE
-    sentinel = object()
-
-    @_state()["require_perm"](permission)
-    def probe():
-        return sentinel
-
-    result = probe()
-    if result is not sentinel:
-        return result
+    return _state()["authorize_request"](permission)
 
 
-def _json_body():
+def _validate_json_body_in_request():
     if request.content_length is not None and request.content_length > MAX_IMPORT_BYTES:
         raise ValueError("request body exceeds the 25 MB limit")
     blob = request.stream.read(MAX_IMPORT_BYTES + 1)
@@ -166,12 +158,8 @@ def catalog():
     can_manage = _can_manage()
     return jsonify(
         {
-            "datasets": (
-                service.list_datasets()
-                if hasattr(service, "list_datasets")
-                else service.catalog.list_datasets()
-            ),
-            "profiles": service.catalog.list_profiles(),
+            "datasets": service.list_datasets(),
+            "profiles": service.list_profiles(),
             "agents": service.list_agents(),
             "jobs": service.list_jobs(include_run=can_run),
             "permissions": {"can_run": can_run, "can_manage": can_manage},
@@ -183,20 +171,12 @@ def catalog():
 def datasets():
     service = _service()
     if request.method == "GET":
-        return jsonify(
-            {
-                "datasets": (
-                    service.list_datasets()
-                    if hasattr(service, "list_datasets")
-                    else service.catalog.list_datasets()
-                )
-            }
-        )
+        return jsonify({"datasets": service.list_datasets()})
     try:
         upload = request.files.get("file")
         if upload is None or not upload.filename:
             raise ValueError("dataset file is required")
-        metadata, created = service.catalog.import_dataset(
+        metadata, created = service.import_dataset(
             request.form.get("name") or upload.filename,
             upload.filename,
             _read_upload(upload, "dataset"),
@@ -211,7 +191,7 @@ def datasets():
 @evaluations_bp.route("/api/evaluations/datasets/<dataset_id>")
 def dataset_detail(dataset_id):
     try:
-        return jsonify({"dataset": _service().catalog.get_dataset(dataset_id)})
+        return jsonify({"dataset": _service().get_dataset(dataset_id)})
     except Exception as exc:
         return _error(exc)
 
@@ -221,7 +201,7 @@ def dataset_detail(dataset_id):
 )
 def generate_atoms(dataset_id):
     try:
-        body = _json_body()
+        body = _validate_json_body_in_request()
         static_only = body.get("static_only", False)
         if not isinstance(static_only, bool):
             raise ValueError("static_only must be a boolean")
@@ -241,7 +221,7 @@ def generate_atoms(dataset_id):
 )
 def refresh_live(dataset_id):
     try:
-        body = _json_body()
+        body = _validate_json_body_in_request()
         job = _service().start_live_refresh(
             dataset_id, body.get("profile_id") or "builtin"
         )
@@ -255,7 +235,7 @@ def refresh_live(dataset_id):
 )
 def review_atoms(dataset_id):
     try:
-        draft = _service().catalog.create_atom_review_draft(dataset_id)
+        draft = _service().create_atom_review_draft(dataset_id)
         return _bounded_json_response({"draft": draft}, status=201)
     except Exception as exc:
         return _error(exc)
@@ -264,9 +244,7 @@ def review_atoms(dataset_id):
 @evaluations_bp.route("/api/evaluations/atom-drafts/<draft_id>")
 def atom_draft(draft_id):
     try:
-        return _bounded_json_response(
-            {"draft": _service().catalog.get_atom_draft(draft_id)}
-        )
+        return _bounded_json_response({"draft": _service().get_atom_draft(draft_id)})
     except Exception as exc:
         return _error(exc)
 
@@ -289,7 +267,7 @@ def retry_failed_atoms(draft_id):
 )
 def make_atom_draft_static_only(draft_id):
     try:
-        draft = _service().catalog.make_atom_draft_static_only(draft_id)
+        draft = _service().make_atom_draft_static_only(draft_id)
         return _bounded_json_response({"draft": draft})
     except Exception as exc:
         return _error(exc)
@@ -298,8 +276,8 @@ def make_atom_draft_static_only(draft_id):
 @evaluations_bp.route("/api/evaluations/atom-drafts/<draft_id>/save", methods=["POST"])
 def save_atom_draft(draft_id):
     try:
-        body = _json_body()
-        dataset = _service().catalog.save_reviewed_dataset(
+        body = _validate_json_body_in_request()
+        dataset = _service().save_reviewed_dataset(
             draft_id,
             body.get("name"),
             body.get("reviewed_items"),
@@ -314,12 +292,12 @@ def save_atom_draft(draft_id):
 def profiles():
     service = _service()
     if request.method == "GET":
-        return jsonify({"profiles": service.catalog.list_profiles()})
+        return jsonify({"profiles": service.list_profiles()})
     try:
         upload = request.files.get("file")
         if upload is None or not upload.filename:
             raise ValueError("profile file is required")
-        metadata, created = service.catalog.import_profile(
+        metadata, created = service.import_profile(
             request.form.get("name") or upload.filename,
             upload.filename,
             _read_upload(upload, "profile"),
@@ -334,7 +312,7 @@ def profiles():
 @evaluations_bp.route("/api/evaluations/profiles/<profile_id>")
 def profile_detail(profile_id):
     try:
-        return jsonify({"profile": _service().catalog.get_profile(profile_id)})
+        return jsonify({"profile": _service().get_profile(profile_id)})
     except Exception as exc:
         return _error(exc)
 
@@ -355,11 +333,11 @@ def runs():
             cutoff = _history_cutoff(
                 request.args.get("range", HistoryRange.DAYS_90.value)
             )
-            return jsonify({"runs": service.history.list_runs(cutoff=cutoff)})
+            return jsonify({"runs": service.list_runs(cutoff=cutoff)})
         except Exception as exc:
             return _error(exc)
     try:
-        body = _json_body()
+        body = _validate_json_body_in_request()
         job = service.start_evaluation(
             name=body.get("name"),
             dataset_id=body.get("dataset_id"),
@@ -377,7 +355,7 @@ def runs():
 @evaluations_bp.route("/api/evaluations/runs/<history_id>")
 def run_detail(history_id):
     try:
-        return _bounded_json_response({"run": _service().history.get_run(history_id)})
+        return _bounded_json_response({"run": _service().get_run(history_id)})
     except Exception as exc:
         return _error(exc)
 
@@ -398,7 +376,7 @@ def retry_failed_evaluation(history_id):
 def run_report(history_id):
     try:
         return Response(
-            _service().history.get_report(history_id),
+            _service().get_report(history_id),
             mimetype="text/markdown",
         )
     except Exception as exc:
@@ -409,14 +387,10 @@ def run_report(history_id):
 def job_detail(job_id):
     try:
         service = _service()
-        job = (
-            service.get_job_detail(
-                job_id,
-                include_run=_can_run(),
-                include_hidden=_can_manage(),
-            )
-            if hasattr(service, "get_job_detail")
-            else service.get_job(job_id)
+        job = service.get_job_detail(
+            job_id,
+            include_run=_can_run(),
+            include_hidden=_can_manage(),
         )
         return _bounded_json_response({"job": job})
     except Exception as exc:
@@ -435,6 +409,21 @@ def cancel_job(job_id):
 
 
 @evaluations_bp.route(
+    "/api/evaluations/jobs/<job_id>/refresh-live",
+    methods=["POST"],
+)
+def refresh_attention_job(job_id):
+    try:
+        body = _validate_json_body_in_request()
+        result = _service().refresh_attention_evaluation(
+            job_id, body.get("profile_id") or "builtin"
+        )
+        return jsonify(result), 202
+    except Exception as exc:
+        return _error(exc)
+
+
+@evaluations_bp.route(
     "/api/evaluations/jobs/<job_id>/continue",
     methods=["POST"],
 )
@@ -445,9 +434,9 @@ def continue_job(job_id):
         return _error(exc)
 
 
-def register_evaluations(app, *, require_perm, service):
+def register_evaluations(app, *, authorize_request, service):
     app.config[_STATE_KEY] = {
-        "require_perm": require_perm,
+        "authorize_request": authorize_request,
         "service": service,
     }
     app.register_blueprint(evaluations_bp)

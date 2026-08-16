@@ -2909,7 +2909,7 @@ class FlaskAppWrapper(object):
             logger.info("Adding QA evaluation console endpoints")
             register_evaluations(
                 self.app,
-                require_perm=self.require_perm,
+                authorize_request=self.authorize_request,
                 service=self.evaluation_service,
             )
 
@@ -3258,58 +3258,75 @@ class FlaskAppWrapper(object):
             return f(*args, **kwargs)
         return decorated_function
 
+    def authorize_request(self, permission: str):
+        """Return an error response unless the current request has ``permission``."""
+        if not self.auth_enabled:
+            return None
+
+        if not session.get("logged_in"):
+            if not self._authenticate_bearer_token():
+                if self.sso_enabled:
+                    registry = get_registry()
+                    if not registry.allow_anonymous:
+                        if request.path.startswith("/api/"):
+                            return (
+                                jsonify(
+                                    {
+                                        "error": "Unauthorized",
+                                        "message": "Authentication required",
+                                    }
+                                ),
+                                401,
+                            )
+                        return redirect(url_for("login"))
+                return (
+                    jsonify(
+                        {"error": "Unauthorized", "message": "Authentication required"}
+                    ),
+                    401,
+                )
+
+        roles = session.get("roles", [])
+        if not has_permission(permission, roles):
+            user_email = session.get("user", {}).get("email", "unknown")
+            logger.warning(
+                f"Permission denied: user {user_email} with roles {roles} lacks '{permission}'"
+            )
+            from src.utils.rbac.audit import log_permission_check
+
+            log_permission_check(
+                permission=permission,
+                granted=False,
+                user=user_email,
+                roles=roles,
+                endpoint=request.path,
+            )
+            return (
+                jsonify(
+                    {
+                        "error": "Forbidden",
+                        "message": f"Permission denied: requires {permission}",
+                        "required_permission": permission,
+                    }
+                ),
+                403,
+            )
+
+        return None
+
     def require_perm(self, permission: str):
-        """
-        Decorator to require authentication AND a specific permission for routes.
-        
-        This combines require_auth with permission checking. Use for routes
-        that need specific RBAC permissions (e.g., document uploads, config changes).
-        
-        Args:
-            permission: The permission string required (e.g., 'upload:documents')
-            
-        Returns:
-            Decorator function
-        """
+        """Decorate a route to require authentication and ``permission``."""
+
         def decorator(f):
             @wraps(f)
             def decorated_function(*args, **kwargs):
-                # First check authentication
-                if not self.auth_enabled:
-                    return f(*args, **kwargs)
-
-                if not session.get('logged_in'):
-                    # Try Bearer token authentication
-                    if not self._authenticate_bearer_token():
-                        if self.sso_enabled:
-                            registry = get_registry()
-                            if not registry.allow_anonymous:
-                                if request.path.startswith('/api/'):
-                                    return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-                                return redirect(url_for('login'))
-                        return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-
-                # Now check permission
-                roles = session.get('roles', [])
-                if not has_permission(permission, roles):
-                    user_email = session.get('user', {}).get('email', 'unknown')
-                    logger.warning(f"Permission denied: user {user_email} with roles {roles} lacks '{permission}'")
-                    from src.utils.rbac.audit import log_permission_check
-                    log_permission_check(
-                        permission=permission,
-                        granted=False,
-                        user=user_email,
-                        roles=roles,
-                        endpoint=request.path
-                    )
-                    return jsonify({
-                        'error': 'Forbidden',
-                        'message': f'Permission denied: requires {permission}',
-                        'required_permission': permission
-                    }), 403
-                
+                error_response = self.authorize_request(permission)
+                if error_response is not None:
+                    return error_response
                 return f(*args, **kwargs)
+
             return decorated_function
+
         return decorator
 
     def health(self):

@@ -690,18 +690,22 @@
     } catch (error) { toast("Could not generate atoms", error.message); }
   }
 
+  async function openLiveRefreshJob(job) {
+    state.jobs.unshift(job); renderRuntime();
+    toast("Live refresh started", "A new immutable review draft is being prepared.");
+    const result = await pollJob(job.id);
+    const draftPayload = await api(`/api/evaluations/atom-drafts/${encodeURIComponent(result.draft_id)}`);
+    state.draft = draftPayload.draft;
+    openAtomEditor();
+  }
+
   async function refreshLiveSnapshot(datasetId) {
     try {
       const payload = await api(`/api/evaluations/datasets/${encodeURIComponent(datasetId)}/refresh-live`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profile_id: "builtin" })
       });
-      state.jobs.unshift(payload.job); renderRuntime();
-      toast("Live refresh started", "A new immutable review draft is being prepared.");
-      const result = await pollJob(payload.job.id);
-      const draftPayload = await api(`/api/evaluations/atom-drafts/${encodeURIComponent(result.draft_id)}`);
-      state.draft = draftPayload.draft;
-      openAtomEditor();
+      await openLiveRefreshJob(payload.job);
     } catch (error) { toast("Could not refresh live snapshot", error.message); }
   }
 
@@ -1603,15 +1607,21 @@
   async function refreshAttentionEvaluation() {
     const job = activeJob();
     if (!job || job.status !== "attention_required") return;
-    const datasetId = job.context?.dataset_id;
-    if (!datasetId) return;
+    const button = $("#refresh-live-evaluation");
+    button.disabled = true;
     try {
-      const canceled = await api(`/api/evaluations/jobs/${encodeURIComponent(job.id)}/cancel`, { method: "POST" });
+      const payload = await api(`/api/evaluations/jobs/${encodeURIComponent(job.id)}/refresh-live`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: "builtin" })
+      });
       const index = state.jobs.findIndex((item) => item.id === job.id);
-      if (index >= 0) state.jobs[index] = canceled.job;
+      if (index >= 0) state.jobs[index] = payload.closed_evaluation.job;
       renderRuntime();
-      await refreshLiveSnapshot(datasetId);
-    } catch (error) { toast("Could not refresh live snapshot", error.message); }
+      await openLiveRefreshJob(payload.job);
+    } catch (error) {
+      button.disabled = false;
+      toast("Could not refresh live snapshot", error.message);
+    }
   }
 
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));

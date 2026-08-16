@@ -25,13 +25,57 @@ class _Jobs:
 
 class _Service:
     def __init__(self, tmp_path):
-        self.catalog = EvaluationCatalog(tmp_path)
-        self.history = EvaluationHistory(self.catalog.runs_dir)
-        self.jobs = _Jobs()
+        self._catalog = EvaluationCatalog(tmp_path)
+        self._history = EvaluationHistory(self._catalog.runs_dir)
+        self._jobs = _Jobs()
         self.started = []
 
     def list_agents(self):
         return [{"id": "agent.md", "name": "Agent"}]
+
+    def list_datasets(self):
+        return self._catalog.list_datasets()
+
+    def import_dataset(self, name, filename, blob):
+        return self._catalog.import_dataset(name, filename, blob)
+
+    def get_dataset(self, dataset_id):
+        return self._catalog.get_dataset(dataset_id)
+
+    def create_atom_review_draft(self, dataset_id):
+        return self._catalog.create_atom_review_draft(dataset_id)
+
+    def get_atom_draft(self, draft_id):
+        return self._catalog.get_atom_draft(draft_id)
+
+    def make_atom_draft_static_only(self, draft_id):
+        return self._catalog.make_atom_draft_static_only(draft_id)
+
+    def save_reviewed_dataset(self, draft_id, name, reviewed_items, *, approval_actor):
+        return self._catalog.save_reviewed_dataset(
+            draft_id,
+            name,
+            reviewed_items,
+            approval_actor=approval_actor,
+        )
+
+    def list_profiles(self):
+        return self._catalog.list_profiles()
+
+    def import_profile(self, name, filename, blob):
+        return self._catalog.import_profile(name, filename, blob)
+
+    def get_profile(self, profile_id):
+        return self._catalog.get_profile(profile_id)
+
+    def list_runs(self, *, cutoff):
+        return self._history.list_runs(cutoff=cutoff)
+
+    def get_run(self, history_id):
+        return self._history.get_run(history_id)
+
+    def get_report(self, history_id):
+        return self._history.get_report(history_id)
 
     def get_agent_snapshot(self, agent_filename):
         if agent_filename != "agent.md":
@@ -45,10 +89,13 @@ class _Service:
 
     def list_jobs(self, **kwargs):
         self.list_job_options = kwargs
-        return self.jobs.list()
+        return self._jobs.list()
 
     def get_job(self, job_id):
-        return self.jobs.get(job_id)
+        return self._jobs.get(job_id)
+
+    def get_job_detail(self, job_id, *, include_run, include_hidden):
+        return self.get_job(job_id)
 
     def start_atom_generation(self, dataset_id, profile_id):
         self.started.append(("atoms", dataset_id, profile_id))
@@ -73,6 +120,20 @@ class _Service:
             "history_id": "canceled-history-id",
         }
 
+    def refresh_attention_evaluation(self, job_id, profile_id):
+        self.started.append(("attention-refresh", job_id, profile_id))
+        return {
+            "closed_evaluation": {
+                "job": {
+                    "id": job_id,
+                    "kind": "evaluation",
+                    "status": "canceled",
+                },
+                "history_id": "canceled-history-id",
+            },
+            "job": {"id": "job-refresh", "kind": "generate_atoms", "status": "queued"},
+        }
+
 
 def _app(tmp_path, denied_permissions=None):
     app = Flask(
@@ -82,20 +143,18 @@ def _app(tmp_path, denied_permissions=None):
     )
     permissions = []
 
-    def require_perm(permission):
-        def decorator(view):
-            def wrapped(*args, **kwargs):
-                permissions.append(permission)
-                if permission in (denied_permissions or set()):
-                    return "Forbidden", 403
-                return view(*args, **kwargs)
-
-            return wrapped
-
-        return decorator
+    def authorize_request(permission):
+        permissions.append(permission)
+        if permission in (denied_permissions or set()):
+            return "Forbidden", 403
+        return None
 
     service = _Service(tmp_path)
-    register_evaluations(app, require_perm=require_perm, service=service)
+    register_evaluations(
+        app,
+        authorize_request=authorize_request,
+        service=service,
+    )
     return app, service, permissions
 
 
@@ -120,7 +179,7 @@ def _partial_dataset():
 
 
 def _write_trend_run(service):
-    run = service.catalog.runs_dir / "trend-run"
+    run = service._catalog.runs_dir / "trend-run"
     run.mkdir()
     artifact_utils.write_json(run / "input.snapshot.json", [])
     artifact_utils.write_jsonl(run / "preparation.jsonl", [])
@@ -205,7 +264,7 @@ def test_catalog_import_and_launch_routes_use_separate_permissions(tmp_path):
         f"/api/evaluations/datasets/{dataset_id}/generate-atoms",
         json={"profile_id": "builtin"},
     )
-    review_dataset, _created = service.catalog.import_dataset(
+    review_dataset, _created = service.import_dataset(
         "Review set", "review.json", _dataset_with_atom()
     )
     reviewed = client.post(
@@ -415,7 +474,7 @@ def test_run_history_route_passes_explicit_utc_cutoff(
     cutoffs = []
     monkeypatch.setattr(evaluation_routes, "_utc_now", lambda: now, raising=False)
     monkeypatch.setattr(
-        service.history,
+        service,
         "list_runs",
         lambda *, cutoff: cutoffs.append(cutoff) or [],
     )
@@ -436,7 +495,7 @@ def test_run_history_route_defaults_to_90_days(tmp_path, monkeypatch):
     cutoffs = []
     monkeypatch.setattr(evaluation_routes, "_utc_now", lambda: now, raising=False)
     monkeypatch.setattr(
-        service.history,
+        service,
         "list_runs",
         lambda *, cutoff: cutoffs.append(cutoff) or [],
     )
@@ -454,7 +513,7 @@ def test_run_history_route_rejects_unsupported_range(
     app, service, _permissions = _app(tmp_path)
     listed = []
     monkeypatch.setattr(
-        service.history,
+        service,
         "list_runs",
         lambda *, cutoff: listed.append(cutoff) or [],
     )
@@ -515,7 +574,7 @@ def test_partial_dataset_review_never_starts_generation_or_provider(
         agent_config_path=tmp_path / "config.yaml",
         agents_dir=tmp_path,
     )
-    dataset, _created = service.catalog.import_dataset(
+    dataset, _created = service.import_dataset(
         "Partial", "partial.json", _partial_dataset()
     )
     app = Flask(
@@ -525,9 +584,9 @@ def test_partial_dataset_review_never_starts_generation_or_provider(
     )
 
     def allow(_permission):
-        return lambda view: view
+        return None
 
-    register_evaluations(app, require_perm=allow, service=service)
+    register_evaluations(app, authorize_request=allow, service=service)
     client = app.test_client()
 
     generated = client.post(
@@ -606,8 +665,8 @@ def test_json_request_is_bounded_by_observed_bytes(tmp_path, monkeypatch):
 
 def test_run_detail_bounds_actual_serialized_response(tmp_path, monkeypatch):
     app, service, _permissions = _app(tmp_path)
-    service.history.get_run = lambda _history_id: {"answer": "selected truth"}
-    payload = app.json.dumps({"run": service.history.get_run("run")}).encode("utf-8")
+    service.get_run = lambda _history_id: {"answer": "selected truth"}
+    payload = app.json.dumps({"run": service.get_run("run")}).encode("utf-8")
     monkeypatch.setattr(evaluation_routes, "MAX_IMPORT_BYTES", len(payload) - 1)
 
     response = app.test_client().get("/api/evaluations/runs/run")
@@ -630,7 +689,7 @@ def test_view_only_user_cannot_import_a_dataset(tmp_path):
     )
 
     assert response.status_code == 403
-    assert service.catalog.list_datasets() == []
+    assert service.list_datasets() == []
     assert permissions == [Permission.Evaluations.MANAGE]
 
 
@@ -683,3 +742,33 @@ def test_cancel_route_denies_user_without_run_permission(tmp_path):
     assert response.status_code == 403
     assert service.started == []
     assert permissions == [Permission.Evaluations.RUN]
+
+
+def test_attention_refresh_route_uses_manage_permission_without_run_permission(
+    tmp_path,
+):
+    app, service, permissions = _app(
+        tmp_path, denied_permissions={Permission.Evaluations.RUN}
+    )
+
+    response = app.test_client().post(
+        "/api/evaluations/jobs/job-manager-attention/refresh-live",
+        json={"profile_id": "builtin"},
+    )
+
+    assert response.status_code == 202
+    assert response.get_json() == {
+        "closed_evaluation": {
+            "job": {
+                "id": "job-manager-attention",
+                "kind": "evaluation",
+                "status": "canceled",
+            },
+            "history_id": "canceled-history-id",
+        },
+        "job": {"id": "job-refresh", "kind": "generate_atoms", "status": "queued"},
+    }
+    assert service.started == [
+        ("attention-refresh", "job-manager-attention", "builtin")
+    ]
+    assert permissions == [Permission.Evaluations.MANAGE]
