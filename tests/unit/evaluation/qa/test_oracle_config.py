@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -67,6 +68,7 @@ class TestEvaluatorMCPRegistry:
             "    transport: stdio\n"
             f"    command: {sys.executable}\n"
             "    args: [-m, tests.unit.evaluation.qa.fake_mcp_server]\n"
+            "    timeout_seconds: 5\n"
             "    authentication: {mode: inherited_environment}\n",
             encoding="utf-8",
         )
@@ -155,10 +157,85 @@ class TestEvaluatorMCPRegistry:
                 process.kill()
                 process.wait(timeout=3)
 
-    def test_missing_file_is_an_empty_registry(self, tmp_path):
-        registry = EvaluatorMCPRegistry.load(tmp_path / "missing.yaml")
+    def test_omitted_file_is_an_empty_registry(self):
+        registry = EvaluatorMCPRegistry.load()
 
         assert registry.aliases == ()
+
+    def test_explicit_missing_file_is_rejected(self, tmp_path):
+        with pytest.raises(
+            ValueError,
+            match="evaluator MCP configuration does not exist",
+        ):
+            EvaluatorMCPRegistry.load(tmp_path / "missing.yaml")
+
+    def test_explicit_unreadable_file_is_rejected(self, tmp_path, monkeypatch):
+        path = tmp_path / "mcp.yaml"
+        path.write_text(
+            "schema_version: qa-evaluation-mcp-v1\nservers: {}\n",
+            encoding="utf-8",
+        )
+        original_open = Path.open
+
+        def deny_registry_open(candidate, *args, **kwargs):
+            if candidate == path:
+                raise PermissionError
+            return original_open(candidate, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", deny_registry_open)
+
+        with pytest.raises(
+            ValueError,
+            match="evaluator MCP configuration is not readable",
+        ):
+            EvaluatorMCPRegistry.load(path)
+
+    def test_empty_registry_reports_missing_registry_before_alias(self):
+        recipe = parse_oracle_recipe(
+            {
+                "kind": "mcp",
+                "calls": [
+                    {
+                        "id": "capacity",
+                        "server": "dbs",
+                        "tool": "current_capacity",
+                        "arguments": {},
+                    }
+                ],
+            }
+        )
+
+        with pytest.raises(OracleResolutionError) as caught:
+            OracleResolver(EvaluatorMCPRegistry.load()).resolve(recipe)
+
+        assert caught.value.detail == "Evaluator MCP registry is not configured."
+
+    def test_configured_empty_registry_reports_missing_alias(self, tmp_path):
+        path = tmp_path / "mcp.yaml"
+        path.write_text(
+            "schema_version: qa-evaluation-mcp-v1\nservers: {}\n",
+            encoding="utf-8",
+        )
+        recipe = parse_oracle_recipe(
+            {
+                "kind": "mcp",
+                "calls": [
+                    {
+                        "id": "capacity",
+                        "server": "dbs",
+                        "tool": "current_capacity",
+                        "arguments": {},
+                    }
+                ],
+            }
+        )
+
+        with pytest.raises(OracleResolutionError) as caught:
+            OracleResolver(EvaluatorMCPRegistry.load(path)).resolve(recipe)
+
+        assert caught.value.detail == (
+            "evaluator MCP server alias 'dbs' is not configured"
+        )
 
     def test_rejects_duplicate_server_aliases(self, tmp_path):
         path = tmp_path / "mcp.yaml"
@@ -190,6 +267,7 @@ servers:
     transport: stdio
     command: /bin/tool
     args: [--read-only]
+    timeout_seconds: 45
     authentication:
       mode: inherited_environment
   remote:
@@ -206,9 +284,65 @@ servers:
 
         assert registry.aliases == ("local", "remote")
         assert registry._servers["local"].transport is MCPTransport.STDIO
+        assert registry._servers["local"].timeout_seconds == 45
+        assert registry._servers["remote"].timeout_seconds == 120
         assert (
             registry._servers["remote"].authentication.mode is AuthenticationMode.BEARER
         )
+
+    def test_reports_configured_server_timeout(self, tmp_path, monkeypatch):
+        path = tmp_path / "mcp.yaml"
+        path.write_text(
+            "schema_version: qa-evaluation-mcp-v1\n"
+            "servers:\n"
+            "  fixture:\n"
+            "    transport: stdio\n"
+            "    command: fixture\n"
+            "    timeout_seconds: 7\n"
+            "    authentication: {mode: inherited_environment}\n",
+            encoding="utf-8",
+        )
+        recipe = parse_oracle_recipe(
+            {
+                "kind": "mcp",
+                "calls": [
+                    {
+                        "id": "capacity",
+                        "server": "fixture",
+                        "tool": "current_capacity",
+                        "arguments": {},
+                    }
+                ],
+            }
+        )
+        monkeypatch.setattr(
+            "src.evaluation.qa.oracle_config.anyio.run",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError()),
+        )
+
+        with pytest.raises(OracleResolutionError) as caught:
+            OracleResolver(EvaluatorMCPRegistry.load(path)).resolve(recipe)
+
+        assert caught.value.detail == "Evaluator MCP call timed out after 7 seconds."
+
+    @pytest.mark.parametrize("timeout", [True, 0, -1, 1.5, "30"])
+    def test_rejects_invalid_server_timeout(self, tmp_path, timeout):
+        path = tmp_path / "mcp.yaml"
+        path.write_text(
+            "schema_version: qa-evaluation-mcp-v1\n"
+            "servers:\n"
+            "  fixture:\n"
+            "    transport: stdio\n"
+            "    command: fixture\n"
+            f"    timeout_seconds: {timeout!r}\n"
+            "    authentication: {mode: inherited_environment}\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(
+            ValueError, match="timeout_seconds must be a positive integer"
+        ):
+            EvaluatorMCPRegistry.load(path)
 
     @pytest.mark.parametrize(
         "server_yaml, message",

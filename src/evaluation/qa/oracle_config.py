@@ -28,7 +28,6 @@ from .oracle import (
 )
 
 MCP_CONFIG_SCHEMA_VERSION = "qa-evaluation-mcp-v1"
-DEFAULT_MCP_CONFIG_PATH = Path("/root/archi/configs/qa_evaluation_mcp.yaml")
 ORACLE_TIMEOUT_SECONDS = 120
 ENV_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
@@ -264,6 +263,10 @@ def _load_yaml(path: Path) -> Any:
     try:
         with path.open(encoding="utf-8") as handle:
             return yaml.load(handle, Loader=_UniqueKeyLoader)
+    except PermissionError:
+        raise ValueError(
+            f"evaluator MCP configuration is not readable: {path}"
+        ) from None
     except UnicodeDecodeError as exc:
         raise ValueError("evaluator MCP configuration must be UTF-8") from exc
     except yaml.YAMLError as exc:
@@ -271,22 +274,30 @@ def _load_yaml(path: Path) -> Any:
 
 
 class EvaluatorMCPRegistry(OracleInvoker):
-    def __init__(self, servers: Mapping[str, MCPServerConfig]):
+    def __init__(
+        self,
+        servers: Mapping[str, MCPServerConfig],
+        *,
+        configured: bool = True,
+    ):
         self._servers = dict(servers)
+        self._configured = configured
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "EvaluatorMCPRegistry":
-        resolved_path = DEFAULT_MCP_CONFIG_PATH if path is None else path
+        if path is None:
+            return cls({}, configured=False)
+        resolved_path = path
         try:
             exists = resolved_path.exists()
         except PermissionError:
-            if path is None:
-                return cls({})
             raise ValueError(
                 f"evaluator MCP configuration is not readable: {resolved_path}"
             ) from None
         if not exists:
-            return cls({})
+            raise ValueError(
+                f"evaluator MCP configuration does not exist: {resolved_path}"
+            )
         if not resolved_path.is_file():
             raise ValueError(
                 f"evaluator MCP configuration must be a file: {resolved_path}"
@@ -456,6 +467,15 @@ class EvaluatorMCPRegistry(OracleInvoker):
 
     def invoke(self, call: OracleCall) -> Tuple[CallToolResult, OracleCallEvidence]:
         started = time.monotonic()
+        if not self._configured:
+            detail = "Evaluator MCP registry is not configured."
+            evidence = OracleCallEvidence(
+                call_id=call.id,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                success=False,
+                error=detail,
+            )
+            raise OracleResolutionError(detail, (evidence,))
         server = self._servers.get(call.server)
         if server is None:
             detail = f"evaluator MCP server alias '{call.server}' is not configured"

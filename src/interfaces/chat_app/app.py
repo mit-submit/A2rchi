@@ -2689,6 +2689,7 @@ class FlaskAppWrapper(object):
         self.evaluations_enabled = evaluations_config.get("enabled") is True
         self.evaluation_service = None
         if self.evaluations_enabled:
+            evaluation_mcp_config_path = evaluations_config.get("mcp_config_path")
             self.evaluation_service = EvaluationConsoleService(
                 Path(evaluations_config.get("root", "/root/archi/evaluations")),
                 agent_config_path=Path(
@@ -2699,11 +2700,10 @@ class FlaskAppWrapper(object):
                 agents_dir=Path(
                     self.chat_app_config.get("agents_dir") or "/root/archi/agents"
                 ),
-                mcp_config_path=Path(
-                    evaluations_config.get(
-                        "mcp_config_path",
-                        "/root/archi/configs/qa_evaluation_mcp.yaml",
-                    )
+                mcp_config_path=(
+                    Path(evaluation_mcp_config_path)
+                    if evaluation_mcp_config_path
+                    else None
                 ),
             )
         self.salt = read_secret("UPLOADER_SALT")

@@ -254,7 +254,9 @@ servers:
 supported. A server is initialized lazily on first use; tool discovery and
 calls use that server's optional positive-integer `timeout_seconds`, defaulting
 to 120 seconds, and are not retried automatically. The registry is structurally
-separate from tested-agent MCP configuration.
+separate from tested-agent MCP configuration. The CLI's `--mcp-config` option
+reads this file directly. For the browser console, configure its host source
+path under `services.chat_app.evaluations.mcp_config_path` as described below.
 
 ## Evaluator profile format
 
@@ -381,18 +383,28 @@ pipeline exported by `src.archi.pipelines`.
 The CLI accepts only an existing local `.yaml` or `.yml` file. During the run,
 Archi snapshots the resolved file as `agent_config.resolved.yaml`.
 
-For console evaluations, set the deployment's existing resolved config:
+For console evaluations, set the deployment's existing resolved agent config
+and the host source path of the evaluator registry:
 
 ```yaml
 services:
   chat_app:
     evaluations:
       agent_config_path: /root/archi/configs/config.yaml
-      mcp_config_path: /root/archi/configs/qa_evaluation_mcp.yaml
+      mcp_config_path: ./evaluation/qa_evaluation_mcp.yaml
 ```
 
-All console-launched evaluations use that config. To compare different runtime
-configs, use separate deployments or the CLI with separate workspaces.
+`agent_config_path` is a runtime path to the rendered Archi config.
+`mcp_config_path` is deliberately different: it is a path on the machine where
+you run `archi create`, relative to the deployment YAML when it is not absolute.
+Archi validates the registry, copies it to the generated deployment's
+`evaluation_config/qa_evaluation_mcp.yaml`, mounts that directory read-only into
+the chatbot, and writes the fixed runtime path into the rendered config. Do not
+copy the registry into a generated deployment manually; recreating or deleting
+the deployment replaces that generated directory.
+
+All console-launched evaluations use those configs. To compare different
+runtime configs, use separate deployments or the CLI with separate workspaces.
 
 ## Agent spec format
 
@@ -565,12 +577,27 @@ services:
       enabled: true
       root: /root/archi/evaluations
       agent_config_path: /root/archi/configs/config.yaml
-      mcp_config_path: /root/archi/configs/qa_evaluation_mcp.yaml
+      mcp_config_path: ./evaluation/qa_evaluation_mcp.yaml
 ```
 
 Both `archi create` and the chat runtime treat an omitted evaluation block,
 an omitted `enabled` field, and `enabled: false` as disabled. The runtime
 registers `/evaluations` and its APIs only when `enabled` is explicitly `true`.
+
+The optional `mcp_config_path` is a host source path, not a path inside the
+chatbot container. A relative value is resolved against the YAML file containing
+this deployment configuration. An explicitly configured file must exist, be
+readable UTF-8, and satisfy the strict `qa-evaluation-mcp-v1` schema or
+deployment generation fails. Omit the field for static-only evaluation. If a
+live item is attempted without a registry, the item fails with `Evaluator MCP
+registry is not configured.`
+
+For Compose and Podman deployments, Archi stages the file at
+`<deployment>/evaluation_config/qa_evaluation_mcp.yaml` and mounts
+`./evaluation_config` at `/root/archi/evaluation_config` read-only in the
+chatbot only. Helm deployments create a dedicated evaluator ConfigMap and use
+the same runtime directory. This registry does not configure the tested agent;
+normal agent MCP servers remain under the top-level `mcp_servers` setting.
 
 The generated Docker Compose deployment persists the root at
 `./data/evaluations`. The root contains:

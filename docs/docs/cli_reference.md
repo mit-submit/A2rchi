@@ -266,6 +266,13 @@ transport and environment-backed credentials; it is never added to the tested
 agent configuration. `--skip-live` on the composite or `prepare` command omits
 live rows without making MCP or model calls. `score` accepts neither option.
 
+`--mcp-config` is a direct filesystem path for the CLI process. The browser
+console instead uses `services.chat_app.evaluations.mcp_config_path` in the
+deployment YAML; that value is a host source path, resolved relative to the
+deployment YAML and staged into the generated deployment's dedicated
+`evaluation_config/` directory. It is not an in-container path and is separate
+from the tested agent's top-level `mcp_servers` configuration.
+
 The same workflow can be run as three separate stages. This is useful when you
 want to inspect the generated atoms before running Archi or inspect Archi's
 answers before scoring them.
