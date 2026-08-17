@@ -130,6 +130,12 @@ def _string_list(value: Any, context: str) -> Tuple[str, ...]:
     return tuple(value)
 
 
+def _positive_integer(value: Any, context: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{context} must be a positive integer")
+    return value
+
+
 @dataclass(frozen=True)
 class AuthenticationConfig:
     mode: AuthenticationMode
@@ -147,6 +153,7 @@ class MCPServerConfig:
     alias: str
     transport: MCPTransport
     authentication: AuthenticationConfig
+    timeout_seconds: int = ORACLE_TIMEOUT_SECONDS
     command: Optional[str] = None
     args: Tuple[str, ...] = ()
     url: Optional[str] = None
@@ -211,13 +218,21 @@ def _parse_server(alias: str, raw: Any) -> MCPServerConfig:
         transport = MCPTransport(raw.get("transport"))
     except ValueError as exc:
         raise ValueError(f"{context}.transport is unsupported") from exc
+    timeout_seconds = _positive_integer(
+        raw.get("timeout_seconds", ORACLE_TIMEOUT_SECONDS),
+        f"{context}.timeout_seconds",
+    )
     if transport is MCPTransport.STDIO:
         _exact_fields(
-            raw, {"transport", "command", "authentication"}, {"args"}, context
+            raw,
+            {"transport", "command", "authentication"},
+            {"args", "timeout_seconds"},
+            context,
         )
         return MCPServerConfig(
             alias=alias,
             transport=transport,
+            timeout_seconds=timeout_seconds,
             command=_nonempty(raw["command"], f"{context}.command"),
             args=_string_list(raw.get("args", []), f"{context}.args"),
             authentication=_parse_authentication(
@@ -226,10 +241,16 @@ def _parse_server(alias: str, raw: Any) -> MCPServerConfig:
                 transport=transport,
             ),
         )
-    _exact_fields(raw, {"transport", "url", "authentication"}, set(), context)
+    _exact_fields(
+        raw,
+        {"transport", "url", "authentication"},
+        {"timeout_seconds"},
+        context,
+    )
     return MCPServerConfig(
         alias=alias,
         transport=transport,
+        timeout_seconds=timeout_seconds,
         url=_absolute_http_url(raw["url"], f"{context}.url"),
         authentication=_parse_authentication(
             raw["authentication"],
@@ -353,11 +374,12 @@ class EvaluatorMCPRegistry(OracleInvoker):
         read_stream: Any,
         write_stream: Any,
         call: OracleCall,
+        timeout_seconds: int,
     ) -> CallToolResult:
         async with ClientSession(
             read_stream,
             write_stream,
-            read_timeout_seconds=timedelta(seconds=ORACLE_TIMEOUT_SECONDS),
+            read_timeout_seconds=timedelta(seconds=timeout_seconds),
         ) as session:
             await session.initialize()
             cursor: Optional[str] = None
@@ -379,13 +401,13 @@ class EvaluatorMCPRegistry(OracleInvoker):
             return await session.call_tool(
                 call.tool,
                 arguments=call.arguments,
-                read_timeout_seconds=timedelta(seconds=ORACLE_TIMEOUT_SECONDS),
+                read_timeout_seconds=timedelta(seconds=timeout_seconds),
             )
 
     async def _invoke_async(
         self, call: OracleCall, server: MCPServerConfig
     ) -> Tuple[CallToolResult, Tuple[str, ...]]:
-        with anyio.fail_after(ORACLE_TIMEOUT_SECONDS):
+        with anyio.fail_after(server.timeout_seconds):
             if server.transport is MCPTransport.STDIO:
                 assert server.command is not None
                 parameters = StdioServerParameters(
@@ -394,7 +416,9 @@ class EvaluatorMCPRegistry(OracleInvoker):
                     env=dict(os.environ),
                 )
                 async with stdio_client(parameters) as streams:
-                    result = await self._discover_and_call(streams[0], streams[1], call)
+                    result = await self._discover_and_call(
+                        streams[0], streams[1], call, server.timeout_seconds
+                    )
                 return result, ()
             assert server.url is not None
             client, secrets = await self._http_client(server.authentication)
@@ -404,7 +428,7 @@ class EvaluatorMCPRegistry(OracleInvoker):
                         server.url, http_client=client
                     ) as streams:
                         result = await self._discover_and_call(
-                            streams[0], streams[1], call
+                            streams[0], streams[1], call, server.timeout_seconds
                         )
             except _SafeInvocationError:
                 raise
@@ -451,7 +475,7 @@ class EvaluatorMCPRegistry(OracleInvoker):
                 detail = bounded_diagnostic(exc, secrets)
             elif isinstance(exc, TimeoutError):
                 detail = (
-                    f"Evaluator MCP call timed out after {ORACLE_TIMEOUT_SECONDS} "
+                    f"Evaluator MCP call timed out after {server.timeout_seconds} "
                     "seconds."
                 )
             else:

@@ -244,6 +244,7 @@ servers:
   operations-readonly:
     transport: streamable_http
     url: https://mcp.example.test/mcp
+    timeout_seconds: 300
     authentication:
       mode: bearer
       token_env: EVALUATION_MCP_TOKEN
@@ -251,8 +252,9 @@ servers:
 
 `none`, `bearer`, `basic`, and OAuth client-credentials authentication are
 supported. A server is initialized lazily on first use; tool discovery and
-calls use a fixed 120-second timeout and are not retried automatically. The
-registry is structurally separate from tested-agent MCP configuration.
+calls use that server's optional positive-integer `timeout_seconds`, defaulting
+to 120 seconds, and are not retried automatically. The registry is structurally
+separate from tested-agent MCP configuration.
 
 ## Evaluator profile format
 
