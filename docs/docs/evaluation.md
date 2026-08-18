@@ -22,108 +22,103 @@ answers against explicit obligations and preserves reproducible run artifacts.
 
 Every evaluation has three phases:
 
-1. **Prepare** validates the dataset, skips time-sensitive items (will be supported in the future), and generates the
-   gold atoms given an answer entry. When a row does not supply its own atoms, an evaluator model
-   extracts them from the canonical answer.
+1. **Prepare** validates the Dataset V2 input and fixes the gold atoms. Live
+   rows are resolved through their evaluator-only MCP oracle. When an eligible
+   row does not supply atoms, the profile's atom extractor derives them from the
+   canonical or resolved answer. The CLI uses those inferred atoms immediately;
+   the console can instead present them for operator review and save an approved,
+   immutable child dataset.
 2. **Run** asks the selected Archi agent every prepared question for the
-   requested number of attempts. The agent sees the question, but never the
-   canonical answer or gold atoms.
+   requested number of independent attempts. The agent sees the question, but
+   never the canonical answer or gold atoms.
 3. **Score** asks an evaluator model to classify each gold atom as `entailed`,
-   `not mentioned`, or `contradicted` by each complete agent answer. It then writes
-   per-attempt results, aggregate metrics, and a Markdown report.
+   `not_mentioned`, or `contradicted` by each complete agent answer. It then
+   writes per-attempt results, aggregate metrics, and a Markdown report.
 
 You can run all three phases with one CLI command, run them separately for
 inspection between phases, or use the browser console.
 
 ## Choose an interface
 
-| Interface                        | Best for                                                                                           | Important behavior                                                        |
-| -------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `archi eval qa`                | Automation, CI, local experiments, and exact control over workspaces                               | Accepts file paths directly and can run all phases or one phase at a time |
-| `/evaluations` browser console | Importing shared datasets/profiles, manually reviewing atoms, launching runs, and browsing history | Uses persistent catalogs and background jobs in the chat service          |
+| Interface                                      | Best for                                                                                           | Important behavior                                                                          |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [CLI Guide](#cli-guide)                         | Automation, CI, local experiments, and exact control over workspaces                               | `archi eval qa` accepts file paths directly and can run all phases or one phase at a time |
+| [Browser Console Guide](#browser-console-guide) | Importing shared datasets/profiles, manually reviewing atoms, launching runs, and browsing history | `/evaluations` uses persistent catalogs and background jobs in the chat service           |
 
 Both interfaces use the same validation, preparation, agent runtime, scoring,
 and artifact formats.
 
-## Inputs and prerequisites
+## CLI Guide
 
-### Files used by the CLI
+Use the CLI for automation, CI, local experiments, or direct control over
+workspace paths and individual phases.
 
-| Input             | Required              | Format                       | Purpose                                                                                         |
-| ----------------- | --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
-| Dataset           | Yes                   | UTF-8`.json` or `.jsonl` | Questions, canonical answers, metadata, and optional supplied atoms                             |
-| Agent config      | Yes for the run phase | Local`.yaml` or `.yml`   | Complete Archi runtime configuration for the agent being tested                                 |
-| Agent spec        | Yes for the run phase | Local`.md`                 | Agent name, enabled tools, and system prompt                                                    |
-| Evaluator profile | No                    | YAML                         | Models used for atom extraction and answer comparison; omitting it selects the built-in profile |
-| Evaluator MCP registry | For live items | YAML | Evaluator-only aliases, transports, and environment-backed authentication used by Dataset V2 oracle recipes |
-| Output directory  | Yes                   | Directory path               | New or explicitly overwritten workspace where all run artifacts are stored                      |
+### Inputs and prerequisites
 
-The dataset and agent files are inputs. The output directory is not a config
-file and does not need to exist in advance.
+| Input                  | Required              | Format                       | Purpose                                                                                                     |
+| ---------------------- | --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Dataset                | Yes                   | UTF-8`.json` or `.jsonl` | Questions, canonical answers or live oracle recipes, metadata, and optional supplied atoms                  |
+| Agent config           | Yes for the run phase | Local`.yaml` or `.yml`   | Complete Archi runtime configuration for the agent being tested                                             |
+| Agent spec             | Yes for the run phase | Local`.md`                 | Agent name, enabled tools, and system prompt                                                                |
+| Evaluator profile      | No                    | Local`.yaml` or `.yml`   | Models used for atom extraction and answer comparison; omitting it selects the built-in profile             |
+| Evaluator MCP registry | For live items        | Local`.yaml` or `.yml`   | Evaluator-only aliases, transports, and environment-backed authentication used by Dataset V2 oracle recipes |
+| Output directory       | Yes                   | Directory path               | New or explicitly overwritten workspace where all run artifacts are stored                                  |
 
-Before running:
+The output directory is not a config file and does not need to exist in
+advance. Before running:
 
 1. [Install Archi](install.md) and confirm `archi eval qa --help` works.
-2. Make the agent's model provider and every selected tool dependency
-   reachable from the process running the command. For example, an agent using
-   vector search needs its configured vector store; an agent using MCP needs
-   its configured MCP servers.
-3. Provide the credentials required by both the tested agent model and the
-   evaluator models. See [Models &amp; Providers](models_providers.md).
-4. Choose an empty output directory, or deliberately use `--overwrite` as
+2. Make the tested agent's model provider and selected tool dependencies
+   reachable from the CLI process.
+3. Provide credentials for the tested agent and evaluator models. See
+   [Models &amp; Providers](models_providers.md).
+4. For Dataset V2 live items, make the evaluator MCP servers reachable and
+   pass their registry with `--mcp-config`.
+5. Choose an empty output directory, or deliberately use `--overwrite` as
    described in [Rerunning and integrity protection](#rerunning-and-integrity-protection).
 
+#### Dataset format
 
+The dataset is strict, non-empty, UTF-8 encoded, and must declare
+`qa-dataset-v2`. Unknown fields are rejected.
 
-### Inputs used by the browser console
+- `.json` contains a `qa-dataset-v2` envelope.
+- `.jsonl` starts with `{"schema_version":"qa-dataset-v2"}` and then contains
+  one item per non-blank line.
 
-The console needs:
+##### Row fields
 
-- a running chat service with the evaluation console enabled;
-- a persistent evaluation root;
-- a valid agent config at `agent_config_path`;
-- one or more valid Markdown agent specs in `services.chat_app.agents_dir`;
-- an imported dataset;
-- either the built-in evaluator profile or an imported evaluator profile.
+Every row has these common fields:
 
-The console accepts dataset and profile uploads up to 25 MiB. It does not
-upload agent configs or specs: those are deployment-controlled files.
+| Field              | Required | Type    | Rules and meaning                                                           |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------------- |
+| `question`       | Yes      | string  | Non-empty question sent to the tested agent                                 |
+| `time_sensitive` | Yes      | boolean | Distinguishes static items from live oracle-backed items                    |
+| `category`       | No       | string  | Non-empty grouping metadata retained in preparation results                 |
+| `answer_mode`    | No       | string  | One of`direct_answer`, `needs_information`, `escalate`, or `refuse` |
+| `answer_source`  | No       | string  | Non-empty free-form provenance label retained as metadata                   |
 
-## Dataset format
+The remaining fields depend on whether the item is static or live:
 
-The dataset is strict: unknown fields are rejected. It must be non-empty and
-UTF-8 encoded.
-
-- Dataset V1 `.json` contains one JSON array of row objects; V1 `.jsonl`
-  contains one row object per non-blank line.
-- Dataset V2 `.json` contains a `qa-dataset-v2` envelope; V2 `.jsonl` starts
-  with `{"schema_version":"qa-dataset-v2"}` and then contains one item per
-  non-blank line.
-
-### Row fields
-
-| Field              | Required | Type    | Rules and meaning                                                                                                                                                                                                         |
-| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `question`       | Yes      | string  | Non-empty question sent to the tested agent                                                                                                                                                                               |
-| `answer`         | Yes      | string  | Non-empty canonical answer used only to create or support the gold atoms                                                                                                                                                  |
-| `time_sensitive` | Yes      | boolean | `true` skips the row before atom extraction or agent execution at the moment                                                                                                                                            |
-| `id`             | No       | string  | Non-empty unique item ID; if omitted, Archi derives a stable ID from`question` and `answer`                                                                                                                           |
-| `category`       | No       | string  | Non-empty grouping metadata retained in preparation results                                                                                                                                                               |
-| `answer_mode`    | No       | string  | One of`direct_answer`, `needs_information`, `escalate`, or `refuse`                                                                                                                                               |
-| `answer_source`  | No       | string  | Non-empty free-form provenance label retained as metadata                                                                                                                                                                 |
-| `expected_atoms` | No       | array   | Complete, pre-reviewed gold-atom set; omitting it will cause the pipeline to perform automatic extraction using the`prepare` subcommand in the CLI. The browser console will display a "Generate Atoms" button instead. |
+| Field              | Static item     | Unresolved live item | Rules and meaning                                                                                                                                         |
+| ------------------ | --------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | Required        | Required             | Non-empty unique item ID                                                                                                                                  |
+| `answer`         | Required string | Must be omitted      | Hidden canonical answer used for atom extraction. The console alone may persist a trusted materialized live child whose answer is a non-empty JSON object |
+| `expected_atoms` | Optional        | Must be omitted      | Complete, pre-reviewed atom set. If absent, preparation invokes the atom extractor                                                                        |
+| `oracle`         | Not allowed     | Required             | Strict MCP recipe used to resolve the live answer; see[Dataset V2 live items](#dataset-v2-live-items)                                                      |
 
 `question` and `answer` line endings are normalized. NUL characters are
-rejected. Explicit and derived IDs must be unique across the entire dataset.
+rejected. IDs must be unique across the entire dataset.
 Metadata fields do not currently change scoring.
 
-### Minimal dataset with automatic atom extraction
+##### Minimal dataset with automatic atom extraction
 
 Save this as `questions.json`:
 
 ```json
-[
-  {
+{
+  "schema_version": "qa-dataset-v2",
+  "items": [{
     "id": "storage-quota",
     "question": "How much storage quota remains?",
     "answer": "The account has 2.8 TB remaining.",
@@ -131,21 +126,25 @@ Save this as `questions.json`:
     "category": "storage",
     "answer_mode": "direct_answer",
     "answer_source": "operations-handbook"
-  }
-]
+  }]
+}
 ```
 
-Because `expected_atoms` is absent, the atom extractor is used in the pipeline via the `prepare` subcommand. It receives the question
-and canonical answer during preparation and breaks down the answer in required and optional atoms. A user is able to review the generated atoms in the browser console and generate different version of the dataset every time new atoms are generated or edited.
+Because `expected_atoms` is absent, `prepare` passes the question and canonical
+answer to the atom extractor, which produces required and optional atoms. The
+CLI continues with that fixed inferred set. In the browser console, **Generate
+Atoms** opens the candidates for review; saving creates a new immutable dataset
+version without changing the imported parent.
 
-### Dataset with supplied gold atoms
+##### Dataset with supplied gold atoms
 
 Use supplied atoms when domain reviewers already know the exact obligations or
 when you do not want an LLM to infer them:
 
 ```json
-[
-  {
+{
+  "schema_version": "qa-dataset-v2",
+  "items": [{
     "id": "storage-quota",
     "question": "How much storage quota remains?",
     "answer": "The account has 2.8 TB remaining and should request an increase before it reaches 500 GB.",
@@ -165,8 +164,8 @@ when you do not want an LLM to infer them:
         "required": false
       }
     ]
-  }
-]
+  }]
+}
 ```
 
 Each atom must contain exactly:
@@ -186,20 +185,21 @@ Write atoms so each one tests one claim. Avoid combining independent values,
 conditions, or instructions into a single atom. Mark an atom optional only
 when an answer can omit it and still correctly answer the question.
 
-### Equivalent JSONL
+##### Equivalent JSONL
 
-The same minimal row in `questions.jsonl` is one complete JSON object on one
-line:
+The same minimal dataset in `questions.jsonl` uses a version header followed by
+one complete item per line:
 
 ```json
+{"schema_version":"qa-dataset-v2"}
 {"id":"storage-quota","question":"How much storage quota remains?","answer":"The account has 2.8 TB remaining.","time_sensitive":false,"category":"storage","answer_mode":"direct_answer","answer_source":"operations-handbook"}
 ```
 
-Do not wrap JSONL rows in an array and do not add trailing commas.
+Do not wrap JSONL items in an array and do not add trailing commas.
 
-### Dataset V2 live items
+##### Dataset V2 live items
 
-Dataset V2 requires an explicit stable `id` on every item. Static items keep a
+Every item requires an explicit stable `id`. Static items keep a
 string `answer` and no `oracle`. Unresolved live items use
 `time_sensitive: true`, an inline `oracle`, and contain neither `answer` nor
 `expected_atoms`:
@@ -232,33 +232,86 @@ equality or atom extraction. External imports may not claim to be materialized
 live children by including an answer or atoms; only an approved internal
 catalog child is trusted for launch.
 
-### Evaluator MCP registry
+##### Evaluator MCP registry
 
 Recipes name only a server alias and tool. Deployment operators own the strict
 registry that maps aliases to `stdio` or `streamable_http` connections. Secrets
-are environment-variable names, never inline values:
+are environment-variable names, never inline values. The source filename is
+conventional: `mcp_config_path` may point to any YAML filename, and Archi stages
+the validated snapshot as `qa_evaluation_mcp.yaml`.
+
+Create a registry such as `configs/qa_evaluation_mcp.yaml`:
 
 ```yaml
 schema_version: qa-evaluation-mcp-v1
 servers:
   operations-readonly:
     transport: streamable_http
-    url: https://mcp.example.test/mcp
+    url: http://operations-mcp:8000/mcp
     timeout_seconds: 300
     authentication:
       mode: bearer
       token_env: EVALUATION_MCP_TOKEN
+
+  operations-local:
+    transport: stdio
+    command: /opt/operations/.venv/bin/python
+    args:
+      - /opt/operations/server.py
+    timeout_seconds: 300
+    authentication:
+      mode: inherited_environment
 ```
 
-`none`, `bearer`, `basic`, and OAuth client-credentials authentication are
-supported. A server is initialized lazily on first use; tool discovery and
-calls use that server's optional positive-integer `timeout_seconds`, defaulting
-to 120 seconds, and are not retried automatically. The registry is structurally
-separate from tested-agent MCP configuration. The CLI's `--mcp-config` option
-reads this file directly. For the browser console, configure its host source
-path under `services.chat_app.evaluations.mcp_config_path` as described below.
+Set the fields as follows:
 
-## Evaluator profile format
+- `schema_version` must be exactly `qa-evaluation-mcp-v1`.
+- Each key under `servers` is a server alias. A Dataset V2
+  `oracle.calls[].server` value must exactly match one of these aliases.
+- Set `transport: streamable_http` for an HTTP MCP server. Its `url` is required
+  and must be an absolute `http://` or `https://` URL without embedded
+  credentials.
+- Set `transport: stdio` to start an MCP subprocess. `command` is the required
+  executable and `args` is an optional list of command arguments. The executable
+  and every referenced file must exist in the environment running the
+  evaluation.
+- `timeout_seconds` is optional and must be a positive integer. It controls
+  initialization, tool discovery, and tool-call timeouts for that server. The
+  default is 120 seconds.
+- `authentication` is required for every server. For HTTP, set it to one of:
+  `mode: none`; `mode: bearer` with `token_env`; `mode: basic` with
+  `username_env` and `password_env`; or `mode: oauth_client_credentials` with
+  `token_url`, `client_id_env`, `client_secret_env`, and optional string-list
+  `scopes`. These fields name environment variables; do not put secret values
+  in this YAML. For `stdio`, authentication must be
+  `mode: inherited_environment`.
+
+The schema is strict: duplicate or unknown keys are rejected. A server is
+initialized lazily on first use, calls are not retried automatically, and each
+Dataset V2 `oracle.calls[].tool` must be exposed by the selected server.
+
+The registry is structurally separate from the tested agent's top-level
+`mcp_servers` configuration. Reusing an alias in both files does not connect
+them, and evaluator servers are not inferred from agent servers. This separation
+keeps oracle access and credentials outside the agent under test.
+
+Path interpretation differs by interface:
+
+- The CLI's `--mcp-config` option reads the file from the machine running the
+  CLI. Its HTTP URLs, subprocess commands, and arguments are then used by that
+  same CLI process.
+- The browser console reads the registry staged from
+  `services.chat_app.evaluations.mcp_config_path`, but executes calls from the
+  deployed chatbot container or pod. Its URLs must therefore be reachable from
+  that container or pod, its environment must contain the named secret
+  variables, and `stdio` commands and argument paths must exist inside that
+  runtime. In particular, `localhost` means the chatbot container or pod, not
+  the deployment host.
+
+See [Chat-app evaluation configuration](#chat-app-evaluation-configuration)
+for the browser-console path and staging rules.
+
+#### Evaluator profile format
 
 The evaluator profile selects two structured-output model calls:
 
@@ -281,16 +334,17 @@ qa:
     timeout: 180
 ```
 
-The schema is strict:
+Set the fields as follows:
 
-| Path                   | Required               | Type    | Rule                                       |
-| ---------------------- | ---------------------- | ------- | ------------------------------------------ |
-| `version`            | Yes                    | integer | Must be`1`                               |
-| `qa.atoms_extractor` | Yes                    | mapping | Atom-extraction model descriptor           |
-| `qa.evaluator`       | Yes                    | mapping | Answer-comparison model descriptor         |
-| `provider`           | Yes in each descriptor | string  | Non-empty Archi provider name              |
-| `model`              | Yes in each descriptor | string  | Non-empty provider model name              |
-| `timeout`            | No                     | number  | Finite value greater than zero, in seconds |
+- `version` is required and must be `1`.
+- `qa.atoms_extractor` selects the model that converts canonical answers into
+  gold atoms when a dataset row does not already provide `expected_atoms`.
+- `qa.evaluator` selects the model that compares each completed agent answer
+  with those gold atoms.
+- Each model block requires a non-empty Archi `provider` name and a non-empty
+  provider `model` name.
+- `timeout` is optional in each model block. When set, it must be a finite
+  number greater than zero and is interpreted in seconds.
 
 No other profile or descriptor fields are accepted. Evaluator temperature is
 fixed at zero and cannot be configured in the profile. Choose models that
@@ -309,13 +363,17 @@ qa:
     model: gpt-5.6-terra
 ```
 
-The CLI loads the profile supplied during preparation and stores the resolved
-copy in the workspace. A profile supplied again during scoring must resolve to
-exactly the same profile. This prevents scoring with a different judge by
-accident. The console requires imported profile filenames to end in `.yaml` or
-`.yml`.
+For the CLI, pass the file with
+`--evaluator-profile evaluator.yaml` on the composite command or `prepare`.
+Archi stores the resolved profile in the workspace. If you pass a profile again
+to `score`, it must resolve to exactly the stored profile so that the judge
+cannot change midway through a run.
 
-### Local evaluator models with Ollama
+For the browser Console, open **Profiles**, import the `.yaml` or `.yml` file,
+and select it when generating atoms or launching the evaluation. Select the
+built-in profile instead when no custom evaluator configuration is needed.
+
+##### Local evaluator models with Ollama
 
 Use Archi's `local` provider name, not `ollama`:
 
@@ -362,10 +420,13 @@ The selected local model must reliably follow both structured-output schemas.
 The profile cannot currently configure an OpenAI-compatible local endpoint or
 provider mode.
 
-## Agent config format
+#### Agent config format
 
-The agent config is a normal Archi YAML config, not an evaluation-specific
-config. The run phase validates that it has these non-empty fields:
+The **agent config** is the Archi deployment YAML that defines the agent being
+tested. In this example, it is `deployments/comp_ops_config.yaml`; it is not a
+second evaluation-specific file. It contains the agent class, provider, model,
+agent MCP servers, vector store, and other runtime settings. The run phase
+requires at least these non-empty fields:
 
 ```yaml
 services:
@@ -380,33 +441,23 @@ full config required by the selected agent class and tools, including provider,
 vector-store, data-manager, or MCP settings. The `agent_class` must name a
 pipeline exported by `src.archi.pipelines`.
 
-The CLI accepts only an existing local `.yaml` or `.yml` file. During the run,
-Archi snapshots the resolved file as `agent_config.resolved.yaml`.
+The CLI accepts an existing local `.yaml` or `.yml` file through
+`--agent-config`. During the run, Archi snapshots the resolved file as
+`agent_config.resolved.yaml`.
 
-For console evaluations, set the deployment's existing resolved agent config
-and the host source path of the evaluator registry:
+The browser Console needs no separate agent-config file. It evaluates the agent
+already defined by the running deployment's YAML—for example,
+`deployments/comp_ops_config.yaml`. See
+[Chat-app evaluation configuration](#chat-app-evaluation-configuration) for the
+Console-specific fields in that file.
 
-```yaml
-services:
-  chat_app:
-    evaluations:
-      agent_config_path: /root/archi/configs/config.yaml
-      mcp_config_path: ./evaluation/qa_evaluation_mcp.yaml
-```
+All Console-launched evaluations use that deployment configuration. To compare
+agents with different deployment configurations, use separate deployments or
+the CLI with separate workspaces. Selecting an agent spec in the Console changes
+the Markdown prompt and enabled-tool declaration; it does not replace the
+deployment configuration.
 
-`agent_config_path` is a runtime path to the rendered Archi config.
-`mcp_config_path` is deliberately different: it is a path on the machine where
-you run `archi create`, relative to the deployment YAML when it is not absolute.
-Archi validates the registry, copies it to the generated deployment's
-`evaluation_config/qa_evaluation_mcp.yaml`, mounts that directory read-only into
-the chatbot, and writes the fixed runtime path into the rendered config. Do not
-copy the registry into a generated deployment manually; recreating or deleting
-the deployment replaces that generated directory.
-
-All console-launched evaluations use those configs. To compare different
-runtime configs, use separate deployments or the CLI with separate workspaces.
-
-## Agent spec format
+#### Agent spec format
 
 The agent spec is a local Markdown file with YAML frontmatter followed by a
 non-empty system prompt:
@@ -441,7 +492,9 @@ The CLI requires an existing local `.md` file and snapshots it as
 `services.chat_app.agents_dir`, or `/root/archi/agents` when that setting is
 empty.
 
-## Run a complete evaluation from the CLI
+### Usage
+
+#### Run all phases
 
 The composite command prepares, runs, and scores in one operation:
 
@@ -489,12 +542,12 @@ archi eval qa \
 A successful composite command ends with a `scored` manifest and creates
 `evaluation-run/report.md`.
 
-## Run and inspect one phase at a time
+#### Run and inspect one phase at a time
 
 Use the staged workflow to review atoms before running the agent, or answers
 before paying for evaluator calls.
 
-### 1. Prepare
+##### 1. Prepare
 
 ```bash
 archi eval qa prepare questions.json \
@@ -510,13 +563,12 @@ less evaluation-run/preparation.jsonl
 ```
 
 Preparation writes exactly one terminal record per input item and a manifest
-with status `prepared`. Prepared records contain fixed atoms; failed and
-time-sensitive records contain no runnable output. Run eligibility and
-lifecycle counts come from this same artifact. Preparation does not invoke the
-tested agent. If every eligible item fails preparation or is time-sensitive,
-the subsequent run refuses to start because there are no prepared items.
+with status `prepared`. Prepared records contain fixed atoms. Failed rows and
+live rows omitted with `--skip-live` contain no runnable output. Run eligibility
+and lifecycle counts come from this same artifact. Preparation does not invoke
+the tested agent. If no row is prepared, the subsequent run refuses to start.
 
-### 2. Run the agent
+##### 2. Run the agent
 
 ```bash
 archi eval qa run evaluation-run/ \
@@ -545,7 +597,7 @@ and duration when available. Content is stored without truncation. A call that
 starts without a matching terminal callback remains visible as `incomplete` and
 omits unavailable response and duration fields.
 
-### 3. Score
+##### 3. Score
 
 ```bash
 archi eval qa score evaluation-run/ --score-workers 8
@@ -562,42 +614,98 @@ archi eval qa score evaluation-run/ \
 Scoring does not invoke the tested agent again. It writes the judgments,
 summary, report, and a `scored` manifest.
 
-## Configure and use the browser console
+### Outputs
 
-### Enable and persist it
+The CLI writes one self-contained workspace under `--output-dir`. Its main
+outputs are separated by phase:
+
+| Phase   | Primary outputs                                                                                                       |
+| ------- | --------------------------------------------------------------------------------------------------------------------- |
+| Prepare | Input snapshot, resolved evaluator profile,`preparation.jsonl`, and `manifest.json`                               |
+| Run     | Resolved agent config/spec,`answers.jsonl`, `live_checks.jsonl`, and the updated manifest                         |
+| Score   | `evaluation_results.jsonl`, machine-readable `summary.json`, human-readable `report.md`, and the final manifest |
+
+Start with `report.md` for a human review and `summary.json` for automation.
+See [Run workspace artifacts](#run-workspace-artifacts) for the complete file
+contract and [Rerunning and integrity protection](#rerunning-and-integrity-protection)
+before reusing an existing output directory.
+
+## Browser Console Guide
+
+Use the browser console for easy metrics visualization, manual atom
+review, background execution, retries, and run-history visualization.
+
+### Inputs and prerequisites
+
+| Input or prerequisite  | Required       | How the console receives it                                                                      |
+| ---------------------- | -------------- | ------------------------------------------------------------------------------------------------ |
+| Running chat service   | Yes            | Deployment with`services.chat_app.evaluations.enabled: true`                                   |
+| Dataset                | Yes            | `.json` or `.jsonl` upload in **Datasets**, limited to 25 MiB                          |
+| Evaluator profile      | No             | Built-in profile or`.yaml`/`.yml` upload in **Profiles**, limited to 25 MiB            |
+| Agent config           | Yes            | The running deployment YAML; the Console uses it automatically and requires no separate path     |
+| Agent spec             | Yes            | Deployment-controlled Markdown file in`services.chat_app.agents_dir`; select it in the Console |
+| Evaluator MCP registry | For live items | Deployment-controlled file staged from`mcp_config_path`                                        |
+
+#### Supported input formats
+
+- Datasets use the same strict `.json` or `.jsonl` Dataset V2 contract
+  described in [Dataset format](#dataset-format).
+- Imported evaluator profiles must use `.yaml` or `.yml` and follow
+  [Evaluator profile format](#evaluator-profile-format). The built-in profile
+  requires no upload.
+- Agent YAML and Markdown specs follow [Agent config format](#agent-config-format)
+  and [Agent spec format](#agent-spec-format), but are selected from files
+  controlled by the deployment rather than uploaded through the browser.
+- Dataset V2 live items require the registry described in
+  [Evaluator MCP registry](#evaluator-mcp-registry).
+
+#### Chat-app evaluation configuration
 
 The evaluation console is opt-in. Enable it explicitly in the deployment
-configuration:
+configuration. For example, if the repository contains
+`deployments/comp_ops_config.yaml`, `configs/agents/`, and
+`configs/qa_evaluation_mcp.yaml`, write:
 
 ```yaml
 services:
   chat_app:
-    agents_dir: /root/archi/agents
+    # Host source directory; relative paths resolve from this deployment YAML.
+    agents_dir: ../configs/agents
     evaluations:
       enabled: true
-      root: /root/archi/evaluations
-      agent_config_path: /root/archi/configs/config.yaml
-      mcp_config_path: ./evaluation/qa_evaluation_mcp.yaml
+      # Host source file; required only for Dataset V2 live oracle items.
+      mcp_config_path: ../configs/qa_evaluation_mcp.yaml
 ```
+
+Here, `../configs/qa_evaluation_mcp.yaml` is specifically required only for live items so if the dataset is strictly static it can be ignored. In this example, it resolves from the directory containing
+`deployments/comp_ops_config.yaml`, so it points to
+`configs/qa_evaluation_mcp.yaml`. An absolute host path is also accepted, but a
+repository-relative path is usually more portable. Any folder is accepted as long as the yaml content for the mcp config is correctly written as explained.
 
 Both `archi create` and the chat runtime treat an omitted evaluation block,
 an omitted `enabled` field, and `enabled: false` as disabled. The runtime
 registers `/evaluations` and its APIs only when `enabled` is explicitly `true`.
+
+Set the fields as follows:
+
+- `services.chat_app.agents_dir` points to the host directory containing the
+  Markdown agent specs. Archi stages those files, and the Console lists them
+  when you choose the agent spec for a run. An absolute host path is accepted.
+  A relative path is resolved from the deployment YAML when that path exists.
+- `services.chat_app.evaluations.enabled` must be `true` to register the
+  `/evaluations` page and its APIs.
+- `services.chat_app.evaluations.mcp_config_path` points to the evaluator MCP
+  registry described in [Evaluator MCP registry](#evaluator-mcp-registry). Set
+  it when Dataset V2 contains live oracle items. It accepts an absolute host
+  path or a path relative to the deployment YAML. Static-only datasets do not
+  require this field.
 
 The optional `mcp_config_path` is a host source path, not a path inside the
 chatbot container. A relative value is resolved against the YAML file containing
 this deployment configuration. An explicitly configured file must exist, be
 readable UTF-8, and satisfy the strict `qa-evaluation-mcp-v1` schema or
 deployment generation fails. Omit the field for static-only evaluation. If a
-live item is attempted without a registry, the item fails with `Evaluator MCP
-registry is not configured.`
-
-For Compose and Podman deployments, Archi stages the file at
-`<deployment>/evaluation_config/qa_evaluation_mcp.yaml` and mounts
-`./evaluation_config` at `/root/archi/evaluation_config` read-only in the
-chatbot only. Helm deployments create a dedicated evaluator ConfigMap and use
-the same runtime directory. This registry does not configure the tested agent;
-normal agent MCP servers remain under the top-level `mcp_servers` setting.
+live item is attempted without a registry, the item fails with `Evaluator MCP registry is not configured.`
 
 The generated Docker Compose deployment persists the root at
 `./data/evaluations`. The root contains:
@@ -614,21 +722,23 @@ evaluations/
 Do not expose this root publicly. Dataset snapshots, prepared items,
 judgments, and evaluator rationales can reveal canonical answers.
 
-### Permissions
+#### Permissions
 
 Authenticated deployments use:
 
 - `evaluations:view` to open the console and read catalogs, jobs, run details,
   and reports;
-- `evaluations:run` to launch an evaluation;
+- `evaluations:run` to launch, cancel, continue, or retry an evaluation;
 - `evaluations:manage` to import datasets and profiles, generate or review
-  atoms, and save reviewed datasets.
+  atoms, refresh live snapshots, and save reviewed datasets.
 
 The wildcard administrator role grants all three. Add them explicitly to
 custom roles as needed. When authentication is disabled, evaluation routes
 retain the normal unrestricted local-development behavior.
 
-### Import and prepare a dataset
+### Usage
+
+#### Import and prepare a dataset
 
 1. Open `/evaluations`.
 2. In **Datasets**, import a `.json` or `.jsonl` dataset and give it a display
@@ -660,7 +770,61 @@ The console intentionally does not auto-generate atoms for a partially
 annotated dataset. Review the existing atoms and manually fill its missing
 rows, or import a dataset with zero atoms and generate all of them.
 
-### Launch and inspect a run
+#### How live questions in a child dataset are checked
+
+An approved child dataset contains the live answer that was resolved and
+reviewed when that child was created. That stored answer is the **approved
+baseline** for the run. “Stale” is not based on the child's age or a time-to-live
+value; it means that a new oracle observation no longer matches that approved
+baseline, or that the oracle cannot currently produce an answer.
+
+When you start a Console evaluation on a child containing live questions,
+Archi performs these checks:
+
+1. Preparation reads each materialized live answer from the selected child and
+   computes its baseline SHA-256 hash from canonical JSON. JSON object key order
+   does not affect the hash. Oracle metadata is retained as provenance but is
+   not part of the answer hash.
+2. Before starting **any** agent attempt, Archi executes every prepared live
+   question's `oracle.calls` recipe again through `qa_evaluation_mcp.yaml`. It
+   selects the configured `answer_fields`, builds the current canonical answer,
+   and hashes it in the same way as the baseline.
+3. The question is currently valid only when the oracle resolves successfully
+   and the current answer hash exactly matches the approved baseline hash. A
+   different hash produces `answer_changed`; a connection, authentication,
+   timeout, tool, or response failure produces `oracle_failed`.
+4. If every live question still matches, agent attempts begin. Static questions
+   do not make oracle calls and proceed normally.
+5. If any live question is changed or unavailable, the whole Console launch
+   pauses as `attention_required` before all agent attempts, including static
+   ones. The UI reports **No agent attempts have started**, and
+   `live_checks.jsonl` records the observations, hashes, metadata, call evidence,
+   and failure reason.
+
+At `attention_required`, choose one of these actions:
+
+- **Refresh live snapshot** cancels the paused evaluation and creates a review
+  draft from the child's definition parent. Archi resolves the parent's live
+  recipes again, labels them as changed, unchanged, or unavailable, and
+  generates atoms from the current answers. Review and save the draft as a new
+  immutable sibling dataset, then launch a new evaluation using that sibling.
+- **Continue with valid questions** repeats the complete pre-run check. Live
+  questions that now match the approved baseline are included. Questions that
+  still differ or remain unavailable are excluded from agent execution and get
+  terminal `live_validation_failed` results. Static questions remain included.
+  If a live question that was previously valid has become invalid, the run
+  pauses again. Continue is unavailable when no static or matching live question
+  can run.
+- **Cancel** closes the paused evaluation without running the agent.
+
+After all admitted agent attempts finish, Archi resolves each admitted live
+question once more and compares that post-run answer with the same approved
+baseline. A post-run change or oracle failure does not pause—the attempts have
+already happened—but their results become `live_validation_failed` and are not
+sent to the judge or included in quality metrics. Successful pre-run and
+post-run observations are required for a live attempt to be scored.
+
+#### Launch and inspect a run
 
 1. Open **New evaluation**.
 2. Enter a name.
@@ -685,8 +849,8 @@ rows, or import a dataset with zero atoms and generate all of them.
    in the active-job banner and confirm. The local evaluation worker stops and
    the run remains visible as `canceled`.
 10. Open **Runs** to inspect status, answers, judgments, metrics, and the
-   report. The underlying run API and workspace also preserve the manifest,
-   preparation records, and other raw artifacts listed below.
+    report. The underlying run API and workspace also preserve the manifest,
+    preparation records, and other raw artifacts listed below.
 
 Only one provider-consuming atom-generation or evaluation job runs at a time.
 A conflicting launch returns HTTP 409. `attention_required` releases that lock
@@ -701,7 +865,7 @@ The Runs page is reconstructed from persisted artifacts. A malformed,
 unsupported, missing, or hash-mismatched workspace appears as an isolated
 `invalid` entry instead of breaking the history list.
 
-### Retry technical failures
+#### Retry technical failures
 
 The console exposes retry actions only for provider or runtime failures:
 
@@ -728,7 +892,20 @@ Atom retries require `evaluations:manage`; evaluation retries require
 `evaluations:run`. A draft or run without retryable technical failures creates
 neither a job nor a new artifact.
 
-### Compare history trends
+### Outputs
+
+The console exposes both rendered results and their persisted evidence:
+
+| Output                                                       | Where to use it                                           |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| Run status and metrics                                       | **Runs** list and run detail                        |
+| Human-readable report                                        | **Open report** from a completed run                |
+| Per-attempt answers, atom judgments, latency, and tool calls | Expand a question and attempt in run detail               |
+| Historical comparisons                                       | Attempt-latency, pass-rate, and technical-failure charts  |
+| Immutable evidence                                           | The run workspace under the configured evaluation root    |
+| Reusable inputs and work state                               | Dataset/profile catalogs, atom drafts, and persisted jobs |
+
+#### Compare history trends
 
 The evaluation homepage requests one bounded history window from the server for
 the run table and all graphs. Choose the last 7, 30, 90, or 365 days; 90 days is
@@ -745,8 +922,7 @@ dataset selector or graphs. One shared dataset selector controls all three graph
 - **Attempt latency** plots the average, best, and worst tested-agent latency
   across the attempts recorded by each run.
 - **Pass rate** plots `passed_attempts / quality_accounted_attempts`.
-- **Technical failure rate** plots `(execution_failed + evaluation_failed) /
-  (scored + execution_failed + evaluation_failed)`. It is not the inverse of
+- **Technical failure rate** plots `(execution_failed + evaluation_failed) / (scored + execution_failed + evaluation_failed)`. It is not the inverse of
   pass rate; a scored attempt may fail its quality threshold without being a
   technical failure.
 
@@ -767,7 +943,7 @@ report the incomplete coverage; they never infer a value or replace missing
 data with zero. For runs inside the selected window, history aggregation streams
 answer artifacts rather than loading complete answer files into memory.
 
-### Inspect per-question latency
+#### Inspect per-question latency
 
 Run detail displays tested-agent latency per question before the aggregate
 quality metrics. Each question provides an attempt selector. The selected
@@ -788,7 +964,7 @@ Historical attempts that have total latency but predate tool timings show the
 total and mark the tool portion unavailable. The console does not infer latency
 from phase timestamps.
 
-### Inspect per-attempt tool calls
+#### Inspect per-attempt tool calls
 
 Expand a question, then expand one of its attempts. The nested **Tool calls**
 section lists every recorded call in execution order. Expand an individual call
@@ -802,39 +978,47 @@ console states that their query and response details were not captured. Run
 detail returns the selected run's complete trace without truncation or
 pagination.
 
-## Understand states
+## Detailed result reference
+
+The CLI and browser console produce the same scoring records and workspace
+formats. Use this appendix when interpreting results, inspecting raw artifacts,
+or troubleshooting lifecycle behavior after following either guide above.
+
+### Understand states
 
 There are two independent state machines.
 
-### Run manifest states
+#### Run manifest states
 
-| Manifest status   | Exact meaning                                                                                                                                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prepared`      | Dataset validation and preparation finished and preparation artifacts were committed. Agent attempts are not yet committed. Individual input rows may still be skipped or have preparation failures.     |
-| `run_completed` | The requested attempt slots for every prepared item are terminal as`answer_ready` or `execution_failed`, and `answers.jsonl` plus resolved agent inputs were committed. Scoring has not completed. |
-| `scored`        | Scoring finished and`evaluation_results.jsonl`, `summary.json`, and `report.md` were committed. Some individual attempts may still have execution or evaluation failures.                          |
+| Manifest status        | Exact meaning                                                                                                                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prepared`           | Dataset validation and preparation finished and preparation artifacts were committed. Agent attempts are not yet committed. Individual input rows may still be skipped or have preparation failures.     |
+| `attention_required` | The console's pre-run live check found changed or unavailable live answers. No agent attempt has started; refresh the approved snapshot, continue with valid questions, or cancel.                       |
+| `run_completed`      | The requested attempt slots for every prepared item are terminal as`answer_ready` or `execution_failed`, and `answers.jsonl` plus resolved agent inputs were committed. Scoring has not completed. |
+| `scored`             | Scoring finished and`evaluation_results.jsonl`, `summary.json`, and `report.md` were committed. Some individual attempts may still have execution or evaluation failures.                          |
 
 The manifest remains `prepared` while the agent loop is in progress because
 `answers.jsonl` is written atomically. Likewise, `run_completed` means the
 agent phase is complete, not that the overall evaluation passed.
 
-### Console job states
+#### Console job states
 
-| Job status          | Meaning                                                        |
-| ------------------- | -------------------------------------------------------------- |
-| `queued`            | Accepted by the console and waiting for its worker             |
-| `running`           | Background work is executing                                   |
-| `cancel_requested`  | Cancellation was accepted and worker termination is in progress |
-| `canceled`          | The evaluation worker stopped and canceled history was persisted |
-| `completed`         | The complete requested operation returned successfully         |
-| `failed`            | The operation raised an error; inspect the job's error field   |
-| `interrupted`       | The service restarted before a non-terminal job completed      |
+| Job status             | Meaning                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `queued`             | Accepted by the console and waiting for its worker                           |
+| `running`            | Background work is executing                                                 |
+| `attention_required` | A live pre-check paused before agent execution and awaits an operator action |
+| `cancel_requested`   | Cancellation was accepted and worker termination is in progress              |
+| `canceled`           | The evaluation worker stopped and canceled history was persisted             |
+| `completed`          | The complete requested operation returned successfully                       |
+| `failed`             | The operation raised an error; inspect the job's error field                 |
+| `interrupted`        | The service restarted before a non-terminal job completed                    |
 
 For a console evaluation, the job normally remains `running` while the
 workspace progresses through `prepared` and `run_completed`. The job becomes
 `completed` only after the composite workflow returns a `scored` run.
 
-## Understand scoring
+### Understand scoring
 
 For each atom, the evaluator returns:
 
@@ -859,26 +1043,24 @@ visible but are excluded from quality denominators because the answer could
 not be judged reliably. Review lifecycle counts alongside pass rates so
 evaluator failures are not mistaken for good quality.
 
+### Run workspace artifacts
 
-## Run workspace artifacts
+The current workspace schema is `qa-v2`.
 
-The current workspace schema is `qa-v2`. Intact `qa-v0` and `qa-v1`
-workspaces remain immutable and readable through compatibility adapters.
-
-| File                                  | Written in            | Contents                                                                                        |
-| ------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- |
-| `input.snapshot.json` or `.jsonl` | Prepare               | Exact input bytes used by the run                                                               |
-| `evaluator_profile.resolved.yaml`   | Prepare               | Fixed evaluator profile                                                                         |
-| `preparation.jsonl`                 | Prepare               | One terminal record per input item, containing either runnable normalized data and fixed atoms, a skip, or a preparation failure |
-| `agent_config.resolved.yaml`        | Run                   | Exact tested Archi config                                                                       |
-| `agent_spec.resolved.md`            | Run                   | Exact tested agent spec and prompt                                                              |
-| `answers.jsonl`                     | Run                   | One terminal `answer_ready` or `execution_failed` row per attempt slot, including tested-agent `duration_ms` and complete ordered tool-call query/response/error records with optional duration |
-| `live_checks.jsonl`                  | Run                   | Ordered pre-run and post-run oracle observations, normalized answers, hashes, metadata, bounded call evidence, or item-scoped live failures |
-| `evaluation_results.jsonl`          | Score                 | Answers, atom judgments, rationales, metrics, or terminal failures                              |
-| `summary.json`                      | Score                 | Machine-readable aggregate and per-item metrics plus provenance hashes                          |
-| `report.md`                         | Score                 | Human-readable result summary                                                                   |
-| `manifest.json`                     | Every completed phase | Schema/run version, state, phase timestamps/counts, phase worker counts, agent metadata, and artifact SHA-256 hashes |
-| `console_metadata.json`             | Console only          | Display name, selected catalog IDs/spec, and launch worker counts                                |
+| File                                  | Written in            | Contents                                                                                                                                                                                             |
+| ------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input.snapshot.json` or `.jsonl` | Prepare               | Exact input bytes used by the run                                                                                                                                                                    |
+| `evaluator_profile.resolved.yaml`   | Prepare               | Fixed evaluator profile                                                                                                                                                                              |
+| `preparation.jsonl`                 | Prepare               | One terminal record per input item, containing either runnable normalized data and fixed atoms, a skip, or a preparation failure                                                                     |
+| `agent_config.resolved.yaml`        | Run                   | Exact tested Archi config                                                                                                                                                                            |
+| `agent_spec.resolved.md`            | Run                   | Exact tested agent spec and prompt                                                                                                                                                                   |
+| `answers.jsonl`                     | Run                   | One terminal`answer_ready` or `execution_failed` row per attempt slot, including tested-agent `duration_ms` and complete ordered tool-call query/response/error records with optional duration |
+| `live_checks.jsonl`                 | Run                   | Ordered pre-run and post-run oracle observations, normalized answers, hashes, metadata, bounded call evidence, or item-scoped live failures                                                          |
+| `evaluation_results.jsonl`          | Score                 | Answers, atom judgments, rationales, metrics, or terminal failures                                                                                                                                   |
+| `summary.json`                      | Score                 | Machine-readable aggregate and per-item metrics plus provenance hashes                                                                                                                               |
+| `report.md`                         | Score                 | Human-readable result summary                                                                                                                                                                        |
+| `manifest.json`                     | Every completed phase | Schema/run version, state, phase timestamps/counts, phase worker counts, agent metadata, and artifact SHA-256 hashes                                                                                 |
+| `console_metadata.json`             | Console only          | Display name, selected catalog IDs/spec, and launch worker counts                                                                                                                                    |
 
 The workspace is the reproducibility record. Keep it intact when comparing
 runs, and archive it with any external version identifiers you need. The
@@ -886,7 +1068,7 @@ current artifacts record tested-agent and tool-call latency but do not record
 source-control commits, release gates, token usage, model prompts, evaluator
 prompts, or reasoning traces. Tool queries and responses are complete.
 
-## Rerunning and integrity protection
+### Rerunning and integrity protection
 
 Completed-phase artifacts are hashed in `manifest.json`. A later phase verifies
 its inputs and fails closed if an artifact is edited, missing, or replaced.
@@ -904,13 +1086,13 @@ Use a new output directory when comparing agents, prompts, providers, models,
 attempt counts, datasets, or evaluator profiles. Reusing and overwriting one
 directory destroys the previous comparison point.
 
-## Failure and lifecycle records
+### Failure and lifecycle records
 
 Preparation is item-scoped:
 
 - `prepared`: the row has a valid fixed atom set;
-- `skipped_time_sensitive`: the row was deliberately excluded;
-- `preparation_failed`: atom extraction or validation failed for that row.
+- `preparation_failed`: oracle resolution, atom extraction, or validation failed
+  for that row;
 - `skipped_live`: a Dataset V2 live row was intentionally omitted with
   `--skip-live` or static-only generation.
 
@@ -930,7 +1112,7 @@ A composite operation may reach `scored` even when individual rows or attempts
 failed, because those failures are preserved as evidence. Decide acceptance
 using the lifecycle counts and quality metrics, not the top-level state alone.
 
-## Cost, concurrency, and data handling
+### Cost, concurrency, and data handling
 
 For `P` prepared items and `N` attempts:
 
