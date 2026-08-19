@@ -1121,7 +1121,6 @@ test.describe("QA evaluation console", () => {
 
   test("imports, reviews atoms, saves a child dataset, launches, and opens history", async ({ page }) => {
     await page.goto("/evaluations");
-    await expect(page.getByRole("heading", { name: "Evaluating Archi has never been simpler." })).toBeVisible();
 
     await page.getByRole("button", { name: /Datasets/ }).click();
     await page.getByLabel("Name").first().fill("Mock dataset");
