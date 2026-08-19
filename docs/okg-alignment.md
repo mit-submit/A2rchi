@@ -20,8 +20,21 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-18, archi branch `w2-twiki` @ `21273ff7`, tested against okg
-`dev` @ `21c5b8c3e` (2026-08-11).*
+*Last updated 2026-08-19, archi branch `w2-twiki` @ `e83b8dbf`, tested against okg
+`dev` @ `f5ec3b58d` (2026-08-18).*
+
+**Sync channel: okg#1178** (established 2026-08-19; surface-change heads-ups land
+there). Re-pin validation 2026-08-19 against the strict registry-admission schema
+(`8b65a330a`, #1273): all four scratch registry entries (bootstrap fixture,
+cmssw-releases, jira, docsite) lint clean, ingest OK, and publish — **zero
+refusals**; full test suite 199/199 on the new pin. okg#1006 is merged into `dev`
+(2026-08-13): chat, MCP HTTP auth, and principal mapping are now landed premises —
+Archi's W9 targets `dev`, and multi-user instances are unblocked pending #1183's
+per-bundle chat surface (#1275). Our substrate frictions are now okg #1282 / #1283 /
+#1284; our import surface is CI-gated on the okg side
+(`tests/substrate/contracts/test_external_import_surface.py`). D11 (shared ontology
+modules in the wheel) is planned against the deployment-product packaging wave
+(digest-pinned distribution assets), not an env-var override.
 
 Done, evidence-gated (PACT change `w2-consolidate-hep-sources` in `pact/changes/`):
 packaging (wheel from `python/`), `archi.auth` (CERN preflight/cache/cookies),
@@ -29,8 +42,9 @@ connectors for JIRA + docs families (ingest-proven on a live scratch instance),
 TWiki (EOS reader + live crawler over one parser core), MONIT (4 connectors + 4
 live tools), 18 playbooks. In progress: remaining catalog connectors
 (branch `wip-w2-catalogs`), enrichers, the `cern-team` bundle, the end-to-end
-install demo. The comp-ops instance (`okg-deployments/cms`) is untouched and is
-the parity target for cutover.
+install demo (the okg#1185 release claim; harness interface to be coordinated with
+`conform-external-okg-distributions` before it freezes). The comp-ops instance
+(`okg-deployments/cms`) is untouched and is the parity target for cutover.
 
 ## The exact substrate surface Archi consumes today
 
