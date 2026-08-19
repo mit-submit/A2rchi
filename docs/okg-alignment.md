@@ -42,10 +42,11 @@ migrates to it in one sweep (imports are centralized).
 ```
 okg.substrate.library.sources.base:
     NodeFact, EdgeFact, SourceRun, SourceHealth, SourcePreflightResult,
-    ProgressMarker, credential_env_preflight, file_ref_preflight, http_probe_result
+    ProgressMarker
 okg.substrate.library.sources.content_hash_probe: ContentHashProbe
 okg.substrate.library.sources.mutable_api_probe:  MutableApiProbe
-okg.substrate.sources.preflight:  file_ref_preflight
+okg.substrate.sources.preflight:
+    file_ref_preflight, credential_env_preflight, http_probe_result
 okg.substrate.sources.redaction:  redact_text
 ```
 
