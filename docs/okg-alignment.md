@@ -60,7 +60,9 @@ records survived reconcile + `--reset-cursor` under `missing_from_completed_scop
 (demo friction 6; repro in the runbook). The consolidated PR to `archi_v3` is open.
 The comp-ops instance (`okg-deployments/cms`) is untouched and is the parity target
 for cutover. New PACT v4 note from the re-pin: `change.tier` is now mandatory
-(`missing_lifecycle_tier` otherwise).
+(`missing_lifecycle_tier` otherwise). The superseded v2 application has been
+removed from the archi_v3 line (W10 teardown pulled forward, 2026-08-21); v2
+lives on `main` until instance cutover.
 
 ## The exact substrate surface Archi consumes today
 
