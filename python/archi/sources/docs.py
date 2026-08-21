@@ -104,9 +104,10 @@ ingest); (2) ``output_scope_summary`` must accompany
         # matching document_chunk references edges in output_signature
         # AND output_scope_summary above, and (b) the target subtype +
         # narrowing in the deployment schema: cmssw_release ships in
-        # archi/schemas/operations_w1.yaml with its narrowing in
+        # archi/schemas/operations.yaml with its narrowing in
         # archi/schemas/bridges/sources.yaml; site and
-        # infrastructure_service arrive with the catalogs port.
+        # infrastructure_service ship in the catalogs port
+        # (archi/schemas/operations.yaml + bridges/operations.yaml).
         # sites_path: data/cric/sites.json
         # releases_path: data/cmssw-releases/records.json
         # services_path: data/cric-core/services.json
@@ -200,7 +201,7 @@ from archi.auth.cache import (
 )
 from archi.auth.cookies import (
     check_cookie_file,
-    load_cookie_jar,
+    load_cookie_jar_from_env,
     looks_like_login_page,
 )
 
@@ -554,12 +555,8 @@ class SSOCookieDocsSource(DocumentationSource):
     def _cookie_session(self) -> requests.Session | None:
         """Session carrying the SSO cookie jar; ``None`` when the cookie
         env var is unset or the file is missing/unparseable."""
-        cookie_file = os.environ.get(self.cookie_file_env, "")
-        if not cookie_file or not Path(cookie_file).is_file():
-            return None
-        try:
-            jar = load_cookie_jar(cookie_file)
-        except Exception:  # noqa: BLE001
+        jar = load_cookie_jar_from_env(self.cookie_file_env)
+        if jar is None:
             return None
         session = requests.Session()
         session.cookies = jar

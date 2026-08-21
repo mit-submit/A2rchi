@@ -1,0 +1,54 @@
+# OPTIONAL — Indico connector (cache-backed). Not active: the
+# installer only picks up `*.yaml` files from source-defaults/, and a
+# fully commented .yaml would still scaffold an EMPTY registry entry
+# (the installer maps every file to a source id), so the optional
+# entry ships as .example instead.
+#
+# To enable on an instance: rename to indico.yaml BEFORE install (or
+# paste the block into the instance's source_registry.yaml after
+# install, replacing ${...} by hand). Requires the meeting_minutes /
+# document subtypes and their narrowings — ship in the archi wheel
+# slices (operations.yaml + bridges/operations.yaml) already copied by
+# the install runbook.
+indico:
+  module: archi.sources.indico
+  class: IndicoSource
+  ownership_id: ${deployment_name}.indico
+  admission_policy:
+    producer_id: ${deployment_name}.indico
+    producer_kind: source
+    trust_label: implicit_legacy_trusted
+    admission_mode: fast_track
+    authority_scope:
+      source_family: cern-team
+      source_name: indico
+    output_signature:
+      nodes:
+        - {subtype: meeting_minutes}
+        - {subtype: document}
+        - {subtype: document_chunk}
+      edges:
+        - {src_subtype: meeting_minutes, edge_type: contains, dst_subtype: document}
+        - {src_subtype: document, edge_type: contains, dst_subtype: document_chunk}
+        - {src_subtype: document_chunk, edge_type: member_of, dst_subtype: document}
+    output_scope_summary:
+      summary: Indico meetings with parsed PDF attachment documents and chunks
+      nodes: [meeting_minutes, document, document_chunk]
+      edges:
+        - meeting_minutes contains document
+        - document contains document_chunk
+        - document_chunk member_of document
+  source_class: discovery_crawl
+  record_identity_kind: remote_id
+  record_identity_fields: [event_id]
+  source_revision_kind: content_hash
+  deletion_semantics: missing_from_completed_scope
+  publication_mode: published_generation
+  required_for_baseline: false
+  params:
+    records_path: ${archi_data_root}/indico/records.json
+    base_url: https://indico.cern.ch
+  sync:
+    triggers: [manual, reconcile]
+    default_event_mode: scope_complete
+    reconcile_mode: scope_complete

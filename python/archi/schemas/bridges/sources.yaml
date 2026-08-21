@@ -3,7 +3,7 @@
 # DocumentChunk resolve from the co-loaded person and extraction
 # modules; JiraIssue / DocumentationPage / SoftwareRepository come
 # from archi/schemas/sources.yaml and CMSSWRelease from
-# archi/schemas/operations_w1.yaml. Copy this file into the
+# archi/schemas/operations.yaml. Copy this file into the
 # deployment as <deployment>/schemas/bridges/sources.yaml, alongside
 # archi/schemas/sources.yaml -> <deployment>/schemas/sources.yaml
 # (the catalog composer only honors narrowings under schemas/bridges/).
@@ -34,8 +34,8 @@ classes:
           src_subtypes: DocumentChunk
           dst_subtypes: JiraIssue
       # chunk -> site and chunk -> infrastructure_service narrowings
-      # land with the catalogs port (those subtypes are not composed
-      # yet); CMSSWRelease already ships in operations_w1.yaml.
+      # ship in archi/schemas/bridges/operations.yaml (the catalogs
+      # port); CMSSWRelease already ships in operations.yaml.
       chunk_references_cmssw_release:
         annotations:
           edge_archetype: references
@@ -51,3 +51,50 @@ classes:
           edge_archetype: contains
           src_subtypes: DocumentationPage
           dst_subtypes: DocumentChunk
+      # TWiki sources (archi.sources.twiki): topic-to-topic references
+      # (topic_parent / wiki_link / bare_wikiword).
+      documentation_page_references_documentation_page:
+        annotations:
+          edge_archetype: references
+          src_subtypes: DocumentationPage
+          dst_subtypes: DocumentationPage
+      # MONIT sources (archi.sources.monit). Every edge starts at a
+      # Site (or StorageEndpoint) node owned by the catalogs port
+      # (archi/schemas/operations.yaml); Dataset comes from the
+      # substrate `dataset` module. optional_when_subtypes_missing
+      # keeps catalog composition green when those subtypes are not
+      # co-composed — but the monit sources' edges are then rejected
+      # at ingest, so deploy the family only together with a slice
+      # providing site (and storage_endpoint for monit_rucio_datasets).
+      # These five narrowings live ONLY here;
+      # archi/schemas/bridges/operations.yaml deliberately omits them.
+      site_hosts_monitoring_snapshot:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: Site
+          dst_subtypes: MonitoringSnapshot
+          optional_when_subtypes_missing: 'true'
+      site_hosts_transfer_job:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: Site
+          dst_subtypes: TransferJob
+          optional_when_subtypes_missing: 'true'
+      transfer_site_to_site:
+        annotations:
+          edge_archetype: transfers_to
+          src_subtypes: Site
+          dst_subtypes: Site
+          optional_when_subtypes_missing: 'true'
+      site_hosts_dataset:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: Site
+          dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
+      storage_endpoint_hosts_dataset:
+        annotations:
+          edge_archetype: hosts
+          src_subtypes: StorageEndpoint
+          dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'

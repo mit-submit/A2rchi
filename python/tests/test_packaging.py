@@ -33,7 +33,10 @@ def test_schema_ships_in_package():
         for p in resources.files("archi.schemas").iterdir()
         if p.name.endswith(".yaml")
     ]
-    assert "operations_w1.yaml" in schema_files
+    # operations.yaml absorbed the W1 operations_w1.yaml CMSSWRelease
+    # slice with the catalogs port (req.w2.sources-catalogs).
+    assert "operations.yaml" in schema_files
+    assert "sources.yaml" in schema_files
 
 
 def test_v3_does_not_import_v2():

@@ -3,7 +3,7 @@
 **Audience:** an AI coding agent working in `archi-physics/archi`, plus the humans reviewing it.
 **Status:** draft for discussion, revised after maintainer feedback (cooper deferred; bundle model reshaped; comp-ops named the standing validation target).
 **Supersedes:** `archi-v3-transition-spec.md` (v1) and incorporates `archi_v3_review.md` plus a code audit of the repositories (§0).
-**Branch:** all Archi work lands on **`archi_v3`**, branched from `main`. **Never commit to `main`** — it serves existing v2 deployments untouched until the cutover in §14. OKG-side testing may target the #1006 branch where needed; OKG `dev`/`main` are not ours to write.
+**Branch:** all Archi work lands on **`archi_v3`**, branched from `main`. **Never commit to `main`** — it serves existing v2 deployments untouched until the cutover in §14. OKG-side testing targets OKG `dev` (#1006 merged there 2026-08-13); OKG `dev`/`main` are not ours to write.
 **Change management:** PACT (OKG's evidence-gated change workflow), adopted in W0.
 
 ---
@@ -23,11 +23,11 @@ When an interface has drifted at implementation time: **stop and record, do not 
 
 ### 0.1 Audit findings that change the plan
 
-1. **Archi's `origin/dev` holds the current scraper design.** A complete Scrapy rewrite (CERN SSO auth provider, TWiki crawl contracts, Discourse spider, scraper-level anonymization, `sources.web` config replacing `sources.links`) lives only on `dev`. Any source consolidation referencing `main`'s scrapers extracts the superseded implementation.
-2. **The CMS deployment is bigger than the review said**: 27 registered sources, 22 adapter classes (9,328 LOC) in `cms/cms_sources/`, plus a `code_repos` block expanding 16 repos × 4 lanes into 64 generated source blocks. A **machine-checkable Archi↔OKG parity contract already exists** (`cms/docs/a2rchi-strict-source-parity.yaml` + `audit_a2rchi_source_parity.py` + `build_archi_parity_snapshot.py`).
-3. **okg #1006 is confirmed unlanded**: open, conflicted, 280 files / +91,623 lines, 22 of 75 child tasks closed. Nothing from it — SSO, principal mapping, MCP HTTP auth, Open WebUI — is on `dev`. This work is in progress by the team and expected to land; until it does, development against the PR branch is the sanctioned path for chat-adjacent work (W9).
-4. **"Schemas outside OKG's tree" splits into two facts.** Deployment-scoped schemas and bridge narrowings **already work out of tree today**. Only reusable **ontology modules** are locked in-tree (`load_modules_root()` hard-returns the package path; no `OKG_MODULES_ROOT`). The fix is small; the profiles system already ships the external-resolution cascade to copy.
-5. **External source adapters already work** (YAML registry + `importlib`; deployment-local packages are the proven path). A pip-installed package should work identically but is unproven — proving it is W1, the keystone.
+1. **Archi's `origin/dev` holds the current scraper design.** A complete Scrapy rewrite (CERN SSO auth provider, TWiki crawl contracts, Discourse spider, scraper-level anonymization, `sources.web` config replacing `sources.links`) lives only on `dev`. Any connector consolidation referencing `main`'s scrapers extracts the superseded implementation.
+2. **The CMS deployment is bigger than the review said**: 27 registered connectors, 22 adapter classes (9,328 LOC) in `cms/cms_sources/`, plus a `code_repos` block expanding 16 repos × 4 lanes into 64 generated source blocks. A **machine-checkable Archi↔OKG parity contract already exists** (`cms/docs/a2rchi-strict-source-parity.yaml` + `audit_a2rchi_source_parity.py` + `build_archi_parity_snapshot.py`).
+3. **okg #1006 — unlanded at audit time (2026-08-11); merged into `dev` 2026-08-13.** The audit found it open and conflicted (280 files / +91,623 lines, 22 of 75 child tasks closed) with nothing — SSO, principal mapping, MCP HTTP auth, Open WebUI — on `dev`. It has since merged, landing the chat frontend, MCP HTTP auth, and principal mapping on `dev`. W9 targets `dev`; the remaining chat-adjacent item is the per-bundle chat surface (okg#1275).
+4. **"Schemas outside OKG's tree" splits into two facts.** Deployment-scoped schemas and bridge narrowings **already work out of tree today**. Only reusable **ontology modules** are locked in-tree (`load_modules_root()` hard-returns the package path; no `OKG_MODULES_ROOT`). The fix is small; the profiles system already ships the external-resolution cascade to copy. (Upstream has since scoped the fix differently: shared modules ship as digest-pinned distribution assets in OKG's deployment-product packaging wave, okg#1179 — see D11.)
+5. **External connector adapters already work** (YAML registry + `importlib`; deployment-local packages are the proven path). A pip-installed package should work identically but is unproven — proving it is W1, the keystone.
 6. **OKG's review machinery is three systems, not one**: admission envelopes, escalations (with `timeout_at`, `decided_by`, timeout sweep), and the PACT decision ledger. Together they cover roughly two-thirds of v1's gate design. Genuine gaps: expiry on admission envelopes, approve-with-edits anywhere, per-**actor** cost caps, a true kill switch, and an authenticated, mounted HTTP API for opening a proposal from outside.
 7. **Telemetry lives in OKG's Postgres** (`telemetry_*`, `mcp_call_log`, `llm_calls` with `cost_usd`); there is no wired OTLP export path. Per-call metering exists; per-user attribution does not.
 8. *(Deferred with cooper.)* Cooper's absorbable assets — the physics ontology, document schemas, and LaTeX ingestion trio — are real but out of scope for the first draft.
@@ -42,16 +42,16 @@ When an interface has drifted at implementation time: **stop and record, do not 
 
 **What happened.** Archi v2 tried to be one product: retrieval, an agent runtime, a provider abstraction, a chat UI, four bot services, and a deployment CLI. Retrieval moved out to OKG. The v1 spec answered "what is Archi for?" with a HEP domain layer plus a home-built automation substrate. The review's correction, which the audit confirms: **most of that substrate already exists in OKG, is in flight there, or belongs there**. What OKG genuinely lacks, Archi files as requirements — it does not build around.
 
-**What Archi becomes.** The **HEP/CERN distribution of OKG**: the schemas that say what a dataset, run, or ticket *is*; the sources that pull CERN systems into the graph; the enrichment that links records; the skills that instruct agents; the evaluation suite; and the bundles that turn a blank OKG install into a working instance. Archi holds no credentials, no site configuration, and no running services.
+**What Archi becomes.** The **HEP/CERN distribution of OKG**: the schemas that say what a dataset, run, or ticket *is*; the connectors that pull CERN systems into the graph; the enrichment that links records; the playbooks that instruct agents; the evaluation suite; and the bundles that turn a blank OKG install into a working instance. Archi holds no credentials, no site configuration, and no running services.
 
 **What gets given away**: the agent loop to frameworks; the chat UI to OKG's Open WebUI integration; the provider abstraction to OKG's LLM layer; identity to Nomos; approval to OKG's admission/escalation/PACT systems; retrieval already gone. Roughly 20,000 lines of v2 are deleted rather than migrated, and that is the point.
 
 **The bets, restated.**
-1. **The OKG dependencies land.** Precisely (§7): the #1006 slices — MCP HTTP auth, per-user identity, the Open WebUI chat — plus two smaller items: external ontology-module resolution and the external review-API gaps. The chat/identity work is already in progress by the team, so this is a scheduling dependency, not a passive external bet; W9 develops against the #1006 branch in the meantime.
+1. **The OKG dependencies land — largely landed.** The #1006 slices — MCP HTTP auth, per-user identity, the Open WebUI chat — merged into `dev` on 2026-08-13. The two smaller items are on track upstream: shared ontology-module distribution rides OKG's deployment-product packaging wave (okg#1179), and the external review-API gaps are tracked with the rest of the asks as okg#1179–#1185 (§7). W9 develops against `dev`; the residual chat item is the per-bundle chat surface (okg#1275).
 2. **The bundles are wanted beyond one team.** Addressed head-on by making the first bundle the *generic CERN* one (§9 W6) — TWiki, Indico, websites/docs, code — whose audience is every small CERN team, rather than leading with team-specific bundles.
 3. **The dormant CMS deployment code revives cheaply.** W1/W2 test this within weeks, against the comp-ops instance, which is the standing validation target for the entire program.
 
-**Where to start.** Two things. First, the fieldwork v1 demanded and nobody has done: **which v2 deployments are live, and who runs each** (the deprecation date is set after this inventory, never before). Second, W1 — prove the seam: a pip-installed Archi package serving one source and one schema into a scratch OKG instance, end to end.
+**Where to start.** Two things. First, the fieldwork v1 demanded and nobody has done: **which v2 deployments are live, and who runs each** (the deprecation date is set after this inventory, never before). Second, W1 — prove the seam: a pip-installed Archi package serving one connector and one schema into a scratch OKG instance, end to end.
 
 ---
 
@@ -59,13 +59,13 @@ When an interface has drifted at implementation time: **stop and record, do not 
 
 ### 2.1 Layers
 
-**OKG** is the substrate: the knowledge graph (generation-pinned reads), the ingestion runner, the MCP tool surface (`search`, `expand`, `inspect`, `filter`, `map`, `aggregate`, bounded `query`), identity and policy (Nomos), the three review systems, telemetry and cost metering, the runtime worker (DBOS), the installer, deployment lint, PACT, and — once #1006 lands — the chat frontend. Nothing HEP-specific.
+**OKG** is the substrate: the knowledge graph (generation-pinned reads), the ingestion runner, the MCP tool surface (`search`, `expand`, `inspect`, `filter`, `map`, `aggregate`, bounded `query`), identity and policy (Nomos), the three review systems, telemetry and cost metering, the runtime worker (DBOS), the installer, deployment lint, PACT, and — since #1006 merged (2026-08-13) — the chat frontend. Nothing HEP-specific.
 
-**Archi** is the HEP/CERN distribution of OKG: one repository, one pip package, shipping schemas, sources, enrichers, live tools, skills, bundles, and the evaluation suite.
+**Archi** is the HEP/CERN distribution of OKG: one repository, one pip package, shipping schemas, connectors, enrichers, live tools, playbooks, bundles, and the evaluation suite.
 
-**Instances** (deployments) are running systems — comp-ops, SubMIT, WisDQM, CRAB. **Each has its own repo** (today: directories in `okg-deployments`; standalone repos are equally supported — see §6.3). An instance holds its configuration, secrets (by reference), site-specific sources, and operational content. Instances never live in Archi.
+**Instances** (deployments) are running systems — comp-ops, SubMIT, WisDQM, CRAB. **Each has its own repo** (today: directories in `okg-deployments`; standalone repos are equally supported — see §6.3). An instance holds its configuration, secrets (by reference), site-specific connectors, and operational content. Instances never live in Archi.
 
-**A bundle is not an instance.** A bundle is a *starting selection plus defaults* — the thing that makes `okg install --profile <bundle>` produce a working instance in one command. The moment the instance exists, it owns its registry outright and diverges freely; instances never sync back to a bundle. Bundles exist per **recurring shape**, under the same second-call-site rule as everything else — not one per deployment (that would just be the deployment's config in the wrong repo). Distro analogy: Archi is the distro and package repository; a bundle is a spin; an instance is your installed machine; a source is a package any machine installs.
+**A bundle is not an instance.** A bundle is a *starting selection plus defaults* — the thing that makes `okg install --profile <bundle>` produce a working instance in one command. The moment the instance exists, it owns its registry outright and diverges freely; instances never sync back to a bundle. Bundles exist per **recurring shape**, under the same second-call-site rule as everything else — not one per deployment (that would just be the deployment's config in the wrong repo). Distro analogy: Archi is the distro and package repository; a bundle is a spin; an instance is your installed machine; a connector is a package any machine installs.
 
 ### 2.2 Terminology
 
@@ -73,9 +73,9 @@ When an interface has drifted at implementation time: **stop and record, do not 
 |---|---|
 | **OKG** | The substrate (self-describes as AKMON; we say OKG). |
 | **Archi** | The HEP/CERN distribution of OKG: the repo and pip package. |
-| **Source** | Code that pulls one external system into the graph (OKG's `SourceAdapter` protocol). Replaces: ingestor, scraper, collector, connector — OKG reserves *connector* for credentialed routed apps. |
-| **Skill** | A reviewed instruction file served to agents (`SKILL.md` format). Replaces: playbook — OKG's mechanisms are named skills end to end (`skills_dir`, `skill_triggers`, `skill_bundle_hash`). Personal per-user prompts are **not** skills; the chat frontend owns those and Archi does no work for them. |
-| **Bundle** | A packaged starting selection (schemas, source defaults, skills, init questions), implemented as an OKG install profile — which already resolves outside OKG's tree (`OKG_PROFILES_DIR` cascade). We say *bundle* because *profile* is overloaded in OKG. |
+| **Connector** | Code that pulls one external system into the graph (OKG's `SourceAdapter` protocol). Replaces: ingestor, scraper, collector, source. *Note: adopted from okg#1178 program vocabulary (2026-08-18), reversing the earlier OKG-internal-vocabulary amendment; OKG's code mechanism is still named `SourceAdapter` / `sources.*` config — the mechanism keeps its name, the asset is called a connector.* |
+| **Playbook** | A reviewed instruction file served to agents (`SKILL.md` format). Replaces: skill. *Note: adopted from okg#1178 program vocabulary (2026-08-18), reversing the earlier OKG-internal-vocabulary amendment; OKG's file mechanism is still named `skills_dir`/`skill_bundle_hash` (plus `skill_triggers`) — the mechanism keeps its name, the asset is called a playbook.* Personal per-user prompts are **not** playbooks; the chat frontend owns those and Archi does no work for them. |
+| **Bundle** | A packaged starting selection (schemas, connector defaults, playbooks, init questions), implemented as an OKG install profile — which already resolves outside OKG's tree (`OKG_PROFILES_DIR` cascade). We say *bundle* because *profile* is overloaded in OKG. |
 | **Instance** | A running deployment created from a bundle (or scaffolded bare). OKG calls this a "deployment". |
 | **PACT** | OKG's change-proposal workflow; completion gated on recorded evidence. Replaces OpenSpec. |
 | **Generation** | A published, pinned snapshot of the graph readers hold for a session. |
@@ -87,18 +87,18 @@ When an interface has drifted at implementation time: **stop and record, do not 
 Archi ships, in one repo and one pip package:
 
 1. **Schemas** — LinkML: operations (from the CMS deployment's 22 node classes + narrowings) and the bridges. (Physics/document schemas return with cooper, later.)
-2. **Sources** — the consolidated CERN/HEP source package (§9 W2): TWiki, Indico, doc sites/websites, code repos, JIRA, CRIC, DBS, DQM, CMSSW releases, CondDB, WMStats, SITECONF, GOCDB, MONIT, HyperNews, Redmine.
+2. **Connectors** — the consolidated CERN/HEP connector package (§9 W2): TWiki, Indico, doc sites/websites, code repos, JIRA, CRIC, DBS, DQM, CMSSW releases, CondDB, WMStats, SITECONF, GOCDB, MONIT, HyperNews, Redmine.
 3. **Auth plumbing** — CERN SSO cookie flows, X509/preflight probes, token handling (code only; credentials are instance property).
 4. **Enrichment** — identifier extraction/linking (site names, dataset paths, run numbers, releases, global tags), reference rollups, anonymization.
 5. **Live tools** — agent tools that query systems directly, outside the graph (e.g. the four `cms_monit_*` tools).
-6. **Skills** — domain and operations instruction files (starting from the CMS deployment's 18).
+6. **Playbooks** — domain and operations instruction files (starting from the CMS deployment's 18).
 7. **Bundles** — starting with one: `cern-team` (§9 W6).
 8. **The evaluation suite** (§9 W5).
 
 ### Non-goals (each with where it went)
 
 - **No agent runtime.** Frameworks own the loop; the runtime lessons are an ADR (Appendix B), not code.
-- **No chat UI.** OKG's Open WebUI integration (#1006). Archi ships chat *configuration* per bundle: branding, default instructions, exposed tools.
+- **No chat UI.** OKG's Open WebUI integration (#1006, merged into `dev` 2026-08-13). Archi ships chat *configuration* per bundle: branding, default instructions, exposed tools.
 - **No provider abstraction.** OKG's LLM layer. The 91-LOC CERN gateway provider becomes gateway configuration + docs.
 - **No approval service.** OKG's admission envelopes, escalations, Nomos. Gaps filed as requirements (§7).
 - **No identity or accounts.** Nomos — which already carries CERN claim vocabulary (`cern_person_id`, `cern_roles`, …) and `touchstone_oidc`.
@@ -106,7 +106,7 @@ Archi ships, in one repo and one pip package:
 - **No Archi-owned MCP servers, and no repo-per-MCP-server.** Each *instance* runs OKG's MCP server (`okg mcp-serve` / the instance's `server.py`); the graph tools come with it for free. Archi's live tools are ordinary Python modules in the package that an instance's `deployment.yaml` declares — they ride the instance's server (§5.6). Zero new repos, zero new servers.
 - **No shared business logic between automations, and no Archi SDK.** Automations use OKG's deployment SDK (`llm_call`, `request_escalation`, `cost_budget`, DBOS workflows) or raw MCP/HTTP.
 - **No credentials, site config, or running services in Archi.** Instance property, by reference only.
-- **No playbook service — but playbooks are *not* silently "replaced by skills".** v2 playbooks were two populations with different destinations. Shared/curated packs become **skills**: git-reviewed, hash-pinned, no agent write path — strictly better on the injection concern, which stays a standing invariant. Personal per-user packs and `/name` chat invocation become the **chat frontend's per-user prompts** (Open WebUI ships user-owned prompt presets with slash commands; W9 verifies they cover the use case and files a chat-frontend request if not). What is deleted without replacement — listed as accepted losses in W9, not hidden: the DB-backed per-user enablement of shared packs, the invocation-analytics tables, and the agent tools that drafted playbooks from conversation.
+- **No playbook service — and v2's "playbooks" are *not* silently carried over.** (v2's playbooks predate the okg#1178 vocabulary and are distinct from the playbook asset of §2.2.) v2 playbooks were two populations with different destinations. Shared/curated packs become **playbooks** on OKG's skills mechanism: git-reviewed, hash-pinned, no agent write path — strictly better on the injection concern, which stays a standing invariant. Personal per-user packs and `/name` chat invocation become the **chat frontend's per-user prompts** (Open WebUI ships user-owned prompt presets with slash commands; W9 verifies they cover the use case and files a chat-frontend request if not). What is deleted without replacement — listed as accepted losses in W9, not hidden: the DB-backed per-user enablement of shared packs, the invocation-analytics tables, and the agent tools that drafted playbooks from conversation.
 
 ---
 
@@ -116,21 +116,21 @@ Statuses: **Decided**, **Dependent** (waits on a named event), **Research** (som
 
 ### Decided
 
-**D1. Archi is a distribution over OKG** — consolidation, not construction: absorb the CMS deployment's sources and schemas as starting material. (Cooper's assets return later.)
+**D1. Archi is a distribution over OKG** — consolidation, not construction: absorb the CMS deployment's connectors and schemas as starting material. (Cooper's assets return later.)
 
-**D2. Chat is OKG's Open WebUI integration; LibreChat is dropped.** Archi ships chat configuration per bundle. The integration is in-flight (#1006); W9 may develop and test against the PR branch; production instances wait for landed slices.
+**D2. Chat is OKG's Open WebUI integration; LibreChat is dropped.** Archi ships chat configuration per bundle. The integration landed: #1006 merged into `dev` 2026-08-13 (chat, MCP HTTP auth, principal mapping); W9 develops and tests against `dev`. The per-bundle chat surface is okg#1275.
 
 **D3. No separate approval service.** Automations use `request_escalation()` and admission envelopes; remaining needs are filed upstream (§7). Decisions are recorded in OKG's ledgers; **execution stays in the automation that proposed** (v1's "the gate never executes", in substrate form).
 
-**D4. Identity comes from Nomos.** Archi ships identity *setup* per bundle (CERN OIDC claims; Touchstone for SubMIT), never its own accounts. The authenticated multi-user session layer is #1006 work.
+**D4. Identity comes from Nomos.** Archi ships identity *setup* per bundle (CERN OIDC claims; Touchstone for SubMIT), never its own accounts. The authenticated multi-user session layer landed with #1006 (merged into `dev` 2026-08-13).
 
 **D5. PACT replaces OpenSpec.** Archi's `openspec/` contains zero proposals — adopt clean via `okg pact install`; the decision ledger needs a reachable Postgres.
 
-**D6. Terminology per §2.2** (source, skill — both amendments forced by the audit).
+**D6. Terminology per §2.2** (connector, playbook — adopted from the okg#1178 program vocabulary on 2026-08-18, reversing the audit-forced amendments; §2.2 carries the notes).
 
-**D7. Schemas start deployment-scoped in bundles** (works today), promoted to shared ontology modules when OKG's external-modules change lands. LinkML YAML preserves v1's "declarative data, never Python classes" constraint; relocation stays a move, not a rewrite.
+**D7. Schemas start deployment-scoped in bundles** (works today), promoted to shared ontology modules when OKG's module-distribution packaging lands (okg#1179). LinkML YAML preserves v1's "declarative data, never Python classes" constraint; relocation stays a move, not a rewrite.
 
-**D8. Traces and cost live in OKG's Postgres.** The v1 OTel-collector architecture is superseded. The evaluation suite reads `okg.llm_calls`, `okg.v_mcp_calls`, and the telemetry tables. Chat transcripts will live in the chat frontend's own database; the #1006 transcript source is the planned join path (tracked in W5).
+**D8. Traces and cost live in OKG's Postgres.** The v1 OTel-collector architecture is superseded. The evaluation suite reads `okg.llm_calls`, `okg.v_mcp_calls`, and the telemetry tables. Chat transcripts will live in the chat frontend's own database; the #1006 transcript connector is the planned join path (tracked in W5).
 
 **D9. Cooper is deferred wholesale.** No porting of its ontology, LaTeX ingestion, or evaluation material in the first draft. Revisit after the v3 transition's first draft is standing.
 
@@ -138,9 +138,9 @@ Statuses: **Decided**, **Dependent** (waits on a named event), **Research** (som
 
 ### Dependent
 
-**D11. Shared HEP ontology modules move out of bundles into a first-class module set** — *trigger:* OKG lands external module resolution (§7 ask 2). Until then, bundles carry deployment-scoped copies; duplication is accepted and linted.
+**D11. Shared HEP ontology modules move out of bundles into a first-class module set** — *trigger:* OKG ships shared ontology modules as digest-pinned distribution assets in its deployment-product packaging wave (okg#1179) — not the env-var override originally sketched (§7 ask 2). Until then, bundles carry deployment-scoped copies; duplication is accepted and linted.
 
-**D12. Multi-user instances ship** — *trigger:* the #1006 identity slice lands (per-user identity on tool calls; today MCP identity is client-asserted or process-level).
+**D12. Multi-user instances ship** — *trigger fired:* per-user identity on tool calls landed with #1006 (merged into `dev` 2026-08-13). Multi-user instances now wait only on the per-bundle chat surface (okg#1183/okg#1275).
 
 **D13. Central LLM key vs BYOK per instance** — cost *accounting* is urgent (per-actor attribution is §7 ask 4); key management is deployment config. *Trigger:* first bundle with two concurrent automations.
 
@@ -148,7 +148,7 @@ Statuses: **Decided**, **Dependent** (waits on a named event), **Research** (som
 
 **R1. Which v2 deployments are live, and who runs each?** Still the highest-risk unknown; gates the deprecation date and cutover. Needs no code access — do it now.
 **R2. Reconcile the okg-deployments pin** (`cae5d84` absent from the current clone).
-**R3. #1006 landing plan** — which slices land in what order, so W9/W6 gates have real dates. (The work is owned in-house; this is sequencing, not ownership.)
+**R3. #1006 landing plan** — which slices land in what order, so W9/W6 gates have real dates. (The work is owned in-house; this is sequencing, not ownership.) *Resolved: #1006 merged into `dev` 2026-08-13.*
 
 ---
 
@@ -164,16 +164,16 @@ flowchart LR
     RUNTIME["runtime worker (DBOS)\nschedules, escalations"]
     NOMOS["Nomos: identity,\npolicy, audit"]
     REVIEW["admission envelopes,\nescalations, PACT ledger"]
-    CHAT["chat frontend\n(#1006, in flight)"]
+    CHAT["chat frontend\n(#1006, landed 2026-08-13)"]
     TEL["telemetry + llm_calls\n(Postgres)"]
   end
 
   subgraph archi["archi — HEP/CERN distribution"]
     SCHEMAS["schemas (LinkML)"]
-    SRC["sources + auth"]
+    SRC["connectors + auth"]
     ENR["enrichment"]
     TOOLS["live tools"]
-    SKILLS["skills"]
+    SKILLS["playbooks"]
     BUNDLES["bundles"]
     EVAL["evaluation suite"]
   end
@@ -212,8 +212,8 @@ No execution arrow leaves any review system: decisions are recorded; the proposi
 | Component | Owns | Explicitly does not own |
 |---|---|---|
 | OKG | storage, generations, MCP surface, ingestion runner, identity/policy/audit, review systems, runtime worker, telemetry/cost, installer, lint, PACT, chat | any HEP notion of what a record means |
-| Archi | schemas, sources, auth plumbing, enrichment, live tools, skills, bundles, evaluation | credentials, site config, running services, agent runtime, chat code, approval machinery, retrieval, MCP servers |
-| Instance | its repo: registry, config, secrets (by reference), site sources, operational skills, dashboards, its database and worker, its MCP server | anything another instance needs |
+| Archi | schemas, connectors, auth plumbing, enrichment, live tools, playbooks, bundles, evaluation | credentials, site config, running services, agent runtime, chat code, approval machinery, retrieval, MCP servers |
+| Instance | its repo: registry, config, secrets (by reference), site connectors, operational playbooks, dashboards, its database and worker, its MCP server | anything another instance needs |
 | Automation | its trigger, business logic, execution, durable state (DBOS) | anything another automation needs |
 
 ### 5.3 The approval flow, mapped onto OKG
@@ -235,8 +235,8 @@ Preferred shape for a new automation: an **OKG deployment workflow** (DBOS-sched
 ### 5.4 Boundary rules
 
 - Instances and automations reach the graph **only** via OKG's MCP surface (or `okg.v_*` views through bounded `query`). No direct SQL to graph tables.
-- Archi code never reads instance secrets; sources take credentials by `credential_refs`/env indirection.
-- Skills have no agent-reachable write path; any change to that property is rejected on review.
+- Archi code never reads instance secrets; connectors take credentials by `credential_refs`/env indirection.
+- Playbooks have no agent-reachable write path; any change to that property is rejected on review.
 - No instance imports another instance; no automation imports another automation.
 - Every read an automation acts on is generation-pinned; every write goes through admission.
 
@@ -248,7 +248,7 @@ Four distinct things, four homes — none of them a new Archi service:
 |---|---|---|
 | **Ingest auth** — CERN SSO cookie flows, X509 proxy, JIRA/GitLab tokens, preflight probes | `archi/auth/` (consolidated from `cms/cms_sources/preflight.py` + archi `dev`'s Scrapy `AuthProvider`) | instance repo, by reference (`credential_refs`, env, cookie files) — the CMS deployment's `cms-okg-credentials.env.example` is the pattern |
 | **Chat / UI login** — CERN SSO, Touchstone | OKG (Nomos + the #1006 SSO slice; CERN claim vocabulary is already in Nomos) | instance OIDC client config |
-| **MCP client → server auth** | OKG (#1006 MCP HTTP auth slice; today the server is loopback-only for writes) | instance |
+| **MCP client → server auth** | OKG (the #1006 MCP HTTP auth slice — landed on `dev` 2026-08-13) | instance |
 | **Live-tool credentials** (e.g. MONIT Grafana token, a2rchi SSH key) | declared per capability in the instance (`live_capabilities.yaml`, `secret_ref`) | instance secret store |
 
 Archi v2's chat-app Touchstone/session code dies with the chat app; nothing from it is ported.
@@ -269,25 +269,25 @@ Every v2 part, its destination, and the package that moves it. "Delete" always m
 |---|---|---|---|
 | `src/archi/pipelines/agents/` core: `base_react.py` (1,840), `agent_spec.py` (118), `cms_comp_ops_agent.py` (404), `playbook_mixin.py` (117) | agent runtime | **delete**; lessons → `docs/adr/` (Appendix B) | W10 |
 | `agents/tools/monit_opensearch.py` (667) | MONIT live tool | `archi/tools/monit.py`, merged with `cms_tools/monit_live.py` | W2 |
-| `agents/tools/indico_ingest.py` (162) | on-demand Indico ingest | folded into `archi/sources/indico.py` (merged with the CMS Indico source) | W2 |
+| `agents/tools/indico_ingest.py` (162) | on-demand Indico ingest | folded into `archi/sources/indico.py` (merged with the CMS Indico connector) | W2 |
 | `agents/tools/mcp.py` + `skill_utils`/`mcp_utils` (~180) | MCP client + skills injection | **delete** — OKG owns the client side; lessons kept | W10 |
-| `agents/tools/playbook_tools.py` (514) | playbook CRUD tools | **delete** — skills have no runtime write path | W10 |
+| `agents/tools/playbook_tools.py` (514) | playbook CRUD tools | **delete** — playbooks have no runtime write path | W10 |
 | `src/archi/pipelines/classic_pipelines/` (1,253) | RAG pipelines + grading | **delete** (grading is deleted with the grader, below) | W10 |
 | `src/archi/providers/` (1,623) | provider abstraction | **delete**; `cern_litellm_provider.py` (91) → gateway config + docs | W10 |
 | `src/archi/archi.py` (122) | orchestrator | **delete** | W10 |
-| `src/data_manager/collectors/scrapers/` (**take `origin/dev`**, the Scrapy rewrite) | web/TWiki/Discourse scrapers, SSO auth | `AuthProvider` → `archi/auth/`; spiders → `archi/sources/` only where the CMS deployment lacks the source (checklist: the parity contract's exclusion list); rest **delete** | W2 |
-| `collectors/tickets/` (`jira.py` 236, `redmine_tickets.py` 192) | ticket collectors | `archi/sources/jira.py` (merged with the CMS JIRA source, 505) and `archi/sources/redmine.py` | W2 |
+| `src/data_manager/collectors/scrapers/` (**take `origin/dev`**, the Scrapy rewrite) | web/TWiki/Discourse scrapers, SSO auth | `AuthProvider` → `archi/auth/`; spiders → `archi/sources/` only where the CMS deployment lacks the connector (checklist: the parity contract's exclusion list); rest **delete** | W2 |
+| `collectors/tickets/` (`jira.py` 236, `redmine_tickets.py` 192) | ticket collectors | `archi/sources/jira.py` (merged with the CMS JIRA connector, 505) and `archi/sources/redmine.py` | W2 |
 | `collectors/utils/` (`anonymizer` — dev version, `metadata` 49, `slide_converter` 226) | enrichment utils | `archi/enrichment/` | W2 |
 | `src/data_manager/vectorstore/` + `embedding_utils` + pgvector config | retrieval | **delete** — OKG owns retrieval | W10 |
 | `data_manager.py`, `scheduler.py` | ingest runner | **delete** — OKG's runner/worker | W10 |
 | `data_viewer_service.py` (213) | data viewer | **delete** — OKG operator console covers it | W10 |
 | `src/interfaces/chat_app/` (9,696 Py + 25,194 front) | chat UI | **delete** — OKG chat; `service_alerts.py` content → instance dashboards; the #596 `/evaluations` console dies here too (its CLI + `report.md` remain, W5) | W9→W10 |
-| `src/interfaces/uploader_app/` (1,003) | upload UI | **delete** — #1006 has an upload-source slice | W10 |
+| `src/interfaces/uploader_app/` (1,003) | upload UI | **delete** — #1006 has an upload-connector slice | W10 |
 | `src/interfaces/grader_app/` (840) + `service_grader.py` + `grading.py`, `image_processing.py`, `grading_retriever.py` | grader | **delete** — maintainer decision: not worth a spinout | W10 |
 | `redmine_mailer_integration/` (870), `jira.py` (597), `mattermost.py` (208) | queue bots | **one queue-bot automation** (deployment workflow); home decided in W8 | W8 |
 | `piazza.py` (170) + `service_piazza.py` | Piazza bot | **delete** — retired, not ported | W8 |
 | `src/utils/`: `rbac/`, `user_service`, `config_service`, `connection_pool`, `sql`, `env` | shared services | **delete** — Nomos/OKG own identity, config, DB plumbing | W10 |
-| `src/utils/playbook_service.py` (786) + 4 playbook DB tables | playbook store | **delete** — shared packs → skills; personal packs → chat-frontend prompts (§3); accepted losses listed in W9 | W10 |
+| `src/utils/playbook_service.py` (786) + 4 playbook DB tables | playbook store | **delete** — shared packs → playbooks (skills mechanism); personal packs → chat-frontend prompts (§3); accepted losses listed in W9 | W10 |
 | `src/utils/ab_*.py` (1,038), `document_selection_service.py` (652) | A/B + doc selection | **delete** (W5 may salvage metric ideas) | W10 |
 | `service_benchmark.py` (636) + `generate_benchmark_report.py` (525) + `archi evaluate` CLI path | Ragas benchmark | **retire** — superseded by `archi eval qa` (#596); migrate `queries.json` question sets to the #596 dataset format | W5 |
 | **PR #596**: `src/evaluation/qa/` (~4,600 LOC) + `archi eval qa` CLI (in flight) | atom-based QA evaluation engine | **keep** — merge into `archi_v3`; engine → `evaluation/`; runtime adapter re-pointed from the v2 in-process agent to MCP-client agents | W5 |
@@ -317,7 +317,7 @@ Every v2 part, its destination, and the package that moves it. "Delete" always m
 
 | Repo | Role | Status |
 |---|---|---|
-| `archi-physics/archi` | the distribution (pip package + schemas + skills + bundles + evaluation) | **exists** — all v3 work on the `archi_v3` branch; `main` untouched until cutover |
+| `archi-physics/archi` | the distribution (pip package + schemas + playbooks + bundles + evaluation) | **exists** — all v3 work on the `archi_v3` branch; `main` untouched until cutover |
 | `mitdbg/okg` | substrate | **exists, external** — we file asks (§7); chat-adjacent testing may use the #1006 branch |
 | comp-ops deployment repo (suggest `archi-physics/compops`) | **comp-ops instance — the standing validation target** | **the one new repo of the first draft** — split from `okg-deployments/cms` with history preserved (`git subtree split`) at the start of W7, then refactored (move and rewrite as separate commits, invariant 6) to consume the Archi package; carries the deployment-contract lint CI |
 | `okg-deployments/cms` | pre-v3 comp-ops reference | exists — frozen once the split lands; retiring it upstream is mitdbg's call |
@@ -340,7 +340,7 @@ archi/                          # repo — branch archi_v3
 │   ├── enrichment/             # identifier extractors, linkers, rollups, anonymizer
 │   └── tools/                  # live tools (monit_live, ...)
 ├── schemas/                    # operations.yaml + bridges/          (physics returns with cooper)
-├── skills/                     # domain + operations skills
+├── skills/                     # domain + operations playbooks (dir keeps the mechanism name)
 ├── bundles/
 │   └── cern-team/              # profile.yaml, modules.yaml, source-defaults/, init_questions
 ├── evaluation/                 # question sets, graders, harness config
@@ -364,8 +364,10 @@ Profiles already resolve outside OKG's tree (the 5-step cascade); the same mecha
 
 Filed as issues/PACTs against `mitdbg/okg` in W0, with Archi named as consumer. A gap in OKG gets **filed**, never worked around in Archi.
 
-1. **Land the #1006 slices** (in-house, in progress — this ask is about sequencing and splitting, not persuasion): (a) MCP HTTP authentication, (b) principal mapping / per-user identity on tool calls, (c) the Open WebUI chat frontend with app-DB isolation, (d) the chat-transcript source (evaluation join path). The PR also bundles an unrelated PACT gate change — peel that off first. Until slices land, W9 develops against the PR branch; production instances wait.
-2. **External ontology-module resolution** — a `modules_root` cascade mirroring the profiles cascade. The parameter already threads through `compose_catalog`; this is plumbing plus an env var. Unblocks D11.
+**Upstream tracking (2026-08-18):** all asks below are now tracked upstream as okg#1179–#1185, plus okg#1282/#1283/#1284 for the porting frictions; this section is kept for rationale and history. The sync channel is okg#1178; the living interface page is `docs/okg-alignment.md`.
+
+1. **Land the #1006 slices** (in-house, in progress — this ask is about sequencing and splitting, not persuasion): (a) MCP HTTP authentication, (b) principal mapping / per-user identity on tool calls, (c) the Open WebUI chat frontend with app-DB isolation, (d) the chat-transcript connector (evaluation join path). The PR also bundles an unrelated PACT gate change — peel that off first. Until slices land, W9 develops against the PR branch; production instances wait. *(Status: merged into `dev` 2026-08-13 — chat, MCP HTTP auth, principal mapping landed; the residual chat item is the per-bundle chat surface, okg#1275.)*
+2. **External ontology-module resolution** — a `modules_root` cascade mirroring the profiles cascade. The parameter already threads through `compose_catalog`; this is plumbing plus an env var. Unblocks D11. *(Upstream resolution: okg#1179 delivers this as digest-pinned distribution assets in the deployment-product packaging wave, not the env-var cascade sketched here.)*
 3. **External proposal/review API** — mount and authenticate the escalation router (exists, ~80 lines, unmounted by design); allow *opening* an escalation from outside; expiry on admission envelopes; an approve-with-edits decision. The review's "one real gap", itemized.
 4. **Per-actor cost accounting and kill switch** — a principal column on `llm_calls`/`mcp_call_log` joined through Nomos subject bindings; caps aggregable per actor; a first-class halt verb stronger than `pause-schedule`/`drain`.
 5. **Bless the pip-installed adapter path** — the mechanism works (plain `importlib`); ask for a test + doc so Archi doesn't depend on an unexercised path. W1 supplies the reproduction.
@@ -388,7 +390,7 @@ Violating one is grounds for rejecting a PR.
 8. **Validate against the comp-ops instance.** Code edits alone are not done; check the MCP read surface and persisted rows, generation-pinned. Breaking comp-ops is a blocking regression (D10).
 9. **Escalate, don't guess.** Triggers: a drifted OKG interface (record the commit delta); a deletion removing behavior with no replacement; a schema migration without a down path; an upstream ask being silently worked around.
 10. **Docs in the same change.**
-11. **Agents never gain a write path to shared instructions.** True by construction today; any PR adding a runtime skill-write tool is rejected.
+11. **Agents never gain a write path to shared instructions.** True by construction today; any PR adding a runtime playbook-write tool is rejected.
 12. **Archi holds no credentials, no site config, no running services.**
 
 ---
@@ -398,12 +400,12 @@ Violating one is grounds for rejecting a PR.
 Each is one PACT change. Ordering is the dependency graph — no calendar.
 
 ```
-W0 (ratify+pin+file asks) → W1 (prove the seam) → W2 (sources) → W3 (schemas) → W6 (cern-team bundle)
-W0 → W4 (skills) ─────────────────────────────────────────────────┘
+W0 (ratify+pin+file asks) → W1 (prove the seam) → W2 (connectors) → W3 (schemas) → W6 (cern-team bundle)
+W0 → W4 (playbooks) ──────────────────────────────────────────────────┘
 W0 → W5 (evaluation) → gates W7 exit and W10
 W2..W6 → W7 (comp-ops parity — the first-draft milestone)
 W7 → W8 (automations: Redmine first)
-#1006 slices (a,b,c) → W9 (chat config)
+#1006 (merged into dev 2026-08-13) → W9 (chat config)
 W7, W8, W9 → W10 (v2 teardown + cutover)
 After the first draft (post-W7): SubMIT, WisDQM migrations; CRAB creation; cooper's return.
 ```
@@ -415,21 +417,22 @@ ADR recording §4 with rationale; adopt PACT (`okg pact install`, ledger DSN; ar
 **Done when:** ADR merged; PACT gates run in CI; asks have issue links; R1–R3 owned.
 
 ### W1 · `prove-the-seam` — the keystone
-A minimal `archi` wheel (one source — DBS or CRIC, no auth wall; one deployment-scoped schema) + a scratch instance whose registry says `module: archi.sources.dbs`, installed via `okg install`, ingested, published, read back over MCP generation-pinned; `okg deployment lint` green. Every friction point recorded as PACT evidence; anything needing an OKG edit becomes ask 5's reproduction.
+A minimal `archi` wheel (one connector — DBS or CRIC, no auth wall; one deployment-scoped schema) + a scratch instance whose registry says `module: archi.sources.dbs`, installed via `okg install`, ingested, published, read back over MCP generation-pinned; `okg deployment lint` green. Every friction point recorded as PACT evidence; anything needing an OKG edit becomes ask 5's reproduction.
 **Done when:** the round trip works from a wheel, not a checkout.
 
-### W2 · `consolidate-hep-sources`
-`archi/sources/`, `archi/auth/`, `archi/enrichment/`, `archi/tools/` per the map in §6.1–6.2. Includes: the TWiki three-way merge; the JIRA merge (CMS source ⊕ v2 collector ⊕ JQL helpers); Redmine port; registry-drift fixes on the way through (dead `GitHubFileContentSource`, stale invariant); no hardcoded operator paths (the audit found `/Users/jason/...` and `/root/...` survivals — lint for them).
-**Done when:** each source runs against a scratch instance with lint green and sound change probes; the comp-ops instance still passes its checks; per-source provenance recorded.
+### W2 · `consolidate-hep-sources` — **complete (2026-08-21)**
+`archi/sources/`, `archi/auth/`, `archi/enrichment/`, `archi/tools/` per the map in §6.1–6.2. Includes: the TWiki three-way merge; the JIRA merge (CMS connector ⊕ v2 collector ⊕ JQL helpers); Redmine port; registry-drift fixes on the way through (dead `GitHubFileContentSource`, stale invariant); no hardcoded operator paths (the audit found `/Users/jason/...` and `/root/...` survivals — lint for them).
+**Done when:** each connector runs against a scratch instance with lint green and sound change probes; the comp-ops instance still passes its checks; per-connector provenance recorded.
 **Do not:** port archi `main`'s scrapers (superseded by `dev`); absorb cern-twiki's consistency-checker stack (OKG-side dogfooding, not distribution material).
+**Status: complete** — all eight tasks evidence-gated 2026-08-21; suite 250/250 green.
 
 ### W3 · `hep-schemas`
-`archi/schemas/`: `operations.yaml` (from cms `nodes.yaml`) + `bridges/`. Deployment-scoped in bundles now; promoted to modules when ask 2 lands. House style: closed schemas with provenance-required `Other*` leaves.
+`archi/schemas/`: `operations.yaml` (from cms `nodes.yaml`) + `bridges/`. Deployment-scoped in bundles now; promoted to modules when okg#1179's packaging wave lands (see D11). House style: closed schemas with provenance-required `Other*` leaves.
 **Done when:** the cern-team bundle and the comp-ops instance compose the same files without divergence; no instance-specific field names in tool-facing definitions.
 
 ### W4 · `skills`
-Port and de-site-ify the CMS deployment's 18 skills; wire `skill_triggers` per bundle. Instance-operational skills (SubMIT runbooks etc.) stay in instance repos.
-**Done when:** bundle install materializes skills with `skill_bundle_hash` pinned; `okg doctor --check agent-skills` green; no skill contains hostnames or secrets.
+Port and de-site-ify the CMS deployment's 18 playbooks; wire `skill_triggers` per bundle. Instance-operational playbooks (SubMIT runbooks etc.) stay in instance repos.
+**Done when:** bundle install materializes playbooks with `skill_bundle_hash` pinned; `okg doctor --check agent-skills` green; no playbook contains hostnames or secrets.
 
 ### W5 · `evaluation-suite`
 **PR #596 (`archi eval qa`) is the foundation — it is kept.** Merge it into `archi_v3` when it lands. What it brings: an atom-based, deliberately source-neutral QA engine (`src/evaluation/qa/`, ~4,600 LOC) — JSON/JSONL datasets with canonical answers, fixed atomic obligations (supplied or model-inferred), a fresh agent per attempt with no gold leakage, per-atom judging (pass rate, atom score, required-atom recall), hash-verified fail-closed staged artifacts (prepare → run → score), and the zero-MCP-tools → `execution_failed` guard.
@@ -440,11 +443,11 @@ v3 work on top of it: (a) move the engine to `evaluation/` in the package layout
 ### W6 · `cern-team-bundle`
 **One bundle in the first draft**, aimed at the widest audience — every small CERN team:
 
-- **cern-team** — TWiki, Indico, doc sites/websites, code repos (OKG's git/code modules); JIRA optional; baseline retrieval/answer skills; chat preset. This is the generic-CERN shape: many prospective consumers, none team-specific. Setup choices (which TWiki webs, which Indico categories, JIRA on/off) ride OKG's existing `init_questions` mechanism — questions a profile declares in `profile.yaml` that `okg install` turns into `--flags`.
+- **cern-team** — TWiki, Indico, doc sites/websites, code repos (OKG's git/code modules); JIRA optional; baseline retrieval/answer playbooks; chat preset. This is the generic-CERN shape: many prospective consumers, none team-specific. Setup choices (which TWiki webs, which Indico categories, JIRA on/off) ride OKG's existing `init_questions` mechanism — questions a profile declares in `profile.yaml` that `okg install` turns into `--flags`.
 
 Explicitly **not** bundles in the first draft: comp-ops (one team — it is an *instance*, §6.3; a comp-ops bundle is extracted only if a second ops team appears), cms-knowledge-base (one use case; also gated on D12), cooper (deferred), cluster-assistant (wait for the second cluster; fasrc proves the shape recurs but is not ours to serve yet).
 
-A deployment with no optional source configured must start cleanly ("no repo" is valid, not an error).
+A deployment with no optional connector configured must start cleanly ("no repo" is valid, not an error). The cern-team bundle plus its install demo doubles as the okg#1185 release claim.
 **Done when:** `OKG_PROFILES_DIR=… okg install --profile cern-team` produces a lint-green instance; bundle docs state the supported OKG version range (release pins).
 
 ### W7 · `comp-ops-parity` — the first-draft milestone
@@ -460,7 +463,7 @@ Against the comp-ops instance, as OKG deployment workflows:
 **Done when:** queue sources run through one code path; every approval queryable from OKG's ledgers; a timed-out proposal provably cannot execute; Redmine operator experience unchanged or better. Decide here: queue-bot's home (own repo vs comp-ops repo).
 
 ### W9 · `chat-config`
-Per-bundle chat configuration over the Open WebUI integration: branding, default assistant instructions, exposed tools, identity wiring (CERN OIDC; Touchstone for SubMIT later). Development and testing may run against the #1006 branch; production instances wait for landed slices. Homes for the v2 chat-app features it lacks: shared playbooks → skills (done); **personal playbooks → verify Open WebUI's per-user prompts cover the use case, else file against the chat frontend, and record the accepted losses (per-user enablement of shared packs, invocation analytics, agent-drafted playbooks)**; status board → instance dashboards; data viewer → OKG operator console; document selection → drop unless asked; A/B → W5 decided; `/evaluations` console → W5(c).
+Per-bundle chat configuration over the Open WebUI integration: branding, default assistant instructions, exposed tools, identity wiring (CERN OIDC; Touchstone for SubMIT later). #1006 merged into `dev` 2026-08-13, so development and testing run against `dev`; the per-bundle chat surface is okg#1275. Homes for the v2 chat-app features it lacks: shared v2 playbooks → playbooks on the skills mechanism (done); **personal v2 playbooks → verify Open WebUI's per-user prompts cover the use case, else file against the chat frontend, and record the accepted losses (per-user enablement of shared packs, invocation analytics, agent-drafted playbooks)**; status board → instance dashboards; data viewer → OKG operator console; document selection → drop unless asked; A/B → W5 decided; `/evaluations` console → W5(c).
 **Done when:** a v2 chat deployment migrates with no capability loss, or each loss is listed and accepted in writing.
 
 ### W10 · `v2-teardown-and-cutover`
@@ -477,29 +480,30 @@ Execute the deletions in §6.1, gated on W7 parity and W9 chat migration. The gr
 - [ ] For ingestion changes: `okg deployment lint` green, change probes sound
 - [ ] Docs updated, or a stated reason none were needed
 - [ ] LOC delta reported
+- [ ] `docs/okg-alignment.md` current-state/pins/import-surface updated if this change moved any of them (okg#1178 policy; test_alignment_page.py guards the imports)
 - [ ] No new shared abstraction without two existing call sites; nothing duplicating an OKG mechanism
 - [ ] Provenance recorded for absorbed code (source repo, ref, what was rewritten)
 
 ## 11. Baselines
 
-The v1 §7 LOC table reproduced exactly under audit; report deletions against it. The full disposition, with corrected paths, is §6.1. The four playbook tables die with the chat app; nothing migrates from them.
+The v1 §7 LOC table reproduced exactly under audit; report deletions against it. The full disposition, with corrected paths, is §6.1. The four v2 playbook tables die with the chat app; nothing migrates from them.
 
 ## 12. Kill criteria and fallback triggers
 
 Reviewed at the W7/W8 boundary by the owner named in W0.
 
-- **If the #1006 identity+auth slices haven't landed by the W7 review**: multi-user instances stay shelved; W9 continues on the PR branch; nothing in the first draft actually blocks on chat (W7 parity is ingestion + MCP reads).
-- **If the parity auditor cannot go green** after W2+W7: stop, publish the gap list, and decide per source whether the gap is Archi's, OKG's, or obsolete corpus.
+- **#1006 identity+auth: landed** (merged into `dev` 2026-08-13) — the former shelving condition is moot. Multi-user instances wait only on the per-bundle chat surface (okg#1183/okg#1275); nothing in the first draft blocks on chat (W7 parity is ingestion + MCP reads).
+- **If the parity auditor cannot go green** after W2+W7: stop, publish the gap list, and decide per connector whether the gap is Archi's, OKG's, or obsolete corpus.
 - **If fewer than two automations end up using OKG's review flow**: ship them standalone; drop asks 3–4 to nice-to-have.
-- **If no team beyond the first adopts the cern-team bundle within two quarters of W6**: the bundle bet failed; Archi remains a source/schema package and instances scaffold bare — cheaper, and still more than v2 delivers.
+- **If no team beyond the first adopts the cern-team bundle within two quarters of W6**: the bundle bet failed; Archi remains a connector/schema package and instances scaffold bare — cheaper, and still more than v2 delivers.
 - **If OKG declines asks 2–4**: fallbacks are inline (D11: deployment-scoped duplication; §7: co-located automations). Nothing resurrects a home-built substrate.
 
 ## 13. Open questions
 
-**Owned in W0:** R1 (live v2 deployments — *the* schedule risk), R2 (okg-deployments pin), R3 (#1006 landing sequence).
+**Owned in W0:** R1 (live v2 deployments — *the* schedule risk), R2 (okg-deployments pin), R3 (#1006 landing sequence — resolved: merged into `dev` 2026-08-13).
 
 **Decide inside the relevant proposal:**
-- W2: which archi-`dev` scrapers become Archi sources vs die with v2 (checklist: the parity contract's 25-name exclusion list; Discourse is the known candidate — deferred in cms's legacy inventory, implemented on archi `dev`).
+- W2: which archi-`dev` scrapers become Archi connectors vs die with v2 (checklist: the parity contract's 25-name exclusion list; Discourse is the known candidate — deferred in cms's legacy inventory, implemented on archi `dev`).
 - W5: wisdqm benchmark adoption timing; whether the post-first-draft evaluation console lands in the OKG operator console or stays CLI-only.
 - W8: queue-bot's home (own repo vs comp-ops repo).
 
@@ -509,11 +513,11 @@ Reviewed at the W7/W8 boundary by the owner named in W0.
 - Bundle ≠ instance; bundles per recurring shape, never per deployment (§2.1).
 - Archi ships no MCP servers; instances run OKG's (§3 non-goals).
 - Personal per-user prompts are a chat-frontend feature; Archi does no work for them.
-- v1's playbook content repos and playbook MCP server are not built; skills live in Archi (domain) and instance repos (operational).
+- v1's playbook content repos and playbook MCP server are not built; playbooks live in Archi (domain) and instance repos (operational).
 
 ## 14. Branching and cutover
 
-Work-package branches off `archi_v3`, merged by PR. **`main` receives only v2 bugfixes** — nothing else, ever, until cutover. Merge `main` into `archi_v3` rather than letting the gap grow; CI on `archi_v3` from day one. Reconcile archi `dev` into `archi_v3` early — it holds the scraper design W2 depends on (82 commits, breaking config change `sources.links` → `sources.web`).
+Work-package branches off `archi_v3`, merged by PR. **`main` receives only v2 bugfixes** — nothing else, ever, until cutover. Merge `main` into `archi_v3` rather than letting the gap grow; CI on `archi_v3` from day one. Reconcile archi `dev` into `archi_v3` early — it holds the scraper design W2 consumed (82 commits, breaking config change `sources.links` → `sources.web`).
 
 Cutover requires, and not before: (1) R1 answered — every live v2 deployment identified with a named owner; (2) every identified deployment migrated or explicitly staying on a tagged `v2.x`; (3) W7 parity + W9 chat migration hold (or losses accepted in writing); (4) the last v2 release tagged and documented. Then `archi_v3` becomes `main`, old `main` is preserved as `v2`, and the deprecation clock agreed in W0 starts. Cutover is a separate, deliberate act with its own announcement.
 
@@ -523,9 +527,9 @@ Cutover requires, and not before: (1) R1 answered — every live v2 deployment i
 
 Recorded so nobody re-litigates from memory. The review was right on strategy; these are corrections of fact or emphasis. (Items about cooper are moot while it is deferred but kept for its return.)
 
-1. **"Connector" collides with OKG vocabulary** — adopted *source* (§2.2).
-2. **"Playbook" renamed to *skill*** — the substrate's mechanisms are named skills end to end (§2.2).
-3. **"okg #1006 … per-user identity"** — correct as content, but nothing has landed on `dev`; treated as an in-flight dependency with the PR branch as the dev target (D2, §7 ask 1).
+1. **"Connector" collides with OKG vocabulary** — adopted *source* (§2.2). *Reversed 2026-08-18 by the okg#1178 program vocabulary, which adopts "connector" (§2.2, revision log).*
+2. **"Playbook" renamed to *skill*** — the substrate's mechanisms are named skills end to end (§2.2). *Reversed 2026-08-18 by the okg#1178 program vocabulary, which adopts "playbook" for the asset; the file mechanism keeps the skills name (§2.2, revision log).*
+3. **"okg #1006 … per-user identity"** — correct as content, but nothing had landed on `dev` at audit time; treated as an in-flight dependency with the PR branch as the dev target (D2, §7 ask 1). *Since resolved: #1006 merged into `dev` 2026-08-13.*
 4. **"One small OKG change … the one blocker to Archi shipping its own schemas"** — half right: deployment-scoped schemas already work out of tree; only shared ontology modules are blocked, and the fix is small (D7/D11, §7 ask 2).
 5. **"Approval … already covers most of it"** — quantified: roughly two-thirds, across three systems; itemized gaps are §7 asks 3–4.
 6. *(cooper, deferred)* "LaTeX/PDF analysis notes" — LaTeX only; no PDF ingestion exists.
@@ -547,3 +551,10 @@ Preserved as documentation in `docs/adr/0002-agent-runtime-lessons.md` when W10 
 5. Guard against calling a sync wrapper from the MCP loop thread (deadlock) — v2's `base_react.py:1200` did this correctly.
 
 Plus two operational lessons: durable automation state never lives in a local file (the `/root/data/min_next_post.json` failure class — DBOS workflow state replaces it), and hardcoded container paths break every tool that outlives its container.
+
+---
+
+## Revision log
+
+- **2026-08-18 — terminology re-alignment + okg#1178 mapping.** §2.2 re-adopts the cross-repo program vocabulary: **connector** (was *source*) and **playbook** (was *skill*), reversing the audit-driven OKG-internal-vocabulary amendments (D6, Appendix A items 1–2). Mechanism names are unchanged: `SourceAdapter`, `skills_dir`, `skill_triggers`, `skill_bundle_hash`, `okg doctor --check agent-skills`, and the repo's `skills/` directory keep their names — the asset is what's renamed. The §7 asks are mapped to upstream tracking: okg#1179–#1185, plus okg#1282/#1283/#1284 for the porting frictions; the sync channel is okg#1178; the living interface page is `docs/okg-alignment.md`.
+- **2026-08-21 — W2 complete; stale premises updated.** W2 `consolidate-hep-sources` complete (all eight tasks evidence-gated 2026-08-21; suite 250/250 green). okg#1006 merged into `dev` 2026-08-13 (chat, MCP HTTP auth, principal mapping): §0.1 item 3, §1 bet 1, D2/D4/D12, §7 ask 1, W9, and §12 updated accordingly — W9 targets `dev`; D12's trigger has fired; multi-user instances wait only on the per-bundle chat surface (okg#1183/okg#1275). D11's trigger reworded: shared ontology modules land via OKG's deployment-product packaging wave (digest-pinned distribution assets, okg#1179), not an env-var override. W6 noted: the cern-team bundle + install demo doubles as the okg#1185 release claim.

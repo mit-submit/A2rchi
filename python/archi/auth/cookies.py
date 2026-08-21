@@ -30,6 +30,7 @@ environment-variable references, never as embedded values.
 from __future__ import annotations
 
 import http.cookiejar
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -71,6 +72,26 @@ def load_cookie_jar(path: str | Path) -> http.cookiejar.MozillaCookieJar:
     jar = http.cookiejar.MozillaCookieJar(str(Path(path).expanduser()))
     jar.load(ignore_discard=True, ignore_expires=True)
     return jar
+
+
+def load_cookie_jar_from_env(
+    cookie_file_env: str,
+) -> http.cookiejar.MozillaCookieJar | None:
+    """Cookie jar from the file referenced by env var *cookie_file_env*.
+
+    ``None`` when the variable is unset or the file is missing or
+    unparseable — sources report that as ``auth_failed`` rather than an
+    empty-but-complete run. Promoted from
+    ``archi.sources.docs.SSOCookieDocsSource`` (private cookie-session
+    logic) now that the TWiki crawl source needs the same behavior.
+    """
+    cookie_file = os.environ.get(cookie_file_env, "")
+    if not cookie_file or not Path(cookie_file).is_file():
+        return None
+    try:
+        return load_cookie_jar(cookie_file)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @dataclass(frozen=True)

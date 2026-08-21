@@ -1,0 +1,19 @@
+# Substrate ontology modules composed by the cern-team bundle.
+#
+# The proven trio from the w1-scratch instance (pact
+# w2-consolidate-hep-sources, INGEST-PROVEN 2026-08-11/12):
+#
+#   - document_starter : generic document primitives
+#   - person           : person subtype (jira assigned_to/reported_by)
+#   - extraction       : document_chunk (all chunk emission)
+#
+# Everything HEP-specific (jira_issue, documentation_page,
+# software_repository, cmssw_release, site, ...) comes from the archi
+# wheel's schema slices copied into the instance's schemas/ dir after
+# install (README.md step 1 — okg#1179 contract input). Deliberately
+# minimal: instances that want the substrate's code_graph/git_graph/
+# views layers append them here after install.
+modules:
+  - document_starter
+  - person
+  - extraction

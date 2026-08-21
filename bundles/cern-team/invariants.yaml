@@ -1,0 +1,36 @@
+# Invariants for the cern-team bundle — minimal: the core pages
+# floor. Severity is calibrated for a fresh team instance: after the
+# first real ingest+publish these subtypes must each have at least one
+# live row; a long-running instance where any goes to zero has a
+# source-coverage regression. A publish attempted before the first
+# ingest (empty generation) fires YELLOW/RED — expected cold-start
+# behavior; run the ingest before the first publish (the install
+# runbook does).
+
+invariants:
+  - name: cern_team_core_pages_floor
+    severity: error
+    scope: cross
+    timeout_ms: 5000
+    description: >-
+      Core cern-team subtypes must have at least one live row each:
+      documentation_page (twiki/docsite), jira_issue (jira), and
+      cmssw_release (cmssw_releases). A missing entry signals a
+      connector-coverage regression. Cold-start note: fires until the
+      first ingest has published.
+    sql: |
+      WITH required(subtype) AS (
+        VALUES
+          ('documentation_page'),
+          ('jira_issue'),
+          ('cmssw_release')
+      ),
+      counts AS (
+        SELECT subtype, count(*) AS n
+          FROM okg.v_nodes
+         GROUP BY subtype
+      )
+      SELECT r.subtype, coalesce(c.n, 0) AS live_count
+        FROM required r
+        LEFT JOIN counts c USING (subtype)
+       WHERE coalesce(c.n, 0) = 0

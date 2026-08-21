@@ -1,0 +1,76 @@
+# Bundle: cern-team
+#
+# Generic CERN team knowledge instance built from the archi v3
+# connectors (W2, req.w2.sources): TWiki (EOS snapshot), documentation
+# sites, the public CMSSW release catalog, JIRA (cache-backed,
+# optional credential), Indico (optional, see
+# source-defaults/indico.yaml.example), and code repositories via the
+# substrate's own okg modules when an instance opts in.
+#
+# Install (the okg profile installer consumes this file):
+#
+#   export OKG_PROFILES_DIR=<archi repo>/bundles
+#   okg install --profile cern-team \
+#     --deployment-name <slug> \
+#     --postgres-dsn 'postgresql://...' \
+#     --no-publish
+#
+# `--no-publish` matters: two documented post-install steps (schema
+# slice copy from the installed archi wheel; see README.md) must land
+# before the first catalog load, so the bundled first-publish path
+# would fail on a fresh instance. Both steps are flagged as okg#1179
+# contract input in README.md.
+
+name: cern-team
+version: 0.1.0
+classification: reusable
+description: |
+  Generic CERN team knowledge instance. Composes the document/person/
+  extraction substrate modules with the archi HEP connectors: TWiki
+  snapshot reader, documentation-site reader, CMSSW release catalog
+  (live public fetch), and cache-backed JIRA. Indico and the code-repo
+  families are optional add-ons an instance enables after install.
+  Ships the archi playbooks (skills/) and a core-pages-floor
+  invariant. Extracted from the w1-scratch scratch instance proven on
+  2026-08-11/12 (pact w2-consolidate-hep-sources).
+
+init_questions:
+  - id: deployment_name
+    prompt: deployment name (also used as the deployments/<name>/ dir)
+    type: slug
+    required: true
+    description: |
+      Slug for the deployment directory and the catalog's
+      `deployment_name`. Use lowercase, dashes or underscores.
+
+  - id: postgres_dsn
+    prompt: Postgres DSN (postgresql://...)
+    type: string
+    required: true
+    description: |
+      Substrate Postgres DSN. The instance owns its own database; do
+      not point this at another instance's database. `${OKG_DSN}` is
+      accepted verbatim — the manifest DSN resolver interpolates
+      `${VAR}` references at command time, so the credential never
+      needs to be written to disk.
+
+  - id: archi_data_root
+    prompt: data root for connector caches (relative roots resolve
+      against ARCHI_DATA_ROOT or the current directory)
+    type: string
+    required: false
+    default: data
+    description: |
+      Root for the connector cache files (jira/, docsite/,
+      cmssw-releases/, twiki-snapshot/). The default `data` is
+      deployment-dir-relative: run okg commands from the deployment
+      dir, or export ARCHI_DATA_ROOT=<deployment dir> so the archi
+      cache resolver anchors relative paths there. Pass an absolute
+      path to decouple the data root from the deployment dir.
+
+# References to sibling files within this bundle dir.
+modules: modules.yaml
+source_defaults: source-defaults/
+invariants: invariants.yaml
+deployment_defaults: deployment-defaults.yaml
+skills: skills/

@@ -140,9 +140,10 @@ are required or ingest fails after a green lint:
         # matching document_chunk references edges in output_signature
         # AND output_scope_summary above, and (b) the target subtype +
         # narrowing in the deployment schema: cmssw_release ships in
-        # archi/schemas/operations_w1.yaml with its narrowing in
+        # archi/schemas/operations.yaml with its narrowing in
         # archi/schemas/bridges/sources.yaml; site and
-        # infrastructure_service arrive with the catalogs port.
+        # infrastructure_service ship in the catalogs port
+        # (archi/schemas/operations.yaml + bridges/operations.yaml).
         # sites_path: data/cric/sites.json
         # releases_path: data/cmssw-releases/records.json
         # services_path: data/cric-core/services.json

@@ -12,6 +12,13 @@ conflicts with this repo, these overrides win (they match
 - References to `okg-workspace`, `okg dogfood`, and okg-repo runbooks
   (`docs/runbooks/agent-*.md`) do not exist in this repo; the PACT graph
   projection here is the interim `archi-pact` ledger deployment.
+- **Alignment-page policy (standing):** `docs/okg-alignment.md` is the
+  OKG-side program's (okg#1178) window into this repo. Any change that
+  touches python/archi's okg imports, bumps the okg commit we test
+  against, or moves program state (a task gated done, a new port, a
+  bundle landing) MUST update that page's "Current state" section and
+  pins in the same PR. `python/tests/test_alignment_page.py` enforces
+  the import-surface half mechanically; the prose half is on you.
 
 <!-- BEGIN okg-pact-install -->
 ## PACT + OKG workflow

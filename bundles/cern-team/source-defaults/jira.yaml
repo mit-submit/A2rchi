@@ -1,0 +1,62 @@
+# JIRA connector (cache-backed). Adapted from the INGEST-PROVEN
+# registry template in archi/sources/jira.py (proven 2026-08-11 on the
+# w1-scratch instance). Reads an externally maintained records+meta
+# cache under ${archi_data_root}/jira/; the live fetch that maintains
+# the cache stays outside the instance (credentials by env-var
+# reference only, never values).
+#
+# Prerequisites beyond this entry (bundle README, okg#1179 input):
+# the person + extraction modules (modules.yaml) and the archi wheel
+# schema slices copied into <deployment>/schemas{,/bridges}/.
+jira:
+  module: archi.sources.jira
+  class: JiraIssueSource
+  ownership_id: ${deployment_name}.jira
+  admission_policy:
+    producer_id: ${deployment_name}.jira
+    producer_kind: source
+    trust_label: implicit_legacy_trusted
+    admission_mode: fast_track
+    authority_scope:
+      source_family: cern-team
+      source_name: jira
+    output_signature:
+      nodes:
+        - {subtype: jira_issue}
+        - {subtype: person}
+        - {subtype: document_chunk}
+      edges:
+        - {src_subtype: jira_issue, edge_type: assigned_to, dst_subtype: person}
+        - {src_subtype: jira_issue, edge_type: reported_by, dst_subtype: person}
+        - {src_subtype: jira_issue, edge_type: contains, dst_subtype: document_chunk}
+        - {src_subtype: document_chunk, edge_type: references, dst_subtype: jira_issue}
+    output_scope_summary:
+      summary: JIRA issues, participants, and issue-text chunks from the records cache
+      nodes: [jira_issue, person, document_chunk]
+      edges:
+        - jira_issue assigned_to person
+        - jira_issue reported_by person
+        - jira_issue contains document_chunk
+        - document_chunk references jira_issue
+  source_class: mutable_api
+  record_identity_kind: remote_id
+  record_identity_fields: [issue_key]
+  source_revision_kind: updated_at
+  deletion_semantics: missing_from_completed_scope
+  publication_mode: published_generation
+  credential_refs: [CERN_JIRA_TOKEN]
+  credential_aliases:
+    CERN_JIRA_TOKEN: [JIRA_CERN_TOKEN]
+  required_for_baseline: true
+  params:
+    records_path: ${archi_data_root}/jira/records.json
+    meta_path: ${archi_data_root}/jira/meta.json
+    base_url: https://its.cern.ch/jira
+    # Optional: bound issue-key extraction to your team's projects.
+    # Without it, extraction is bounded to the project prefixes of
+    # the issue keys present in the records cache.
+    # project_keys: [MYPROJECT, MYOTHERPROJECT]
+  sync:
+    triggers: [manual, reconcile]
+    default_event_mode: scope_complete
+    reconcile_mode: scope_complete

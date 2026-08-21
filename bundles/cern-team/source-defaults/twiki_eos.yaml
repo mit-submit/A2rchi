@@ -1,0 +1,58 @@
+# TWiki connector — EOS-snapshot reader. Adapted from the registry
+# template in archi/sources/twiki.py (parser + emission proven against
+# the cms parity corpus). Reads raw topic .txt files (with %META
+# lines) from a local snapshot under
+# ${archi_data_root}/twiki-snapshot/<Topic>.txt and emits topic
+# pages, their text chunks, and topic-to-topic reference edges
+# (topic_parent / wiki_link / bare_wikiword). Layout note: web_root
+# names the web of the SNAPSHOT ROOT — topics of that web sit
+# directly in the root (subdirectories are subwebs). A root that
+# itself contains a <web_root>/ subdir double-prefixes every page id
+# (twiki:CMS:CMS:...).
+#
+# eos_root is set explicitly (no TWIKI_EOS_ROOT env indirection), so
+# no credential_refs entry. `required: true`: a missing snapshot fails
+# preflight loudly instead of silently shrinking scope.
+twiki_eos:
+  module: archi.sources.twiki
+  class: TwikiEOSSource
+  ownership_id: ${deployment_name}.twiki-eos
+  admission_policy:
+    producer_id: ${deployment_name}.twiki-eos
+    producer_kind: source
+    trust_label: implicit_legacy_trusted
+    admission_mode: fast_track
+    authority_scope:
+      source_family: cern-team
+      source_name: twiki_eos
+    output_signature:
+      nodes:
+        - {subtype: documentation_page}
+        - {subtype: document_chunk}
+      edges:
+        - {src_subtype: documentation_page, edge_type: references, dst_subtype: documentation_page}
+        - {src_subtype: documentation_page, edge_type: contains, dst_subtype: document_chunk}
+    output_scope_summary:
+      summary: TWiki topics from a local EOS snapshot, their text chunks, and topic-to-topic references
+      nodes: [documentation_page, document_chunk]
+      edges:
+        - documentation_page references documentation_page
+        - documentation_page contains document_chunk
+  source_class: discovery_crawl
+  record_identity_kind: scoped_locator
+  record_identity_fields: [path]
+  source_revision_kind: content_hash
+  deletion_semantics: missing_from_completed_scope
+  publication_mode: published_generation
+  required_for_baseline: false
+  params:
+    eos_root: ${archi_data_root}/twiki-snapshot
+    web_root: CMS
+    required: true
+    # Optional seeded subtree instead of the whole snapshot:
+    # seed_topics: [CMS/CompOpsHome]
+    # max_depth: 2
+  sync:
+    triggers: [manual, reconcile]
+    default_event_mode: scope_complete
+    reconcile_mode: scope_complete
