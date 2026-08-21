@@ -1,4 +1,7 @@
-"""req.w2.packaging — the v3 package coexists with the v2 build.
+"""req.w2.packaging — the v3 package is the only build on this line.
+
+The superseded v2 application was removed from the archi_v3 line
+(W10 teardown, pulled forward); v2 lives on the `main` branch only.
 
 Run with an okg-bearing interpreter (adapter modules import okg at
 module scope):
@@ -48,13 +51,11 @@ def test_v3_does_not_import_v2():
         assert "from src." not in text and "import src." not in text, path
 
 
-def test_v2_build_files_untouched():
-    """The v2 build stays as archi_v3 has it: root pyproject/setup.py exist
-    and neither references python/ (the two builds share nothing)."""
-    root_pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    setup_py = REPO_ROOT / "setup.py"
-    assert setup_py.exists()
-    assert "python/" not in root_pyproject
+def test_v2_tree_removed():
+    """The superseded v2 application is gone from this line (W10 teardown);
+    v2 lives on `main` only."""
+    for v2_path in ("src", "setup.py", "configs"):
+        assert not (REPO_ROOT / v2_path).exists(), v2_path
 
 
 def test_no_operator_paths_in_package():
