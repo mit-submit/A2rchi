@@ -62,6 +62,12 @@ okg.substrate.library.sources.mutable_api_probe:  MutableApiProbe
 okg.substrate.sources.preflight:
     file_ref_preflight, credential_env_preflight, http_probe_result
 okg.substrate.sources.redaction:  redact_text
+okg.substrate.enrichers.base:     EnrichResult, IncrementalContext
+okg.substrate.enrichers.derived_edges:
+    DerivedEdgeCandidate, insert_deterministic_edges, mint_edge_id
+okg.substrate.library.linkers:    _chronos
+okg.substrate.library.linkers.declarative: DeclarativeLinker
+okg.substrate.alias.protocol:     AliasMatch
 ```
 
 **Contracts consumed as data/CLI (not imports):** the source-registry entry schema

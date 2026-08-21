@@ -14,6 +14,7 @@ change:
   root_cause: v2 scattered HEP ingestion across archi's collectors, agent tools, and
     the CMS OKG deployment's local package; nothing is shareable across instances
     without copy-paste (the wisdqm _cache.py and TWiki-parser forks are the live evidence).
+  tier: 2
   affected_areas:
   - python/
   - pact/changes/w2-consolidate-hep-sources
@@ -214,7 +215,7 @@ tasks:
   environment: []
 - id: task.w2.compops-baseline
   title: Record comp-ops lint baseline and re-check per merge
-  status: todo
+  status: done
   verification: okg deployment lint on okg-deployments/cms compared to recorded baseline
   requirements:
   - req.w2.compops-unbroken
@@ -333,3 +334,27 @@ evidence:
     four live tools with wiring contract'
   data:
     attached_at: '2026-08-12T18:27:31.280388+00:00'
+- id: ev.graph-report.req-w2-compops-unbroken.20260821T152841269273Z
+  kind: graph_report
+  status: pass
+  refs:
+  - req.w2.compops-unbroken
+  artifact: pact/changes/w2-consolidate-hep-sources/compops-lint-recheck-20260821.json
+  command: okg deployment lint cms --json (okg dev@f5ec3b58d) diffed vs compops-lint-baseline.json
+  summary: '30 vs 29 baseline findings; sole delta is a version-introduced ''skipped:
+    reference_routes_not_applicable'' notice; zero new errors/warnings, zero regressions;
+    cms deployment untouched by W2'
+  data:
+    attached_at: '2026-08-21T15:28:41.269330+00:00'
+- id: ev.pytest.req-w2-compops-unbroken.20260821T152918062692Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.compops-unbroken
+  artifact: python/tests/test_compops_lint_recheck.py
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_compops_lint_recheck.py
+    -q
+  summary: 'Deterministic diff of committed baseline vs 2026-08-21 recheck: zero regressions;
+    sole delta is a version-introduced skipped notice'
+  data:
+    attached_at: '2026-08-21T15:29:18.062721+00:00'

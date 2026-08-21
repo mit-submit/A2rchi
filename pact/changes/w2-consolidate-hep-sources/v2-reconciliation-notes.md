@@ -61,3 +61,16 @@ discipline); the compops files are index-level field guides for the live tools:
 
 ## TWiki parser bugs shared by the canonical cms original (fixed in v3, upstream candidates)
 - =code= regex strips = from assignments across lines (cms twiki_eos.py:442) and title-less heading markers absorb the next line — both fixed in archi with documented deviation; cms/okg-deployments may want the same fixes.
+
+## Enrichment port oddities (2026-08-21)
+- Historical `cms_*` names kept in enricher `name` attrs / alias backend ("cms_projection")
+  / linker default: uuid5 dedupe keys + progress rows embed them; renaming re-keys the
+  comp-ops parity corpus. Pinned by test.
+- Original warts preserved verbatim: duplicate "jira_issue" in JiraChunkReferenceRollup
+  reads_subtypes; jira_affects couples to the `jira:` node-id prefix; misindented attrs
+  dict in dqm_run_range.
+- v2 anonymizer signoff heuristic deletes any <=3-word <p> (IGNORECASE) — original
+  behavior kept; watch at cutover.
+- okg venv has spaCy but NOT en_core_web_sm: default-config NER would attempt a network
+  download mid-ingest (download_missing_model=True kept from v2; instances should
+  pre-install the model or disable NER).
