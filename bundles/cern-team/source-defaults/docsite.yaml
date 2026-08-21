@@ -1,0 +1,50 @@
+# Documentation-site connector (cache-backed). Adapted from the
+# INGEST-PROVEN registry template in archi/sources/docs.py (proven
+# 2026-08-11 on the w1-scratch instance). Reads a records cache under
+# ${archi_data_root}/docsite/; the jira_records_path parameter enables
+# the cross-connector `document_chunk references jira_issue` edges
+# (issue keys cited in page text resolve against the jira cache).
+docsite:
+  module: archi.sources.docs
+  class: DocumentationSource
+  ownership_id: ${deployment_name}.docsite
+  admission_policy:
+    producer_id: ${deployment_name}.docsite
+    producer_kind: source
+    trust_label: implicit_legacy_trusted
+    admission_mode: fast_track
+    authority_scope:
+      source_family: cern-team
+      source_name: docsite
+    output_signature:
+      nodes:
+        - {subtype: documentation_page}
+        - {subtype: software_repository}
+        - {subtype: document_chunk}
+      edges:
+        - {src_subtype: software_repository, edge_type: contains, dst_subtype: documentation_page}
+        - {src_subtype: documentation_page, edge_type: contains, dst_subtype: document_chunk}
+        - {src_subtype: document_chunk, edge_type: references, dst_subtype: jira_issue}
+    output_scope_summary:
+      summary: documentation pages, their repos, and text chunks from the records cache
+      nodes: [documentation_page, software_repository, document_chunk]
+      edges:
+        - software_repository contains documentation_page
+        - documentation_page contains document_chunk
+        - document_chunk references jira_issue
+  source_class: discovery_crawl
+  record_identity_kind: scoped_locator
+  record_identity_fields: [url]
+  source_revision_kind: content_hash
+  deletion_semantics: missing_from_completed_scope
+  publication_mode: published_generation
+  required_for_baseline: true
+  params:
+    source_name: docsite
+    required: true
+    records_path: ${archi_data_root}/docsite/records.json
+    jira_records_path: ${archi_data_root}/jira/records.json
+  sync:
+    triggers: [manual, reconcile]
+    default_event_mode: scope_complete
+    reconcile_mode: scope_complete

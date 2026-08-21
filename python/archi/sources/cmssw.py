@@ -48,7 +48,7 @@ into the deployment; ``output_scope_summary`` must accompany
           edges:
             - cmssw_release supersedes cmssw_release
       source_class: reference_catalog
-      record_identity_kind: remote_id
+      record_identity_kind: domain_key
       record_identity_fields: [release]
       source_revision_kind: content_hash
       deletion_semantics: missing_from_completed_scope

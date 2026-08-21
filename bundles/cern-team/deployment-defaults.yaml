@@ -1,0 +1,27 @@
+# Merged into the scaffolded deployment.yaml by the profile installer
+# (top-level keys; scaffolder-owned keys — name, description, profile,
+# modules, source_registry, schema_dir, postgres — are reserved and
+# may not appear here).
+
+# No always-on runtime worker on a fresh instance; ingest is driven
+# manually (okg ingest) until the operator opts in.
+runtime:
+  enabled: false
+
+# Nomos rollout: deferred, with a structured owner and a review date,
+# matching the w1-scratch proven shape. The rollout audit requires
+# owner.name + owner.contact + review_by; edit the contact to your
+# team's list after install.
+nomos:
+  rollout:
+    status: deferred
+    owner:
+      name: archi-cern-team
+      contact: replace-with-team-contact@example.org
+    review_by: "2026-12-01"
+
+# Agent playbooks: the installer copies the bundle's skills/ into
+# <deployment>/skills/ verbatim; these keys wire them into the
+# instance manifest (operator surfaces).
+skills_dir: skills
+skill_triggers: skills/skill-triggers.yaml
