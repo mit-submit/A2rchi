@@ -199,7 +199,7 @@ tasks:
 - id: task.w2.sources-catalogs
   title: 'Catalogs: cric, cmssw (merge W1 spike), dbs, conddb, dqm, gocdb, siteconf,
     wmstats, github_repos, hypernews, indico'
-  status: todo
+  status: done
   verification: python/tests/sources/
   requirements:
   - req.w2.sources
@@ -207,7 +207,7 @@ tasks:
   environment: []
 - id: task.w2.enrichment
   title: "archi/enrichment \u2014 enrichers, alias backend, defaults"
-  status: todo
+  status: done
   verification: python/tests/enrichment/
   requirements:
   - req.w2.enrichment
@@ -358,3 +358,28 @@ evidence:
     sole delta is a version-introduced skipped notice'
   data:
     attached_at: '2026-08-21T15:29:18.062721+00:00'
+- id: ev.pytest.req-w2-sources.20260821T153146371518Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.sources
+  artifact: python/tests/sources/
+  command: pytest python/tests/sources/ -q
+  summary: 'All 12 connector families ported and fixture-tested (catalogs batch adds
+    25 tests: cric, cmssw, dbs, conddb, dqm, gocdb, siteconf, wmstats, github_repos,
+    hypernews, indico); strict-shape registry templates throughout; schema dedupe
+    complete (each class/narrowing in exactly one file)'
+  data:
+    attached_at: '2026-08-21T15:31:46.371609+00:00'
+- id: ev.pytest.req-w2-enrichment.20260821T153153454622Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.enrichment
+  artifact: python/tests/enrichment/
+  command: pytest python/tests/enrichment/ -q
+  summary: Five enrichers (verbatim lifts), packaged defaults loader (incl. wisdqm
+    DQM patterns), alias backend, dev-branch anonymizer (closes anonymize_data gate);
+    25 tests; defaults ship in wheel
+  data:
+    attached_at: '2026-08-21T15:31:53.454661+00:00'
