@@ -3,14 +3,15 @@
 # Copied wholesale from the proven cms deployment schema
 # okg-deployments cms/schemas/nodes.yaml at main@f33a9c4, adapting only
 # the id/name headers and prefixes to the archi namespace (class
-# content verbatim). Three of the cms file's 22 classes are NOT here
-# because they already ship in archi/schemas/sources.yaml (the
-# jira/docs port): JiraIssue, DocumentationPage, SoftwareRepository —
-# keep ONE definition each, in sources.yaml. CMSSWRelease absorbs the
-# W1 operations_w1.yaml slice (same class content); that file is
-# retired. Generic document/chunk/mention, person, ticket, dataset,
-# service, and repository primitives are intentionally reused from
-# substrate modules instead of copied here.
+# content verbatim). Five of the cms file's 22 classes are NOT here
+# because they already ship in archi/schemas/sources.yaml — keep ONE
+# definition each, in sources.yaml: JiraIssue, DocumentationPage,
+# SoftwareRepository (the jira/docs port) and MonitoringSnapshot,
+# TransferJob (the MONIT port; identical content to the cms classes).
+# CMSSWRelease absorbs the W1 operations_w1.yaml slice (same class
+# content); that file is retired. Generic document/chunk/mention,
+# person, ticket, dataset, service, and repository primitives are
+# intentionally reused from substrate modules instead of copied here.
 
 id: https://archi-physics.org/okg/archi/operations
 name: archi_operations
@@ -334,47 +335,8 @@ classes:
       okg_alias_fields: downtime_id
       okg_searchable_text_fields: downtime_id,site,service,description,text
 
-  TransferJob:
-    description: Data transfer job or transfer aggregation.
-    class_uri: archi:TransferJob
-    attributes:
-      transfer_id:
-        required: true
-      src_site:
-      dst_site:
-      state:
-      dataset:
-      num_files:
-        range: integer
-      total_bytes:
-        range: integer
-      submitted_at:
-      completed_at:
-      text:
-    annotations:
-      archetype: process
-      transient: "true"
-      okg_alias_fields: transfer_id
-      okg_searchable_text_fields: transfer_id,src_site,dst_site,dataset,text
-
-  MonitoringSnapshot:
-    description: Point-in-time monitoring snapshot for a site/service/dataset.
-    class_uri: archi:MonitoringSnapshot
-    attributes:
-      snapshot_id:
-        required: true
-      subject:
-      metric:
-      value:
-        range: float
-      unit:
-      observed_at:
-      text:
-    annotations:
-      archetype: process
-      transient: "true"
-      okg_alias_fields: snapshot_id
-      okg_searchable_text_fields: subject,metric,text
+  # TransferJob and MonitoringSnapshot: see archi/schemas/sources.yaml
+  # (single definition, landed with the MONIT port).
 
   SAMTest:
     description: SAM/ETF site or service test result.

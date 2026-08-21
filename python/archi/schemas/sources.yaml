@@ -6,7 +6,10 @@
 # modules composed in deployment.yaml; dataset (emitted by
 # archi.sources.monit MONITRucioDatasetSource) comes from the
 # substrate `dataset` module; site and storage_endpoint (edge
-# endpoints of the monit sources) arrive with the catalogs port.
+# endpoints of the monit sources) ship in the catalogs port's
+# archi/schemas/operations.yaml. monitoring_snapshot and transfer_job
+# live ONLY here — archi/schemas/operations.yaml (the cms nodes.yaml
+# copy) deliberately omits them.
 id: https://archi-physics.org/okg/archi/w2-sources
 name: archi_w2_sources
 title: Archi W2 — ported source subtypes

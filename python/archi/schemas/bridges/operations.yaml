@@ -4,7 +4,7 @@
 # Copied wholesale from the proven cms deployment bridge
 # okg-deployments cms/schemas/bridges/cms_narrowings.yaml at
 # main@f33a9c4, adapting only the id/name headers to archi naming
-# (attribute content verbatim). Eight narrowings the cms file also
+# (attribute content verbatim). Thirteen narrowings the cms file also
 # carried are NOT here because they already ship (same or equivalent
 # name) in archi/schemas/bridges/sources.yaml — keep ONE definition
 # each, in sources.yaml:
@@ -14,7 +14,12 @@
 #   documentation_page_references_documentation_page,
 #   chunk_references_release (as chunk_references_cmssw_release),
 #   repository_contains_documentation_page
-#     (as repo_contains_documentation_page).
+#     (as repo_contains_documentation_page),
+#   and — landed with the MONIT port — site_hosts_monitoring_snapshot,
+#   site_hosts_transfer_job, transfer_site_to_site, site_hosts_dataset,
+#   storage_endpoint_hosts_dataset (declared there with
+#   optional_when_subtypes_missing so the sources slice composes green
+#   without this file).
 # Copy this file into the deployment as
 # <deployment>/schemas/bridges/operations.yaml alongside
 # archi/schemas/operations.yaml -> <deployment>/schemas/operations.yaml
@@ -488,17 +493,9 @@ classes:
           src_subtypes: Document
           dst_subtypes: SourceFile
 
-      storage_endpoint_hosts_dataset:
-        annotations:
-          edge_archetype: hosts
-          src_subtypes: StorageEndpoint
-          dst_subtypes: Dataset
-
-      site_hosts_dataset:
-        annotations:
-          edge_archetype: hosts
-          src_subtypes: Site
-          dst_subtypes: Dataset
+      # storage_endpoint_hosts_dataset / site_hosts_dataset: see
+      # archi/schemas/bridges/sources.yaml (single definition, landed
+      # with the MONIT port).
 
       site_executes_workflow:
         annotations:
@@ -560,23 +557,10 @@ classes:
           src_subtypes: TransferJob
           dst_subtypes: Dataset
 
-      site_hosts_transfer_job:
-        annotations:
-          edge_archetype: hosts
-          src_subtypes: Site
-          dst_subtypes: TransferJob
-
-      transfer_site_to_site:
-        annotations:
-          edge_archetype: transfers_to
-          src_subtypes: Site
-          dst_subtypes: Site
-
-      site_hosts_monitoring_snapshot:
-        annotations:
-          edge_archetype: hosts
-          src_subtypes: Site
-          dst_subtypes: MonitoringSnapshot
+      # site_hosts_transfer_job / transfer_site_to_site /
+      # site_hosts_monitoring_snapshot: see
+      # archi/schemas/bridges/sources.yaml (single definition, landed
+      # with the MONIT port).
 
       infrastructure_service_hosts_monitoring_snapshot:
         annotations:
