@@ -58,8 +58,11 @@ pruned operations bridge; role passwords post-migrate) — both flagged in the r
 **New substrate finding for this channel: deletion semantics not enforced** — stale
 records survived reconcile + `--reset-cursor` under `missing_from_completed_scope`
 (demo friction 6; repro in the runbook). The consolidated PR to `archi_v3` is open.
-The comp-ops instance (`okg-deployments/cms`) is untouched and is the parity target
-for cutover. New PACT v4 note from the re-pin: `change.tier` is now mandatory
+Comp-ops instance model (maintainer, 2026-08-21): the instance repo is
+`gitlab.cern.ch/archi/cms-compops` (branch `archi_v3`); `okg-deployments/cms` is the
+frozen parity reference and **retires once the cms-compops v3 instance reaches
+parity** (retirement is mitdbg's call — relevant to your packaging PACT's proof
+targets). New PACT v4 note from the re-pin: `change.tier` is now mandatory
 (`missing_lifecycle_tier` otherwise).
 
 ## The exact substrate surface Archi consumes today
