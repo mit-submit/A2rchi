@@ -76,10 +76,21 @@ Comp-ops instance model (maintainer, 2026-08-21): the instance repo is
 `gitlab.cern.ch/archi/cms-compops` (branch `archi_v3`); `okg-deployments/cms` is the
 frozen parity reference and **retires once the cms-compops v3 instance reaches
 parity** (retirement is mitdbg's call — relevant to your packaging PACT's proof
-targets). **W7 is in progress**: the v3 instance definition (deployment manifest,
-full connector registry, materialized schemas/playbooks, relocated parity
-auditor, credentialed bring-up runbook) is being authored in
-`cms-compops@archi_v3` under PACT change `w7-compops-instance`. New PACT v4 note
+targets). **W7's local half is done and evidence-gated** (PACT change
+`w7-compops-instance`): the full v3 instance definition (deployment manifest,
+21-connector registry, materialized schemas incl. a pruned operations bridge,
+20 playbooks, relocated parity auditor, credentialed bring-up runbook,
+`versions.lock` pinning okg `f5ec3b58d` + archi `728739e6`) lives in
+`cms-compops@archi_v3`; local validation on a fresh DB: lint zero
+blocker/warning, 13 connectors ingest OK (one live fetch), 8 credential-gated
+connectors fail clean with no scope claims, published generation idempotent on
+re-run (evidence: `docs/w7-local-validation.md` there). The credentialed live
+bring-up + strict parity run on a CERN host is the remaining half
+(`docs/bring-up.md`). New friction for this channel: PACT gates resolve the
+graph-projection deployment from `OKG_PACT_GRAPH_DEPLOYMENT` (default
+`okg-workspace`) and ignore `pact/project.yaml`'s
+`graph_projection.deployment` — external repos need the env var exported or
+gates refuse with an okg-workspace database-identity mismatch. New PACT v4 note
 from the re-pin: `change.tier` is now mandatory (`missing_lifecycle_tier`
 otherwise).
 
