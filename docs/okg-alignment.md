@@ -20,7 +20,7 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-21, archi branch `w2-twiki` @ `a3f3ceb5`, tested against okg
+*Last updated 2026-08-21, archi branch `w2-twiki` @ `f07022f8`, tested against okg
 `dev` @ `f5ec3b58d` (2026-08-18).*
 
 **Sync channel: okg#1178** (established 2026-08-19; surface-change heads-ups land
@@ -46,10 +46,19 @@ WMStats — fixture-tested, registry templates in the ingest-proven strict shape
 cutover gate closed), 18 playbooks, and the comp-ops lint re-check (zero
 regressions vs baseline; sole delta a version-introduced skipped notice). Schema
 slices: `operations.yaml` + `sources.yaml` (+ bridges), every class/narrowing
-single-defined. Remaining before the consolidated PR: the `cern-team` bundle and
-the end-to-end install demo (the okg#1185 release claim; harness interface to be
-coordinated with `conform-external-okg-distributions` before it freezes). The
-comp-ops instance (`okg-deployments/cms`) is untouched and is the parity target
+single-defined. **The cern-team bundle + end-to-end install demo are DONE and gated
+(PACT w6-cern-team-bundle)** — `okg install --profile cern-team` on a fresh DB: lint
+zero blocker/warning, four connectors ingest OK (live cmssw releases.map fetch, 314
+nodes), generation `gen:20260821T155948019759Z:56ad3d3dafec` published with
+cross-connector reference edges, idempotent re-run. **The reproducible runbook is
+`docs/cern-team-demo.md` — this is the okg#1185 release-claim artifact**; run results
++ 7-item friction log in `pact/changes/w2-consolidate-hep-sources/`. For #1179: two
+manual steps remain outside the profile contract (wheel schema-slice copy incl. a
+pruned operations bridge; role passwords post-migrate) — both flagged in the runbook.
+**New substrate finding for this channel: deletion semantics not enforced** — stale
+records survived reconcile + `--reset-cursor` under `missing_from_completed_scope`
+(demo friction 6; repro in the runbook). The consolidated PR to `archi_v3` is open.
+The comp-ops instance (`okg-deployments/cms`) is untouched and is the parity target
 for cutover. New PACT v4 note from the re-pin: `change.tier` is now mandatory
 (`missing_lifecycle_tier` otherwise).
 
