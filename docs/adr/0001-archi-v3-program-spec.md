@@ -477,6 +477,7 @@ Execute the deletions in §6.1, gated on W7 parity and W9 chat migration. The gr
 - [ ] For ingestion changes: `okg deployment lint` green, change probes sound
 - [ ] Docs updated, or a stated reason none were needed
 - [ ] LOC delta reported
+- [ ] `docs/okg-alignment.md` current-state/pins/import-surface updated if this change moved any of them (okg#1178 policy; test_alignment_page.py guards the imports)
 - [ ] No new shared abstraction without two existing call sites; nothing duplicating an OKG mechanism
 - [ ] Provenance recorded for absorbed code (source repo, ref, what was rewritten)
 

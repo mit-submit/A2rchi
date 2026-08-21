@@ -181,7 +181,7 @@ tasks:
   environment: []
 - id: task.w2.sources-twiki
   title: TWiki three-way merge (cms twiki_eos + cern-twiki + wisdqm parsers)
-  status: todo
+  status: done
   verification: python/tests/sources/test_twiki.py
   requirements:
   - req.w2.sources
@@ -189,7 +189,7 @@ tasks:
   environment: []
 - id: task.w2.sources-monit
   title: MONIT sources + archi/tools/monit.py live tools
-  status: todo
+  status: done
   verification: python/tests/sources/test_monit.py and python/tests/tools/test_monit_live.py
   requirements:
   - req.w2.sources
@@ -310,3 +310,26 @@ evidence:
     re-run'
   data:
     attached_at: '2026-08-12T12:43:26.967431+00:00'
+- id: ev.pytest.req-w2-sources.20260812T182728402302Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.sources
+  artifact: python/tests/sources/test_twiki.py
+  command: pytest python/tests/sources/test_twiki.py -q
+  summary: '47 twiki tests: parser core fidelity flags w/ cms byte-parity fixture,
+    EOS+crawl sources, completeness/dead-link/truncation discipline (10 review fixes)'
+  data:
+    attached_at: '2026-08-12T18:27:28.402333+00:00'
+- id: ev.pytest.req-w2-sources.20260812T182731280363Z
+  kind: pytest
+  status: pass
+  refs:
+  - req.w2.sources
+  artifact: python/tests/sources/test_monit.py
+  command: pytest python/tests/sources/test_monit.py python/tests/tools/test_monit_live.py
+    -q
+  summary: '36 MONIT tests: four sources faithful to cms (query bodies/retry/emission),
+    four live tools with wiring contract'
+  data:
+    attached_at: '2026-08-12T18:27:31.280388+00:00'

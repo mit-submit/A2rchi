@@ -52,6 +52,13 @@ hash their input with a literal backslash-zero separator (the cms
 original's ``f'..\\0..'`` inside an f-string), not the NUL byte docs.py
 uses. Changing it would re-key every twiki chunk at cutover.
 
+Deliberate parity deviations from the cms parser (its ``=code=``
+unwrap regex paired ``=`` across lines/assignments and its heading
+``\\s*`` absorbed the next line after a bare marker) are fixed in
+:mod:`archi.sources._twiki_parse` — see its docstring; TWiki is not in
+archi's v2 byte-parity corpus, and the resulting chunk re-keying on
+affected topics was accepted.
+
 Registry-entry templates — same three prerequisites as the
 archi/sources/jira.py and archi/sources/docs.py templates: (1) compose
 the ``extraction`` module in ``deployment.yaml`` (provides
@@ -275,14 +282,24 @@ class TwikiRecord:
         return twiki_node_id(self.page_id)
 
 
+@dataclass(frozen=True)
+class _EOSSeedWalk:
+    """One seeded snapshot walk: found records + absent seed topics."""
+
+    records: tuple[TwikiRecord, ...]
+    missing_seeds: tuple[str, ...]
+
+
 class TwikiEOSSource:
     """Read TWiki topics from a local EOS snapshot mirror.
 
     Lift of the cms ``TwikiEOSSource``: whole-tree ``rglob("*.txt")``
     by default, or a seeded subtree when ``seed_topics`` is given
     (links are followed through the snapshot up to ``max_depth``,
-    skipping topics whose files are absent — the wisdqm snapshot-crawl
-    behavior). ``web_root`` un-hardcodes the cms "CMS" prefix; the
+    silently skipping followed-link targets whose files are absent —
+    the wisdqm snapshot-crawl behavior — while a configured *seed*
+    whose file is absent fails the run's scope loudly).
+    ``web_root`` un-hardcodes the cms "CMS" prefix; the
     dropped cms operator-path defaults mean the root must arrive via
     the ``eos_root`` param or the env var named by ``eos_root_env``.
     Reference-target caches are optional; a configured-but-missing
@@ -313,6 +330,7 @@ class TwikiEOSSource:
         whitespace: str = "collapse",
         preserve_tables: bool = False,
         preserve_images: bool = False,
+        skip_patterns: tuple[str, ...] | list[str] = DEFAULT_SKIP_PATTERNS,
         records: list[TwikiRecord] | None = None,
         base: str | None = None,
     ) -> None:
@@ -320,6 +338,11 @@ class TwikiEOSSource:
         self.eos_root_env = eos_root_env
         self.web_root = web_root.strip("/")
         self.required = required
+        if max_files is not None and max_files < 1:
+            raise ValueError(
+                f"max_files must be >= 1 (or None for unlimited), "
+                f"got {max_files}"
+            )
         self.max_files = max_files
         if seed_topics is not None and not seed_topics:
             raise ValueError(
@@ -343,6 +366,7 @@ class TwikiEOSSource:
         self.whitespace = whitespace
         self.preserve_tables = preserve_tables
         self.preserve_images = preserve_images
+        self.skip_patterns = tuple(skip_patterns)
         self._records = records
         self.base = base
         self.change_probe = ContentHashProbe(
@@ -354,6 +378,7 @@ class TwikiEOSSource:
                 "max_files": self.max_files,
                 "seed_topics": list(self.seed_topics or ()),
                 "max_depth": self.max_depth,
+                "skip_patterns": list(self.skip_patterns),
                 "sites_path": self.sites_path,
                 "releases_path": self.releases_path,
                 "jira_records_path": self.jira_records_path,
@@ -410,12 +435,30 @@ class TwikiEOSSource:
             )
         root = Path(self.eos_root).expanduser() if self.eos_root else None
         if root is not None and root.is_dir():
-            files = self._paths()
             credential_refs = (
                 (self.eos_root_env,)
                 if os.environ.get(self.eos_root_env) else
                 ()
             )
+            if self.seed_topics is None:
+                files = self._paths()
+                reason = "local TWiki EOS snapshot directory present"
+            else:
+                # Seeded scope: count/hash the seeded closure, not the
+                # whole tree, so preflight describes what run() emits.
+                walk = self._seed_walk(root)
+                files = [root / record.source_path for record in walk.records]
+                reason = (
+                    f"local TWiki EOS snapshot directory present; seeded "
+                    f"closure: {len(files)} topics from "
+                    f"{len(self.seed_topics)} seeds at max depth "
+                    f"{self.max_depth}"
+                )
+                if walk.missing_seeds:
+                    reason += (
+                        f" ({len(walk.missing_seeds)} seeds missing from "
+                        "the snapshot)"
+                    )
             return SourcePreflightResult(
                 source_name=self.name,
                 status="ok",
@@ -425,7 +468,7 @@ class TwikiEOSSource:
                 cache_path=str(root),
                 record_count=len(files),
                 content_hash=_listing_hash(root, files),
-                reason="local TWiki EOS snapshot directory present",
+                reason=reason,
                 checked_at=_checked_at(),
             )
         return file_ref_preflight(
@@ -436,24 +479,33 @@ class TwikiEOSSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        preflight = self.preflight(mode="live")
-        if preflight.status != "ok":
-            return SourceRun(
-                facts=[],
-                completed_scope=False,
-                run_mode=mode,
-                health=SourceHealth(
-                    status=preflight.status,
-                    mode=preflight.mode,
-                    reason=preflight.reason,
-                    credential_refs=preflight.credential_refs,
-                ),
-            )
-
-        records = (
-            self._records if self._records is not None
-            else self._records_from_root()
-        )
+        missing_seeds: tuple[str, ...] = ()
+        if self._records is not None:
+            records = self._records
+        else:
+            # No preflight() call here: its only run-relevant work for a
+            # present snapshot is the tree walk, which run() performs
+            # itself — one listing per run, not two.
+            root = Path(self.eos_root).expanduser() if self.eos_root else None
+            if root is None or not root.is_dir():
+                preflight = file_ref_preflight(
+                    self.name,
+                    self.eos_root_env,
+                    required=self.required,
+                    mode="live",
+                )
+                return SourceRun(
+                    facts=[],
+                    completed_scope=False,
+                    run_mode=mode,
+                    health=SourceHealth(
+                        status=preflight.status,
+                        mode=preflight.mode,
+                        reason=preflight.reason,
+                        credential_refs=preflight.credential_refs,
+                    ),
+                )
+            records, missing_seeds = self._records_from_root(root)
         content_hash = _records_hash(records)
         revision = {
             "run_id": run_id,
@@ -477,6 +529,34 @@ class TwikiEOSSource:
                 chunker_name=self.chunker_name,
             )
 
+        if missing_seeds:
+            # A configured seed without a snapshot file is a scope
+            # failure, never a silent skip: with completed_scope=True
+            # the registry's missing_from_completed_scope semantics
+            # would retract every topic under the absent seed. (Only
+            # operator-configured seeds fail loudly; followed-link
+            # targets missing from the snapshot stay silently skipped —
+            # wisdqm-parity behavior.)
+            total = len(self.seed_topics or ())
+            samples = ", ".join(missing_seeds[:3])
+            all_missing = len(missing_seeds) == total
+            return SourceRun(
+                facts=_facts(),
+                completed_scope=False,
+                run_mode=mode,
+                health=SourceHealth(
+                    status="cache_missing" if all_missing else "endpoint_failed",
+                    mode="filesystem",
+                    credential_refs=(self.eos_root_env,),
+                    record_count=len(records),
+                    content_hash=content_hash,
+                    reason=(
+                        f"{len(missing_seeds)}/{total} configured seed "
+                        f"topics missing from the EOS snapshot, e.g. "
+                        f"{samples}; no complete scope claimed"
+                    ),
+                ),
+            )
         return SourceRun(
             facts=_facts(),
             completed_scope=(mode in {"scope_complete", "reconcile"}),
@@ -497,35 +577,50 @@ class TwikiEOSSource:
         root = Path(self.eos_root).expanduser()
         paths = [
             path for path in root.rglob("*.txt")
-            if path.is_file() and is_real_page(path.name)
+            if path.is_file() and is_real_page(path.name, self.skip_patterns)
         ]
         paths.sort(key=lambda p: p.relative_to(root).as_posix())
         if self.max_files is not None:
             return paths[:self.max_files]
         return paths
 
-    def _records_from_root(self) -> list[TwikiRecord]:
-        root = Path(self.eos_root).expanduser()
+    def _records_from_root(
+        self, root: Path
+    ) -> tuple[list[TwikiRecord], tuple[str, ...]]:
+        """(records, missing seed page ids) for the configured scope."""
         if self.seed_topics is None:
-            return [self._record_for_path(root, path) for path in self._paths()]
-        return self._records_from_seeds(root)
+            records = [
+                self._record_for_path(root, path) for path in self._paths()
+            ]
+            return records, ()
+        walk = self._seed_walk(root)
+        return list(walk.records), walk.missing_seeds
 
-    def _records_from_seeds(self, root: Path) -> list[TwikiRecord]:
+    def _seed_walk(self, root: Path) -> _EOSSeedWalk:
         """Seeded subtree walk through the snapshot (wisdqm behavior):
         follow parsed topic references up to ``max_depth``, silently
-        skipping topics whose snapshot files are absent."""
+        skipping followed-link targets whose snapshot files are absent.
+        Operator-configured seeds are held to stricter semantics: a
+        seed without a snapshot file is returned in ``missing_seeds``
+        so run() can fail loudly instead of silently shrinking scope."""
+        seed_set = set(self.seed_topics or ())
         queue: deque[tuple[str, int]] = deque(
             (page_id, 0) for page_id in self.seed_topics or ()
         )
         seen: set[str] = set()
         records: list[TwikiRecord] = []
+        missing_seeds: list[str] = []
         while queue:
             page_id, depth = queue.popleft()
             if not page_id or page_id in seen:
                 continue
             seen.add(page_id)
             path = self._page_path(root, page_id)
-            if path is None or not is_real_page(path.name):
+            if path is None:
+                if page_id in seed_set:
+                    missing_seeds.append(page_id)
+                continue
+            if not is_real_page(path.name, self.skip_patterns):
                 continue
             record = self._record_for_path(root, path)
             records.append(record)
@@ -535,7 +630,10 @@ class TwikiEOSSource:
                 if target and target not in seen:
                     queue.append((target, depth + 1))
         records.sort(key=lambda record: record.source_path)
-        return records
+        return _EOSSeedWalk(
+            records=tuple(records),
+            missing_seeds=tuple(missing_seeds),
+        )
 
     def _seed_page_id(self, seed: str) -> str:
         """Seed as ``Topic`` / ``Sub/Topic`` / ``Web.Topic`` / view URL
@@ -631,6 +729,7 @@ class TwikiCrawlSource:
         whitespace: str = "preserve",
         preserve_tables: bool = True,
         preserve_images: bool = True,
+        skip_patterns: tuple[str, ...] | list[str] = DEFAULT_SKIP_PATTERNS,
         base: str | None = None,
     ) -> None:
         self.name = source_name
@@ -647,6 +746,11 @@ class TwikiCrawlSource:
         self.max_depth = max_depth
         self.cookie_file_env = cookie_file_env
         self.cookie_max_age_hours = cookie_max_age_hours
+        if max_pages is not None and max_pages < 1:
+            raise ValueError(
+                f"max_pages must be >= 1 (or None for unlimited), "
+                f"got {max_pages}"
+            )
         self.max_pages = max_pages
         self.timeout = timeout
         self.sites_path = sites_path
@@ -658,6 +762,7 @@ class TwikiCrawlSource:
         self.whitespace = whitespace
         self.preserve_tables = preserve_tables
         self.preserve_images = preserve_images
+        self.skip_patterns = tuple(skip_patterns)
         self.base = base
         self.change_probe = cache_or_forced_live_change_probe(
             cache_paths=(),
@@ -668,6 +773,7 @@ class TwikiCrawlSource:
                 "max_depth": self.max_depth,
                 "cookie_file_env": self.cookie_file_env,
                 "max_pages": self.max_pages,
+                "skip_patterns": list(self.skip_patterns),
             },
             emit_targets=TwikiCrawlSource,
             base=base,
@@ -771,11 +877,22 @@ class TwikiCrawlSource:
                 chunker_name=self.chunker_name,
             )
 
+        missing_note = (
+            f"; {len(crawl.missing_link_targets)} dangling wiki-link "
+            "targets skipped (missing_link_targets)"
+            if crawl.missing_link_targets else ""
+        )
+        truncation_note = (
+            f"crawl truncated at max_pages={self.max_pages} with "
+            f"{crawl.truncated_queued} queued"
+            if crawl.truncated_queued else ""
+        )
         if crawl.failed_urls:
             # A partially failed crawl must never claim a complete scope
             # (missing_from_completed_scope would retract the failed
             # topics' records); emit what succeeded and report the rest.
             samples = ", ".join(crawl.failed_urls[:3])
+            trailer = f"; {truncation_note}" if truncation_note else ""
             return SourceRun(
                 facts=_facts(),
                 completed_scope=False,
@@ -789,7 +906,30 @@ class TwikiCrawlSource:
                     reason=(
                         f"partial crawl: {len(crawl.failed_urls)}/"
                         f"{crawl.total_topics} seeded TWiki topics failed "
-                        f"(fetch error or SSO login bounce), e.g. {samples}; "
+                        f"(fetch error or SSO login bounce), e.g. {samples}"
+                        f"{missing_note}{trailer}; "
+                        "no complete scope claimed"
+                    ),
+                ),
+            )
+        if crawl.truncated_queued:
+            # max_pages stopped the crawl with work still queued: every
+            # fetch succeeded, but the scope was not covered, so it must
+            # not be claimed complete in any mode (the queued topics'
+            # previously ingested records would be retracted under
+            # missing_from_completed_scope).
+            return SourceRun(
+                facts=_facts(),
+                completed_scope=False,
+                run_mode=mode,
+                health=SourceHealth(
+                    status="ok",
+                    mode="live",
+                    credential_refs=self._credential_refs(),
+                    record_count=len(records),
+                    content_hash=content_hash,
+                    reason=(
+                        f"{truncation_note}{missing_note}; "
                         "no complete scope claimed"
                     ),
                 ),
@@ -806,6 +946,7 @@ class TwikiCrawlSource:
                 content_hash=content_hash,
                 reason=(
                     "seeded TWiki topics fetched from the raw-text endpoint"
+                    f"{missing_note}"
                 ),
             ),
         )
@@ -823,29 +964,68 @@ class TwikiCrawlSource:
         return session
 
     def _crawl(self, session: requests.Session) -> _TwikiCrawlOutcome:
+        seed_set = set(self.seed_topics)
         queue: deque[tuple[str, int]] = deque(
             (page_id, 0) for page_id in self.seed_topics
         )
         seen: set[str] = set()
         records: list[TwikiRecord] = []
         failed_urls: list[str] = []
+        missing_link_targets: list[str] = []
+        truncated_queued = 0
         while queue:
             page_id, depth = queue.popleft()
             if not page_id or page_id in seen:
                 continue
             if self.max_pages is not None and len(seen) >= self.max_pages:
+                # Record how many distinct topics were still queued so
+                # run() can refuse to claim a complete scope.
+                remaining = {
+                    queued_id for queued_id, _ in queue
+                    if queued_id and queued_id not in seen
+                }
+                remaining.add(page_id)
+                truncated_queued = len(remaining)
                 break
             seen.add(page_id)
             view_url = f"{self.base_url}/bin/view/{page_id}"
             fetch_url = f"{view_url}?raw=all"
             try:
                 resp = session.get(fetch_url, timeout=self.timeout)
-                resp.raise_for_status()
             except Exception:  # noqa: BLE001
                 failed_urls.append(view_url)
                 continue
+            # ?raw=all bodies frequently ship without a charset in the
+            # Content-Type header; requests would then guess ISO-8859-1
+            # (RFC default) and mangle UTF-8. Force UTF-8 unless the
+            # server declared a charset (requests decodes .text with
+            # errors="replace" semantics).
+            headers = getattr(resp, "headers", None) or {}
+            if "charset" not in str(headers.get("content-type", "")).lower():
+                resp.encoding = "utf-8"
             final_url = str(getattr(resp, "url", fetch_url) or fetch_url)
             text = getattr(resp, "text", "") or ""
+            if (
+                getattr(resp, "status_code", 0) == 404
+                or _twiki_oops_page(final_url, text)
+            ):
+                # An absent topic (404 or a TWiki oops page) reached by
+                # following a link is a dangling wiki link, not a crawl
+                # failure: record it, emit nothing (never ingest the
+                # oops body), and keep it out of failed_urls. Seeds are
+                # operator configuration and keep strict semantics.
+                if page_id in seed_set:
+                    failed_urls.append(view_url)
+                else:
+                    missing_link_targets.append(view_url)
+                continue
+            try:
+                resp.raise_for_status()
+            except Exception:  # noqa: BLE001
+                # Real transport-level errors (5xx and other non-404
+                # statuses) are failures even on followed links.
+                failed_urls.append(view_url)
+                continue
             if _login_bounce(fetch_url, final_url, text):
                 failed_urls.append(view_url)
                 continue
@@ -872,23 +1052,37 @@ class TwikiCrawlSource:
                     continue
                 if not target or target in seen:
                     continue
-                if not is_real_page(f"{target.rsplit('/', 1)[-1]}.txt"):
+                if not is_real_page(
+                    f"{target.rsplit('/', 1)[-1]}.txt", self.skip_patterns
+                ):
                     continue
                 queue.append((target, depth + 1))
         return _TwikiCrawlOutcome(
             records=tuple(records),
             failed_urls=tuple(failed_urls),
+            missing_link_targets=tuple(missing_link_targets),
             total_topics=len(seen),
+            truncated_queued=truncated_queued,
         )
 
 
 @dataclass(frozen=True)
 class _TwikiCrawlOutcome:
-    """One seeded crawl: parsed records plus the topics that failed."""
+    """One seeded crawl: parsed records plus what could not be covered.
+
+    ``failed_urls`` are real failures (transport errors, non-404 HTTP
+    errors, SSO login bounces, and absent *seed* topics);
+    ``missing_link_targets`` are dangling wiki links (404/oops on a
+    followed link) that are excluded from failure semantics;
+    ``truncated_queued`` counts distinct topics still queued when the
+    crawl stopped at ``max_pages`` (0 = not truncated).
+    """
 
     records: tuple[TwikiRecord, ...]
     failed_urls: tuple[str, ...]
+    missing_link_targets: tuple[str, ...]
     total_topics: int
+    truncated_queued: int = 0
 
 
 def _checked_at() -> str:
@@ -908,6 +1102,32 @@ def _resolve_root(explicit: str | None, env_ref: str) -> str:
     if value:
         return os.path.expanduser(value)
     return ""
+
+
+_OOPS_URL_MARKER = "/bin/oops/"
+_OOPS_BODY_MARKERS = ("topicdoesnotexist", "oopsmissing")
+
+
+def _twiki_oops_page(final_url: str, body: str) -> bool:
+    """True when a ``?raw=all`` response is a TWiki 'oops' error page
+    (topic does not exist), not raw topic markup.
+
+    twiki.cern.ch could not be probed unauthenticated (every request
+    bounces to CERN SSO first, which ``_login_bounce`` already
+    handles); stock TWiki serves a missing topic either as an HTTP 404
+    (checked by the caller before this function) or as a redirect to
+    ``/bin/oops/<Web>/<Topic>?template=oopsmissing`` / a small oops
+    body naming the ``TopicDoesNotExist``/``oopsmissing`` template, so
+    both shapes are detected here. Raw topic markup always carries a
+    ``%META:TOPICINFO`` line, which oops pages never do — that guards
+    real topics that merely mention the marker strings in their text.
+    """
+    if _OOPS_URL_MARKER in urlparse(final_url).path.lower():
+        return True
+    lowered = body.lower()
+    if "%meta:topicinfo" in lowered:
+        return False
+    return any(marker in lowered for marker in _OOPS_BODY_MARKERS)
 
 
 def _crawl_seed_page_id(seed: str) -> str:

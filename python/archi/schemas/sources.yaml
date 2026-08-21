@@ -1,12 +1,16 @@
 # Archi W2 — deployment-scoped schema slice for the ported jira/docs
 # sources (acc.w2.sources). Subtypes no substrate library module
-# declares: jira_issue, documentation_page, software_repository.
+# declares: jira_issue, documentation_page, software_repository,
+# monitoring_snapshot, transfer_job.
 # person and document_chunk come from the `person` and `extraction`
-# modules composed in deployment.yaml.
+# modules composed in deployment.yaml; dataset (emitted by
+# archi.sources.monit MONITRucioDatasetSource) comes from the
+# substrate `dataset` module; site and storage_endpoint (edge
+# endpoints of the monit sources) arrive with the catalogs port.
 id: https://archi-physics.org/okg/archi/w2-sources
 name: archi_w2_sources
 title: Archi W2 — ported source subtypes
-description: Deployment-scoped slice for JiraIssueSource / DocumentationSource emissions.
+description: Deployment-scoped slice for JiraIssueSource / DocumentationSource / MONIT source emissions.
 
 prefixes:
   linkml: https://w3id.org/linkml/
@@ -86,6 +90,52 @@ classes:
       transient: "false"
       okg_alias_fields: full_name
       okg_searchable_text_fields: name,full_name,url,description,text
+
+  # MONIT sources (archi.sources.monit). Shapes match the cms
+  # deployment's schemas/nodes.yaml classes of the same names so the
+  # cms parity corpus does not churn at cutover.
+
+  MonitoringSnapshot:
+    description: Point-in-time monitoring snapshot for a site/service/dataset.
+    class_uri: archi:MonitoringSnapshot
+    attributes:
+      snapshot_id:
+        required: true
+      subject:
+      metric:
+      value:
+        range: float
+      unit:
+      observed_at:
+      text:
+    annotations:
+      archetype: process
+      transient: "true"
+      okg_alias_fields: snapshot_id
+      okg_searchable_text_fields: subject,metric,text
+
+  TransferJob:
+    description: Data transfer job or transfer aggregation.
+    class_uri: archi:TransferJob
+    attributes:
+      transfer_id:
+        required: true
+      src_site:
+      dst_site:
+      state:
+      dataset:
+      num_files:
+        range: integer
+      total_bytes:
+        range: integer
+      submitted_at:
+      completed_at:
+      text:
+    annotations:
+      archetype: process
+      transient: "true"
+      okg_alias_fields: transfer_id
+      okg_searchable_text_fields: transfer_id,src_site,dst_site,dataset,text
 
 # EdgeNarrowings live in archi/schemas/bridges/sources.yaml — the
 # catalog composer only extracts subtypes from deployment
