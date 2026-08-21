@@ -20,8 +20,8 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-21, archi branch `w2-twiki` @ `f07022f8`, tested against okg
-`dev` @ `f5ec3b58d` (2026-08-18).*
+*Last updated 2026-08-21, archi branch `archi_v3` @ `728739e6` (PR #610 merged),
+tested against okg `dev` @ `f5ec3b58d` (2026-08-18).*
 
 **Sync channel: okg#1178** (established 2026-08-19; surface-change heads-ups land
 there). Re-pin validation 2026-08-19 against the strict registry-admission schema
@@ -57,13 +57,31 @@ manual steps remain outside the profile contract (wheel schema-slice copy incl. 
 pruned operations bridge; role passwords post-migrate) — both flagged in the runbook.
 **New substrate finding for this channel: deletion semantics not enforced** — stale
 records survived reconcile + `--reset-cursor` under `missing_from_completed_scope`
-(demo friction 6; repro in the runbook). The consolidated PR to `archi_v3` is open.
+(demo friction 6; repro in the runbook) — being triaged upstream as a separate
+substrate correctness issue (#1178 response, 2026-08-21). The consolidated PR
+(#610) is **merged**, and okg#1178 has pinned `archi_v3` @ `728739e6` as the first
+real external-consumer baseline for the deployment-product work. Both manual
+install steps now have upstream owners: the schema-slice copy + hand-pruned
+operations bridge land in `package-and-migrate-archi-products` (digest-bound
+schema/ontology/bridge assets), and role/credential provisioning lands in
+`apply-and-operate-deployment-instances` (secret refs from the instance,
+lifecycle-provisioned roles). The conformance harness will use `cern-team` as its
+first real consumer; the final #1185 claim adds artifact-only checks (no
+`OKG_PROFILES_DIR` or authoring checkout, no manual schema/password steps,
+lock/release readback, defined no-change reapply). One question is open to us on
+the channel: whether sealing the v3 wheel together with a materialized bundle +
+playbook payload conflicts with our distribution boundary (maintainer's answer
+pending).
 Comp-ops instance model (maintainer, 2026-08-21): the instance repo is
 `gitlab.cern.ch/archi/cms-compops` (branch `archi_v3`); `okg-deployments/cms` is the
 frozen parity reference and **retires once the cms-compops v3 instance reaches
 parity** (retirement is mitdbg's call — relevant to your packaging PACT's proof
-targets). New PACT v4 note from the re-pin: `change.tier` is now mandatory
-(`missing_lifecycle_tier` otherwise).
+targets). **W7 is in progress**: the v3 instance definition (deployment manifest,
+full connector registry, materialized schemas/playbooks, relocated parity
+auditor, credentialed bring-up runbook) is being authored in
+`cms-compops@archi_v3` under PACT change `w7-compops-instance`. New PACT v4 note
+from the re-pin: `change.tier` is now mandatory (`missing_lifecycle_tier`
+otherwise).
 
 ## The exact substrate surface Archi consumes today
 
@@ -125,8 +143,9 @@ Details + repros: `okg-asks-drafts.md` items 6–7 in the archi_v3 working notes
 - Interface drift: we pin the okg `dev` commit we tested against at the top of this
   page and re-audit on bump; if you change something in the consumed surface above,
   a heads-up on okg#1178 referencing this page is enough.
-- Bugs we found in shared/canonical code that you may want upstream: two TWiki
-  parser bugs present in `okg-deployments/cms/cms_sources/twiki_eos.py` (the
-  `=code=` regex eats `=` from assignments across lines; title-less heading markers
-  absorb the next line) — fixed on the Archi side with documented deviation, see
-  `pact/changes/w2-consolidate-hep-sources/v2-reconciliation-notes.md`.
+- Bugs we found in shared/canonical code: two TWiki parser bugs in
+  `okg-deployments/cms/cms_sources/twiki_eos.py` (the `=code=` regex eats `=` from
+  assignments across lines; title-less heading markers absorb the next line) —
+  fixed on the Archi side with documented deviation
+  (`pact/changes/w2-consolidate-hep-sources/v2-reconciliation-notes.md`) and
+  **upstreamed into the canonical copy via mitdbg/okg-deployments#88**.
