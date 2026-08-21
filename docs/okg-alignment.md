@@ -20,8 +20,8 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-19, archi branch `w2-twiki` @ `e83b8dbf`, tested against okg
-`dev` @ `f5ec3b58d` (2026-08-18).*
+*Last updated 2026-08-21, archi branch `w2-twiki` @ `8d8baec1` plus the catalogs
+batch (this change), tested against okg `dev` @ `f5ec3b58d` (2026-08-18).*
 
 **Sync channel: okg#1178** (established 2026-08-19; surface-change heads-ups land
 there). Re-pin validation 2026-08-19 against the strict registry-admission schema
@@ -40,10 +40,16 @@ Done, evidence-gated (PACT change `w2-consolidate-hep-sources` in `pact/changes/
 packaging (wheel from `python/`), `archi.auth` (CERN preflight/cache/cookies),
 connectors for JIRA + docs families (ingest-proven on a live scratch instance),
 TWiki (EOS reader + live crawler over one parser core), MONIT (4 connectors + 4
-live tools), 18 playbooks. In progress: remaining catalog connectors
-(branch `wip-w2-catalogs`), enrichers, the `cern-team` bundle, the end-to-end
-install demo (the okg#1185 release claim; harness interface to be coordinated with
-`conform-external-okg-distributions` before it freezes). The comp-ops instance
+live tools), 18 playbooks, and the catalog/feed batch — 12 connectors across 11
+modules (CRIC, CRIC-core, CMSSW releases, CondDB, DBS, DQM, GitHub repos,
+HyperNews, Indico, SITECONF, GOCDB downtimes, WMStats workflows), fixture-tested
+with registry templates in the ingest-proven shape (not yet live-ingest-proven),
+plus the operations schema slice (`archi/schemas/operations.yaml` +
+`bridges/operations.yaml`; MonitoringSnapshot/TransferJob and the monit edge
+narrowings stay single-defined in the sources slice). In progress: enrichers,
+the `cern-team` bundle, the end-to-end install demo (the okg#1185 release claim;
+harness interface to be coordinated with `conform-external-okg-distributions`
+before it freezes). The comp-ops instance
 (`okg-deployments/cms`) is untouched and is the parity target for cutover.
 
 ## The exact substrate surface Archi consumes today

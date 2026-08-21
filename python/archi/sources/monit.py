@@ -65,7 +65,8 @@ specific to this family:
    ``schemas/bridges/`` are silently ignored and fail only at ingest).
 2. **Edge endpoints**: every edge these sources emit starts at a
    ``site`` (or, for dataset replicas, a ``storage_endpoint``) node
-   owned by the catalogs port, which has not landed yet. The bridge
+   owned by the catalogs port (``archi/schemas/operations.yaml`` +
+   ``archi/schemas/bridges/operations.yaml``). The bridge
    narrowings for these edges are declared with
    ``optional_when_subtypes_missing: 'true'`` so composing a catalog
    without ``site``/``storage_endpoint`` stays green — but then the

@@ -6,7 +6,10 @@
 # modules composed in deployment.yaml; dataset (emitted by
 # archi.sources.monit MONITRucioDatasetSource) comes from the
 # substrate `dataset` module; site and storage_endpoint (edge
-# endpoints of the monit sources) arrive with the catalogs port.
+# endpoints of the monit sources) ship in the catalogs port's
+# archi/schemas/operations.yaml. monitoring_snapshot and transfer_job
+# live ONLY here — archi/schemas/operations.yaml (the cms nodes.yaml
+# copy) deliberately omits them.
 id: https://archi-physics.org/okg/archi/w2-sources
 name: archi_w2_sources
 title: Archi W2 — ported source subtypes
@@ -66,18 +69,30 @@ classes:
       okg_searchable_text_fields: title,body,url,text
 
   SoftwareRepository:
+    # The cms deployment's nodes.yaml carried a second SoftwareRepository
+    # definition; this one stays canonical (one definition per class).
+    # The repo-metadata attributes below (description..last_commit_date)
+    # are merged in from that cms class because
+    # archi.sources.github_repos emits them.
     description: A source repository that documentation pages belong to.
     class_uri: archi:SoftwareRepository
     attributes:
       name:
       full_name:
       url:
+      description:
+      language:
+      stars:
+        range: integer
+      topics:
+      default_branch:
+      last_commit_date:
       text:
     annotations:
       archetype: artifact
       transient: "false"
       okg_alias_fields: full_name
-      okg_searchable_text_fields: name,full_name,url,text
+      okg_searchable_text_fields: name,full_name,url,description,text
 
   # MONIT sources (archi.sources.monit). Shapes match the cms
   # deployment's schemas/nodes.yaml classes of the same names so the

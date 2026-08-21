@@ -130,9 +130,10 @@ accompany ``output_signature``; (3) add the standard ``sync:`` block. ::
         # AND output_scope_summary above, and (b) the target subtype +
         # narrowing in the deployment schema: jira_issue ships in
         # archi/schemas/sources.yaml and cmssw_release in
-        # archi/schemas/operations_w1.yaml with narrowings in
+        # archi/schemas/operations.yaml with narrowings in
         # archi/schemas/bridges/sources.yaml; site and
-        # infrastructure_service arrive with the catalogs port.
+        # infrastructure_service ship in the catalogs port
+        # (archi/schemas/operations.yaml + bridges/operations.yaml).
         # sites_path: data/cric/sites.json
         # releases_path: data/cmssw-releases/records.json
         # jira_records_path: data/jira/records.json
