@@ -1837,3 +1837,85 @@ def test_history_does_not_follow_run_directory_symlinks(tmp_path):
     (tmp_path / "linked").symlink_to(external, target_is_directory=True)
 
     assert EvaluationHistory(tmp_path).list_runs() == []
+
+
+def test_continue_re_runs_the_frozen_agent_inputs_of_the_paused_run(
+    monkeypatch, tmp_path
+):
+    """A continue must re-run the inputs the paused run froze, not the live files.
+
+    The continue path passes the live ``agent_config_path`` and re-resolves the
+    spec from ``agents_dir``, so an edit between the pause and the continue
+    swaps the system under test inside one run id, with no new run and no hash
+    change to show it. The run directory already holds the snapshot the retry
+    path reads, so continue must read it too.
+    """
+    live_config = tmp_path / "config.yaml"
+    live_spec = tmp_path / "tested.md"
+    live_config.write_text("source: live-at-pause\n", encoding="utf-8")
+    live_spec.write_text("live spec at pause\n", encoding="utf-8")
+    service = EvaluationConsoleService(
+        tmp_path,
+        agent_config_path=live_config,
+        agents_dir=tmp_path,
+    )
+    run_dir = service.catalog.runs_dir / "workspace-frozen"
+    run_dir.mkdir(parents=True)
+    (run_dir / "agent_config.resolved.yaml").write_text(
+        "source: frozen-in-run\n", encoding="utf-8"
+    )
+    (run_dir / "agent_spec.resolved.md").write_text(
+        "frozen spec in run\n", encoding="utf-8"
+    )
+    write_json(
+        run_dir / "manifest.json",
+        {
+            "phases": {"prepare": {"prepared_items": 2}},
+            "attention_required": {"affected_item_count": 1},
+        },
+    )
+    monkeypatch.setattr(
+        service.job_manager,
+        "get",
+        lambda job_id: {
+            "id": job_id,
+            "kind": "evaluation",
+            "status": "attention_required",
+            "context": {
+                "workspace_id": "workspace-frozen",
+                "dataset_id": "approved-live",
+                "profile_id": "builtin",
+                "agent_spec": "tested.md",
+                "attempts": 2,
+                "run_workers": 1,
+                "score_workers": 1,
+            },
+        },
+    )
+    requests = []
+    monkeypatch.setattr(
+        service.job_manager,
+        "continue_process",
+        lambda job_id, request: requests.append((job_id, request))
+        or {"id": job_id, "status": "queued"},
+    )
+
+    # The operator edits both live inputs while the run sits paused.
+    live_config.write_text("source: edited-after-pause\n", encoding="utf-8")
+    live_spec.write_text("edited spec after pause\n", encoding="utf-8")
+
+    service.continue_evaluation("paused-job")
+
+    [(job_id, request)] = requests
+    assert job_id == "paused-job"
+    assert request["agent_config"] == str(run_dir / "agent_config.resolved.yaml")
+    assert request["agent_spec"] == str(run_dir / "agent_spec.resolved.md")
+    assert (
+        Path(request["agent_config"]).read_text(encoding="utf-8")
+        == "source: frozen-in-run\n"
+    )
+    assert (
+        Path(request["agent_spec"]).read_text(encoding="utf-8")
+        == "frozen spec in run\n"
+    )
+    service.job_manager.close()

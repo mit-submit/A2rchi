@@ -519,14 +519,17 @@ class EvaluationConsoleService:
             raise ValueError("no static or matching live question can continue")
         dataset_id = context["dataset_id"]
         profile_id = context["profile_id"]
-        agent_filename = context["agent_spec"]
+        # The run's own frozen snapshot, not the live config and agent file. An
+        # edit between the pause and the continue would otherwise swap the system
+        # under test inside one run id, with no hash change to show it. The retry
+        # path reads these same two artifacts.
         return self.job_manager.continue_process(
             job_id,
             {
                 "operation": "continue",
                 "output_dir": str(run_dir),
-                "agent_config": str(self.agent_config_path),
-                "agent_spec": str(self._agent_path(agent_filename)),
+                "agent_config": str(run_dir / "agent_config.resolved.yaml"),
+                "agent_spec": str(run_dir / "agent_spec.resolved.md"),
                 "attempts": context["attempts"],
                 "run_workers": context["run_workers"],
                 "score_workers": context["score_workers"],
