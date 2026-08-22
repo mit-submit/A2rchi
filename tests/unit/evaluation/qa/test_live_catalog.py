@@ -255,3 +255,76 @@ class TestLiveCatalog:
         assert catalog.dataset_items(sibling["id"])[1].answer == {
             "lookup": {"value": 8}
         }
+
+
+def test_review_draft_save_error_points_live_items_at_the_generating_draft(tmp_path):
+    """Including a live row from a review-atoms draft must name the way out.
+
+    A review-atoms draft skips live rows at creation, so saving one can never
+    resolve. The generic "must resolve" error gives the operator no pointer to
+    the draft that does work — the generate-atoms job's own draft, whose id the
+    job result carries as ``draft_id``.
+    """
+    catalog = EvaluationCatalog(tmp_path / "catalog")
+    blob = (
+        json.dumps(
+            {
+                "schema_version": "qa-dataset-v2",
+                "items": [
+                    {
+                        "id": "static",
+                        "question": "Fixed?",
+                        "answer": "fixed",
+                        "time_sensitive": False,
+                        "expected_atoms": [
+                            {"id": "a1", "text": "The answer is fixed.", "required": True}
+                        ],
+                    },
+                    {
+                        "id": "live",
+                        "question": "Current?",
+                        "time_sensitive": True,
+                        "oracle": {
+                            "kind": "mcp",
+                            "calls": [
+                                {
+                                    "id": "lookup",
+                                    "server": "read-model",
+                                    "tool": "current",
+                                    "arguments": {},
+                                    "answer_fields": {"value": "/value"},
+                                }
+                            ],
+                        },
+                    },
+                ],
+            }
+        )
+        + "\n"
+    ).encode()
+    parent, _ = catalog.import_dataset("Parent", "parent.json", blob)
+    draft = catalog.create_atom_review_draft(parent["id"])
+    statuses = {row["item_id"]: row["status"] for row in draft["items"]}
+    assert statuses == {"static": "prepared", "live": "skipped_time_sensitive"}
+
+    # The operator answers the "at least one atom" rejection by hand-writing an
+    # atom for the skipped live row — and then hits the opaque wall this fix
+    # replaces.
+    reviewed = [
+        {
+            "item_id": row["item_id"],
+            "atoms": row["atoms"]
+            or [{"id": "hand", "text": "Hand-written for a live row.", "required": True}],
+        }
+        for row in draft["items"]
+    ]
+    with pytest.raises(ValueError, match="generate-atoms") as caught:
+        catalog.save_reviewed_dataset(
+            draft["id"],
+            "Reviewed",
+            reviewed,
+            approval_actor="manager@example.test",
+        )
+
+    assert "live" in str(caught.value)
+    assert "draft_id" in str(caught.value)

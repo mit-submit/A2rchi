@@ -200,6 +200,19 @@ class _ReviewedChildPublisher:
     ) -> Dict[str, Any]:
         if self._is_v2:
             if draft_row.get("status") != "prepared" or supplied_atoms is None:
+                if draft_row.get("status") == "skipped_time_sensitive":
+                    # A review-atoms draft skips live rows at creation, so no
+                    # hand-supplied atom can make one resolve here. Name the way
+                    # out, or the operator dead-ends on the generic message.
+                    raise ValueError(
+                        "live item "
+                        f"'{draft_row.get('item_id')}' cannot resolve in this "
+                        "draft: review-atoms drafts skip live rows. Live rows "
+                        "are materialized only in a generate-atoms draft — save "
+                        "that draft instead (its id is the generating job "
+                        "result's draft_id), or omit the live item from "
+                        "reviewed_items."
+                    )
                 raise ValueError(
                     "included draft items must resolve and contain valid atoms"
                 )
