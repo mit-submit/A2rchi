@@ -307,6 +307,16 @@ class QAWorkflow:
         }
         if authorize_staged_invalid:
             required_inputs.add("live_checks.jsonl")
+        # A resumed run re-reads the agent inputs its paused run froze, then
+        # rewrites them and records fresh digests. Verify them with the rest of
+        # the inputs first: the workspace sits on a host mount, so without this a
+        # rewrite made while the run waited is re-sealed as if the run had always
+        # used it. A first run has no recorded digest, so nothing is added here.
+        required_inputs.update(
+            name
+            for name in ("agent_config.resolved.yaml", "agent_spec.resolved.md")
+            if name in manifest["artifacts"]
+        )
         verify_hashes(
             run_dir,
             manifest["artifacts"],
