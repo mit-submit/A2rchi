@@ -522,3 +522,46 @@ def test_archi_runtime_rejects_empty_answer():
         ArchiAgentRuntime(_config(), SimpleNamespace(tools=[]), Pipeline).run(
             "question"
         )
+
+
+def test_archi_runtime_triggers_lazy_mcp_tool_build_before_the_guard():
+    """A pipeline that binds MCP sessions on its first refresh must pass the guard.
+
+    The readiness check runs right after construction, so without a forced
+    refresh it reads "not loaded yet" as "failed to load" and rejects a
+    pipeline whose tools would have loaded.
+    """
+
+    class Pipeline:
+        def __init__(self, **kwargs):
+            self.loaded_mcp_tools = []
+
+        def refresh_agent(self, force=False):
+            assert force is True
+            self.loaded_mcp_tools = ["current_capacity"]
+
+        def invoke(self, **kwargs):
+            return _Output("final answer")
+
+    agent = ArchiAgentRuntime(_config(), SimpleNamespace(tools=["mcp"]), Pipeline)
+
+    assert agent.run("question") == "final answer"
+
+
+def test_archi_runtime_still_rejects_mcp_spec_when_no_tool_loads():
+    """The guard keeps failing attempts whose refresh loads nothing."""
+
+    class Pipeline:
+        def __init__(self, **kwargs):
+            self.loaded_mcp_tools = []
+
+        def refresh_agent(self, force=False):
+            pass
+
+        def invoke(self, **kwargs):  # pragma: no cover - the guard fires first
+            return _Output("unreachable")
+
+    agent = ArchiAgentRuntime(_config(), SimpleNamespace(tools=["mcp"]), Pipeline)
+
+    with pytest.raises(RuntimeError, match="no MCP tools were loaded"):
+        agent.run("question")

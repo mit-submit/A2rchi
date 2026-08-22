@@ -382,10 +382,17 @@ class ArchiAgentRuntime:
             default_provider=chat["default_provider"],
             default_model=chat["default_model"],
         )
-        if "mcp" in self._selected_tool_names and not pipeline.loaded_mcp_tools:
-            raise RuntimeError(
-                "agent spec selected 'mcp', but no MCP tools were loaded"
-            )
+        if "mcp" in self._selected_tool_names:
+            # A pipeline may bind its MCP sessions lazily, on the first agent
+            # refresh. Trigger that build before the guard reads the result, or
+            # every lazily-loading pipeline fails here on tools that would have
+            # loaded.
+            if hasattr(pipeline, "refresh_agent"):
+                pipeline.refresh_agent(force=True)
+            if not pipeline.loaded_mcp_tools:
+                raise RuntimeError(
+                    "agent spec selected 'mcp', but no MCP tools were loaded"
+                )
 
         # Cache only a completely initialized runtime. A failed initialization
         # remains retryable by the next independently accounted attempt.
