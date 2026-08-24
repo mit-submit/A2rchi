@@ -20,7 +20,7 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-21, archi branch `w2-twiki` @ `f07022f8`, tested against okg
+*Last updated 2026-08-24, archi branch `w5-eval` @ `9a859e58`, tested against okg
 `dev` @ `f5ec3b58d` (2026-08-18).*
 
 **Sync channel: okg#1178** (established 2026-08-19; surface-change heads-ups land
@@ -62,7 +62,24 @@ The comp-ops instance (`okg-deployments/cms`) is untouched and is the parity tar
 for cutover. New PACT v4 note from the re-pin: `change.tier` is now mandatory
 (`missing_lifecycle_tier` otherwise). The superseded v2 application has been
 removed from the archi_v3 line (W10 teardown pulled forward, 2026-08-21); v2
-lives on `main` until instance cutover.
+lives on `main` until instance cutover. **W5 foundation landed (2026-08-24):
+`python/archi/eval/` is the evaluation framework** — a port of the two open
+v2-era eval PRs (#596 atom-based QA scoring, #608 MCP-backed live-state QA)
+restructured around an *arm registry*, where an arm is one answering
+configuration (`raw-llm` baseline, `okg-mcp`, plus `openwebui-chat` / `codex`
+stubs) and a run compares arms on identical questions. It adds **no substrate
+imports** — the okg surface below is unchanged — and touches OKG only as data:
+each run pins the target deployment's generation id in its report header, and
+cost rollups read `okg.llm_calls` (`ts`, `deployment_name`, `cost_usd`,
+`prompt_tokens`, `completion_tokens`, `total_tokens`, `generation_id`) over the
+run window, with `psycopg` taken from the okg host env rather than declared as
+an archi dependency. Two things that block the live half are on your side:
+`okg-mcp` cannot open a real session until per-user MCP auth (#1180) settles
+and until an instance declares which tool is its question-answering entry
+point — the adapter seam is in place and injected in tests, so wiring it is a
+config change, not a redesign. The comp-ops golden QA sets are deliberately not
+imported yet (divergent versions to reconcile); only a synthetic 7-atom smoke
+fixture ships. Docs: `docs/eval.md`.
 
 ## The exact substrate surface Archi consumes today
 

@@ -1,0 +1,98 @@
+pact_version: 4
+target_pact_version: 4
+change:
+  id: w5-eval-foundation
+  title: "W5: evaluation framework foundation \u2014 atoms, arm registry, engine"
+  status: proposal
+  rationale: 'Archi v3 needs an evaluation framework that measures more than one answering
+    configuration: the chatbot, an agent driving OKG MCP tools, a coding agent, and
+    raw-LLM baselines must be comparable on the same questions. PR #596 (atom engine
+    + gold-fact judging) and PR #608 (MCP-backed live-state QA) carry the substance
+    but are v2-homed; this change ports both into python/archi/eval restructured around
+    an arm registry (arm = one answering configuration), with generation pinning and
+    cost accounting per run. Deliberately out of scope: live wiring of the chat/codex
+    arms, and reconciliation of the two divergent cms-compops golden sets (they live
+    in the instance repo and need a maintainer decision).'
+  root_cause: Small nontrivial change whose intent, task, acceptance, and proof fit
+    the PACT fast path.
+  tier: 1
+  method_metadata:
+    pact_shape: fast_path
+    fast_path: Compact PACT for small nontrivial work. Upgrade when scope, risk, hierarchy,
+      formal proof, graph evidence, or review complexity increases.
+  affected_areas:
+  - python/archi/eval
+  - docs
+  affected_code: []
+requirements:
+- id: req.w5-eval-foundation
+  title: "W5: evaluation framework foundation \u2014 atoms, arm registry, engine"
+  statement: 'The evaluation framework runs a dataset of QA atoms against any registered
+    arm and produces a comparable, generation-pinned report: datasets validate with
+    contextual errors; the arm registry resolves ids to configured arms and refuses
+    unwired stubs loudly (NotConfiguredError, never a silent zero); deterministic
+    checks and gold-fact judging both score; live-state atoms resolve their expected
+    values from an MCP oracle and quarantine on drift; reports roll up pass rate,
+    latency, tokens and cost. Archi ships no new runtime dependency for it.'
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w5-eval-foundation.fast-path
+    title: Fast-path work is verified
+    given:
+    - a small nontrivial change fits one requirement
+    when:
+    - the declared verification runs
+    then:
+    - the requirement has executed proof before completion
+    and: []
+  acceptance:
+  - id: acc.w5-eval-foundation
+    description: python/tests/eval green (atoms, arms, engine, report, CLI) with the
+      full suite passing, and the CLI demonstrably running list-arms plus a scored
+      run over the fixture dataset.
+    evidence:
+    - executed_test
+tasks:
+- id: task.w5-eval-foundation
+  title: "W5: evaluation framework foundation \u2014 atoms, arm registry, engine"
+  status: done
+  verification: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests -q
+    (full suite incl. python/tests/eval)
+  requirements:
+  - req.w5-eval-foundation
+  evidence: []
+  environment: []
+dependencies: []
+test_plan:
+- id: test.req-w5-eval-foundation.eval-suite
+  requirement: req.w5-eval-foundation
+  test_id: python/tests/eval
+  evidence:
+  - pytest
+formal: []
+waivers: []
+evidence:
+- id: ev.executed-test.req-w5-eval-foundation.20260824T195129724362Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.w5-eval-foundation
+  artifact: python/tests/eval
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests -q
+  summary: 'Eval domain 96 passed (atoms 22, arms 14, engine 38, report 11, cli 11);
+    full suite 350 passed. CLI verified outside pytest: list-arms and a scored run
+    over the fixture dataset with a scripted client.'
+  data:
+    attached_at: '2026-08-24T19:51:29.724406+00:00'
+- id: ev.executed-test.acc-w5-eval-foundation.20260824T195131627117Z
+  kind: executed_test
+  status: pass
+  refs:
+  - acc.w5-eval-foundation
+  artifact: python/tests/eval
+  summary: 'Acceptance: eval suite green, full suite 350, CLI list-arms + scored fixture
+    run demonstrated.'
+  data:
+    attached_at: '2026-08-24T19:51:31.627183+00:00'
