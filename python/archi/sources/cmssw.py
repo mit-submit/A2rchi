@@ -307,14 +307,31 @@ class CMSSWReleaseSource:
             ) as resp:
                 path.write_bytes(resp.read())
         raw = path.read_text(encoding="utf-8", errors="replace")
-        full = parse_releases_map(raw)
+        full, skipped = _parse_map_with_skips(raw)
         records = full[-self.limit:] if self.limit > 0 else full
-        return records, 0, len(records) < len(full)
+        return records, skipped, len(records) < len(full)
 
 
 def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
     """Parse cms-bot ``releases.map`` lines into release records (W1 path)."""
+    records, _skipped = _parse_map_with_skips(raw)
+    if limit > 0:
+        return records[-limit:]
+    return records
+
+
+def _parse_map_with_skips(
+    raw: str,
+) -> tuple[list[CMSSWReleaseRecord], int]:
+    """Parse map lines, counting the ones that yield no release.
+
+    A non-empty line without a ``label`` matching the CMSSW version
+    pattern is a skip: format drift (e.g. a renamed key) must degrade
+    the run's scope claim instead of silently emptying the record set
+    under a healthy completed scope.
+    """
     by_label: dict[str, dict[str, Any]] = {}
+    skipped = 0
     for line in raw.splitlines():
         line = line.strip()
         if not line:
@@ -324,6 +341,7 @@ def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
         )
         label = fields.get("label", "")
         if not _VERSION_RE.match(label):
+            skipped += 1
             continue
         rec = by_label.setdefault(
             label,
@@ -341,8 +359,6 @@ def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
         by_label.values(),
         key=lambda r: _sort_key(r["label"]),
     )
-    if limit > 0:
-        ordered = ordered[-limit:]
     return [
         CMSSWReleaseRecord(
             label=rec["label"],
@@ -351,7 +367,7 @@ def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
             architecture=tuple(sorted(rec["architecture"])),
         )
         for rec in ordered
-    ]
+    ], skipped
 
 
 def _sort_key(label: str) -> tuple[int, int, int, str]:

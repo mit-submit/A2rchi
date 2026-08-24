@@ -290,6 +290,19 @@ class HyperNewsSource:
                     reason=str(exc),
                     checked_at=_checked_at(),
                 )
+            if not records:
+                # Match run()'s refusal: an empty cache must not look
+                # healthy in preflight while run() rejects it.
+                return SourcePreflightResult(
+                    source_name=self.name,
+                    status="endpoint_failed",
+                    mode="cache",
+                    required=self.required,
+                    cache_path=str(cache_path),
+                    record_count=0,
+                    reason=self._empty_cache_reason(),
+                    checked_at=_checked_at(),
+                )
             return SourcePreflightResult(
                 source_name=self.name,
                 status="ok",
@@ -411,6 +424,8 @@ class HyperNewsSource:
                     # An empty cache would otherwise claim a healthy
                     # complete scope over zero threads (and replay
                     # forever); refuse instead of retracting everything.
+                    # (Preflight reports the same refusal, so this is
+                    # normally caught before reaching here.)
                     return SourceRun(
                         facts=[],
                         completed_scope=False,
@@ -419,13 +434,7 @@ class HyperNewsSource:
                             status="endpoint_failed",
                             mode="cache",
                             record_count=0,
-                            reason=(
-                                "HyperNews records cache "
-                                f"{self.records_path} contains no usable "
-                                "threads; refusing an empty complete "
-                                "scope (delete the cache to force a "
-                                "live re-fetch)"
-                            ),
+                            reason=self._empty_cache_reason(),
                         ),
                     )
                 run_status, run_reason = skipped_items_status(
@@ -566,6 +575,13 @@ class HyperNewsSource:
                 content_hash=record_hash,
                 reason=run_reason,
             ),
+        )
+
+    def _empty_cache_reason(self) -> str:
+        return (
+            f"HyperNews records cache {self.records_path} contains no "
+            "usable threads; refusing an empty complete scope (delete "
+            "the cache to force a live re-fetch)"
         )
 
     def _records_from_cache(self) -> tuple[list[HyperNewsRecord], int]:

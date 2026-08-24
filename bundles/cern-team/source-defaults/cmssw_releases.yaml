@@ -42,7 +42,13 @@ cmssw_releases:
     map_cache_path: ${archi_data_root}/cmssw-releases/releases.map
     releases_map_url: https://raw.githubusercontent.com/cms-sw/cms-bot/master/releases.map
     fetch: true
-    limit: 300
+    # No `limit` here on purpose: the real releases.map has far more
+    # than any reasonable cap, and a cap that actually truncates makes
+    # every run forfeit its completed-scope claim (circleback-fixes
+    # finding 7) — completed_scope stays False forever, so
+    # missing_from_completed_scope deletion semantics never fire. The
+    # live demo ingested the full map fine; only set `limit` for
+    # debugging, accepting that retraction is disabled while it is set.
   sync:
     triggers: [manual, reconcile]
     default_event_mode: scope_complete

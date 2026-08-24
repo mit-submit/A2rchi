@@ -251,9 +251,12 @@ class SITECONFSource:
         token = _env_value(self.token_env, self.aliases)
         endpoint = f"{self.base_url}/api/v4/groups/{self.group_id}/projects"
         try:
+            # Mirror the crawl's listing exactly (include_subgroups):
+            # a group whose projects live only in subgroups must not
+            # get a false-negative preflight that blocks run().
             resp = requests.get(
                 endpoint,
-                params={"per_page": 1},
+                params={"include_subgroups": "true", "per_page": 1},
                 headers={"PRIVATE-TOKEN": token},
                 timeout=20,
             )

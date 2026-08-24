@@ -138,6 +138,28 @@ def test_preflight_group_probe_flags_invisible_group(monkeypatch):
     assert "group" in result.reason
 
 
+def test_preflight_group_probe_includes_subgroups_like_the_crawl(
+    monkeypatch,
+):
+    # A group whose projects live only in subgroups must not get a
+    # false-negative preflight: the probe must send include_subgroups
+    # exactly like the crawl's listing does.
+    import requests
+
+    monkeypatch.setenv("CERN_GITLAB_TOKEN", "tok")
+
+    def fake_get(url, params=None, **kwargs):
+        if url.endswith("/api/v4/user"):
+            return _Resp(200, {"username": "svc"})
+        if (params or {}).get("include_subgroups") == "true":
+            return _Resp(200, [{"id": 11, "path": "T2_US_MIT"}])
+        return _Resp(200, [])  # subgroup-only project is invisible
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    result = SITECONFSource().preflight()
+    assert result.status == "ok"
+
+
 def test_max_projects_truncation_never_claims_scope(tmp_path, monkeypatch):
     import requests
 
