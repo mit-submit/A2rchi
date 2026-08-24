@@ -75,8 +75,14 @@ def _write_caches(tmp_path, records=None, with_targets=False):
         (tmp_path / "data" / "jira" / "records.json").write_text(
             json.dumps(records)
         )
+    # A clean fixture carries a record_count that matches the records
+    # cache; run() cross-checks the two and treats a mismatch as a
+    # truncated cache (see the mismatch regression tests below). The
+    # cache-missing fixtures keep the original 72000 that the preflight
+    # tests report on.
+    meta_count = 72000 if records is None else len(records)
     (tmp_path / "data" / "jira" / "meta.json").write_text(
-        json.dumps({"record_count": 72000})
+        json.dumps({"record_count": meta_count})
     )
     kwargs = {}
     if with_targets:
@@ -288,6 +294,52 @@ def test_run_health_ok_with_content_hash(tmp_path):
     assert run.health.mode == "cache"
     assert run.health.record_count == 2
     assert run.health.content_hash
+
+
+def test_meta_record_count_mismatch_never_claims_scope(tmp_path):
+    """Adversarial-review finding 6: a truncated-but-valid records cache
+    (meta.json reports 72000 records, the file parses 2) must emit what
+    parsed but report the mismatch and never claim a completed scope —
+    claiming it would retract every record the truncation dropped."""
+    source = _write_caches(tmp_path, [FLAT_ISSUE, API_ISSUE])
+    (tmp_path / "data" / "jira" / "meta.json").write_text(
+        json.dumps({"record_count": 72000})
+    )
+    run = source.run("r", mode="scope_complete")
+    facts = list(run.facts)
+    # The parsed records are still emitted...
+    assert {n.node_id for n in _nodes(facts, "jira_issue")} == {
+        "jira:CMSPROD-101",
+        "jira:CMSPROD-100",
+    }
+    # ...but the run is degraded and claims nothing.
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert run.health.record_count == 2
+    assert "record_count=72000" in run.health.reason
+    assert "parsed 2 records" in run.health.reason
+
+
+def test_meta_without_record_count_stays_clean(tmp_path):
+    """A meta.json that carries no record_count cannot cross-check the
+    cache and must not degrade the run."""
+    source = _write_caches(tmp_path, [FLAT_ISSUE])
+    (tmp_path / "data" / "jira" / "meta.json").write_text(
+        json.dumps({"fetched_at": "2026-08-11T00:00:00Z"})
+    )
+    run = source.run("r", mode="scope_complete")
+    assert list(run.facts)
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+
+
+def test_meta_record_count_match_claims_scope(tmp_path):
+    """A matching record_count is a clean run (the fixture default)."""
+    source = _write_caches(tmp_path, [FLAT_ISSUE, API_ISSUE])
+    run = source.run("r", mode="scope_complete")
+    assert len(_nodes(list(run.facts), "jira_issue")) == 2
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
 
 
 # --- preflight --------------------------------------------------------------
