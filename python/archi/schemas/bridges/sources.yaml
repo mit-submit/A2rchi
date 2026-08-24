@@ -7,6 +7,20 @@
 # deployment as <deployment>/schemas/bridges/sources.yaml, alongside
 # archi/schemas/sources.yaml -> <deployment>/schemas/sources.yaml
 # (the catalog composer only honors narrowings under schemas/bridges/).
+id: https://archi-physics.org/okg/archi/bridges/sources
+name: archi_sources_narrowings
+title: Archi W2 — sources bridge narrowings
+description: Narrowings for the ported jira/docs source emissions.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  archi: https://archi-physics.org/okg/archi/
+
+default_range: string
+
+imports:
+  - linkml:types
+
 classes:
   EdgeNarrowings:
     description: Narrowings for the ported jira/docs source emissions.
