@@ -87,6 +87,32 @@ def test_cross_link_rules_file_and_unknown_name():
         defaults.cross_link_rules_file("no_such_rules.yaml")
 
 
+def test_global_tag_release_linker_treats_empty_rule_sources_as_absent():
+    # circleback finding: a key-presence check treated rules_files=None
+    # or [] as a caller override, silently loading the entire substrate
+    # ontology rule set under the cms linker name.
+    for kwargs in (
+        {"rules_files": None},
+        {"rules_files": []},
+        {"rules": None},
+        {"rules_dir": None},
+        {"rules": None, "rules_files": [], "rules_dir": None},
+    ):
+        linker = GlobalTagReleaseLinker(**kwargs)
+        assert [rule.id for rule in linker.rules] == [
+            "cms_global_tag_release_depends_on_cmssw_release"
+        ], kwargs
+
+
+def test_global_tag_release_linker_honors_explicit_rule_sources():
+    # A real caller-provided source still wins over the packaged default.
+    rules_dir = defaults.cross_link_rules_file("global_tag_release.yaml").parent
+    linker = GlobalTagReleaseLinker(rules_dir=str(rules_dir))
+    assert [rule.id for rule in linker.rules] == [
+        "cms_global_tag_release_depends_on_cmssw_release"
+    ]
+
+
 def test_global_tag_release_linker_wraps_packaged_rule():
     linker = GlobalTagReleaseLinker()
     assert linker.name == "cms_declarative_global_tag_release"
