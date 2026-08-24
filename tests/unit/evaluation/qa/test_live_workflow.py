@@ -726,3 +726,89 @@ class TestLiveWorkflow:
             ("live-0", "post_run"),
             ("live-1", "post_run"),
         ]
+
+
+def _paused_at_live_gate(monkeypatch, tmp_path):
+    """Drive one run to the live-mismatch gate and return its workflow and dir."""
+    dataset = tmp_path / "dataset.json"
+    run_dir = tmp_path / "run"
+    _dataset(dataset, include_static=True)
+    invoker = SequenceInvoker(
+        [
+            {"value": 7, "revision": "r1"},
+            {"value": 8, "revision": "r2"},
+            {"value": 8, "revision": "r3"},
+        ]
+    )
+    monkeypatch.setattr(
+        workflow_module.EvaluatorMCPRegistry,
+        "load",
+        classmethod(lambda cls, path=None: invoker),
+    )
+    workflow = QAWorkflow()
+    gated = workflow.composite(
+        dataset,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        run_dir,
+        pause_on_live_mismatch=True,
+    )
+    assert gated["status"] == "attention_required"
+    return workflow, run_dir
+
+
+@pytest.mark.parametrize(
+    "artifact", ["agent_config.resolved.yaml", "agent_spec.resolved.md"]
+)
+def test_continue_refuses_tampered_frozen_agent_inputs(
+    monkeypatch, tmp_path, runtimes, artifact
+):
+    """A resumed run must re-verify the agent inputs its paused run froze.
+
+    The continuation reads those two artifacts, rewrites them, and records
+    fresh digests. Without a check against the paused manifest, an edit made
+    while the run waited is re-sealed as if the run had always used it: the
+    system under test changes with no new run id and no evidence.
+    """
+    workflow, run_dir = _paused_at_live_gate(monkeypatch, tmp_path)
+    target = run_dir / artifact
+    target.write_text(
+        target.read_text(encoding="utf-8") + "\ntampered: true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as caught:
+        workflow.run(
+            run_dir,
+            tmp_path / "agent.yaml",
+            tmp_path / "agent.md",
+            overwrite=True,
+            pause_on_live_mismatch=True,
+            authorize_staged_invalid=True,
+        )
+
+    assert str(caught.value) == f"workspace artifact hash mismatch: {artifact}"
+
+
+def test_continue_accepts_frozen_agent_inputs_rewritten_byte_for_byte(
+    monkeypatch, tmp_path, runtimes
+):
+    """The resume check reads content, so an identical rewrite still runs."""
+    workflow, run_dir = _paused_at_live_gate(monkeypatch, tmp_path)
+    for artifact in ("agent_config.resolved.yaml", "agent_spec.resolved.md"):
+        path = run_dir / artifact
+        path.write_bytes(path.read_bytes())
+
+    manifest = workflow.run(
+        run_dir,
+        tmp_path / "agent.yaml",
+        tmp_path / "agent.md",
+        overwrite=True,
+        pause_on_live_mismatch=True,
+        authorize_staged_invalid=True,
+    )
+
+    assert manifest["phases"]["run"]["status"] == "completed"
+    assert [row["item_id"] for row in read_jsonl(run_dir / "answers.jsonl")] == [
+        "static"
+    ]
