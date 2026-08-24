@@ -281,11 +281,14 @@ COOKIE_ENV = "ARCHI_T_DOCS_COOKIE_FILE"
 
 
 class _FakeResponse:
-    def __init__(self, status_code=200, text="", url="", content=b""):
+    def __init__(
+        self, status_code=200, text="", url="", content=b"", headers=None
+    ):
         self.status_code = status_code
         self.text = text
         self.url = url
         self.content = content or text.encode("utf-8")
+        self.headers = headers or {}
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -529,6 +532,96 @@ def test_sso_run_honors_max_pages(monkeypatch, tmp_path):
     assert [p.attrs["url"] for p in pages] == [
         "https://docs.example.cern.ch/a/"
     ]
+
+
+def test_sso_max_pages_truncation_never_claims_scope(monkeypatch, tmp_path):
+    """Finding 5 (adversarial review): when max_pages actually truncates
+    the sitemap frontier, a clean crawl must surface the truncation and
+    never claim a complete scope — the un-crawled pages would otherwise
+    be retracted under missing_from_completed_scope."""
+    cookie_path = tmp_path / "sso.txt"
+    _write_cookie_file(cookie_path)
+    monkeypatch.setenv(COOKIE_ENV, str(cookie_path))
+    sitemap = (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        b"  <url><loc>https://docs.example.cern.ch/a/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/empty/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/b/</loc></url>\n"
+        b"</urlset>\n"
+    )
+    responses = _default_responses()
+    responses[SITEMAP_URL] = _FakeResponse(200, "", SITEMAP_URL, sitemap)
+    _fake_sessions(monkeypatch, responses)
+    run = _sso_source(max_pages=2).run("r", mode="scope_complete")
+    pages = _nodes(list(run.facts), "documentation_page")
+    # Only the truncated frontier was crawled and emitted...
+    assert {p.attrs["url"] for p in pages} == {
+        "https://docs.example.cern.ch/a/"
+    }
+    # ...and the run must not claim the scope, with truncation surfaced.
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "max_pages=2" in run.health.reason
+    assert "2/3" in run.health.reason
+    assert "no complete scope" in run.health.reason
+    # A cap that does not actually truncate changes nothing.
+    _fake_sessions(monkeypatch, responses)
+    run = _sso_source(max_pages=3).run("r", mode="scope_complete")
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+    assert "max_pages" not in run.health.reason
+
+
+def test_sso_non_html_sitemap_entries_skipped_not_ingested(
+    monkeypatch, tmp_path
+):
+    """Finding 10 (adversarial review): PDFs/binaries in the sitemap must
+    be skipped by Content-Type (counted, excluded from scope by design)
+    instead of being regex-stripped into mojibake documentation pages."""
+    cookie_path = tmp_path / "sso.txt"
+    _write_cookie_file(cookie_path)
+    monkeypatch.setenv(COOKIE_ENV, str(cookie_path))
+    sitemap = (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        b"  <url><loc>https://docs.example.cern.ch/a/</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/report.pdf</loc></url>\n"
+        b"  <url><loc>https://docs.example.cern.ch/b/</loc></url>\n"
+        b"</urlset>\n"
+    )
+    responses = _default_responses()
+    responses[SITEMAP_URL] = _FakeResponse(200, "", SITEMAP_URL, sitemap)
+    # An explicit HTML content type (with charset) still ingests.
+    responses["https://docs.example.cern.ch/a/"] = _FakeResponse(
+        200,
+        "<html><title>Page A</title><body>Alpha body</body></html>",
+        "https://docs.example.cern.ch/a/",
+        headers={"Content-Type": "text/html; charset=utf-8"},
+    )
+    responses["https://docs.example.cern.ch/report.pdf"] = _FakeResponse(
+        200,
+        "%PDF-1.4 \x93\xff binary stream",
+        "https://docs.example.cern.ch/report.pdf",
+        content=b"%PDF-1.4 binary",
+        headers={"Content-Type": "application/pdf"},
+    )
+    _fake_sessions(monkeypatch, responses)
+    run = _sso_source().run("r", mode="scope_complete")
+    pages = {
+        n.attrs["url"] for n in _nodes(list(run.facts), "documentation_page")
+    }
+    # The PDF is not a documentation page; HTML pages (with or without a
+    # Content-Type header) are.
+    assert pages == {
+        "https://docs.example.cern.ch/a/",
+        "https://docs.example.cern.ch/b/",
+    }
+    # Skipped non-HTML entries are excluded from scope by design: they
+    # are surfaced in health but do not block the scope claim.
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+    assert "skipped 1 non-HTML" in run.health.reason
 
 
 def test_sso_sitemap_login_bounce_raises(monkeypatch, tmp_path):
