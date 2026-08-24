@@ -244,6 +244,68 @@ def test_empty_cache_refuses_complete_scope(tmp_path):
     assert run.health.status == "endpoint_failed"
 
 
+def test_preflight_empty_cache_matches_run_refusal(tmp_path):
+    # Preflight must not report ok/record_count=0 for a cache that
+    # run() then refuses with endpoint_failed.
+    root = tmp_path / "data" / "hypernews"
+    root.mkdir(parents=True)
+    (root / "records.json").write_text("[]")
+    source = HyperNewsSource(base=str(tmp_path))
+    result = source.preflight()
+    assert result.status == "endpoint_failed"
+    assert result.record_count == 0
+    run = source.run("run-1", mode="scope_complete")
+    assert run.health.status == "endpoint_failed"
+    assert result.reason == run.health.reason
+
+
+def test_clean_live_crawl_claims_scope_writes_cache_and_replays(
+    tmp_path, monkeypatch
+):
+    # Happy path: a fully successful multi-forum crawl keeps its
+    # completed-scope claim, persists the cache, and a second run reads
+    # that cache and still claims scope.
+    _cookie_env(tmp_path, monkeypatch)
+    mcops_listing = (
+        '<li value="3"><a href="/HyperNews/CMS/get/mcOps/3.html">'
+        "Third thread</a></li>"
+    )
+
+    def handler(url):
+        if url.endswith("/get/comp-ops.html"):
+            return _FakeResp(LISTING)
+        if url.endswith("/get/mcOps.html"):
+            return _FakeResp(mcops_listing)
+        return _FakeResp(THREAD_PAGE)
+
+    _patch_http(monkeypatch, handler)
+    expected_ids = {"hn:comp-ops/1", "hn:comp-ops/2", "hn:mcOps/3"}
+    source = HyperNewsSource(base=str(tmp_path))
+    run = source.run("run-1", mode="scope_complete")
+    threads = [
+        f for f in run.facts
+        if isinstance(f, NodeFact) and f.subtype == "forum_thread"
+    ]
+    assert {t.node_id for t in threads} == expected_ids
+    assert all(t.attrs["body"] == "Thread body text" for t in threads)
+    assert run.completed_scope is True
+    assert run.health.status == "ok"
+    assert run.health.mode == "live"
+    assert (tmp_path / "data" / "hypernews" / "records.json").is_file()
+
+    replay = HyperNewsSource(base=str(tmp_path)).run(
+        "run-2", mode="scope_complete"
+    )
+    replay_threads = [
+        f for f in replay.facts
+        if isinstance(f, NodeFact) and f.subtype == "forum_thread"
+    ]
+    assert {t.node_id for t in replay_threads} == expected_ids
+    assert replay.completed_scope is True
+    assert replay.health.status == "ok"
+    assert replay.health.mode == "cache"
+
+
 def test_cache_skips_unparseable_items_without_scope_claim(tmp_path):
     root = tmp_path / "data" / "hypernews"
     root.mkdir(parents=True)
