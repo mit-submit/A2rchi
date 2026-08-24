@@ -10,7 +10,9 @@ coordination there too.
 
 Verification for every entry:
 `/work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/enrichment/ -q`
-(35 passed).
+(36 passed). A second independent adversarial review confirmed findings
+1-6 hold and produced the deltas recorded in "Second-review deltas"
+below.
 
 ## 1. Email redaction left local-part fragments (MAJOR)
 
@@ -45,7 +47,9 @@ Verification for every entry:
   named entities `&amp; &apos; &quot; &commat;`. References that would
   decode to `<` or `>` are left encoded, so the markup pass sees
   unchanged tag structure and the author-element regexes keep their
-  offsets/behavior.
+  offsets/behavior. Normalization iterates to a fixpoint (bounded at 3
+  passes) so double-encoded forms (`jdoe&amp;#64;cern.ch`,
+  `John&amp;nbsp;Doe`) are fully decoded too (second-review delta 1).
 - **Behavior change:** encoded occurrences of names/emails are redacted
   like their plain forms. Output text now carries decoded entities
   (`R&amp;D` → `R&D`, NBSP → space) — a visible normalization of the
@@ -84,19 +88,25 @@ Verification for every entry:
   CMSCOMPPR-1.").
 - **Fix:** greetings now require an actual greeting word
   (`hi|hello|hey|greetings|dear|ciao|salut|hiya|howdy|good morning/…`;
-  v2-compatible prefix semantics for those words, the bare `^\w+,` rule
-  is gone). Sign-offs must be the entire line: the phrase, optional
-  punctuation, and at most a short (≤4-word) trailing name introduced
-  by punctuation.
+  the bare `^\w+,` rule is gone) AND the line must be short — greeting
+  word plus at most four trailing words (second-review delta 2a, which
+  found the pure word-list rule still deleted greeting-prefixed
+  operational sentences like "Good morning update: transfers to
+  T2_US_MIT stuck"). Sign-offs must be the entire line: the phrase,
+  optional punctuation, and at most a short (≤4-word) trailing name
+  introduced by punctuation.
 - **Behavior change:** operational lines that merely start with a
-  comma'd word or a sign-off word survive; real greeting/sign-off lines
-  (including new phrases: `thanks in advance`, `take care`, `hth`, …)
-  are still stripped. Lines like a bare salutation name ("John,") are
-  no longer caught by the greeting filter — names are the
-  known_names/NER layer's job. Callers passing custom
-  `greeting_patterns`/`signoff_patterns` are unaffected.
+  comma'd word, a greeting word, or a sign-off word survive; real
+  greeting/sign-off lines (including new phrases: `thanks in advance`,
+  `take care`, `hth`, …) are still stripped. Greeting deletion is now
+  stricter than v2 even for the original greeting words: a long
+  greeting-prefixed sentence survives where v2 deleted it. Lines like a
+  bare salutation name ("John,") are no longer caught by the greeting
+  filter — names are the known_names/NER layer's job. Callers passing
+  custom `greeting_patterns`/`signoff_patterns` are unaffected.
 - **Tests:**
-  `test_anonymizer.py::test_operational_lines_survive_greeting_signoff_filters`
+  `test_anonymizer.py::test_operational_lines_survive_greeting_signoff_filters`,
+  `test_anonymizer.py::test_greeting_prefixed_operational_lines_survive`,
   and `test_anonymizer.py::test_real_greetings_and_signoffs_still_stripped`
 - **shared_with_canonical:** yes — both default pattern sets came from
   the v2 base-config template; v2 deployments destroy the same
@@ -169,6 +179,33 @@ Verification for every entry:
   catalog change, coordinated with its consumers.
 - **shared_with_canonical:** yes — the pattern is the canonical
   okg-deployments catalog entry; the fix belongs upstream.
+
+## Second-review deltas
+
+An independent adversarial review of the fixes above confirmed they
+hold (the leak tests fail on pre-fix code) and raised three deltas:
+
+1. **FIXED — double-encoded PII survived one normalization pass**
+   (MINOR): `jdoe&amp;#64;cern.ch` peeled to `jdoe&#64;cern.ch` and
+   leaked; likewise `John&amp;nbsp;Doe`. `_normalize_encodings` now
+   iterates to a fixpoint, bounded at 3 passes (folded into entry 2
+   above). Tests: double-encoded cases in
+   `test_anonymizer.py::test_encoded_and_nbsp_variants_redacted`.
+2. **FIXED — greeting word-list deleted content-bearing lines**
+   (MINOR): "Good morning update: transfers to T2_US_MIT stuck" was
+   deleted whole. The greeting rule now only deletes short greeting
+   lines — greeting word + at most four trailing words (folded into
+   entry 4 above). Test:
+   `test_anonymizer.py::test_greeting_prefixed_operational_lines_survive`.
+3. **ACCEPTED privacy-over-recall tradeoffs (no behavior change):**
+   - "Thanks, fixed." is deleted by the sign-off rule's ≤4-word tail:
+     without NER the tail cannot be reliably told apart from a trailing
+     name ("Thanks, Fabio."), so the deterministic filter keeps erring
+     toward redaction.
+   - mailto anchors are removed whole even when the anchor text is
+     non-PII ("cms-comp-ops list archive"): the anchor text of a mailto
+     link may itself be a person's name, and without NER there is no
+     reliable way to distinguish, so the whole element goes.
 
 ## Residual (out of the reviewed findings' scope)
 
