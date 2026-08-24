@@ -5,7 +5,9 @@ list of plain record mappings, or a raw MONIT ``_msearch`` response
 (``{"responses": [...]}``). Live paths run against a monkeypatched
 ``requests.post``.
 """
+import copy
 import json
+import time
 
 import pytest
 
@@ -611,3 +613,277 @@ def test_rucio_dataset_list_cache_records(tmp_path, monkeypatch):
 def test_required_kwonly_and_no_positional_params():
     with pytest.raises(TypeError):
         MONITSAMSource("positional")  # keyword-only constructor
+
+
+# --- adversarial-review regressions (pact/changes/circleback-fixes) ----------
+
+def test_sam_live_timed_out_response_degrades_scope(tmp_path, monkeypatch):
+    """Finding 2: an HTTP-200 response with timed_out=true must emit its
+    data but report endpoint_failed and never claim a completed scope."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    partial = copy.deepcopy(SITEMON_RESPONSE)
+    partial["responses"][0]["timed_out"] = True
+    _fake_post(monkeypatch, lambda *a: partial)
+    run = _sam_source(tmp_path).run("r", mode="scope_complete")
+    facts = list(run.facts)
+    assert len(_nodes(facts, "monitoring_snapshot")) == 2  # data emitted
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "timed_out" in run.health.reason
+
+
+def test_condor_live_shard_failures_degrade_scope(tmp_path, monkeypatch):
+    """Finding 2: _shards.failed > 0 means an unknown slice of the window
+    is missing; the run must not claim a completed scope."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    partial = copy.deepcopy(CONDOR_RESPONSE)
+    partial["responses"][0]["_shards"] = {
+        "total": 40, "successful": 12, "skipped": 0, "failed": 28,
+    }
+    _fake_post(monkeypatch, lambda *a: partial)
+    source = MONITCondorSource(
+        records_path="data/monit-condor/records.json",
+        token_env=TOKEN_ENV,
+        base=str(tmp_path),
+    )
+    run = source.run("r", mode="reconcile")
+    facts = list(run.facts)
+    assert len(_nodes(facts, "monitoring_snapshot")) == 1  # data emitted
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "shards failed 28/40" in run.health.reason
+
+
+def test_transfer_live_terms_truncation_degrades_scope(tmp_path, monkeypatch):
+    """Finding 3: sum_other_doc_count > 0 on a bucket-limited terms agg
+    means sites were silently dropped; never claim the scope."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    partial = copy.deepcopy(TRANSFER_RESPONSE)
+    partial["responses"][0]["aggregations"]["by_src_rse"][
+        "sum_other_doc_count"
+    ] = 123456
+    _fake_post(monkeypatch, lambda *a: partial)
+    source = MONITRucioTransferSource(
+        records_path="data/monit-rucio-transfer/records.json",
+        token_env=TOKEN_ENV,
+        base=str(tmp_path),
+    )
+    run = source.run("r", mode="scope_complete")
+    facts = list(run.facts)
+    assert _nodes(facts, "transfer_job")  # data still emitted
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "by_src_rse" in run.health.reason
+    assert "sum_other_doc_count=123456" in run.health.reason
+
+
+def test_nested_terms_truncation_is_detected(tmp_path, monkeypatch):
+    """Finding 3: truncation markers on nested (per-bucket) aggregations
+    are found by the recursive walk, not just top-level aggs."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    partial = copy.deepcopy(SITEMON_RESPONSE)
+    groups = partial["responses"][0]["aggregations"]["groups"]
+    groups["buckets"][0]["status_breakdown"][
+        "doc_count_error_upper_bound"
+    ] = 7
+    _fake_post(monkeypatch, lambda *a: partial)
+    run = _sam_source(tmp_path).run("r", mode="scope_complete")
+    list(run.facts)
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "groups.status_breakdown" in run.health.reason
+
+
+def test_cached_raw_response_with_partial_markers_degrades_scope(
+    tmp_path, monkeypatch
+):
+    """Finding 2 (cache variant): a records cache holding a raw _msearch
+    response that was itself partial must not claim a completed scope."""
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    partial = copy.deepcopy(SITEMON_RESPONSE)
+    partial["responses"][0]["timed_out"] = True
+    _write(tmp_path, "data/monit-sam/records.json", partial)
+    run = _sam_source(tmp_path).run("r", mode="scope_complete")
+    facts = list(run.facts)
+    assert len(_nodes(facts, "monitoring_snapshot")) == 2
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+
+
+def test_sam_live_zero_buckets_never_claims_empty_scope(
+    tmp_path, monkeypatch
+):
+    """Finding 4: with ignore_unavailable wildcard queries a zero-bucket
+    result is indistinguishable from a renamed index or stalled
+    pipeline; claiming a complete empty scope would retract everything."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    _fake_post(monkeypatch, lambda *a: {"responses": [{
+        "timed_out": False,
+        "_shards": {"total": 40, "successful": 40, "failed": 0},
+        "aggregations": {"groups": {"buckets": []}},
+    }]})
+    run = _sam_source(tmp_path).run("r", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "skipped_optional"
+    assert "no complete scope" in run.health.reason
+
+
+def test_sam_empty_cache_never_claims_scope(tmp_path, monkeypatch):
+    """Finding 4 (cache variant): an empty records cache also never
+    claims a complete empty scope."""
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    _write(tmp_path, "data/monit-sam/records.json", [])
+    run = _sam_source(tmp_path).run("r", mode="scope_complete")
+    assert run.completed_scope is False
+    assert run.health.status == "skipped_optional"
+
+
+def test_rucio_dataset_live_zero_buckets_never_claims_empty_scope(
+    tmp_path, monkeypatch
+):
+    """Finding 4 (streaming path): a zero-bucket first page must return a
+    skipped_optional run with completed_scope=False, not a completed
+    empty stream."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    empty = {"responses": [{"aggregations": {"datasets": {"buckets": []}}}]}
+    calls = _fake_post(monkeypatch, lambda *a: empty)
+    run = _dataset_source(tmp_path).run("r", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "skipped_optional"
+    assert "no complete scope" in run.health.reason
+    assert len(calls) == 1
+
+
+def test_rucio_dataset_live_partial_first_page_fails_run(
+    tmp_path, monkeypatch
+):
+    """Finding 2 (streaming path): a degraded first page fails the run
+    before any facts or scope claims are produced, and the partial page
+    is never cached for later replay."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    partial = copy.deepcopy(DATASET_RESPONSE)
+    partial["responses"][0]["timed_out"] = True
+    _fake_post(monkeypatch, lambda *a: partial)
+    run = _dataset_source(tmp_path).run("r", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+    assert "partial MONIT OpenSearch response" in run.health.reason
+    pages_dir = tmp_path / "data" / "monit-rucio-datasets" / "pages"
+    assert not pages_dir.exists() or not list(pages_dir.rglob("*.json"))
+
+
+def test_rucio_dataset_live_partial_later_page_raises_midstream(
+    tmp_path, monkeypatch
+):
+    """Finding 2 (streaming path): a degraded later page raises so the
+    runner fails the run instead of committing a partial scope."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    page1 = {"responses": [{"aggregations": {"datasets": {
+        "buckets": [DATASET_BUCKET],
+        "after_key": {"dataset": "/Prim/Era-v1/RECO"},
+    }}}]}
+    page2 = {"responses": [{
+        "timed_out": True,
+        "aggregations": {"datasets": {"buckets": []}},
+    }]}
+
+    def _respond(url, headers, data):
+        query = json.loads(data.split("\n")[1])
+        composite = query["aggs"]["datasets"]["composite"]
+        return page2 if "after" in composite else page1
+
+    _fake_post(monkeypatch, _respond)
+    run = _dataset_source(tmp_path).run("r", mode="scope_complete")
+    with pytest.raises(RuntimeError, match="partial MONIT OpenSearch"):
+        list(run.facts)
+
+
+def test_rucio_dataset_page_cache_is_day_scoped(tmp_path, monkeypatch):
+    """Finding 1 (BLOCKER): after one live run, a later day's run must
+    re-query MONIT instead of replaying the previous day's cached pages
+    (which would emit day-1's datasets stamped with day-2's date under a
+    completed-scope claim)."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    state = {"dataset": "/Day1/Era-v1/RECO"}
+
+    def _respond(url, headers, data):
+        return {"responses": [{"aggregations": {"datasets": {"buckets": [{
+            "key": {"dataset": state["dataset"]},
+            "replicas": {"buckets": [{"key": "T2_CH_CERN"}]},
+            "sample": {"hits": {"hits": []}},
+        }]}}}]}
+
+    calls = _fake_post(monkeypatch, _respond)
+    # Freeze day 1 at the real current UTC date so the entries written
+    # by the run (cached_at = real now) belong to "day 1".
+    from datetime import datetime, timedelta, timezone
+
+    day1 = datetime.now(timezone.utc)
+    day2 = day1 + timedelta(days=1)
+    monkeypatch.setattr(
+        monit_mod, "_today", lambda: day1.strftime("%Y-%m-%d")
+    )
+    run1 = _dataset_source(tmp_path).run("d1", mode="scope_complete")
+    names1 = {n.attrs["name"] for n in _nodes(list(run1.facts), "dataset")}
+    assert names1 == {"/Day1/Era-v1/RECO"}
+    assert len(calls) == 1
+
+    # Same day, same query: the cache legitimately replays (crash/resume).
+    rerun = _dataset_source(tmp_path).run("d1b", mode="scope_complete")
+    assert {
+        n.attrs["name"] for n in _nodes(list(rerun.facts), "dataset")
+    } == names1
+    assert len(calls) == 1  # no new HTTP
+
+    # Next day the upstream changed completely: the run must NOT replay
+    # day-1's pages and must emit day-2's datasets.
+    state["dataset"] = "/Day2/Era-v1/RECO"
+    monkeypatch.setattr(
+        monit_mod, "_today", lambda: day2.strftime("%Y-%m-%d")
+    )
+    run2 = _dataset_source(tmp_path).run("d2", mode="scope_complete")
+    names2 = {n.attrs["name"] for n in _nodes(list(run2.facts), "dataset")}
+    assert names2 == {"/Day2/Era-v1/RECO"}
+    assert len(calls) == 2  # fresh HTTP on the new day
+    assert run2.completed_scope is True
+
+
+def test_rucio_dataset_page_cache_honors_ttl(tmp_path, monkeypatch):
+    """Finding 1: even a same-day cache entry only satisfies a run while
+    it is younger than page_cache_ttl_hours."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    calls = _fake_post(monkeypatch, lambda *a: DATASET_RESPONSE)
+    list(_dataset_source(tmp_path).run("r1", mode="scope_complete").facts)
+    assert len(calls) == 1
+    # Same day, default TTL: replayed.
+    list(_dataset_source(tmp_path).run("r2", mode="scope_complete").facts)
+    assert len(calls) == 1
+    # TTL exceeded: the same-day entry no longer satisfies the run.
+    time.sleep(0.01)
+    strict = _dataset_source(tmp_path, page_cache_ttl_hours=0.0)
+    list(strict.run("r3", mode="scope_complete").facts)
+    assert len(calls) == 2
+
+
+def test_rucio_dataset_page_cache_entry_without_cached_at_is_stale(
+    tmp_path, monkeypatch
+):
+    """Finding 1: an entry of unknown age (no/corrupt cached_at, e.g. a
+    legacy cache) can never satisfy a run."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    calls = _fake_post(monkeypatch, lambda *a: DATASET_RESPONSE)
+    list(_dataset_source(tmp_path).run("r1", mode="scope_complete").facts)
+    assert len(calls) == 1
+    pages = sorted(
+        (tmp_path / "data" / "monit-rucio-datasets" / "pages").rglob("*.json")
+    )
+    assert pages
+    for page in pages:
+        entry = json.loads(page.read_text())
+        entry.pop("cached_at", None)
+        page.write_text(json.dumps(entry))
+    list(_dataset_source(tmp_path).run("r2", mode="scope_complete").facts)
+    assert len(calls) == 2
