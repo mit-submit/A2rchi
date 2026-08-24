@@ -383,3 +383,123 @@ evidence:
     25 tests; defaults ship in wheel
   data:
     attached_at: '2026-08-21T15:31:53.454661+00:00'
+- id: ev.executed-test.acc-w2-packaging.20260824T214155736759Z
+  kind: executed_test
+  status: pass
+  refs:
+  - acc.w2.packaging
+  artifact: python/tests/test_packaging.py
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_packaging.py
+    -q
+  summary: '7 passed (2026-08-24 re-run on archi_v3): wheel builds from python/, v3
+    never imports the v2 tree, schema data ships in the wheel, no operator paths,
+    and the v2 build files are gone per the W10 teardown.'
+  data:
+    attached_at: '2026-08-24T21:41:55.736787+00:00'
+- id: ev.executed-test.acc-w2-auth.20260824T214157398786Z
+  kind: executed_test
+  status: pass
+  refs:
+  - acc.w2.auth
+  artifact: python/tests/auth
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/auth -q
+  summary: '46 passed (2026-08-24 re-run): archi.auth preflight/cache/cookies, including
+    the lint assertion that no hardcoded operator paths or credential literals exist
+    in python/archi.'
+  data:
+    attached_at: '2026-08-24T21:41:57.398833+00:00'
+- id: ev.executed-test.acc-w2-sources.20260824T214158765991Z
+  kind: executed_test
+  status: pass
+  refs:
+  - acc.w2.sources
+  artifact: python/tests/sources
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/sources
+    -q
+  summary: '202 passed (2026-08-24 re-run): per-connector fixture-driven unit tests
+    for all 12 families offline, including the circle-back scope-claim regressions.'
+  data:
+    attached_at: '2026-08-24T21:41:58.766018+00:00'
+- id: ev.executed-test.acc-w2-enrichment.20260824T214200011306Z
+  kind: executed_test
+  status: pass
+  refs:
+  - acc.w2.enrichment
+  artifact: python/tests/enrichment
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/enrichment
+    -q
+  summary: '36 passed (2026-08-24 re-run): enrichers plus packaged defaults loaded
+    from the installed wheel and shape-validated, including the anonymizer leak corpus.'
+  data:
+    attached_at: '2026-08-24T21:42:00.011344+00:00'
+- id: ev.executed-test.acc-w2-compops.20260824T214201208887Z
+  kind: executed_test
+  status: pass
+  refs:
+  - acc.w2.compops
+  artifact: python/tests/test_compops_lint_recheck.py
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_compops_lint_recheck.py
+    -q
+  summary: '1 passed (2026-08-24 re-run): comp-ops lint re-check against the recorded
+    pre-W2 baseline, zero regressions.'
+  data:
+    attached_at: '2026-08-24T21:42:01.208914+00:00'
+- id: ev.executed-test.req-w2-packaging.20260824T214442853986Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.w2.packaging
+  artifact: python/tests/test_packaging.py
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_packaging.py
+    -q
+  summary: '7 passed, re-run 2026-08-24 AFTER the circle-back fixes (PR #617) changed
+    python/archi; supersedes the 2026-08-11 evidence the scope-drift guard revoked.'
+  data:
+    attached_at: '2026-08-24T21:44:42.854023+00:00'
+- id: ev.executed-test.req-w2-auth.20260824T214444343077Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.w2.auth
+  artifact: python/tests/auth
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/auth -q
+  summary: '46 passed, re-run 2026-08-24 after PR #617; supersedes the revoked 2026-08-12
+    entries.'
+  data:
+    attached_at: '2026-08-24T21:44:44.343107+00:00'
+- id: ev.executed-test.req-w2-sources.20260824T214446194882Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.w2.sources
+  artifact: python/tests/sources
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/sources
+    -q
+  summary: '202 passed, re-run 2026-08-24 after PR #617 (includes the new scope-claim
+    regressions); supersedes the revoked 2026-08-12 evidence.'
+  data:
+    attached_at: '2026-08-24T21:44:46.194911+00:00'
+- id: ev.executed-test.req-w2-enrichment.20260824T214448103511Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.w2.enrichment
+  artifact: python/tests/enrichment
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/enrichment
+    -q
+  summary: '36 passed, re-run 2026-08-24 after PR #617 (includes the anonymizer leak
+    corpus); supersedes the revoked 2026-08-21 entry.'
+  data:
+    attached_at: '2026-08-24T21:44:48.103541+00:00'
+- id: ev.executed-test.req-w2-compops-unbroken.20260824T214450106945Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.w2.compops-unbroken
+  artifact: python/tests/test_compops_lint_recheck.py
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_compops_lint_recheck.py
+    -q
+  summary: '1 passed, re-run 2026-08-24 after PR #617: comp-ops lint re-check vs the
+    recorded baseline, zero regressions; supersedes the revoked 2026-08-21 graph report.'
+  data:
+    attached_at: '2026-08-24T21:44:50.106978+00:00'
