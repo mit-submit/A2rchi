@@ -75,4 +75,25 @@ test_plan:
   - pytest
 formal: []
 waivers: []
-evidence: []
+evidence:
+- id: ev.executed-test.req-circleback-fixes.20260824T141031575824Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.circleback-fixes
+  artifact: python/tests
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests -q
+  summary: Full suite 320 passed (254 baseline + 66 new regression tests across catalogs/live/enrichment/hygiene
+    waves); junit report ingested.
+  data:
+    attached_at: '2026-08-24T14:10:31.575851+00:00'
+- id: ev.executed-test.acc-circleback-fixes.20260824T141033150775Z
+  kind: executed_test
+  status: pass
+  refs:
+  - acc.circleback-fixes
+  artifact: python/tests
+  summary: 'Acceptance: suite green incl. leak-corpus, scope-claim, and tools-error
+    regression tests; notes files present for catalogs/live/enrichment/hygiene.'
+  data:
+    attached_at: '2026-08-24T14:10:33.150802+00:00'
