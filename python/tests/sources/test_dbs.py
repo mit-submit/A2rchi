@@ -66,3 +66,25 @@ def test_preflight_optional_cache(tmp_path):
     assert missing.preflight().required is False
     empty = _source(tmp_path, [])
     assert empty.preflight().status == "skipped_optional"
+
+
+# --- circleback-fixes regressions ---
+
+
+def test_skipped_cache_items_never_claim_scope(tmp_path):
+    source = _source(tmp_path, RECORDS + ["junk", {"data_tier_name": "RAW"}])
+    run = source.run("run-1", mode="scope_complete")
+    nodes = {f.node_id for f in run.facts if isinstance(f, NodeFact)}
+    # survivors still emitted, but drift forfeits the scope claim
+    assert "dataset:/TTto2L2Nu/Run3Summer23-v1/AODSIM" in nodes
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 2" in run.health.reason
+
+
+def test_all_items_unparseable_is_endpoint_failed(tmp_path):
+    source = _source(tmp_path, ["junk", 42])
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"

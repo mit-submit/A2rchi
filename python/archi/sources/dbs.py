@@ -140,7 +140,7 @@ class DBSDatasetSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        records, skipped = self._records_with_skips()
         revision = {
             "run_id": run_id,
             "content_hash": content_hash(self.cache_paths, base=self.base),
@@ -154,30 +154,39 @@ class DBSDatasetSource:
 
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and not skipped
+            ),
             run_mode=mode,
             health=cache_source_health(
                 description="DBS dataset",
                 cache_paths=self.cache_paths,
                 record_count=len(records),
+                skipped_count=skipped,
                 base=self.base,
             ),
         )
 
     def _records(self) -> list[DBSDatasetRecord]:
+        return self._records_with_skips()[0]
+
+    def _records_with_skips(self) -> tuple[list[DBSDatasetRecord], int]:
         payload = load_json(self.records_path, base=self.base)
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a JSON list of datasets"
             )
         records: list[DBSDatasetRecord] = []
+        skipped = 0
         for item in payload:
             if not isinstance(item, dict):
+                skipped += 1
                 continue
             dataset_name = str(
                 item.get("dataset_name") or item.get("dataset") or ""
             ).strip()
             if not dataset_name:
+                skipped += 1
                 continue
             records.append(DBSDatasetRecord(
                 dataset_name=dataset_name,
@@ -217,7 +226,7 @@ class DBSDatasetSource:
                     item.get("total_events") or item.get("nevents") or 0
                 ),
             ))
-        return records
+        return records, skipped
 
 
 def _node_fact(
