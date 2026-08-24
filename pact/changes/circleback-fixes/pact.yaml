@@ -97,3 +97,16 @@ evidence:
     regression tests; notes files present for catalogs/live/enrichment/hygiene.'
   data:
     attached_at: '2026-08-24T14:10:33.150802+00:00'
+- id: ev.executed-test.req-circleback-fixes.20260824T143454559459Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.circleback-fixes
+  artifact: python/tests
+  command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests -q
+  summary: 'Final suite after adversarial-review deltas: 326 passed (72 new regression
+    tests over the 254 baseline). Independent adversarial diff review: branch holds;
+    its one major escape (cmssw map-path zero-parse) and all prescriptions fixed or
+    documented.'
+  data:
+    attached_at: '2026-08-24T14:34:54.559492+00:00'
