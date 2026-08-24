@@ -1,6 +1,8 @@
 """req.w2.sources-catalogs — CRICSource / CRICCoreSource emission, offline."""
 import json
 
+import pytest
+
 from okg.substrate.library.sources.base import EdgeFact, NodeFact
 
 from archi.sources.cric import CRICCoreSource, CRICSource
@@ -108,6 +110,21 @@ def test_cric_preflight_missing_cache(tmp_path):
     result = source.preflight()
     assert result.status == "cache_missing"
     assert result.required is True
+
+
+def test_drifted_responsibilities_payload_fails_loud(tmp_path):
+    # circleback-fixes regression: an error-shaped/drifted payload used
+    # to be read as "no responsibilities" under ok/completed_scope,
+    # retracting every operator record.
+    source = _write_cric(tmp_path)
+    (tmp_path / "data" / "cric" / "responsibilities.json").write_text(
+        json.dumps({"error": "auth required"})
+    )
+    with pytest.raises(ValueError, match="responsibilit"):
+        source.run("run-1", mode="scope_complete")
+    result = source.preflight()
+    assert result.status == "endpoint_failed"
+    assert "result" in result.reason
 
 
 CORE_SERVICES = {

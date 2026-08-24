@@ -74,6 +74,7 @@ from archi.auth.cache import (
     load_json,
     resolve_repo_path,
 )
+from archi.sources._cache_report import skipped_items_status
 
 _GROUP_RE = re.compile(r"Cert_((?:Collisions|Cosmics|Commissioning)\d+)")
 _CERT_TYPE_MAP = {
@@ -150,7 +151,7 @@ class DQMSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        records, skipped = self._records_with_skips()
         revision = {
             "run_id": run_id,
             "content_hash": content_hash(self.cache_paths, base=self.base),
@@ -160,31 +161,45 @@ class DQMSource:
         def _facts() -> Iterator[Any]:
             yield from _facts_for_records(records, revision)
 
+        status, reason = skipped_items_status(
+            status="ok",
+            reason="local DQM certification cache used",
+            record_count=len(records),
+            skipped_count=skipped,
+        )
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and not skipped
+            ),
             run_mode=mode,
             health=SourceHealth(
-                status="ok",
+                status=status,
                 mode="cache",
                 record_count=len(records),
                 content_hash=revision["content_hash"],
-                reason="local DQM certification cache used",
+                reason=reason,
             ),
         )
 
     def _records(self) -> list[DQMRecord]:
+        return self._records_with_skips()[0]
+
+    def _records_with_skips(self) -> tuple[list[DQMRecord], int]:
         payload = load_json(self.records_path, base=self.base)
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a JSON list of DQM records"
             )
         records: list[DQMRecord] = []
+        skipped = 0
         for item in payload:
             if not isinstance(item, dict):
+                skipped += 1
                 continue
             cert_name = str(item.get("cert_name") or "").strip()
             if not cert_name:
+                skipped += 1
                 continue
             run_range = item.get("run_range")
             parsed_range = None
@@ -199,7 +214,7 @@ class DQMSource:
                     str(v) for v in item.get("datasets") or () if v
                 ),
             ))
-        return records
+        return records, skipped
 
 
 def _checked_at() -> str:

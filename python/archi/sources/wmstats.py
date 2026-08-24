@@ -146,7 +146,7 @@ class WMStatsWorkflowSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        records, skipped = self._records_with_skips()
         revision = {
             "run_id": run_id,
             "content_hash": content_hash(self.cache_paths, base=self.base),
@@ -158,25 +158,33 @@ class WMStatsWorkflowSource:
 
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and not skipped
+            ),
             run_mode=mode,
             health=cache_source_health(
                 description="WMStats workflow",
                 cache_paths=self.cache_paths,
                 record_count=len(records),
+                skipped_count=skipped,
                 base=self.base,
             ),
         )
 
     def _records(self) -> list[WorkflowRecord]:
+        return self._records_with_skips()[0]
+
+    def _records_with_skips(self) -> tuple[list[WorkflowRecord], int]:
         payload = load_json(self.records_path, base=self.base)
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a JSON list of workflows"
             )
         records: list[WorkflowRecord] = []
+        skipped = 0
         for item in payload:
             if not isinstance(item, dict):
+                skipped += 1
                 continue
             name = str(
                 item.get("workflow_name")
@@ -185,6 +193,7 @@ class WMStatsWorkflowSource:
                 or ""
             ).strip()
             if not name:
+                skipped += 1
                 continue
             output = (
                 item.get("output_datasets")
@@ -230,7 +239,7 @@ class WMStatsWorkflowSource:
                 ),
                 updated_at=str(item.get("updated_at") or ""),
             ))
-        return records
+        return records, skipped
 
 
 def _facts_for_records(

@@ -85,3 +85,48 @@ def test_preflight_reports_missing_records_cache(tmp_path):
     result = source.preflight()
     assert result.status == "cache_missing"
     assert result.required is True
+
+
+# --- circleback-fixes regressions ---
+
+
+def test_skipped_cache_items_never_claim_scope(tmp_path):
+    source = _source(tmp_path)
+    (tmp_path / "data" / "gocdb-downtimes" / "records.json").write_text(
+        json.dumps(RECORDS + ["junk", {"downtime_id": 0}])
+    )
+    run = source.run("run-1", mode="scope_complete")
+    nodes = {f.node_id for f in run.facts if isinstance(f, NodeFact)}
+    assert "downtime:101" in nodes  # survivors still emitted
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 2" in run.health.reason
+
+
+def test_all_items_unparseable_is_endpoint_failed(tmp_path):
+    source = _source(tmp_path)
+    (tmp_path / "data" / "gocdb-downtimes" / "records.json").write_text(
+        json.dumps(["junk", {"downtime_id": "not-a-number"}])
+    )
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+
+
+def test_scheme_prefixed_endpoint_maps_hostname_to_service(tmp_path):
+    # circleback-fixes regression: "https://h:8443/p".split("/", 1)[0]
+    # yielded "https:", silently breaking hostname -> service matching.
+    source = _source(tmp_path)
+    (tmp_path / "data" / "cric-core" / "services.json").write_text(
+        json.dumps(
+            {"reqmgr2": {"endpoint": "https://cmsweb.cern.ch:8443/reqmgr2"}}
+        )
+    )
+    facts = list(source.run("run-1", mode="scope_complete").facts)
+    edges = {
+        (e.src, e.edge_type, e.dst)
+        for e in facts
+        if isinstance(e, EdgeFact)
+    }
+    assert ("downtime:101", "affects", "svc:reqmgr2") in edges

@@ -64,6 +64,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterator
+from urllib.parse import urlparse
 
 from okg.substrate.library.sources.base import (
     EdgeFact,
@@ -79,6 +80,7 @@ from archi.auth.cache import (
     load_json,
     resolve_repo_path,
 )
+from archi.sources._cache_report import skipped_items_status
 
 
 @dataclass(frozen=True)
@@ -159,7 +161,7 @@ class GoCDBDowntimeSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        records, skipped = self._records_with_skips()
         known_sites = _known_sites(self.sites_path, base=self.base)
         service_lookup = _service_lookup(self.services_path, base=self.base)
         revision = {
@@ -178,31 +180,49 @@ class GoCDBDowntimeSource:
                     service_lookup=service_lookup,
                 )
 
+        status, reason = skipped_items_status(
+            status="ok",
+            reason="local GOCDB downtime cache used",
+            record_count=len(records),
+            skipped_count=skipped,
+        )
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and not skipped
+            ),
             run_mode=mode,
             health=SourceHealth(
-                status="ok",
+                status=status,
                 mode="cache",
                 record_count=len(records),
                 content_hash=revision["content_hash"],
-                reason="local GOCDB downtime cache used",
+                reason=reason,
             ),
         )
 
     def _records(self) -> list[DowntimeRecord]:
+        return self._records_with_skips()[0]
+
+    def _records_with_skips(self) -> tuple[list[DowntimeRecord], int]:
         payload = load_json(self.records_path, base=self.base)
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a JSON list of downtimes"
             )
         grouped: dict[int, dict[str, Any]] = {}
+        skipped = 0
         for item in payload:
             if not isinstance(item, dict):
+                skipped += 1
                 continue
-            downtime_id = int(item.get("downtime_id") or 0)
+            try:
+                downtime_id = int(item.get("downtime_id") or 0)
+            except (TypeError, ValueError):
+                skipped += 1
+                continue
             if downtime_id <= 0:
+                skipped += 1
                 continue
             entry = grouped.setdefault(downtime_id, {
                 "downtime_id": downtime_id,
@@ -236,7 +256,7 @@ class GoCDBDowntimeSource:
                 affected_hostnames=tuple(sorted(entry["hostnames"])),
             )
             for entry in grouped.values()
-        ]
+        ], skipped
 
 
 def _checked_at() -> str:
@@ -261,13 +281,26 @@ def _service_lookup(path: str, *, base: str | None = None) -> dict[str, str]:
         node_id = f"svc:{service_name}"
         endpoint = str(service.get("endpoint") or "")
         if endpoint:
-            host = endpoint.split("/", 1)[0].split(":", 1)[0]
+            host = _endpoint_host(endpoint)
             if host:
                 lookup.setdefault(host, node_id)
         name_host = str(service_name).rsplit("-", 1)[-1]
         if "." in name_host:
             lookup.setdefault(name_host, node_id)
     return lookup
+
+
+def _endpoint_host(endpoint: str) -> str:
+    """Hostname of a service endpoint, scheme-prefixed or bare.
+
+    The naive ``split("/", 1)[0]`` parse turned
+    ``https://host.cern.ch:8443/path`` into ``https:``, silently
+    breaking hostname -> service ``affects`` matching; use
+    :func:`urllib.parse.urlparse` when a scheme is present.
+    """
+    if "://" in endpoint:
+        return urlparse(endpoint).hostname or ""
+    return endpoint.split("/", 1)[0].split(":", 1)[0]
 
 
 def _downtime_node(

@@ -16,10 +16,10 @@ RECORDS = [
 ]
 
 
-def _source(tmp_path):
+def _source(tmp_path, records=RECORDS):
     root = tmp_path / "data" / "dqm"
     root.mkdir(parents=True)
-    (root / "records.json").write_text(json.dumps(RECORDS))
+    (root / "records.json").write_text(json.dumps(records))
     return DQMSource(base=str(tmp_path))
 
 
@@ -65,3 +65,25 @@ def test_preflight_ok_with_hash(tmp_path):
     assert result.status == "ok"
     assert result.record_count == 1
     assert result.content_hash
+
+
+# --- circleback-fixes regressions ---
+
+
+def test_skipped_cache_items_never_claim_scope(tmp_path):
+    source = _source(tmp_path, RECORDS + ["junk", {"filename": "no cert"}])
+    run = source.run("run-1", mode="scope_complete")
+    nodes = {f.node_id for f in run.facts if isinstance(f, NodeFact)}
+    cert_id = "data_certification:Cert_Collisions2024_378981_385194_Golden"
+    assert cert_id in nodes  # survivors still emitted
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 2" in run.health.reason
+
+
+def test_all_items_unparseable_is_endpoint_failed(tmp_path):
+    source = _source(tmp_path, ["junk"])
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"

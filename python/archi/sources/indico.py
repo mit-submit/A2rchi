@@ -91,6 +91,7 @@ from archi.auth.cache import (
     load_json,
     resolve_repo_path,
 )
+from archi.sources._cache_report import skipped_items_status
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -191,7 +192,7 @@ class IndicoSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        records, skipped = self._records_with_skips()
         revision = {
             "run_id": run_id,
             "content_hash": content_hash(self.cache_paths, base=self.base),
@@ -205,20 +206,31 @@ class IndicoSource:
                     record, revision, self.chunker_name
                 )
 
+        status, reason = skipped_items_status(
+            status="ok",
+            reason="local Indico cache used",
+            record_count=len(records),
+            skipped_count=skipped,
+        )
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and not skipped
+            ),
             run_mode=mode,
             health=SourceHealth(
-                status="ok",
+                status=status,
                 mode="cache",
                 record_count=len(records),
                 content_hash=revision["content_hash"],
-                reason="local Indico cache used",
+                reason=reason,
             ),
         )
 
     def _records(self) -> list[IndicoEventRecord]:
+        return self._records_with_skips()[0]
+
+    def _records_with_skips(self) -> tuple[list[IndicoEventRecord], int]:
         payload = load_json(self.records_path, base=self.base)
         if not isinstance(payload, list):
             raise ValueError(
@@ -226,15 +238,22 @@ class IndicoSource:
             )
         records: list[IndicoEventRecord] = []
         seen_event_ids: set[str] = set()
+        skipped = 0
         for item in payload:
             if not isinstance(item, dict):
+                skipped += 1
                 continue
             event_id = str(item.get("id") or item.get("event_id") or "")
-            if not event_id or event_id in seen_event_ids:
+            if not event_id:
+                skipped += 1
+                continue
+            # Duplicate event ids are a deliberate dedup (the record is
+            # still represented by its first occurrence), not drift.
+            if event_id in seen_event_ids:
                 continue
             seen_event_ids.add(event_id)
             records.append(_parse_event(event_id, item, self.base_url))
-        return records
+        return records, skipped
 
 
 def _checked_at() -> str:
@@ -414,7 +433,14 @@ def _pdf_document_facts(
         )
         for chunk_index, offset, chunk_text in _chunks(pdf.text):
             chunk_hash = _sha256(chunk_text)
-            chunk_id = f"chunk:{chunk_hash[:16]}"
+            # Salt the chunk id with the parent doc id + index (the
+            # hypernews pattern): a bare content hash collides identical
+            # boilerplate from different events onto one node with
+            # contradictory parents.
+            chunk_id = (
+                "chunk:"
+                f"{_sha256(f'{doc_id}\\0{chunk_index}\\0{chunk_text}')[:16]}"
+            )
             chunk_record_id = {
                 **source_record_id,
                 "chunk_index": chunk_index,

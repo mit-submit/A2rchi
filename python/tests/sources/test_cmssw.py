@@ -111,3 +111,57 @@ def test_releases_map_mode_same_emission_shape(tmp_path):
 def test_parse_releases_map_limit():
     records = parse_releases_map(RELEASES_MAP, limit=1)
     assert [r.label for r in records] == ["CMSSW_14_0_2"]
+
+
+# --- circleback-fixes regressions ---
+
+
+def test_skipped_cache_items_never_claim_scope(tmp_path):
+    root = tmp_path / "data" / "cmssw-releases"
+    root.mkdir(parents=True)
+    (root / "records.json").write_text(
+        json.dumps(RECORDS + ["junk", {"type": "no label"}])
+    )
+    source = CMSSWReleaseSource(base=str(tmp_path))
+    run = source.run("run-1", mode="scope_complete")
+    nodes = _nodes(run.facts)
+    assert "cmssw_release:CMSSW_14_0_1" in nodes  # survivors still emitted
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 2" in run.health.reason
+
+
+def test_all_items_unparseable_is_endpoint_failed(tmp_path):
+    root = tmp_path / "data" / "cmssw-releases"
+    root.mkdir(parents=True)
+    (root / "records.json").write_text(json.dumps(["junk", 42]))
+    source = CMSSWReleaseSource(base=str(tmp_path))
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+
+
+def test_limit_truncation_never_claims_scope(tmp_path):
+    root = tmp_path / "data" / "cmssw-releases"
+    root.mkdir(parents=True)
+    (root / "releases.map").write_text(RELEASES_MAP)
+    source = CMSSWReleaseSource(
+        map_cache_path="data/cmssw-releases/releases.map",
+        fetch=False,
+        limit=1,
+        base=str(tmp_path),
+    )
+    run = source.run("run-1", mode="scope_complete")
+    assert run.completed_scope is False
+    assert "limit=1" in run.health.reason
+    # a cap that does not actually truncate keeps the scope claim
+    untruncated = CMSSWReleaseSource(
+        map_cache_path="data/cmssw-releases/releases.map",
+        fetch=False,
+        limit=10,
+        base=str(tmp_path),
+    )
+    assert untruncated.run(
+        "run-2", mode="scope_complete"
+    ).completed_scope is True

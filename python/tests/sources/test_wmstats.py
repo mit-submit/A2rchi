@@ -63,3 +63,27 @@ def test_preflight_optional_and_empty_cache(tmp_path):
     assert missing.preflight().required is False
     empty = _source(tmp_path, records=[])
     assert empty.preflight().status == "skipped_optional"
+
+
+# --- circleback-fixes regressions ---
+
+
+def test_skipped_cache_items_never_claim_scope(tmp_path):
+    source = _source(
+        tmp_path, records=RECORDS + ["junk", {"Campaign": "no name"}]
+    )
+    run = source.run("run-1", mode="scope_complete")
+    nodes = {f.node_id for f in run.facts if isinstance(f, NodeFact)}
+    wf_id = "workflow:pdmvserv_task_TOP-Run3Summer23-00001"
+    assert wf_id in nodes  # survivors still emitted
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 2" in run.health.reason
+
+
+def test_all_items_unparseable_is_endpoint_failed(tmp_path):
+    source = _source(tmp_path, records=["junk", 42])
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
