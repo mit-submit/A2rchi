@@ -59,7 +59,7 @@ requirements:
 tasks:
 - id: task.circleback-fixes
   title: 'Circle-back review fixes: scope-claim, anonymizer, and hygiene waves'
-  status: todo
+  status: done
   verification: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests -q
     (full suite, zero failures; includes new regression tests per fixed finding)
   requirements:

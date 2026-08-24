@@ -10,12 +10,15 @@ graph, and say so when the graph's snapshot is older than the question needs.
 
 - `meeting_minutes` nodes per ingested event (title, date, category, canonical
   `https://indico.cern.ch/event/<event_id>/` URL in attrs).
-- `document` nodes for event attachments (slides, PDFs) with
+- `document` nodes for PDF attachments whose text was extracted, with
   `contains` edges from the meeting, and `document_chunk` nodes carrying the
-  extracted text (`member_of` / `contains` chunk edges).
-- Cross-references: chunks that mention JIRA keys, releases, or sites get
-  `references` edges via the extraction/enrichment layer, so meetings link
-  into the operational graph.
+  extracted text (`member_of` / `contains` chunk edges). Non-PDF attachments
+  appear only as URLs in the meeting's attrs — their contents are not in the
+  graph.
+- Cross-references: when the deployment's extraction rules are configured for
+  it, chunks that mention JIRA keys, releases, or sites gain `references`
+  edges, linking meetings into the operational graph — verify with a `trace`
+  before promising such links exist.
 
 ## How to answer Indico questions
 
