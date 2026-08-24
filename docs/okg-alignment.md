@@ -20,8 +20,15 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-21, archi branch `archi_v3` @ `728739e6` (PR #610 merged),
-tested against okg `dev` @ `f5ec3b58d` (2026-08-18).*
+*Last updated 2026-08-24, archi branch `archi_v3` @ `81dbdb6b` (PRs #610, #611,
+#616, #617 merged), tested against okg `dev` @ `f5ec3b58d` (2026-08-18).*
+
+**Pin drift, flagged deliberately:** okg `dev` is now `03470e2b4` — **210 commits
+ahead of the pin we have actually validated against**. Per this page's own
+re-audit-on-bump rule that is an open exposure, not a claim of compatibility:
+until we re-pin and re-run, treat every statement below as verified against
+`f5ec3b58d` only. It matters more than usual while #1181 (the connector/enricher
+SDK) is open, because we still import ten private `okg.substrate` symbols.
 
 **Sync channel: okg#1178** (established 2026-08-19; surface-change heads-ups land
 there). Re-pin validation 2026-08-19 against the strict registry-admission schema
@@ -29,9 +36,13 @@ there). Re-pin validation 2026-08-19 against the strict registry-admission schem
 cmssw-releases, jira, docsite) lint clean, ingest OK, and publish — **zero
 refusals**; full test suite 199/199 on the new pin. okg#1006 is merged into `dev`
 (2026-08-13): chat, MCP HTTP auth, and principal mapping are now landed premises —
-Archi's W9 targets `dev`, and multi-user instances are unblocked pending #1183's
-per-bundle chat surface (#1275). Our substrate frictions are now okg #1282 / #1283 /
-#1284; our import surface is CI-gated on the okg side
+Archi's W9 targets `dev`. **Upstream state re-verified 2026-08-24:** #1275 (the
+chat/console slices) is **merged** — the remaining W9 dependency is its parent
+#1183, still open. Of our three filed frictions, **#1283 (`output_scope_summary`
+hand-duplication) is closed upstream**; #1282 (narrowings outside
+`schemas/bridges/` silently ignored — the real bug of the three) and #1284 (no
+`partial` SourceHealth status) remain open. Our import surface is CI-gated on the
+okg side
 (`tests/substrate/contracts/test_external_import_surface.py`). D11 (shared ontology
 modules in the wheel) is planned against the deployment-product packaging wave
 (digest-pinned distribution assets), not an env-var override.
