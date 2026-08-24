@@ -109,6 +109,7 @@ from okg.substrate.sources.preflight import file_ref_preflight
 
 from archi.auth.cache import load_json, resolve_repo_path
 from archi.auth.cookies import looks_like_login_page
+from archi.sources._cache_report import skipped_items_status
 from archi.sources.docs import (
     _chunks,
     _pg_text,
@@ -135,6 +136,28 @@ class HyperNewsRecord:
     @property
     def node_id(self) -> str:
         return f"hn:{self.thread_id}"
+
+
+@dataclass
+class _FetchOutcome:
+    """Result of a live crawl, with every failure made visible.
+
+    A crawl that lost forums, threads, or the cookie must never be
+    mistaken for a complete one: ``missing_from_completed_scope`` would
+    retract every record the failed fetches used to produce.
+    """
+
+    records: list[HyperNewsRecord]
+    total_forums: int
+    failed_forums: list[str]
+    failed_hydrations: int = 0
+    truncated: bool = False
+    listed_threads: int = 0
+    error: str = ""
+
+    @property
+    def partial(self) -> bool:
+        return bool(self.failed_forums or self.failed_hydrations)
 
 
 class HyperNewsSource:
@@ -255,7 +278,18 @@ class HyperNewsSource:
             )
         cache_path = resolve_repo_path(self.records_path, base=self.base)
         if cache_path.is_file():
-            records = self._records_from_cache()
+            try:
+                records, _skipped = self._records_from_cache()
+            except ValueError as exc:
+                return SourcePreflightResult(
+                    source_name=self.name,
+                    status="endpoint_failed",
+                    mode="cache",
+                    required=self.required,
+                    cache_path=str(cache_path),
+                    reason=str(exc),
+                    checked_at=_checked_at(),
+                )
             return SourcePreflightResult(
                 source_name=self.name,
                 status="ok",
@@ -364,19 +398,102 @@ class HyperNewsSource:
 
         records = self._records
         run_health_mode = "fixture"
+        run_status = "ok"
         run_reason = "HyperNews fixture records supplied"
         credential_refs: tuple[str, ...] = ()
+        allow_scope = True
         if records is None:
             cache_path = resolve_repo_path(self.records_path, base=self.base)
             if cache_path.is_file():
-                records = self._records_from_cache()
+                records, skipped = self._records_from_cache()
                 run_health_mode = "cache"
-                run_reason = "HyperNews records read from local cache"
+                if not records:
+                    # An empty cache would otherwise claim a healthy
+                    # complete scope over zero threads (and replay
+                    # forever); refuse instead of retracting everything.
+                    return SourceRun(
+                        facts=[],
+                        completed_scope=False,
+                        run_mode=mode,
+                        health=SourceHealth(
+                            status="endpoint_failed",
+                            mode="cache",
+                            record_count=0,
+                            reason=(
+                                "HyperNews records cache "
+                                f"{self.records_path} contains no usable "
+                                "threads; refusing an empty complete "
+                                "scope (delete the cache to force a "
+                                "live re-fetch)"
+                            ),
+                        ),
+                    )
+                run_status, run_reason = skipped_items_status(
+                    status="ok",
+                    reason="HyperNews records read from local cache",
+                    record_count=len(records),
+                    skipped_count=skipped,
+                )
+                allow_scope = not skipped
             else:
-                records = self._fetch_and_cache()
                 run_health_mode = "live"
-                run_reason = "HyperNews records fetched through SSO cookie"
                 credential_refs = (self.cookie_file_env,)
+                outcome = self._fetch()
+                if not outcome.records:
+                    return SourceRun(
+                        facts=[],
+                        completed_scope=False,
+                        run_mode=mode,
+                        health=SourceHealth(
+                            status="endpoint_failed",
+                            mode="live",
+                            credential_refs=credential_refs,
+                            record_count=0,
+                            endpoint=self.base_url,
+                            reason=_total_failure_reason(outcome),
+                        ),
+                    )
+                records = outcome.records
+                run_reason = (
+                    "HyperNews records fetched through SSO cookie"
+                )
+                problems: list[str] = []
+                if outcome.failed_forums:
+                    samples = "; ".join(outcome.failed_forums[:3])
+                    problems.append(
+                        f"{len(outcome.failed_forums)}/"
+                        f"{outcome.total_forums} forum listings failed "
+                        f"(e.g. {samples})"
+                    )
+                if outcome.failed_hydrations:
+                    problems.append(
+                        f"{outcome.failed_hydrations}/"
+                        f"{outcome.listed_threads} thread fetches "
+                        "failed and were dropped"
+                    )
+                if problems:
+                    # Emit what succeeded, but never claim a complete
+                    # scope over a partially failed crawl (docs.py
+                    # partial-crawl idiom).
+                    run_status = "endpoint_failed"
+                    allow_scope = False
+                    run_reason = (
+                        "partial HyperNews crawl: "
+                        + "; ".join(problems)
+                        + "; no complete scope claimed"
+                    )
+                if outcome.truncated:
+                    allow_scope = False
+                    run_reason += (
+                        f"; max_threads={self.max_threads} truncated "
+                        "forum listings; no complete scope claimed"
+                    )
+                # Only a full, untruncated crawl may be persisted: a
+                # partial cache would replay on the next run as a
+                # healthy complete scope and retract the missing
+                # threads.
+                if not problems and not outcome.truncated:
+                    self._write_cache(records)
         record_hash = _records_hash(records)
         revision = {
             "run_id": run_id,
@@ -437,10 +554,12 @@ class HyperNewsSource:
 
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and allow_scope
+            ),
             run_mode=mode,
             health=SourceHealth(
-                status="ok",
+                status=run_status,
                 mode=run_health_mode,
                 credential_refs=credential_refs,
                 record_count=len(records),
@@ -449,16 +568,34 @@ class HyperNewsSource:
             ),
         )
 
-    def _records_from_cache(self) -> list[HyperNewsRecord]:
+    def _records_from_cache(self) -> tuple[list[HyperNewsRecord], int]:
         raw = load_json(self.records_path, base=self.base)
         if isinstance(raw, dict):
-            raw = raw.get("records", [])
-        return [
-            _record_from_dict(item) for item in raw if isinstance(item, dict)
-        ]
+            if "records" not in raw:
+                raise ValueError(
+                    f"{self.records_path}: expected a 'records' list in "
+                    "the cache dict; refusing to treat a drifted payload "
+                    "as zero threads"
+                )
+            raw = raw["records"]
+        if not isinstance(raw, list):
+            raise ValueError(
+                f"{self.records_path}: expected a JSON list of threads"
+            )
+        records: list[HyperNewsRecord] = []
+        skipped = 0
+        for item in raw:
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+            record = _record_from_dict(item)
+            if not record.thread_id:
+                skipped += 1
+                continue
+            records.append(record)
+        return records, skipped
 
-    def _fetch_and_cache(self) -> list[HyperNewsRecord]:
-        records = self._fetch()
+    def _write_cache(self, records: list[HyperNewsRecord]) -> None:
         path = resolve_repo_path(self.records_path, base=self.base)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
@@ -468,31 +605,50 @@ class HyperNewsSource:
             encoding="utf-8",
         )
         tmp.replace(path)
-        return records
 
-    def _fetch(self) -> list[HyperNewsRecord]:
+    def _fetch(self) -> _FetchOutcome:
         import http.cookiejar
         import requests
 
         cookie_file = os.environ.get(self.cookie_file_env, "")
         if not cookie_file or not Path(cookie_file).is_file():
-            return []
+            return _FetchOutcome(
+                records=[],
+                total_forums=len(self.forums),
+                failed_forums=list(self.forums),
+                error="cookie file missing or unreadable",
+            )
         jar = http.cookiejar.MozillaCookieJar(cookie_file)
         jar.load(ignore_discard=True, ignore_expires=True)
         session = requests.Session()
         session.cookies = jar
         records: list[HyperNewsRecord] = []
+        failed_forums: list[str] = []
+        truncated = False
         for forum in self.forums:
             forum_url = f"{self.base_url}/HyperNews/CMS/get/{forum}.html"
             try:
                 resp = session.get(forum_url, timeout=self.fetch_timeout)
                 resp.raise_for_status()
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                failed_forums.append(f"{forum}: {type(exc).__name__}")
                 continue
-            records.extend(self._parse_threads(resp.text, forum))
+            parsed = self._parse_threads(resp.text, forum)
+            if (
+                self.max_threads is not None
+                and len(parsed) >= self.max_threads
+            ):
+                truncated = True
+            records.extend(parsed)
 
+        listed_threads = len(records)
         if not records:
-            return []
+            return _FetchOutcome(
+                records=[],
+                total_forums=len(self.forums),
+                failed_forums=failed_forums,
+                truncated=truncated,
+            )
 
         thread_local = threading.local()
 
@@ -507,14 +663,17 @@ class HyperNewsSource:
             thread_local.session = worker_session
             return worker_session
 
-        def _hydrate(thread: HyperNewsRecord) -> HyperNewsRecord:
+        def _hydrate(thread: HyperNewsRecord) -> HyperNewsRecord | None:
             try:
                 thread_resp = _session().get(
                     thread.url, timeout=self.fetch_timeout,
                 )
                 thread_resp.raise_for_status()
-            except Exception:
-                return thread
+            except Exception:  # noqa: BLE001
+                # Emitting the un-hydrated listing stub would blank the
+                # thread's body/author and drop its chunks under a
+                # complete scope; drop it and report instead.
+                return None
             return HyperNewsRecord(
                 thread_id=thread.thread_id,
                 title=thread.title,
@@ -528,7 +687,16 @@ class HyperNewsSource:
 
         workers = max(1, int(self.max_workers))
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            return list(executor.map(_hydrate, records))
+            results = list(executor.map(_hydrate, records))
+        hydrated = [record for record in results if record is not None]
+        return _FetchOutcome(
+            records=hydrated,
+            total_forums=len(self.forums),
+            failed_forums=failed_forums,
+            failed_hydrations=len(results) - len(hydrated),
+            truncated=truncated,
+            listed_threads=listed_threads,
+        )
 
     def _parse_threads(self, markup: str, forum: str) -> list[HyperNewsRecord]:
         records: list[HyperNewsRecord] = []
@@ -557,6 +725,31 @@ class HyperNewsSource:
 
 def _checked_at() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _total_failure_reason(outcome: _FetchOutcome) -> str:
+    """Reason string for a live crawl that produced zero records."""
+    if outcome.error:
+        detail = f"HyperNews fetch failed: {outcome.error}"
+    elif outcome.failed_forums:
+        samples = "; ".join(outcome.failed_forums[:3])
+        detail = (
+            f"{len(outcome.failed_forums)}/{outcome.total_forums} "
+            f"forum listings failed (e.g. {samples})"
+        )
+        if len(outcome.failed_forums) < outcome.total_forums:
+            detail += (
+                "; the reachable forum listings parsed to zero threads"
+            )
+    else:
+        detail = (
+            f"all {outcome.total_forums} forum listings were reachable "
+            "but parsed to zero threads (markup drift?)"
+        )
+    return (
+        f"{detail}; treated as fetch failure — no records cache "
+        "written and no scope claimed"
+    )
 
 
 def _thread_node(
