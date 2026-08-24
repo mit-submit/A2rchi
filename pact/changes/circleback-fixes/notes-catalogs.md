@@ -205,10 +205,69 @@ forfeit the scope claim.
 - **Shared with canonical:** yes — deliberate deviation.
 - **Test:** `test_indico.py::test_identical_pdf_text_in_different_events_gets_distinct_chunks`
 
+## Round-2 review deltas (same discipline, same branch)
+
+An independent adversarial review of the merged wave confirmed the
+fixes hold and surfaced these deltas, fixed here:
+
+- **MAJOR — cmssw releases.map zero-parse (extends finding 6):**
+  `parse_releases_map` filtered unparseable lines uncounted, so a
+  non-empty map whose every line failed the label pattern (e.g. a
+  `label=` key rename) still claimed ok + `completed_scope=True` over
+  zero records — in the exact mode the shipped cern-team bundle uses.
+  The map parser now counts filtered lines as skips
+  (`_parse_map_with_skips`): survivors forfeit the scope claim, and
+  zero parsed from a non-empty map is `endpoint_failed`.
+  Shared with canonical: no (the releases.map mode is archi-W1-only).
+  Tests: `test_cmssw.py::test_map_skipped_lines_never_claim_scope`,
+  `::test_map_zero_parse_from_nonempty_map_is_endpoint_failed`.
+- **MINOR — cern-team bundle default `limit: 300` removed
+  (consequence of finding 7):** the real releases.map has far more
+  than 300 releases, so the default install would truncate every run,
+  leaving `completed_scope` permanently False and deletion semantics
+  permanently disabled. The bundle now ships without a limit (the live
+  demo ingested the full map fine); the yaml comments why.
+  File: `bundles/cern-team/source-defaults/cmssw_releases.yaml`.
+- **MINOR — siteconf group probe missed `include_subgroups=true`
+  (extends finding 4):** the new preflight group probe listed only
+  direct group projects while the crawl includes subgroups, so a group
+  whose projects live only in subgroups got a false-negative preflight
+  that permanently blocked `run()`. The probe now mirrors the crawl's
+  listing parameters. Test:
+  `test_siteconf.py::test_preflight_group_probe_includes_subgroups_like_the_crawl`.
+- **LOW — hypernews preflight vs run() on an empty cache (extends
+  finding 2):** preflight reported ok/record_count=0 for an empty
+  well-formed cache that run() then refused with `endpoint_failed`.
+  Preflight now returns the same `endpoint_failed` refusal (shared
+  `_empty_cache_reason`). Test:
+  `test_hypernews.py::test_preflight_empty_cache_matches_run_refusal`.
+- **Coverage — hypernews live happy path:** added the missing test
+  that a clean multi-forum crawl reports ok + `completed_scope=True`,
+  persists the records cache, and a second run replays that cache and
+  still claims scope.
+  Test: `test_hypernews.py::test_clean_live_crawl_claims_scope_writes_cache_and_replays`.
+
+### Empty-cache asymmetry (recorded rationale, no code change)
+
+The reviewer flagged that dbs/conddb/wmstats/dqm/gocdb/indico still
+claim a complete *empty* scope when their cache is an explicitly-empty
+(`[]`) file, unlike hypernews's new refusal. This asymmetry is
+intentional: those catalog caches are operator/fetcher-authored inputs
+— the authority over "this catalog is currently empty" lies outside
+the connector, so an explicitly-empty file is a legitimate statement
+of scope (and preflight already surfaces it as `skipped_optional`
+where the cache is optional). HyperNews, by contrast, writes its own
+cache from its own crawl, so an empty file there is by construction a
+crawl failure artifact (self-poisoning risk), never an operator
+statement — hence the stricter refusal rule applies only there.
+
 ## Explicitly not attempted
 
 - `SourceRun.record_set` plumbing (review finding "C3") — substrate-side
   coordination, out of scope for this change.
 - No files outside the catalog/feed domain were touched (no docs.py /
   monit.py / jira.py / twiki.py, no enrichment/, no
-  docs/okg-alignment.md — the okg import surface is unchanged).
+  docs/okg-alignment.md — the okg import surface is unchanged). The
+  round-2 deltas additionally touched
+  `bundles/cern-team/source-defaults/cmssw_releases.yaml` (the cmssw
+  connector's shipped default), per the reviewer's direction.
