@@ -243,7 +243,14 @@ deliberately not an `archi` dependency; `connect=` is injectable.
 
 ## Provenance
 
-Restructured port of two v2-era PRs, neither of which merged:
+**The evaluation work is Antonio Battaglia's.** Both source PRs are his
+(with fixes from Austin Swinney in #608); what follows is a restructured
+port of that work into the v3 distribution, not a new design. The atom
+model, the gold-fact judging and its scoring math, the dataset
+validation, the report shape, and the live-state oracle flow all come
+from him — the arm registry is the only substantial v3 addition. Neither
+PR merged, so the code is re-homed rather than carried as commits;
+authorship is recorded in the port commits' `Co-Authored-By` trailers.
 
 - **PR #596** (`feat/archi-eval-command`) — atom-based QA engine.
   Kept: the gold-fact judging model and scoring math, strict dataset
