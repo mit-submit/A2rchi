@@ -1,0 +1,79 @@
+# archi.eval smoke dataset — synthetic HEP-flavored atoms for tests.
+# NOT a golden set: the real golden QA sets live in the cms-compops
+# instance repo and have divergent versions to reconcile before import.
+schema_version: archi-eval-v1
+atoms:
+  - id: cmssw-latest-14x
+    question: "Which CMSSW 14_0 release is the latest announced?"
+    tags: [catalog, cmssw]
+    answer: "CMSSW_14_0_7"
+    checks:
+      - kind: exact
+        value: "CMSSW_14_0_7"
+
+  - id: t2-mit-storage
+    question: "What storage element serves T2_US_MIT?"
+    tags: [sites]
+    checks:
+      - kind: contains
+        value: "se01.cmsaf.mit.edu"
+        case_sensitive: false
+
+  - id: gt-name-shape
+    question: "Give one currently active prompt-reco global tag."
+    tags: [conddb]
+    checks:
+      - kind: regex
+        value: "1[34]\\dX_\\w+_v\\d+"
+
+  - id: dataset-path
+    question: "State the full DAS path of the 2024 JetMET0 RAW dataset."
+    tags: [dbs]
+    checks:
+      - kind: contains
+        value: "/JetMET0/Run2024"
+      - kind: regex
+        value: "/RAW$"
+
+  - id: xrootd-fallback
+    question: "Explain what the CMS xrootd fallback mechanism does."
+    tags: [ops, graded]
+    answer: "When a local file open fails, the job retries via the global
+      xrootd redirector to stream the file from another site."
+    gold_facts:
+      - id: A1
+        text: "A failed local file open triggers the fallback."
+        required: true
+      - id: A2
+        text: "The retry goes through the global xrootd redirector."
+        required: true
+      - id: A3
+        text: "The file is streamed from another site."
+        required: false
+
+  - id: mixed-criteria
+    question: "Which tier hosts the T2_US_MIT site and who operates it?"
+    tags: [sites, graded]
+    checks:
+      - kind: contains
+        value: "Tier-2"
+    gold_facts:
+      - id: B1
+        text: "MIT operates the site."
+        required: true
+
+  - id: live-open-downtimes
+    question: "How many GOCDB downtimes are currently open for T2_US_MIT?"
+    tags: [live, gocdb]
+    oracle:
+      kind: mcp
+      calls:
+        - id: c1
+          tool: archi_gocdb_open_downtimes
+          arguments:
+            site: T2_US_MIT
+          answer_fields:
+            count: /summary/open_count
+    checks:
+      - kind: contains
+        value_from: /c1/count
