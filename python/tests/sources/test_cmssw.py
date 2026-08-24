@@ -40,6 +40,12 @@ RELEASES_MAP = "\n".join([
     "",
 ])
 
+# Same map without the NOT_A_RELEASE junk line: a fully parseable map,
+# for tests that assert an intact completed-scope claim.
+CLEAN_RELEASES_MAP = "\n".join(
+    line for line in RELEASES_MAP.splitlines() if "NOT_A_RELEASE" not in line
+)
+
 
 def _nodes(facts):
     return {f.node_id: f for f in facts if isinstance(f, NodeFact)}
@@ -145,7 +151,7 @@ def test_all_items_unparseable_is_endpoint_failed(tmp_path):
 def test_limit_truncation_never_claims_scope(tmp_path):
     root = tmp_path / "data" / "cmssw-releases"
     root.mkdir(parents=True)
-    (root / "releases.map").write_text(RELEASES_MAP)
+    (root / "releases.map").write_text(CLEAN_RELEASES_MAP)
     source = CMSSWReleaseSource(
         map_cache_path="data/cmssw-releases/releases.map",
         fetch=False,
@@ -165,3 +171,41 @@ def test_limit_truncation_never_claims_scope(tmp_path):
     assert untruncated.run(
         "run-2", mode="scope_complete"
     ).completed_scope is True
+
+
+def test_map_skipped_lines_never_claim_scope(tmp_path):
+    # RELEASES_MAP carries one unparseable line (NOT_A_RELEASE): the
+    # survivors are emitted, but the scope claim is forfeited.
+    root = tmp_path / "data" / "cmssw-releases"
+    root.mkdir(parents=True)
+    (root / "releases.map").write_text(RELEASES_MAP)
+    source = CMSSWReleaseSource(
+        map_cache_path="data/cmssw-releases/releases.map",
+        fetch=False,
+        base=str(tmp_path),
+    )
+    run = source.run("run-1", mode="scope_complete")
+    nodes = _nodes(run.facts)
+    assert "cmssw_release:CMSSW_14_0_1" in nodes
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 1" in run.health.reason
+
+
+def test_map_zero_parse_from_nonempty_map_is_endpoint_failed(tmp_path):
+    # Reviewer repro: a key rename (label= -> tag=) filtered every line
+    # uncounted, claiming ok + completed_scope=True over zero records.
+    root = tmp_path / "data" / "cmssw-releases"
+    root.mkdir(parents=True)
+    (root / "releases.map").write_text(
+        CLEAN_RELEASES_MAP.replace("label=", "tag=")
+    )
+    source = CMSSWReleaseSource(
+        map_cache_path="data/cmssw-releases/releases.map",
+        fetch=False,
+        base=str(tmp_path),
+    )
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
