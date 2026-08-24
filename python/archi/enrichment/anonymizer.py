@@ -42,8 +42,10 @@ see ``pact/changes/circleback-fixes/notes-enrichment.md``):
   lines.
 - The greeting/sign-off line filters are tightened: greetings need an
   actual greeting word (the v2 ``^\\w+,`` rule deleted operational
-  lines like "However, run 381000 ..."), and sign-offs must be the
-  whole line (optionally followed by a short name), not a prefix.
+  lines like "However, run 381000 ...") and must be short greeting
+  lines (greeting word + at most four trailing words), and sign-offs
+  must be the whole line (optionally followed by a short name), not a
+  prefix.
 
 Name replacement and text extraction for NER are kept verbatim.
 """
@@ -130,11 +132,15 @@ _DEFAULT_MARKUP_TRAILING_SIGNOFF_TAG_RE = re.compile(
 # was affected badly.", "Regards to whoever fixed run 381000").
 _DEFAULT_NLP_MODEL = "en_core_web_sm"
 _DEFAULT_EXCLUDED_WORDS = ("John", "Jane", "Doe")
-# Greeting lines must start with an actual greeting word (v2-compatible
-# prefix semantics for those words; the bare ``^\w+,`` rule is gone).
+# Greeting lines must start with an actual greeting word (the bare
+# ``^\w+,`` rule is gone) AND be short: greeting word plus at most four
+# trailing words (mirroring the sign-off tail bound), so
+# greeting-prefixed operational sentences ("Good morning update:
+# transfers to T2_US_MIT stuck") survive.
 _DEFAULT_GREETING_PATTERNS = (
-    r"^(hi|hello|hey|greetings|dear|ciao|salut|hiya|howdy"
-    r"|good\s+(?:morning|afternoon|evening|day))\b",
+    r"^(?:hi|hello|hey|greetings|dear|ciao|salut|hiya|howdy"
+    r"|good\s+(?:morning|afternoon|evening|day))"
+    r"(?:[\s,!]+[A-Za-z][\w'.-]*){0,4}[\s,.!]*$",
 )
 # Sign-off lines must be ONLY the sign-off phrase, optionally followed
 # by punctuation and a short (<= 4 word) trailing name. A phrase that
@@ -178,6 +184,12 @@ def _normalize_encodings(text: str) -> str:
     ``John&nbsp;Doe`` / ``John\\xa0Doe`` become ``John Doe`` and
     ``jdoe&#64;cern.ch`` becomes ``jdoe@cern.ch`` before the discovery,
     email, and replacement passes — which then all see the same string.
+
+    Normalization iterates to a fixpoint (bounded at 3 passes) so
+    double-encoded forms like ``jdoe&amp;#64;cern.ch`` — which a single
+    pass only peels to ``jdoe&#64;cern.ch`` — are fully decoded too.
+    References that would decode to ``<`` or ``>`` stay encoded on
+    every pass, so markup structure is never created or broken.
     """
 
     def _decode(match: re.Match) -> str:
@@ -191,10 +203,15 @@ def _normalize_encodings(text: str) -> str:
             return match.group(0)
         return char
 
-    text = _NUMERIC_ENTITY_RE.sub(_decode, text)
-    for entity, char in _SAFE_NAMED_ENTITIES.items():
-        text = text.replace(entity, char)
-    return text.replace("\u00a0", " ")
+    for _ in range(3):
+        previous = text
+        text = _NUMERIC_ENTITY_RE.sub(_decode, text)
+        for entity, char in _SAFE_NAMED_ENTITIES.items():
+            text = text.replace(entity, char)
+        text = text.replace("\u00a0", " ")
+        if text == previous:
+            break
+    return text
 
 
 class Anonymizer:

@@ -138,6 +138,17 @@ def test_encoded_and_nbsp_variants_redacted():
     )
     assert "&lt;tag&gt;" in out
 
+    # Double-encoded forms: normalization iterates to a bounded
+    # fixpoint, so one &amp;-wrapping layer cannot smuggle PII through.
+    out = an.anonymize("Contact jdoe&amp;#64;cern.ch about run 381000.")
+    assert "jdoe" not in out
+    assert "run 381000" in out
+    out = an_names.anonymize_markup(
+        "<p>Report prepared by John&amp;nbsp;Doe covering all transfer failures seen</p>"
+    )
+    assert "John" not in out and "Doe" not in out
+    assert "transfer failures" in out
+
 
 def test_ner_off_author_shapes_redacted():
     # Finding 3: NER-disabled mode leaked authors outside the four
@@ -198,6 +209,24 @@ def test_operational_lines_survive_greeting_signoff_filters():
     assert "Thank you note was filed as CMSCOMPPR-1." in out
     assert "Regards to whoever fixed run 381000." in out
     assert "Best effort reprocessing is enabled." in out
+
+
+def test_greeting_prefixed_operational_lines_survive():
+    # Reviewer delta: the expanded greeting word-list must only delete
+    # SHORT greeting lines (greeting word + at most four trailing
+    # words); greeting-prefixed operational sentences survive.
+    an = _anonymizer()
+    text = (
+        "Good morning update: transfers to T2_US_MIT stuck\n"
+        "Hello world example output was attached to run 381000 report\n"
+        "Good morning all,\n"
+        "Hey folks,\n"
+    )
+    out = an.anonymize(text)
+    assert "Good morning update: transfers to T2_US_MIT stuck" in out
+    assert "run 381000 report" in out
+    assert "Good morning all" not in out
+    assert "Hey folks" not in out
 
 
 def test_real_greetings_and_signoffs_still_stripped():
