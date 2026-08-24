@@ -31,8 +31,9 @@ emission, and cache-or-live run shape. Changes from the original:
 - ``source_name`` is a constructor parameter (multiple instances of one
   class can coexist in a registry), defaulting to the cms names.
 
-Failure semantics (the docs.py/twiki.py completeness discipline — the
-original already satisfied it; kept, not weakened):
+Failure semantics (the docs.py/twiki.py completeness discipline; the
+2026-08 adversarial review hardened the cms original's version of it —
+see ``pact/changes/circleback-fixes/notes-live.md``):
 
 - A missing configured credential (no cache file and ``token_env``
   unset) is ``missing_credential`` health with ``completed_scope=False``
@@ -45,11 +46,30 @@ original already satisfied it; kept, not weakened):
   ``missing_credential`` / ``auth_failed`` / ``tls_failed`` /
   ``endpoint_failed`` / ``cache_missing`` / ``not_applicable`` / ...);
   ``SourceHealth.__post_init__`` rejects anything else.
-- A *successful* read that returns zero buckets reports
-  ``skipped_optional`` and may still claim the mode's scope (the scope
-  is genuinely empty); the dataset overlay's streaming path raises on a
-  mid-pagination failure so the runner fails the run instead of
+- A *partial* OpenSearch response — ``timed_out: true``, failed shards,
+  or a bucket-limited terms aggregation that dropped buckets
+  (``sum_other_doc_count`` / ``doc_count_error_upper_bound`` > 0) —
+  still emits the records it carries but reports ``endpoint_failed``
+  (the closed vocabulary has no ``degraded``) with
+  ``completed_scope=False``: a truncated snapshot must never become the
+  retraction baseline. The dataset overlay's streaming path instead
+  raises on any partial page so the runner fails the run rather than
   committing a partial scope.
+- A *successful* read that returns zero buckets reports
+  ``skipped_optional`` with ``completed_scope=False``: under the
+  ``ignore_unavailable: true`` wildcard-index queries these sources
+  issue, a renamed index or stalled ingestion pipeline is
+  indistinguishable from a genuinely empty window, so an empty result
+  never claims a complete (empty) scope that would retract every
+  previously ingested record.
+- The dataset overlay's live page cache is keyed by a fingerprint that
+  includes the resolved snapshot date, and an entry only satisfies a
+  run when its ``cached_at`` is on the same UTC day and younger than
+  ``page_cache_ttl_hours`` — a cached page from a previous day can
+  never satisfy a new day's run. ``cache_live_pages`` stays ``true`` by
+  default on purpose: with date-scoped keys the cache can only replay
+  the current snapshot day's pages, which is its role (crash/resume
+  within a day without re-querying MONIT).
 
 Registry-entry templates — same three prerequisites as the
 archi/sources/jira.py and archi/sources/docs.py templates, plus one
@@ -255,7 +275,14 @@ specific to this family:
         page_size: 250
         max_replica_rses: 250
         page_cache_dir: data/monit-rucio-datasets/pages  # cms: data/cms/monit-rucio-datasets/pages
+        # cache_live_pages stays true on purpose (2026-08 review): the
+        # page-cache fingerprint includes the resolved snapshot date and
+        # entries expire after page_cache_ttl_hours (same UTC day only),
+        # so the cache can only replay the current day's pages — its
+        # crash/resume role — never yesterday's datasets stamped with
+        # today's date.
         cache_live_pages: true
+        page_cache_ttl_hours: 24.0
         # CMS defaults, shown for overriding on another instance:
         # grafana_base_url: https://monit-grafana.cern.ch
         # datasource_id: 10151
@@ -274,7 +301,7 @@ import os
 import re
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
@@ -411,6 +438,102 @@ class RucioDatasetRecord:
         return f"dataset:{self.dataset}"
 
 
+@dataclass(frozen=True)
+class _ResponseQuality:
+    """Completeness markers of one MONIT OpenSearch response.
+
+    An HTTP-200 ``_msearch`` response can still be partial:
+    ``timed_out: true``, failed shards, or bucket-limited terms
+    aggregations that dropped buckets (``sum_other_doc_count`` /
+    ``doc_count_error_upper_bound`` > 0). Any of those must keep the
+    run from claiming a completed scope — under
+    ``missing_from_completed_scope`` a partial snapshot claimed
+    complete would retract every record the response happened to drop.
+    """
+
+    timed_out: bool = False
+    shards_failed: int = 0
+    shards_total: int = 0
+    truncated_aggs: tuple[str, ...] = ()
+
+    @property
+    def complete(self) -> bool:
+        return not (
+            self.timed_out or self.shards_failed or self.truncated_aggs
+        )
+
+    def describe(self) -> str:
+        parts = []
+        if self.timed_out:
+            parts.append("timed_out=true")
+        if self.shards_failed:
+            total = self.shards_total or "?"
+            parts.append(f"shards failed {self.shards_failed}/{total}")
+        if self.truncated_aggs:
+            parts.append(
+                "truncated terms aggregations: "
+                + ", ".join(self.truncated_aggs)
+            )
+        return "; ".join(parts) or "complete"
+
+
+def _response_quality(payload: dict[str, Any]) -> _ResponseQuality:
+    response = _first_response(payload)
+    shards = response.get("_shards") or {}
+    truncated: list[str] = []
+    _collect_agg_truncations(
+        response.get("aggregations") or {}, "", truncated
+    )
+    return _ResponseQuality(
+        timed_out=bool(response.get("timed_out")),
+        shards_failed=int(shards.get("failed") or 0),
+        shards_total=int(shards.get("total") or 0),
+        truncated_aggs=tuple(truncated),
+    )
+
+
+def _collect_agg_truncations(node: Any, path: str, out: list[str]) -> None:
+    """Record bucket-limited aggregations that silently dropped buckets.
+
+    Walks the aggregation tree (nested aggregations live inside each
+    bucket) and flags any ``buckets`` aggregation whose
+    ``sum_other_doc_count`` or ``doc_count_error_upper_bound`` is
+    positive — the fixed ``size`` cap truncated it.
+    """
+    if not isinstance(node, dict):
+        return
+    for name, value in node.items():
+        if not isinstance(value, dict):
+            continue
+        child = f"{path}.{name}" if path else name
+        buckets = value.get("buckets")
+        if not isinstance(buckets, list):
+            continue
+        other = int(value.get("sum_other_doc_count") or 0)
+        bound = int(value.get("doc_count_error_upper_bound") or 0)
+        if other > 0 or bound > 0:
+            out.append(
+                f"{child} (sum_other_doc_count={other}, "
+                f"doc_count_error_upper_bound={bound})"
+            )
+        for bucket in buckets:
+            _collect_agg_truncations(bucket, child, out)
+
+
+def _merge_quality(
+    left: _ResponseQuality,
+    right: _ResponseQuality,
+) -> _ResponseQuality:
+    return _ResponseQuality(
+        timed_out=left.timed_out or right.timed_out,
+        shards_failed=left.shards_failed + right.shards_failed,
+        shards_total=max(left.shards_total, right.shards_total),
+        truncated_aggs=tuple(dict.fromkeys(
+            (*left.truncated_aggs, *right.truncated_aggs)
+        )),
+    )
+
+
 class MONITSAMSource:
     """Emit site-level SAM/SiteMon monitoring snapshots."""
 
@@ -472,7 +595,7 @@ class MONITSAMSource:
         **_: Any,
     ) -> SourceRun:
         try:
-            records, run_mode, revision = self._load_records(run_id)
+            records, run_mode, revision, quality = self._load_records(run_id)
         except MissingMONITCredential as exc:
             return _missing_credential_run(mode, self.token_env, str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -493,13 +616,16 @@ class MONITSAMSource:
             records=records,
             ok_reason="MONIT SAM/SiteMon records loaded",
             empty_reason="MONIT SAM/SiteMon query returned no site buckets",
+            quality=quality,
         )
 
     def _load_records(
         self,
         run_id: str,
-    ) -> tuple[list[SiteAvailabilityRecord], str, dict[str, Any]]:
-        records, run_mode, hash_value = _load_cache_or_live(
+    ) -> tuple[
+        list[SiteAvailabilityRecord], str, dict[str, Any], _ResponseQuality
+    ]:
+        records, run_mode, hash_value, quality = _load_cache_or_live(
             records_path=self.records_path,
             token_env=self.token_env,
             cache_loader=self._records_from_cache,
@@ -514,20 +640,30 @@ class MONITSAMSource:
             to_time=self.to_time,
             hash_value=hash_value,
             n_records=len(records),
-        )
+        ), quality
 
-    def _records_from_cache(self) -> list[SiteAvailabilityRecord]:
+    def _records_from_cache(
+        self,
+    ) -> tuple[list[SiteAvailabilityRecord], _ResponseQuality]:
         payload = load_json(self.records_path, base=self.base)
         if isinstance(payload, dict) and "responses" in payload:
-            return _parse_sitemon_response(payload, snapshot_date=_today())
+            return (
+                _parse_sitemon_response(payload, snapshot_date=_today()),
+                _response_quality(payload),
+            )
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a list of records or "
                 "MONIT _msearch response"
             )
-        return [_sam_record_from_mapping(item) for item in payload if item]
+        return (
+            [_sam_record_from_mapping(item) for item in payload if item],
+            _ResponseQuality(),
+        )
 
-    def _records_from_live(self, token: str) -> list[SiteAvailabilityRecord]:
+    def _records_from_live(
+        self, token: str
+    ) -> tuple[list[SiteAvailabilityRecord], _ResponseQuality]:
         response = _monit_msearch(
             grafana_base_url=self.grafana_base_url,
             datasource_id=self.datasource_id,
@@ -541,7 +677,10 @@ class MONITSAMSource:
             ),
             timeout=self.timeout,
         )
-        return _parse_sitemon_response(response, snapshot_date=_today())
+        return (
+            _parse_sitemon_response(response, snapshot_date=_today()),
+            _response_quality(response),
+        )
 
 
 class MONITCondorSource:
@@ -603,7 +742,7 @@ class MONITCondorSource:
         **_: Any,
     ) -> SourceRun:
         try:
-            records, run_mode, revision = self._load_records(run_id)
+            records, run_mode, revision, quality = self._load_records(run_id)
         except MissingMONITCredential as exc:
             return _missing_credential_run(mode, self.token_env, str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -624,13 +763,16 @@ class MONITCondorSource:
             records=records,
             ok_reason="MONIT Condor records loaded",
             empty_reason="MONIT Condor query returned no site buckets",
+            quality=quality,
         )
 
     def _load_records(
         self,
         run_id: str,
-    ) -> tuple[list[CondorComputeRecord], str, dict[str, Any]]:
-        records, run_mode, hash_value = _load_cache_or_live(
+    ) -> tuple[
+        list[CondorComputeRecord], str, dict[str, Any], _ResponseQuality
+    ]:
+        records, run_mode, hash_value, quality = _load_cache_or_live(
             records_path=self.records_path,
             token_env=self.token_env,
             cache_loader=self._records_from_cache,
@@ -645,20 +787,30 @@ class MONITCondorSource:
             to_time=self.to_time,
             hash_value=hash_value,
             n_records=len(records),
-        )
+        ), quality
 
-    def _records_from_cache(self) -> list[CondorComputeRecord]:
+    def _records_from_cache(
+        self,
+    ) -> tuple[list[CondorComputeRecord], _ResponseQuality]:
         payload = load_json(self.records_path, base=self.base)
         if isinstance(payload, dict) and "responses" in payload:
-            return _parse_condor_response(payload, snapshot_date=_today())
+            return (
+                _parse_condor_response(payload, snapshot_date=_today()),
+                _response_quality(payload),
+            )
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a list of records or "
                 "MONIT _msearch response"
             )
-        return [_condor_record_from_mapping(item) for item in payload if item]
+        return (
+            [_condor_record_from_mapping(item) for item in payload if item],
+            _ResponseQuality(),
+        )
 
-    def _records_from_live(self, token: str) -> list[CondorComputeRecord]:
+    def _records_from_live(
+        self, token: str
+    ) -> tuple[list[CondorComputeRecord], _ResponseQuality]:
         response = _monit_msearch(
             grafana_base_url=self.grafana_base_url,
             datasource_id=self.datasource_id,
@@ -671,7 +823,10 @@ class MONITCondorSource:
             ),
             timeout=self.timeout,
         )
-        return _parse_condor_response(response, snapshot_date=_today())
+        return (
+            _parse_condor_response(response, snapshot_date=_today()),
+            _response_quality(response),
+        )
 
 
 class MONITRucioTransferSource:
@@ -735,7 +890,7 @@ class MONITRucioTransferSource:
         **_: Any,
     ) -> SourceRun:
         try:
-            records, run_mode, revision = self._load_records(run_id)
+            records, run_mode, revision, quality = self._load_records(run_id)
         except MissingMONITCredential as exc:
             return _missing_credential_run(mode, self.token_env, str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -756,13 +911,16 @@ class MONITRucioTransferSource:
             records=records,
             ok_reason="MONIT Rucio transfer records loaded",
             empty_reason="MONIT Rucio transfer query returned no transfer buckets",
+            quality=quality,
         )
 
     def _load_records(
         self,
         run_id: str,
-    ) -> tuple[list[RucioTransferRecord], str, dict[str, Any]]:
-        records, run_mode, hash_value = _load_cache_or_live(
+    ) -> tuple[
+        list[RucioTransferRecord], str, dict[str, Any], _ResponseQuality
+    ]:
+        records, run_mode, hash_value, quality = _load_cache_or_live(
             records_path=self.records_path,
             token_env=self.token_env,
             cache_loader=self._records_from_cache,
@@ -777,24 +935,36 @@ class MONITRucioTransferSource:
             to_time=self.to_time,
             hash_value=hash_value,
             n_records=len(records),
-        )
+        ), quality
 
-    def _records_from_cache(self) -> list[RucioTransferRecord]:
+    def _records_from_cache(
+        self,
+    ) -> tuple[list[RucioTransferRecord], _ResponseQuality]:
         payload = load_json(self.records_path, base=self.base)
         if isinstance(payload, dict) and "responses" in payload:
-            return _parse_rucio_transfer_response(payload, snapshot_date=_today())
+            return (
+                _parse_rucio_transfer_response(
+                    payload, snapshot_date=_today()
+                ),
+                _response_quality(payload),
+            )
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a list of records or "
                 "MONIT _msearch response"
             )
-        return _dedupe_rucio_transfer_records([
-            _rucio_transfer_record_from_mapping(item)
-            for item in payload
-            if item
-        ])
+        return (
+            _dedupe_rucio_transfer_records([
+                _rucio_transfer_record_from_mapping(item)
+                for item in payload
+                if item
+            ]),
+            _ResponseQuality(),
+        )
 
-    def _records_from_live(self, token: str) -> list[RucioTransferRecord]:
+    def _records_from_live(
+        self, token: str
+    ) -> tuple[list[RucioTransferRecord], _ResponseQuality]:
         response = _monit_msearch(
             grafana_base_url=self.grafana_base_url,
             datasource_id=self.datasource_id,
@@ -808,9 +978,9 @@ class MONITRucioTransferSource:
             ),
             timeout=self.timeout,
         )
-        return _parse_rucio_transfer_response(
-            response,
-            snapshot_date=_today(),
+        return (
+            _parse_rucio_transfer_response(response, snapshot_date=_today()),
+            _response_quality(response),
         )
 
 
@@ -840,6 +1010,7 @@ class MONITRucioDatasetSource:
         max_replica_rses: int = 250,
         page_cache_dir: str = "data/monit-rucio-datasets/pages",
         cache_live_pages: bool = True,
+        page_cache_ttl_hours: float = 24.0,
         exclude_dataset_patterns: tuple[str, ...] = (
             DEFAULT_EXCLUDED_DATASET_PATTERNS
         ),
@@ -858,6 +1029,7 @@ class MONITRucioDatasetSource:
         self.max_replica_rses = max_replica_rses
         self.page_cache_dir = page_cache_dir
         self.cache_live_pages = cache_live_pages
+        self.page_cache_ttl_hours = page_cache_ttl_hours
         self.exclude_dataset_patterns = tuple(exclude_dataset_patterns)
         self.timeout = timeout
         self.base = base
@@ -906,11 +1078,53 @@ class MONITRucioDatasetSource:
                 n_records=-1,
             )
 
+            # Fetch the first page eagerly: a degraded first page must
+            # fail the run before any scope claim exists, and a
+            # zero-bucket wildcard result (ignore_unavailable masks a
+            # renamed index or a stalled pipeline) must never claim a
+            # complete empty scope — that would retract every
+            # previously ingested dataset.
+            try:
+                first_page = self._load_live_page(
+                    token=token, page_number=0, after_key=None
+                )
+            except Exception as exc:  # noqa: BLE001
+                return _endpoint_failed_run(
+                    mode, self.token_env, exc, endpoint=self.grafana_base_url
+                )
+            first_datasets = (
+                _first_response(first_page)
+                .get("aggregations", {})
+                .get("datasets", {})
+            )
+            if not first_datasets.get("buckets"):
+                return SourceRun(
+                    facts=[],
+                    completed_scope=False,
+                    run_mode=mode,
+                    health=SourceHealth(
+                        status="skipped_optional",
+                        mode="live",
+                        credential_refs=(self.token_env,),
+                        record_count=0,
+                        endpoint=self.grafana_base_url,
+                        reason=(
+                            "MONIT Rucio dataset query returned no dataset "
+                            "buckets; with ignore_unavailable a zero-bucket "
+                            "wildcard result is indistinguishable from a "
+                            "renamed index or stalled pipeline, so no "
+                            "complete scope is claimed"
+                        ),
+                        checked_at=_checked_at(),
+                    ),
+                )
+
             def _live() -> Iterator[NodeFact | EdgeFact | ProgressMarker]:
                 yield from self._live_facts(
                     token=token,
                     revision=revision,
                     since_progress=since_progress or {},
+                    first_page=first_page,
                 )
 
             return SourceRun(
@@ -932,7 +1146,7 @@ class MONITRucioDatasetSource:
             )
 
         try:
-            records, run_mode, revision = self._load_records(run_id)
+            records, run_mode, revision, quality = self._load_records(run_id)
         except MissingMONITCredential as exc:
             return _missing_credential_run(mode, self.token_env, str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -953,13 +1167,16 @@ class MONITRucioDatasetSource:
             records=records,
             ok_reason="MONIT Rucio dataset records loaded",
             empty_reason="MONIT Rucio dataset query returned no dataset buckets",
+            quality=quality,
         )
 
     def _load_records(
         self,
         run_id: str,
-    ) -> tuple[list[RucioDatasetRecord], str, dict[str, Any]]:
-        records, run_mode, hash_value = _load_cache_or_live(
+    ) -> tuple[
+        list[RucioDatasetRecord], str, dict[str, Any], _ResponseQuality
+    ]:
+        records, run_mode, hash_value, quality = _load_cache_or_live(
             records_path=self.records_path,
             token_env=self.token_env,
             cache_loader=self._records_from_cache,
@@ -974,25 +1191,33 @@ class MONITRucioDatasetSource:
             to_time=self.to_time,
             hash_value=hash_value,
             n_records=len(records),
-        )
+        ), quality
 
-    def _records_from_cache(self) -> list[RucioDatasetRecord]:
+    def _records_from_cache(
+        self,
+    ) -> tuple[list[RucioDatasetRecord], _ResponseQuality]:
         payload = load_json(self.records_path, base=self.base)
         if isinstance(payload, dict) and "responses" in payload:
-            return self._parse_response(payload)
+            return self._parse_response(payload), _response_quality(payload)
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a list of records or "
                 "MONIT _msearch response"
             )
-        return [
-            _rucio_dataset_record_from_mapping(item)
-            for item in payload
-            if item
-        ]
+        return (
+            [
+                _rucio_dataset_record_from_mapping(item)
+                for item in payload
+                if item
+            ],
+            _ResponseQuality(),
+        )
 
-    def _records_from_live(self, token: str) -> list[RucioDatasetRecord]:
+    def _records_from_live(
+        self, token: str
+    ) -> tuple[list[RucioDatasetRecord], _ResponseQuality]:
         records: list[RucioDatasetRecord] = []
+        quality = _ResponseQuality()
         after_key: dict[str, Any] | None = None
         while True:
             response = _monit_msearch(
@@ -1010,6 +1235,7 @@ class MONITRucioDatasetSource:
                 timeout=self.timeout,
             )
             records.extend(self._parse_response(response))
+            quality = _merge_quality(quality, _response_quality(response))
             response0 = _first_response(response)
             after_key = (
                 response0.get("aggregations", {})
@@ -1018,7 +1244,7 @@ class MONITRucioDatasetSource:
             )
             if not after_key:
                 break
-        return records
+        return records, quality
 
     def _parse_response(
         self, payload: dict[str, Any]
@@ -1030,12 +1256,17 @@ class MONITRucioDatasetSource:
         )
 
     def _query_fingerprint(self) -> str:
+        # The snapshot date is part of the key: the query body's literal
+        # "now-24h"/"now" resolve to a different window every day, so a
+        # date-free fingerprint would let one day's cached pages satisfy
+        # every later day's run forever (2026-08 review blocker).
         return _query_fingerprint(
             source=self.name,
             from_time=self.from_time,
             to_time=self.to_time,
             page_size=self.page_size,
             max_replica_rses=self.max_replica_rses,
+            snapshot_date=_today(),
         )
 
     def _live_facts(
@@ -1044,16 +1275,20 @@ class MONITRucioDatasetSource:
         token: str,
         revision: dict[str, Any],
         since_progress: dict[str, str],
+        first_page: dict[str, Any] | None = None,
     ) -> Iterator[NodeFact | EdgeFact | ProgressMarker]:
         after_key: dict[str, Any] | None = None
         page_number = 0
         n_records = 0
         while True:
-            response = self._load_live_page(
-                token=token,
-                page_number=page_number,
-                after_key=after_key,
-            )
+            if page_number == 0 and first_page is not None:
+                response = first_page
+            else:
+                response = self._load_live_page(
+                    token=token,
+                    page_number=page_number,
+                    after_key=after_key,
+                )
             records = self._parse_response(response)
             for record in records:
                 fingerprint = _record_fingerprint(record)
@@ -1104,7 +1339,11 @@ class MONITRucioDatasetSource:
         )
         if self.cache_live_pages and cache_path.is_file():
             cached = json.loads(cache_path.read_text())
-            if cached.get("after_key_in") == after_key:
+            if cached.get("after_key_in") == after_key and (
+                _page_cache_entry_fresh(
+                    cached, ttl_hours=self.page_cache_ttl_hours
+                )
+            ):
                 return cached["response"]
 
         response = _monit_msearch(
@@ -1121,6 +1360,16 @@ class MONITRucioDatasetSource:
             ),
             timeout=self.timeout,
         )
+        quality = _response_quality(response)
+        if not quality.complete:
+            # The streaming path cannot retroactively downgrade the
+            # already-returned health/scope claim, so a partial page
+            # fails the run (and is never cached) instead of letting a
+            # partial scope be committed.
+            raise RuntimeError(
+                f"partial MONIT OpenSearch response on page {page_number}: "
+                f"{quality.describe()}"
+            )
         if self.cache_live_pages:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = cache_path.with_suffix(".tmp")
@@ -1169,13 +1418,13 @@ def _monit_preflight(
     records_path: str,
     token_env: str,
     endpoint: str,
-    cache_loader: Callable[[], list[Any]],
+    cache_loader: Callable[[], tuple[list[Any], _ResponseQuality]],
     cache_reason: str,
     base: str | None = None,
 ) -> SourcePreflightResult:
     path = resolve_repo_path(records_path, base=base)
     if path.is_file():
-        records = cache_loader()
+        records, _ = cache_loader()
         return SourcePreflightResult(
             source_name=source_name,
             status="ok",
@@ -1214,18 +1463,19 @@ def _load_cache_or_live(
     *,
     records_path: str,
     token_env: str,
-    cache_loader: Callable[[], list[Any]],
-    live_loader: Callable[[str], list[Any]],
+    cache_loader: Callable[[], tuple[list[Any], _ResponseQuality]],
+    live_loader: Callable[[str], tuple[list[Any], _ResponseQuality]],
     base: str | None = None,
-) -> tuple[list[Any], str, str]:
+) -> tuple[list[Any], str, str, _ResponseQuality]:
     path = resolve_repo_path(records_path, base=base)
     if path.is_file():
-        return cache_loader(), "cache", _file_hash(path)
+        records, quality = cache_loader()
+        return records, "cache", _file_hash(path), quality
     token = os.environ.get(token_env)
     if not token:
         raise MissingMONITCredential(f"{token_env} is not set and {path} is missing")
-    records = live_loader(token)
-    return records, "live", _records_hash(records)
+    records, quality = live_loader(token)
+    return records, "live", _records_hash(records), quality
 
 
 def _missing_credential_run(
@@ -1284,19 +1534,46 @@ def _source_run(
     records: list[Any],
     ok_reason: str,
     empty_reason: str,
+    quality: _ResponseQuality | None = None,
 ) -> SourceRun:
+    partial = quality is not None and not quality.complete
+    if partial:
+        # HTTP 200 but the response itself is partial (timed out, shard
+        # failures, or capped terms aggregations): emit the records it
+        # carries, but the closed status vocabulary has no 'degraded',
+        # so report endpoint_failed — and never claim the scope, or
+        # missing_from_completed_scope would retract every record the
+        # partial response happened to drop.
+        status = "endpoint_failed"
+        reason = (
+            f"partial MONIT OpenSearch response ({quality.describe()}); "
+            f"{len(records)} records emitted, no complete scope claimed"
+        )
+        completed = False
+    elif not records:
+        # Zero buckets under an ignore_unavailable wildcard-index query
+        # is indistinguishable from a renamed index or a stalled
+        # ingestion pipeline, so never claim a complete empty scope (it
+        # would retract every previously ingested record).
+        status = "skipped_optional"
+        reason = f"{empty_reason}; no complete scope claimed"
+        completed = False
+    else:
+        status = "ok"
+        reason = ok_reason
+        completed = mode in {"scope_complete", "reconcile"}
     return SourceRun(
         facts=facts,
-        completed_scope=(mode in {"scope_complete", "reconcile"}),
+        completed_scope=completed,
         run_mode=mode,
         health=SourceHealth(
-            status="ok" if records else "skipped_optional",
+            status=status,
             mode=run_mode,
             credential_refs=((token_env,) if run_mode == "live" else ()),
             record_count=len(records),
             content_hash=revision["content_hash"],
             endpoint=endpoint if run_mode == "live" else None,
-            reason=ok_reason if records else empty_reason,
+            reason=reason,
             checked_at=_checked_at(),
         ),
     )
@@ -1929,6 +2206,7 @@ def _query_fingerprint(
     to_time: str,
     page_size: int,
     max_replica_rses: int,
+    snapshot_date: str,
 ) -> str:
     import hashlib
 
@@ -1938,9 +2216,44 @@ def _query_fingerprint(
         "to_time": to_time,
         "page_size": page_size,
         "max_replica_rses": max_replica_rses,
-        "query_version": "rucio_dataset_composite_v2",
+        # Relative time expressions ("now-24h") resolve differently
+        # every day; the snapshot date keys the cache to the day the
+        # window actually covered. v3 also invalidates every date-free
+        # v2 cache entry.
+        "snapshot_date": snapshot_date,
+        "query_version": "rucio_dataset_composite_v3",
     }, sort_keys=True).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _page_cache_entry_fresh(
+    cached: dict[str, Any],
+    *,
+    ttl_hours: float,
+) -> bool:
+    """True when a live page-cache entry may satisfy this run.
+
+    The entry must carry a parseable ``cached_at`` stamped on the same
+    UTC day as this run's snapshot date and be younger than
+    *ttl_hours*. A page from a previous day (or of unknown age) must
+    never satisfy a new day's run — replaying it would emit
+    yesterday's datasets stamped with today's date under a completed
+    scope claim, and the substrate would retract everything else.
+    """
+    raw = cached.get("cached_at")
+    if not isinstance(raw, str) or not raw:
+        return False
+    try:
+        cached_at = datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    if cached_at.tzinfo is None:
+        cached_at = cached_at.replace(tzinfo=timezone.utc)
+    cached_at = cached_at.astimezone(timezone.utc)
+    if cached_at.strftime("%Y-%m-%d") != _today():
+        return False
+    age = datetime.now(timezone.utc) - cached_at
+    return timedelta(0) <= age <= timedelta(hours=ttl_hours)
 
 
 def _page_cache_path(

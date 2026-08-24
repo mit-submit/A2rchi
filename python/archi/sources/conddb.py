@@ -118,9 +118,18 @@ class CondDBGlobalTagSource:
         self.records_path = records_path
         self.cmssw_records_path = cmssw_records_path
         self.base = base
+        # The probe must cover every cache run() reads: run() also
+        # consults cmssw_records_path (release-target gating), so a
+        # cmssw-cache update changes emitted facts and must fire the
+        # probe. `cache_paths` stays records-only — it defines this
+        # source's own record authority (preflight/content_hash), and
+        # the cmssw cache is optional.
         self.change_probe = content_hash_change_probe(
-            cache_paths=self.cache_paths,
-            config={"records_path": self.records_path},
+            cache_paths=(self.records_path, self.cmssw_records_path),
+            config={
+                "records_path": self.records_path,
+                "cmssw_records_path": self.cmssw_records_path,
+            },
             emit_targets=CondDBGlobalTagSource,
             base=base,
         )
@@ -144,7 +153,7 @@ class CondDBGlobalTagSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        records, skipped = self._records_with_skips()
         revision = {
             "run_id": run_id,
             "content_hash": content_hash(self.cache_paths, base=self.base),
@@ -173,28 +182,37 @@ class CondDBGlobalTagSource:
 
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and not skipped
+            ),
             run_mode=mode,
             health=cache_source_health(
                 description="CondDB global tag",
                 cache_paths=self.cache_paths,
                 record_count=len(records),
+                skipped_count=skipped,
                 base=self.base,
             ),
         )
 
     def _records(self) -> list[GlobalTagRecord]:
+        return self._records_with_skips()[0]
+
+    def _records_with_skips(self) -> tuple[list[GlobalTagRecord], int]:
         payload = load_json(self.records_path, base=self.base)
         if not isinstance(payload, list):
             raise ValueError(
                 f"{self.records_path}: expected a JSON list of global tags"
             )
         records: list[GlobalTagRecord] = []
+        skipped = 0
         for item in payload:
             if not isinstance(item, dict):
+                skipped += 1
                 continue
             name = str(item.get("name") or item.get("tag_name") or "").strip()
             if not name:
+                skipped += 1
                 continue
             records.append(GlobalTagRecord(
                 name=name,
@@ -207,7 +225,7 @@ class CondDBGlobalTagSource:
                     or ""
                 ),
             ))
-        return records
+        return records, skipped
 
 
 def _node_fact(

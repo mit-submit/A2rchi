@@ -7,7 +7,7 @@ finds a promising chunk but not enough surrounding context.
 ## Exploration Posture
 
 - Treat the OKG as the database to learn from. Inspect schema/source shape with
-  `inspect`, `inspect`, and bounded SQL instead of guessing
+  `inspect`, `aggregate`, and bounded SQL instead of guessing
   which source family exists.
 - Try independent query variants before declaring a gap: exact phrase, shorter
   noun phrase, command/config key, repo/path fragment, source family, service

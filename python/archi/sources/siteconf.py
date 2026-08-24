@@ -233,6 +233,85 @@ class SITECONFSource:
                 ),
                 checked_at=_checked_at(),
             )
+        return self._group_probe(env_result)
+
+    def _group_probe(
+        self,
+        env_result: SourcePreflightResult,
+    ) -> SourcePreflightResult:
+        """Probe group visibility, not just token validity.
+
+        ``/api/v4/user`` accepts any live token; a token without group
+        visibility then gets an HTTP-200 *empty* project list from the
+        group crawl, which used to become a healthy completed scope
+        over zero records (retract-all).
+        """
+        import requests
+
+        token = _env_value(self.token_env, self.aliases)
+        endpoint = f"{self.base_url}/api/v4/groups/{self.group_id}/projects"
+        try:
+            # Mirror the crawl's listing exactly (include_subgroups):
+            # a group whose projects live only in subgroups must not
+            # get a false-negative preflight that blocks run().
+            resp = requests.get(
+                endpoint,
+                params={"include_subgroups": "true", "per_page": 1},
+                headers={"PRIVATE-TOKEN": token},
+                timeout=20,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return SourcePreflightResult(
+                source_name=self.name,
+                status="endpoint_failed",
+                mode="live",
+                required=self.required,
+                credential_refs=env_result.credential_refs,
+                alias_refs=env_result.alias_refs,
+                endpoint=endpoint,
+                reason=f"GitLab group probe failed: {type(exc).__name__}",
+                checked_at=_checked_at(),
+            )
+        if resp.status_code in {401, 403}:
+            return SourcePreflightResult(
+                source_name=self.name,
+                status="auth_failed",
+                mode="live",
+                required=self.required,
+                credential_refs=env_result.credential_refs,
+                alias_refs=env_result.alias_refs,
+                endpoint=endpoint,
+                reason=(
+                    f"GitLab token cannot access group {self.group_id}"
+                ),
+                checked_at=_checked_at(),
+            )
+        payload: Any = None
+        if resp.status_code < 400:
+            try:
+                payload = resp.json()
+            except ValueError:
+                payload = None
+        if (
+            resp.status_code >= 400
+            or not isinstance(payload, list)
+            or not payload
+        ):
+            return SourcePreflightResult(
+                source_name=self.name,
+                status="endpoint_failed",
+                mode="live",
+                required=self.required,
+                credential_refs=env_result.credential_refs,
+                alias_refs=env_result.alias_refs,
+                endpoint=endpoint,
+                reason=(
+                    f"GitLab group {self.group_id} project list is not "
+                    "visible to this token (HTTP "
+                    f"{resp.status_code}, empty or non-list payload)"
+                ),
+                checked_at=_checked_at(),
+            )
         return SourcePreflightResult(
             source_name=self.name,
             status="ok",
@@ -240,8 +319,8 @@ class SITECONFSource:
             required=self.required,
             credential_refs=env_result.credential_refs,
             alias_refs=env_result.alias_refs,
-            endpoint=f"{self.base_url}/api/v4/user",
-            reason="GitLab token accepted",
+            endpoint=endpoint,
+            reason="GitLab token accepted and group projects visible",
             checked_at=_checked_at(),
         )
 
@@ -260,7 +339,41 @@ class SITECONFSource:
                 ),
             )
 
-        records = self._records if self._records is not None else self._fetch()
+        if self._records is not None:
+            records = self._records
+            truncated = False
+        else:
+            records, n_projects, truncated = self._fetch()
+            if not records:
+                # An HTTP-200 empty project list (token without group
+                # visibility) or a crawl that parsed zero site configs
+                # must never become a healthy completed scope over zero
+                # records — that would retract every site_config.
+                return SourceRun(
+                    facts=[],
+                    completed_scope=False,
+                    run_mode=mode,
+                    health=SourceHealth(
+                        status="endpoint_failed",
+                        mode="live",
+                        credential_refs=(self.token_env,),
+                        record_count=0,
+                        endpoint=self.base_url,
+                        reason=(
+                            (
+                                f"GitLab group {self.group_id} returned "
+                                "an empty project list; the token may "
+                                "lack group visibility"
+                            )
+                            if n_projects == 0
+                            else (
+                                f"{n_projects} GitLab projects listed "
+                                "but zero SITECONF records parsed"
+                            )
+                        )
+                        + "; no scope claimed",
+                    ),
+                )
         record_hash = _records_hash(records)
         revision = {
             "run_id": run_id,
@@ -283,9 +396,19 @@ class SITECONFSource:
                         source_revision=revision,
                     )
 
+        reason = "SITECONF records fetched from GitLab"
+        if truncated:
+            # A truncated project list is a sliding window, not the
+            # full group scope.
+            reason += (
+                f"; max_projects={self.max_projects} truncated the "
+                "project list; no complete scope claimed"
+            )
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"} and not truncated
+            ),
             run_mode=mode,
             health=SourceHealth(
                 status="ok",
@@ -295,17 +418,18 @@ class SITECONFSource:
                 ),
                 record_count=len(records),
                 content_hash=record_hash,
-                reason="SITECONF records fetched from GitLab",
+                reason=reason,
             ),
         )
 
-    def _fetch(self) -> list[SiteConfRecord]:
+    def _fetch(self) -> tuple[list[SiteConfRecord], int, bool]:
+        """(records, listed_project_count, cap_truncated)."""
         import requests
 
         token = _env_value(self.token_env, self.aliases)
         headers = {"PRIVATE-TOKEN": token} if token else {}
         session = requests.Session()
-        projects = self._list_projects(session, headers)
+        projects, truncated = self._list_projects(session, headers)
         records: list[SiteConfRecord] = []
         for project in projects:
             site_name = _pg_text(str(project.get("path") or ""))
@@ -320,13 +444,13 @@ class SITECONFSource:
             )
             if record is not None:
                 records.append(record)
-        return records
+        return records, len(projects), truncated
 
     def _list_projects(
         self,
         session: Any,
         headers: dict[str, str],
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], bool]:
         projects: list[dict[str, Any]] = []
         page = 1
         while True:
@@ -349,9 +473,10 @@ class SITECONFSource:
                 self.max_projects is not None
                 and len(projects) >= self.max_projects
             ):
-                return projects[:self.max_projects]
+                # The cap fired: pages/items beyond it were not listed.
+                return projects[:self.max_projects], True
             page += 1
-        return projects
+        return projects, False
 
     def _fetch_site_config(
         self,

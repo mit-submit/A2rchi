@@ -96,6 +96,24 @@ otherwise). The superseded v2 application has been removed from the archi_v3
 line (W10 teardown, PR #611 merged 2026-08-21); v2 lives on `main` until
 instance cutover.
 
+**Circle-back adversarial review + fixes (2026-08-24, PACT change
+`circleback-fixes`):** a four-domain adversarial review of `archi_v3` @
+`728739e6` (your pinned external-consumer baseline) found 3 blockers / 15
+majors, dominated by connectors claiming `completed_scope` after silently
+losing input — a mass-retraction hazard under `missing_from_completed_scope`.
+All confirmed blocker/major findings are fixed with per-finding regression
+tests (suite 254 → 320); ~85% of the bugs exist identically in the frozen
+canonical `okg-deployments/cms` copies (deviations recorded in the change
+dir's notes files). Two items are routed to this channel instead of patched
+locally: (1) **likely root cause for the deletion-semantics finding you are
+triaging** — no adapter ever provides `SourceRun.record_set`, and the runner
+then silently skips retraction synthesis rather than failing loudly; (2) the
+enricher derived-edge lifecycle (attrs-independent dedupe keys block
+re-derivation after any transient retraction; no evidence-based retraction) —
+both substrate-contract questions. Also relevant to the sealed-artifact
+design: bundle playbooks are symlinks escaping `bundles/`, so packaging must
+dereference (your "materialized payload" wording already covers this).
+
 ## The exact substrate surface Archi consumes today
 
 This is the de-facto interface #1181 (public connector/enricher SDK) will replace.

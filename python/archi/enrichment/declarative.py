@@ -31,7 +31,13 @@ class GlobalTagReleaseLinker(DeclarativeLinker):
 
     def __init__(self, **kwargs) -> None:
         kwargs.setdefault("name", "cms_declarative_global_tag_release")
-        if not any(k in kwargs for k in ("rules", "rules_files", "rules_dir")):
+        # None/empty rule sources mean "not provided". A bare key-presence
+        # check treated rules_files=None/[] as a caller override, which
+        # suppressed the packaged default and let DeclarativeLinker load
+        # its entire substrate rule set under this linker's name.
+        if not any(kwargs.get(k) for k in ("rules", "rules_files", "rules_dir")):
+            for key in ("rules", "rules_files", "rules_dir"):
+                kwargs.pop(key, None)
             kwargs["rules_files"] = [
                 str(cross_link_rules_file("global_tag_release.yaml"))
             ]

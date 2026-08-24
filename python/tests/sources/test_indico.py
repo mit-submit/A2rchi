@@ -52,9 +52,12 @@ def test_meeting_document_and_chunk_emission(tmp_path):
     nodes = {f.node_id: f for f in facts if isinstance(f, NodeFact)}
     meeting_id = "meeting_minutes:1465000"
     doc_id = "doc:indico:event/1465000/pdf/0"
-    chunk_id = (
-        "chunk:" + hashlib.sha256(PDF_TEXT.encode("utf-8")).hexdigest()[:16]
-    )
+    # Chunk ids are salted with the parent doc id + chunk index (the
+    # hypernews pattern, literal backslash-zero separator) so identical
+    # boilerplate in different events cannot collide onto one node.
+    chunk_id = "chunk:" + hashlib.sha256(
+        f"{doc_id}\\0{0}\\0{PDF_TEXT}".encode("utf-8")
+    ).hexdigest()[:16]
     assert set(nodes) == {meeting_id, doc_id, chunk_id}  # dup event dropped
     meeting = nodes[meeting_id]
     assert meeting.subtype == "meeting_minutes"
@@ -97,3 +100,61 @@ def test_url_fallback_uses_base_url_and_preflight(tmp_path):
     result = source.preflight()
     assert result.status == "ok"
     assert result.record_count == 1
+
+
+# --- circleback-fixes regressions ---
+
+
+def test_identical_pdf_text_in_different_events_gets_distinct_chunks(
+    tmp_path,
+):
+    # A content-hash-only chunk id collided identical boilerplate from
+    # different events onto one node with contradictory parents.
+    records = [
+        {"id": "100", "title": "A", "_pdf_texts": [{"text": PDF_TEXT}]},
+        {"id": "200", "title": "B", "_pdf_texts": [{"text": PDF_TEXT}]},
+    ]
+    root = tmp_path / "data" / "indico"
+    root.mkdir(parents=True)
+    (root / "records.json").write_text(json.dumps(records))
+    source = IndicoSource(base=str(tmp_path))
+    facts = list(source.run("run-1", mode="scope_complete").facts)
+    chunks = [
+        f for f in facts
+        if isinstance(f, NodeFact) and f.subtype == "document_chunk"
+    ]
+    assert len(chunks) == 2
+    assert len({c.node_id for c in chunks}) == 2
+    parents = {
+        (e.src, e.dst)
+        for e in facts
+        if isinstance(e, EdgeFact) and e.edge_type == "contains"
+        and e.dst.startswith("chunk:")
+    }
+    assert len(parents) == 2  # one distinct parent doc per chunk
+
+
+def test_skipped_cache_items_never_claim_scope(tmp_path):
+    root = tmp_path / "data" / "indico"
+    root.mkdir(parents=True)
+    (root / "records.json").write_text(
+        json.dumps(RECORDS + ["junk", {"title": "no id"}])
+    )
+    source = IndicoSource(base=str(tmp_path))
+    run = source.run("run-1", mode="scope_complete")
+    nodes = {f.node_id for f in run.facts if isinstance(f, NodeFact)}
+    assert "meeting_minutes:1465000" in nodes  # survivors still emitted
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 2" in run.health.reason
+
+
+def test_all_items_unparseable_is_endpoint_failed(tmp_path):
+    root = tmp_path / "data" / "indico"
+    root.mkdir(parents=True)
+    (root / "records.json").write_text(json.dumps(["junk"]))
+    source = IndicoSource(base=str(tmp_path))
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"

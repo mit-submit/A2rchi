@@ -240,6 +240,103 @@ def test_search_timeout_is_structured_error(monkeypatch):
     assert payload["boundary"] == "external_live"
 
 
+def test_search_connection_error_is_structured(monkeypatch):
+    """Finding 7: requests.ConnectionError must come back as the same
+    structured error payload as a timeout, not escape as an exception."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    _fake_post(
+        monkeypatch,
+        lambda *a: requests.exceptions.ConnectionError("dns failure"),
+    )
+    payload = archi_monit_rucio_search("*")
+    assert payload["error"] == (
+        "MONIT OpenSearch request failed: ConnectionError"
+    )
+    assert payload["results"] == []
+    assert payload["boundary"] == "external_live"
+
+
+def test_aggregate_connection_error_is_structured(monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    _fake_post(
+        monkeypatch,
+        lambda *a: requests.exceptions.ConnectionError("dns failure"),
+    )
+    payload = archi_monit_rucio_aggregate("*", "data.reason")
+    assert payload["aggregation"]["error"] == (
+        "MONIT OpenSearch request failed: ConnectionError"
+    )
+    assert payload["aggregation"]["buckets"] == []
+
+
+class _NonJSONResponse:
+    status_code = 200
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        raise requests.exceptions.JSONDecodeError(
+            "Expecting value", "<html>Grafana error page</html>", 0
+        )
+
+
+def test_search_non_json_200_body_is_structured(monkeypatch):
+    """Finding 7: a 200 body that is not JSON (Grafana HTML error page)
+    must come back as a structured error payload."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    monkeypatch.setattr(
+        monit_tools.requests, "post", lambda *a, **k: _NonJSONResponse()
+    )
+    payload = archi_monit_rucio_search("*")
+    assert payload["error"] == (
+        "MONIT OpenSearch returned a non-JSON response body"
+    )
+    assert payload["results"] == []
+
+
+def test_aggregate_non_json_200_body_is_structured(monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    monkeypatch.setattr(
+        monit_tools.requests, "post", lambda *a, **k: _NonJSONResponse()
+    )
+    payload = archi_monit_rucio_aggregate("*", "data.reason")
+    assert payload["aggregation"]["error"] == (
+        "MONIT OpenSearch returned a non-JSON response body"
+    )
+
+
+def test_time_window_echo_matches_query_body(monkeypatch):
+    """Finding 9: the echoed time_window must reflect exactly the window
+    the query body used — blank inputs are defaulted identically in
+    both, not just in the echo."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    calls = _fake_post(monkeypatch, lambda *a: SEARCH_RESPONSE)
+    payload = archi_monit_rucio_search("*", from_time="", to_time="  ")
+    (call,) = calls
+    _, body = _body(call)
+    time_range = body["query"]["bool"]["filter"][0]["range"][
+        "metadata.timestamp"
+    ]
+    assert time_range["gte"] == "now-24h"
+    assert time_range["lte"] == "now"
+    assert payload["time_window"]["from"] == time_range["gte"]
+    assert payload["time_window"]["to"] == time_range["lte"]
+
+    calls.clear()
+    payload = archi_monit_rucio_aggregate(
+        "*", "data.reason", from_time=" now-7d ", to_time=None,
+    )
+    _, body = _body(calls[0])
+    time_range = body["query"]["bool"]["filter"][0]["range"][
+        "metadata.timestamp"
+    ]
+    assert time_range["gte"] == "now-7d"
+    assert time_range["lte"] == "now"
+    assert payload["time_window"]["from"] == "now-7d"
+    assert payload["time_window"]["to"] == "now"
+
+
 def test_search_http_401_maps_to_auth_failed_message(monkeypatch):
     monkeypatch.setenv(TOKEN_ENV, "test-token")
     monkeypatch.setattr(
@@ -299,8 +396,11 @@ def test_rucio_aggregate_terms_keyword_and_formatting(monkeypatch):
 
 def test_aggregate_keyword_retry_falls_back_to_raw_field(monkeypatch):
     monkeypatch.setenv(TOKEN_ENV, "test-token")
-    empty = {"responses": [{
-        "hits": {"total": {"value": 0}},
+    # Documents matched but the auto-appended .keyword sub-field is
+    # unmapped (e.g. a numeric field): zero buckets with a non-zero
+    # total triggers the raw-field retry.
+    matched_bucketless = {"responses": [{
+        "hits": {"total": {"value": 917}},
         "aggregations": {"result": {"buckets": []}},
     }]}
 
@@ -309,7 +409,11 @@ def test_aggregate_keyword_retry_falls_back_to_raw_field(monkeypatch):
             data.split("\n")[1]
         )
         field = body["aggs"]["result"]["terms"]["field"]
-        return TERMS_AGG_RESPONSE if field == "data.bytes" else empty
+        return (
+            TERMS_AGG_RESPONSE
+            if field == "data.bytes"
+            else matched_bucketless
+        )
 
     calls = _fake_post(monkeypatch, _respond)
     payload = archi_monit_condor_aggregate("*", "data.bytes")
@@ -320,6 +424,87 @@ def test_aggregate_keyword_retry_falls_back_to_raw_field(monkeypatch):
     payload = archi_monit_condor_aggregate("*", "data.reason.keyword")
     assert len(calls) == 1
     assert payload["aggregation"]["buckets"] == []
+
+
+def test_aggregate_field_error_triggers_raw_retry(monkeypatch):
+    """Finding 8: a field-related .keyword error (fielddata disabled,
+    missing mapping) retries with the raw field name."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    field_error = {"responses": [{"error": {
+        "type": "search_phase_execution_exception",
+        "reason": "Fielddata is disabled on text fields by default",
+    }}]}
+
+    def _respond(url, headers, data):
+        body = json.loads(data.split("\n")[1])
+        field = body["aggs"]["result"]["terms"]["field"]
+        return TERMS_AGG_RESPONSE if field == "data.reason" else field_error
+
+    calls = _fake_post(monkeypatch, _respond)
+    payload = archi_monit_rucio_aggregate("*", "data.reason")
+    assert len(calls) == 2
+    assert payload["aggregation"]["buckets"]
+    assert "error" not in payload["aggregation"]
+
+
+def test_aggregate_zero_match_empty_buckets_is_valid_result(monkeypatch):
+    """Finding 8 regression: a legitimate zero-bucket .keyword result
+    (zero matching documents) must be returned as-is — the old code
+    retried with the raw field and surfaced its fielddata error."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    state = {"calls": 0}
+    empty = {"responses": [{
+        "hits": {"total": {"value": 0}},
+        "aggregations": {"result": {"buckets": []}},
+    }]}
+    fielddata_error = {"responses": [{"error": {
+        "type": "search_phase_execution_exception",
+        "reason": "Fielddata is disabled on text fields by default",
+    }}]}
+
+    def _respond(url, headers, data):
+        state["calls"] += 1
+        return empty if state["calls"] == 1 else fielddata_error
+
+    calls = _fake_post(monkeypatch, _respond)
+    payload = archi_monit_rucio_aggregate(
+        "data.event_type:none-match", "data.reason"
+    )
+    assert len(calls) == 1  # no raw-field retry on a zero-match result
+    agg = payload["aggregation"]
+    assert agg["buckets"] == []
+    assert agg["total_matching_documents"] == 0
+    assert "error" not in agg
+
+
+def test_aggregate_failing_raw_retry_keeps_valid_empty_result(monkeypatch):
+    """Finding 8: when the matched-but-bucketless retry itself errors,
+    the valid empty .keyword result wins — never the retry's error."""
+    monkeypatch.setenv(TOKEN_ENV, "test-token")
+    matched_bucketless = {"responses": [{
+        "hits": {"total": {"value": 42}},
+        "aggregations": {"result": {"buckets": []}},
+    }]}
+    fielddata_error = {"responses": [{"error": {
+        "reason": "Fielddata is disabled on text fields by default",
+    }}]}
+
+    def _respond(url, headers, data):
+        body = json.loads(data.split("\n")[1])
+        field = body["aggs"]["result"]["terms"]["field"]
+        return (
+            fielddata_error
+            if field == "data.reason"
+            else matched_bucketless
+        )
+
+    calls = _fake_post(monkeypatch, _respond)
+    payload = archi_monit_rucio_aggregate("*", "data.reason")
+    assert len(calls) == 2
+    agg = payload["aggregation"]
+    assert agg["buckets"] == []
+    assert agg["total_matching_documents"] == 42
+    assert "error" not in agg
 
 
 def test_aggregate_metric_value(monkeypatch):

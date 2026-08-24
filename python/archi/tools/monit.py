@@ -28,6 +28,17 @@ Changes from the original:
   structured ``error`` payloads, and every payload carries
   ``boundary: external_live`` plus ``observed_at``, source/index, the
   sanitized query, and the explicit time window.
+- 2026-08 adversarial review (see
+  ``pact/changes/circleback-fixes/notes-live.md``): every
+  ``requests.RequestException`` (ConnectionError, ...) and a non-JSON
+  200 body (Grafana HTML error page) also come back as structured
+  ``error`` payloads instead of escaping as raw exceptions; the echoed
+  ``time_window`` is exactly the window the query body used (both are
+  sanitized once, identically); and the terms ``.keyword``->raw retry
+  fires only when the ``.keyword`` attempt failed with a field-related
+  error or matched documents yet produced no buckets — a zero-match
+  empty bucket list is a valid result and is returned as-is (and a
+  failing raw retry never replaces a valid empty ``.keyword`` result).
 
 Wiring — an instance registers the tools in its ``deployment.yaml``
 ``agent_tools`` block (adapted from the cms block; the mapping key is
@@ -292,6 +303,10 @@ def monit_search(
     """Generic MONIT OpenSearch Lucene search (parameterized core)."""
     observed_at = _observed_at()
     clean_query = _clean_query(query, token_env=token_env)
+    # Sanitize the window once; the query body and the echoed
+    # time_window must use the exact same values.
+    from_time = _sanitize_time(from_time, "now-24h")
+    to_time = _sanitize_time(to_time, "now")
     effective_max = _bounded_int(max_results, default=DEFAULT_MAX_RESULTS,
                                  lower=1, upper=MAX_RESULTS_HARD_LIMIT)
     effective_page = _bounded_int(page, default=1, lower=1, upper=1000)
@@ -378,6 +393,19 @@ def monit_search(
             total={"value": 0, "relation": "eq"},
             error=_http_error_message(exc),
         )
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as exc:
+        # ConnectionError, TLS failures, non-JSON 200 bodies (Grafana
+        # HTML error pages), ...: same structured payload as the
+        # timeout/HTTP paths — never a raw exception to the agent.
+        return _search_payload(
+            source_name=source_name,
+            observed_at=observed_at,
+            query=descriptor,
+            time_window=time_window,
+            results=[],
+            total={"value": 0, "relation": "eq"},
+            error=_request_error_message(exc),
+        )
 
 
 def monit_aggregate(
@@ -398,6 +426,10 @@ def monit_aggregate(
     """Generic MONIT OpenSearch aggregation (parameterized core)."""
     observed_at = _observed_at()
     clean_query = _clean_query(query, token_env=token_env)
+    # Sanitize the window once; the query body and the echoed
+    # time_window must use the exact same values.
+    from_time = _sanitize_time(from_time, "now-24h")
+    to_time = _sanitize_time(to_time, "now")
     clean_group_by = (group_by or "").strip()
     clean_agg_type = (agg_type or "terms").strip().lower()
     effective_top_n = _bounded_int(top_n, default=DEFAULT_TOP_N,
@@ -450,14 +482,33 @@ def monit_aggregate(
             timeout=timeout,
         )
         first = _first_response(response)
+        keyword_error = _response_error(first)
+        matched_but_bucketless = (
+            not keyword_error
+            and not _aggregation_buckets(first)
+            and _total_descriptor(
+                first.get("hits", {}).get("total", 0)
+            )["value"] > 0
+        )
         if (
             clean_agg_type == "terms"
             and agg_field != clean_group_by
-            and not _aggregation_buckets(first)
-            and not _response_error(first)
+            and (
+                (
+                    keyword_error
+                    and _looks_like_field_error(keyword_error, agg_field)
+                )
+                or matched_but_bucketless
+            )
         ):
-            # .keyword produced no buckets (e.g. numeric field): retry
-            # with the raw field name.
+            # The auto-appended .keyword sub-field is missing or not
+            # aggregatable (field-related error, or documents matched
+            # yet produced zero buckets — e.g. a numeric field whose
+            # .keyword is unmapped): retry with the raw field name.
+            # A zero-bucket .keyword result with zero matching
+            # documents is a valid empty aggregation and is returned
+            # as-is — retrying it used to surface fielddata errors for
+            # legitimately empty windows.
             body = _aggregation_body(
                 lucene_query=clean_query,
                 field=clean_group_by,
@@ -466,7 +517,7 @@ def monit_aggregate(
                 from_time=from_time,
                 to_time=to_time,
             )
-            response = _post_msearch(
+            retry_response = _post_msearch(
                 grafana_base_url=grafana_base_url,
                 token_env=token_env,
                 datasource_id=datasource_id,
@@ -474,7 +525,12 @@ def monit_aggregate(
                 body=body,
                 timeout=timeout,
             )
-            first = _first_response(response)
+            retry_first = _first_response(retry_response)
+            if keyword_error or not _response_error(retry_first):
+                # Use the retry only when the .keyword attempt had
+                # failed or the raw attempt succeeded; a failing raw
+                # retry must not replace a valid empty .keyword result.
+                first = retry_first
         error = _response_error(first)
         if error:
             aggregation = {
@@ -519,6 +575,24 @@ def monit_aggregate(
             "total_matching_documents": 0,
             "buckets": [],
             "error": _http_error_message(exc),
+        }
+        return _aggregation_payload(
+            source_name=source_name,
+            observed_at=observed_at,
+            query=descriptor,
+            time_window=time_window,
+            aggregation=aggregation,
+        )
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as exc:
+        # ConnectionError, TLS failures, non-JSON 200 bodies (Grafana
+        # HTML error pages), ...: same structured payload as the
+        # timeout/HTTP paths — never a raw exception to the agent.
+        aggregation = {
+            "agg_type": clean_agg_type,
+            "group_by": clean_group_by,
+            "total_matching_documents": 0,
+            "buckets": [],
+            "error": _request_error_message(exc),
         }
         return _aggregation_payload(
             source_name=source_name,
@@ -775,10 +849,21 @@ def _clean_query(query: str, *, token_env: str = DEFAULT_TOKEN_ENV) -> str:
     return clean
 
 
+def _sanitize_time(value: str | None, default: str) -> str:
+    """One sanitization for both the query body and the echoed window."""
+    return ((value or "").strip()) or default
+
+
 def _time_window(from_time: str, to_time: str) -> dict[str, str]:
+    """Echo of the exact window the query body used.
+
+    Callers pass values already normalized by :func:`_sanitize_time`;
+    no further defaulting/stripping happens here, so the echo cannot
+    drift from what was actually queried.
+    """
     return {
-        "from": (from_time or "now-24h").strip(),
-        "to": (to_time or "now").strip(),
+        "from": from_time,
+        "to": to_time,
         "time_field": "metadata.timestamp",
     }
 
@@ -801,6 +886,37 @@ def _http_error_message(exc: requests.exceptions.HTTPError) -> str:
     if status in {401, 403}:
         return f"MONIT OpenSearch authentication failed with HTTP {status}"
     return f"MONIT OpenSearch request failed with HTTP {status}"
+
+
+def _request_error_message(exc: Exception) -> str:
+    """Structured message for transport/parse failures.
+
+    Built from the exception *type* only — exception text can embed
+    URLs/hosts, and these messages travel back to the agent verbatim.
+    """
+    if isinstance(exc, json.JSONDecodeError):
+        return "MONIT OpenSearch returned a non-JSON response body"
+    return f"MONIT OpenSearch request failed: {type(exc).__name__}"
+
+
+_FIELD_ERROR_MARKERS = (
+    "no mapping found",
+    "fielddata",
+    "field data",
+    "unknown field",
+    "failed to find field",
+    "not aggregatable",
+)
+
+
+def _looks_like_field_error(error: str, field: str) -> bool:
+    """True when an OpenSearch error is about the aggregation field
+    itself (missing ``.keyword`` sub-field, non-aggregatable type) —
+    the only case where retrying with the raw field name can help."""
+    lowered = error.lower()
+    if field and field.lower() in lowered:
+        return True
+    return any(marker in lowered for marker in _FIELD_ERROR_MARKERS)
 
 
 __all__ = [

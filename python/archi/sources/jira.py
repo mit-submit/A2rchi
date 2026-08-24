@@ -60,6 +60,16 @@ Changes from the cms original:
   literal backslash-zero separator (the original's ``f'..\\0..'``
   inside an f-string), *not* the NUL byte docs.py uses. Changing it
   would re-key every jira chunk at cutover.
+- 2026-08 adversarial review (see
+  ``pact/changes/circleback-fixes/notes-live.md``): ``run()`` now
+  cross-checks the parsed record count against ``meta.json``'s
+  ``record_count`` (the original consulted the meta file only in the
+  cache-missing preflight branch). On a mismatch the cache is treated
+  as truncated/stale: facts are still emitted, health is
+  ``endpoint_failed`` (the closed status vocabulary has no
+  ``degraded``) with both counts in the reason, and the run never
+  claims ``completed_scope`` — a truncated cache claimed complete
+  would retract every record it happened to drop.
 
 Registry-entry template — INGEST-PROVEN 2026-08-11 on a scratch
 instance (okg dev@21c5b8c3e). Three things beyond the registry entry
@@ -488,6 +498,36 @@ class JiraIssueSource:
                         targets,
                     )
 
+        expected = _expected_count(self.meta_path, base=self.base)
+        if expected is not None and expected != len(records):
+            # meta.json says the fetch produced `expected` records but
+            # the cache parsed a different number: the records file is
+            # truncated or stale relative to its own metadata. Emit
+            # what parsed, but never claim a completed scope — under
+            # missing_from_completed_scope a truncated cache claimed
+            # complete would retract every record it dropped. The
+            # closed status vocabulary has no 'degraded', so report
+            # endpoint_failed.
+            return SourceRun(
+                facts=_facts(),
+                completed_scope=False,
+                run_mode=mode,
+                health=SourceHealth(
+                    status="endpoint_failed",
+                    mode="cache",
+                    credential_refs=self._credential_refs,
+                    alias_refs=self._alias_refs,
+                    record_count=len(records),
+                    content_hash=revision["content_hash"],
+                    reason=(
+                        f"JIRA records cache parsed {len(records)} records "
+                        f"but {self.meta_path} reports record_count="
+                        f"{expected}; cache looks truncated or stale, "
+                        "facts emitted, no complete scope claimed"
+                    ),
+                    checked_at=_checked_at(),
+                ),
+            )
         return SourceRun(
             facts=_facts(),
             completed_scope=(mode in {"scope_complete", "reconcile"}),

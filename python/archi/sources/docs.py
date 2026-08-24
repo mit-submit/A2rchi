@@ -29,6 +29,16 @@ Changes from the original:
   previously ingested pages. A bounce means landing on an SSO host (or
   a redirect to a login-looking body), never just ``/login`` in a
   page's own path or ``auth.cern.ch`` in its text.
+- 2026-08 adversarial review (see
+  ``pact/changes/circleback-fixes/notes-live.md``): a ``max_pages`` cap
+  that actually truncates the sitemap frontier is surfaced in health
+  and never claims ``completed_scope`` (the un-crawled pages would be
+  retracted under ``missing_from_completed_scope``); non-HTML sitemap
+  entries (PDFs/binaries, decided by response ``Content-Type``) are
+  skipped and counted instead of being regex-stripped into mojibake
+  pages — they are excluded from the source's scope *by design*, so a
+  clean crawl that skipped them may still claim the scope (a
+  previously mis-ingested binary is then correctly retracted).
 - ``DocumentationSource.run`` reports ``cache_missing`` health when the
   records cache is absent instead of raising from ``load_json``.
 - The reference-target caches (sites / releases / jira / services) are
@@ -99,6 +109,10 @@ ingest); (2) ``output_scope_summary`` must accompany
         source_name: docsite
         required: true
         records_path: data/docsite/records.json
+        # Enables the document_chunk references jira_issue edges
+        # declared above (as in bundles/cern-team/source-defaults/
+        # docsite.yaml); drop it together with those edge lines.
+        jira_records_path: data/jira/records.json
         # Optional reference-target caches — commented out on purpose.
         # WARNING: enabling any of them requires (a) uncommenting the
         # matching document_chunk references edges in output_signature
@@ -111,6 +125,10 @@ ingest); (2) ``output_scope_summary`` must accompany
         # sites_path: data/cric/sites.json
         # releases_path: data/cmssw-releases/records.json
         # services_path: data/cric-core/services.json
+      sync:
+        triggers: [manual, reconcile]
+        default_event_mode: scope_complete
+        reconcile_mode: scope_complete
 
     gitlab_docs:
       module: archi.sources.docs
@@ -124,6 +142,31 @@ ingest); (2) ``output_scope_summary`` must accompany
         authority_scope:
           source_family: <family>
           source_name: gitlab_docs
+        output_signature:
+          nodes:
+            - {subtype: documentation_page}
+            - {subtype: software_repository}
+            - {subtype: document_chunk}
+          edges:
+            - {src_subtype: software_repository, edge_type: contains, dst_subtype: documentation_page}
+            - {src_subtype: documentation_page, edge_type: contains, dst_subtype: document_chunk}
+            # Uncomment together with the matching reference-cache
+            # params (same warning as the docsite entry above):
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: jira_issue}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: cmssw_release}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: site}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: infrastructure_service}
+        output_scope_summary:
+          summary: GitLab-exported documentation pages, their repos, and text chunks from the records cache
+          nodes: [documentation_page, software_repository, document_chunk]
+          edges:
+            - software_repository contains documentation_page
+            - documentation_page contains document_chunk
+            # Uncomment together with the matching reference-cache params:
+            # - document_chunk references jira_issue
+            # - document_chunk references cmssw_release
+            # - document_chunk references site
+            # - document_chunk references infrastructure_service
       source_class: discovery_crawl
       record_identity_kind: scoped_locator
       record_identity_fields: [project, path]
@@ -138,6 +181,17 @@ ingest); (2) ``output_scope_summary`` must accompany
         source_name: gitlab_docs
         required: true
         records_path: data/gitlab-docs/records.json
+        # Optional reference-target caches: see the docsite entry above
+        # for the warning; uncommenting one requires the matching edge
+        # lines in output_signature AND output_scope_summary.
+        # jira_records_path: data/jira/records.json
+        # sites_path: data/cric/sites.json
+        # releases_path: data/cmssw-releases/records.json
+        # services_path: data/cric-core/services.json
+      sync:
+        triggers: [manual, reconcile]
+        default_event_mode: scope_complete
+        reconcile_mode: scope_complete
 
     cmsweb_docs:                        # cms instance of the renamed class
       module: archi.sources.docs
@@ -151,6 +205,28 @@ ingest); (2) ``output_scope_summary`` must accompany
         authority_scope:
           source_family: <family>
           source_name: cmsweb_docs
+        output_signature:
+          nodes:
+            - {subtype: documentation_page}
+            - {subtype: document_chunk}
+          edges:
+            - {src_subtype: documentation_page, edge_type: contains, dst_subtype: document_chunk}
+            # Uncomment together with the matching reference-cache
+            # params (same warning as the docsite entry above):
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: jira_issue}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: cmssw_release}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: site}
+            # - {src_subtype: document_chunk, edge_type: references, dst_subtype: infrastructure_service}
+        output_scope_summary:
+          summary: SSO-crawled documentation pages and text chunks from the live sitemap
+          nodes: [documentation_page, document_chunk]
+          edges:
+            - documentation_page contains document_chunk
+            # Uncomment together with the matching reference-cache params:
+            # - document_chunk references jira_issue
+            # - document_chunk references cmssw_release
+            # - document_chunk references site
+            # - document_chunk references infrastructure_service
       source_class: discovery_crawl
       record_identity_kind: scoped_locator
       record_identity_fields: [url]
@@ -163,6 +239,11 @@ ingest); (2) ``output_scope_summary`` must accompany
         source_name: cmsweb_docs
         sitemap_url: https://cms-http-group.docs.cern.ch/sitemap.xml
         cookie_file_env: CMS_HTTP_GROUP_DOCS_COOKIE_FILE
+        # Optional reference-target caches: see the docsite entry above.
+        # jira_records_path: data/jira/records.json
+        # sites_path: data/cric/sites.json
+        # releases_path: data/cmssw-releases/records.json
+        # services_path: data/cric-core/services.json
       sync:
         triggers: [manual, reconcile]
         default_event_mode: scope_complete
@@ -386,6 +467,15 @@ class SSOCookieDocsSource(DocumentationSource):
     :mod:`archi.auth.cookies` for the acquisition contract); only its
     *path* travels through the environment variable named by
     ``cookie_file_env`` — never a credential value.
+
+    Scope semantics: when ``max_pages`` actually truncates the sitemap
+    frontier the run emits what it crawled but never claims
+    ``completed_scope`` (the un-crawled pages would otherwise be
+    retracted under ``missing_from_completed_scope``). Non-HTML sitemap
+    entries (by response Content-Type; a missing header is treated as
+    HTML) are skipped and counted in health, and are excluded from the
+    source's scope by design — a clean crawl that skipped them may
+    still claim the scope.
     """
 
     name = "sso_docs"
@@ -515,6 +605,19 @@ class SSOCookieDocsSource(DocumentationSource):
                 chunker_name=self.chunker_name,
             )
 
+        truncation_note = ""
+        if crawl.truncated:
+            truncation_note = (
+                f"; sitemap frontier truncated by max_pages="
+                f"{self.max_pages} ({crawl.total_urls}/"
+                f"{crawl.sitemap_total} sitemap URLs crawled)"
+            )
+        skip_note = ""
+        if crawl.skipped_non_html:
+            skip_note = (
+                f"; skipped {len(crawl.skipped_non_html)} non-HTML "
+                "sitemap entries (excluded from scope by design)"
+            )
         if crawl.failed_urls:
             # A partially failed crawl must never claim a complete scope
             # (missing_from_completed_scope would retract the failed
@@ -533,7 +636,30 @@ class SSOCookieDocsSource(DocumentationSource):
                     reason=(
                         f"partial crawl: {len(crawl.failed_urls)}/"
                         f"{crawl.total_urls} sitemap pages failed (fetch "
-                        f"error or SSO login bounce), e.g. {samples}; "
+                        f"error or SSO login bounce), e.g. {samples}"
+                        f"{truncation_note}{skip_note}; "
+                        "no complete scope claimed"
+                    ),
+                ),
+            )
+        if crawl.truncated:
+            # max_pages actually cut the sitemap frontier: the
+            # un-crawled pages would be retracted under
+            # missing_from_completed_scope if this run claimed a
+            # complete scope. Emit what was crawled and claim nothing.
+            return SourceRun(
+                facts=_facts(),
+                completed_scope=False,
+                run_mode=mode,
+                health=SourceHealth(
+                    status="ok",
+                    mode="live",
+                    credential_refs=(self.cookie_file_env,),
+                    record_count=len(records),
+                    content_hash=record_hash,
+                    reason=(
+                        "SSO docs fetched through CERN SSO cookie"
+                        f"{truncation_note}{skip_note}; "
                         "no complete scope claimed"
                     ),
                 ),
@@ -548,7 +674,10 @@ class SSOCookieDocsSource(DocumentationSource):
                 credential_refs=(self.cookie_file_env,),
                 record_count=len(records),
                 content_hash=record_hash,
-                reason="SSO docs fetched through CERN SSO cookie",
+                reason=(
+                    "SSO docs fetched through CERN SSO cookie"
+                    f"{skip_note}"
+                ),
             ),
         )
 
@@ -575,17 +704,29 @@ class SSOCookieDocsSource(DocumentationSource):
                 f"login page; refresh the cookie file referenced by "
                 f"{self.cookie_file_env}"
             )
-        urls = _parse_sitemap(sitemap.content)
-        if self.max_pages is not None:
-            urls = urls[: self.max_pages]
+        all_urls = _parse_sitemap(sitemap.content)
+        urls = all_urls
+        truncated = False
+        if self.max_pages is not None and len(all_urls) > self.max_pages:
+            urls = all_urls[: self.max_pages]
+            truncated = True
         records: list[DocumentationRecord] = []
         failed_urls: list[str] = []
+        skipped_non_html: list[str] = []
         for url in urls:
             try:
                 resp = session.get(url, timeout=30)
                 resp.raise_for_status()
             except Exception:  # noqa: BLE001
                 failed_urls.append(url)
+                continue
+            content_type = _content_type(resp)
+            if content_type and not _is_html_content_type(content_type):
+                # PDFs/binaries listed in the sitemap are not
+                # documentation pages; regex tag-stripping would turn
+                # them into mojibake. Counted, excluded from scope by
+                # design (not a crawl failure).
+                skipped_non_html.append(url)
                 continue
             final_url = str(getattr(resp, "url", url) or url)
             text = getattr(resp, "text", "") or ""
@@ -610,16 +751,40 @@ class SSOCookieDocsSource(DocumentationSource):
             records=tuple(records),
             failed_urls=tuple(failed_urls),
             total_urls=len(urls),
+            sitemap_total=len(all_urls),
+            truncated=truncated,
+            skipped_non_html=tuple(skipped_non_html),
         )
 
 
 @dataclass(frozen=True)
 class _CrawlOutcome:
-    """One sitemap crawl: emitted records plus the pages that failed."""
+    """One sitemap crawl: emitted records plus the pages that failed.
+
+    ``total_urls`` is the crawled frontier (after any ``max_pages``
+    cap); ``sitemap_total`` is the full sitemap size and ``truncated``
+    is True when the cap actually cut the frontier. Non-HTML sitemap
+    entries (by Content-Type) are counted in ``skipped_non_html`` —
+    excluded from the source's scope by design, not crawl failures.
+    """
 
     records: tuple[DocumentationRecord, ...]
     failed_urls: tuple[str, ...]
     total_urls: int
+    sitemap_total: int = 0
+    truncated: bool = False
+    skipped_non_html: tuple[str, ...] = ()
+
+
+def _content_type(response: Any) -> str:
+    """Normalized media type of a response ('' when unavailable)."""
+    headers = getattr(response, "headers", None) or {}
+    raw = headers.get("Content-Type") or headers.get("content-type") or ""
+    return str(raw).split(";")[0].strip().lower()
+
+
+def _is_html_content_type(content_type: str) -> bool:
+    return "html" in content_type
 
 
 _SSO_LOGIN_HOSTS = frozenset({"auth.cern.ch", "login.cern.ch"})

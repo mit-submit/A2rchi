@@ -7,9 +7,16 @@
 # To enable on an instance: rename to indico.yaml BEFORE install (or
 # paste the block into the instance's source_registry.yaml after
 # install, replacing ${...} by hand). Requires the meeting_minutes /
-# document subtypes and their narrowings — ship in the archi wheel
-# slices (operations.yaml + bridges/operations.yaml) already copied by
-# the install runbook.
+# document subtypes (in the copied operations.yaml slice) AND the
+# `meeting_minutes_contains_document` narrowing from the wheel's
+# bridges/operations.yaml — NOTE: the install runbook's pruned bridge
+# copy does NOT include it (the default prune keeps only
+# cmssw_release_supersedes_release). When enabling this connector,
+# also copy that narrowing into the instance's
+# schemas/bridges/operations.yaml, or the catalog composes green and
+# the first ingest of an event with attachments fails at ingest time
+# (ProducerPolicyViolation — narrowings outside schemas/bridges/ are
+# silently ignored, okg#1282).
 indico:
   module: archi.sources.indico
   class: IndicoSource

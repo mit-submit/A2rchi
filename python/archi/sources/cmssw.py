@@ -89,6 +89,7 @@ from archi.auth.cache import (
     load_json,
     resolve_repo_path,
 )
+from archi.sources._cache_report import skipped_items_status
 
 RELEASES_MAP_URL = (
     "https://raw.githubusercontent.com/cms-sw/cms-bot/master/releases.map"
@@ -205,7 +206,7 @@ class CMSSWReleaseSource:
         )
 
     def run(self, run_id: str, *, mode: str = "cursor") -> SourceRun:
-        records = self._records()
+        records, skipped, truncated = self._records_with_details()
         revision = {
             "run_id": run_id,
             "content_hash": content_hash(self.cache_paths, base=self.base),
@@ -220,24 +221,48 @@ class CMSSWReleaseSource:
                 yield _node_fact(record, revision)
             yield from _supersedes_edges(records, revision)
 
+        status, reason = skipped_items_status(
+            status="ok",
+            reason=(
+                "local CMSSW release cache used"
+                if self.map_cache_path is None
+                else "cms-bot releases.map used"
+            ),
+            record_count=len(records),
+            skipped_count=skipped,
+        )
+        if truncated:
+            # A truncated newest-N window must not claim a complete
+            # scope: every upstream append would retract the oldest
+            # in-window release (sliding retention window).
+            reason += (
+                f"; limit={self.limit} truncated the release list; "
+                "no complete scope claimed"
+            )
         return SourceRun(
             facts=_facts(),
-            completed_scope=(mode in {"scope_complete", "reconcile"}),
+            completed_scope=(
+                mode in {"scope_complete", "reconcile"}
+                and not skipped
+                and not truncated
+            ),
             run_mode=mode,
             health=SourceHealth(
-                status="ok",
+                status=status,
                 mode="cache",
                 record_count=len(records),
                 content_hash=revision["content_hash"],
-                reason=(
-                    "local CMSSW release cache used"
-                    if self.map_cache_path is None
-                    else "cms-bot releases.map used"
-                ),
+                reason=reason,
             ),
         )
 
     def _records(self) -> list[CMSSWReleaseRecord]:
+        return self._records_with_details()[0]
+
+    def _records_with_details(
+        self,
+    ) -> tuple[list[CMSSWReleaseRecord], int, bool]:
+        """Records plus (skipped_item_count, limit_truncated)."""
         if self.map_cache_path is not None:
             return self._records_from_map()
         payload = load_json(self.records_path, base=self.base)
@@ -246,11 +271,14 @@ class CMSSWReleaseSource:
                 f"{self.records_path}: expected a JSON list of releases"
             )
         records: list[CMSSWReleaseRecord] = []
+        skipped = 0
         for item in payload:
             if not isinstance(item, dict):
+                skipped += 1
                 continue
             label = str(item.get("label") or "").strip()
             if not label:
+                skipped += 1
                 continue
             architecture_raw = item.get("architecture") or ()
             if isinstance(architecture_raw, str):
@@ -265,9 +293,11 @@ class CMSSWReleaseSource:
                 release_notes=str(item.get("release_notes") or ""),
                 release_date=str(item.get("release_date") or ""),
             ))
-        return records
+        return records, skipped, False
 
-    def _records_from_map(self) -> list[CMSSWReleaseRecord]:
+    def _records_from_map(
+        self,
+    ) -> tuple[list[CMSSWReleaseRecord], int, bool]:
         """W1 path: build records from the cms-bot ``releases.map`` cache."""
         path = resolve_repo_path(self.map_cache_path, base=self.base)
         if self.fetch or not path.is_file():
@@ -277,12 +307,31 @@ class CMSSWReleaseSource:
             ) as resp:
                 path.write_bytes(resp.read())
         raw = path.read_text(encoding="utf-8", errors="replace")
-        return parse_releases_map(raw, self.limit)
+        full, skipped = _parse_map_with_skips(raw)
+        records = full[-self.limit:] if self.limit > 0 else full
+        return records, skipped, len(records) < len(full)
 
 
 def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
     """Parse cms-bot ``releases.map`` lines into release records (W1 path)."""
+    records, _skipped = _parse_map_with_skips(raw)
+    if limit > 0:
+        return records[-limit:]
+    return records
+
+
+def _parse_map_with_skips(
+    raw: str,
+) -> tuple[list[CMSSWReleaseRecord], int]:
+    """Parse map lines, counting the ones that yield no release.
+
+    A non-empty line without a ``label`` matching the CMSSW version
+    pattern is a skip: format drift (e.g. a renamed key) must degrade
+    the run's scope claim instead of silently emptying the record set
+    under a healthy completed scope.
+    """
     by_label: dict[str, dict[str, Any]] = {}
+    skipped = 0
     for line in raw.splitlines():
         line = line.strip()
         if not line:
@@ -292,6 +341,7 @@ def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
         )
         label = fields.get("label", "")
         if not _VERSION_RE.match(label):
+            skipped += 1
             continue
         rec = by_label.setdefault(
             label,
@@ -309,8 +359,6 @@ def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
         by_label.values(),
         key=lambda r: _sort_key(r["label"]),
     )
-    if limit > 0:
-        ordered = ordered[-limit:]
     return [
         CMSSWReleaseRecord(
             label=rec["label"],
@@ -319,7 +367,7 @@ def parse_releases_map(raw: str, limit: int = 0) -> list[CMSSWReleaseRecord]:
             architecture=tuple(sorted(rec["architecture"])),
         )
         for rec in ordered
-    ]
+    ], skipped
 
 
 def _sort_key(label: str) -> tuple[int, int, int, str]:
