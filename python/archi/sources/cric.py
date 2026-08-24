@@ -220,7 +220,17 @@ class CRICSource:
                 reason="one or more CRIC cache files are missing",
                 checked_at=_checked_at(),
             )
-        records = self._records()
+        try:
+            records = self._records()
+        except ValueError as exc:
+            return SourcePreflightResult(
+                source_name=self.name,
+                status="endpoint_failed",
+                mode="cache",
+                required=True,
+                reason=str(exc),
+                checked_at=_checked_at(),
+            )
         return SourcePreflightResult(
             source_name=self.name,
             status="ok",
@@ -265,14 +275,38 @@ class CRICSource:
             storage_units=load_json(self.storage_units_path, base=self.base),
             compute_units=load_json(self.compute_units_path, base=self.base),
             facilities=load_json(self.facilities_path, base=self.base),
-            responsibilities=load_json(
-                self.responsibilities_path, base=self.base
-            ).get("result", []),
+            responsibilities=_responsibilities_result(
+                load_json(self.responsibilities_path, base=self.base),
+                self.responsibilities_path,
+            ),
         )
 
 
 def _checked_at() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _responsibilities_result(payload: Any, path: str) -> list[list[Any]]:
+    """Extract the ``result`` rows, failing loudly on schema drift.
+
+    The former ``.get("result", [])`` default silently read an
+    error-shaped or drifted payload as "no responsibilities", which a
+    completed-scope run would then commit by retracting every operator
+    record. A payload without a ``result`` list must abort the run
+    instead of emptying it.
+    """
+    if not isinstance(payload, dict) or "result" not in payload:
+        raise ValueError(
+            f"{path}: expected a dict with a 'result' list of "
+            "responsibility rows; refusing to treat a drifted or "
+            "error-shaped payload as zero responsibilities"
+        )
+    result = payload["result"]
+    if not isinstance(result, list):
+        raise ValueError(
+            f"{path}: 'result' must be a list of responsibility rows"
+        )
+    return result
 
 
 def _build_records(
