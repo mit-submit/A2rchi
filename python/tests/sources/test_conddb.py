@@ -82,3 +82,42 @@ def test_missing_cmssw_cache_emits_conddb_only_family_node(tmp_path):
         if isinstance(e, EdgeFact) and e.edge_type == "depends_on"
     }
     assert ("global_tag:140X_dataRun3_v2", "cmssw_release:CMSSW_14_0_X") in depends
+
+
+# --- circleback-fixes regressions ---
+
+
+def test_skipped_cache_items_never_claim_scope(tmp_path):
+    source = _source(tmp_path, with_cmssw=True)
+    (tmp_path / "data" / "conddb-global-tags" / "records.json").write_text(
+        json.dumps(RECORDS + ["junk", {"scenario": "no name"}])
+    )
+    run = source.run("run-1", mode="scope_complete")
+    nodes = {f.node_id for f in run.facts if isinstance(f, NodeFact)}
+    assert "global_tag:140X_dataRun3_v2" in nodes  # survivors still emitted
+    assert run.completed_scope is False
+    assert run.health.status == "ok"
+    assert "skipped 2" in run.health.reason
+
+
+def test_all_items_unparseable_is_endpoint_failed(tmp_path):
+    source = _source(tmp_path, with_cmssw=True)
+    (tmp_path / "data" / "conddb-global-tags" / "records.json").write_text(
+        json.dumps(["junk"])
+    )
+    run = source.run("run-1", mode="scope_complete")
+    assert list(run.facts) == []
+    assert run.completed_scope is False
+    assert run.health.status == "endpoint_failed"
+
+
+def test_change_probe_covers_cmssw_cache(tmp_path):
+    # circleback-fixes regression: run() reads the cmssw cache for
+    # release-target gating, so a cmssw-cache update must fire the probe.
+    source = _source(tmp_path, with_cmssw=True)
+    before = source.change_probe.build_token()
+    (tmp_path / "data" / "cmssw-releases" / "records.json").write_text(
+        json.dumps([{"label": "CMSSW_14_0_2"}])
+    )
+    after = source.change_probe.build_token()
+    assert before != after
