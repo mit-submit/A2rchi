@@ -57,7 +57,7 @@ requirements:
 tasks:
 - id: task.w5-eval-foundation
   title: "W5: evaluation framework foundation \u2014 atoms, arm registry, engine"
-  status: todo
+  status: done
   verification: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests -q
     (full suite incl. python/tests/eval)
   requirements:
