@@ -12,5 +12,26 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.optional-dependencies]
+# ADR SS10's definition of done mandates `black --check .` and `isort --check .`;
+# without this extra neither tool (nor pytest) is declared anywhere, so the DoD
+# was unrunnable. okg itself is NOT declared: it is the host environment archi is
+# installed into, not a dependency of the distribution.
+dev = [
+    "pytest>=8.0",
+    "black>=24.0",
+    "isort>=5.13",
+    "hatchling>=1.21",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = ["archi"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["archi"]
