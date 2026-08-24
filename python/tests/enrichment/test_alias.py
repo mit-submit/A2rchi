@@ -24,7 +24,12 @@ NODE_ROWS = [
     # Wrong prefix for its subtype: must not be indexed.
     {"node_id": "weird:thing", "subtype": "site", "attrs": {}},
 ]
-DATASET_ROWS = [{"node_id": "dataset:/A/B/RAW"}]
+DATASET_ROWS = [
+    {"node_id": "dataset:/A/B/RAW"},
+    # Case-distinct twin: DBS dataset paths are case-sensitive, so both
+    # must stay individually resolvable.
+    {"node_id": "dataset:/a/b/raw"},
+]
 
 
 class FakeCursor:
@@ -96,3 +101,40 @@ def test_dataset_index_is_lazy_and_cached(monkeypatch):
     assert match.canonical == "dataset:/A/B/RAW"
     assert backend.match("/X/Y/MISS", entity_type="cms_dataset") == []
     assert fake.dataset_queries == 1  # loaded once, then cached
+
+
+def test_dataset_alias_is_case_sensitive(monkeypatch):
+    # circleback finding: _norm case-folding collapsed case-distinct
+    # dataset ids into whichever loaded last. DBS paths are
+    # case-sensitive, so each case-distinct twin resolves to itself and
+    # a case-mismatched query resolves to nothing.
+    backend, _ = _backend(monkeypatch)
+    (match,) = backend.match("/A/B/RAW", entity_type="cms_dataset")
+    assert match.canonical == "dataset:/A/B/RAW"
+    (match,) = backend.match("/a/b/raw", entity_type="cms_dataset")
+    assert match.canonical == "dataset:/a/b/raw"
+    assert backend.match("/A/b/RAW", entity_type="cms_dataset") == []
+    # "dataset:"-prefixed needles still resolve (exact case).
+    (match,) = backend.match("dataset:/A/B/RAW", entity_type="cms_dataset")
+    assert match.canonical == "dataset:/A/B/RAW"
+
+
+def test_non_dataset_matching_stays_case_insensitive(monkeypatch):
+    # Case is transcription noise for sites/releases/hostnames; only
+    # dataset paths carry case-sensitive identity.
+    backend, _ = _backend(monkeypatch)
+    (match,) = backend.match("t2_us_mit", entity_type="cms_site")
+    assert match.canonical == "site:T2_US_MIT"
+    (match,) = backend.match("EOSCMS.cern.ch", entity_type="cms_hostname")
+    assert match.canonical == "service:eoscms"
+
+
+def test_dataset_misses_are_not_cached(monkeypatch):
+    # circleback finding: every unresolved mention used to be cached as
+    # a negative entry, growing the index without bound.
+    backend, _ = _backend(monkeypatch)
+    backend.match("/A/B/RAW", entity_type="cms_dataset")
+    size_before = len(backend._dataset_by_value)
+    for i in range(50):
+        assert backend.match(f"/X/Y{i}/MISS", entity_type="cms_dataset") == []
+    assert len(backend._dataset_by_value) == size_before

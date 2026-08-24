@@ -3,10 +3,21 @@
 Provenance: ported from ``cms/cms_sources/alias.py`` (192 LOC,
 okg-deployments ``main@f33a9c4``). Changes: class de-CMS-ified
 (``CMSProjectionAliasBackend`` -> :class:`ProjectionAliasBackend`);
-everything else — the entity-type/prefix tables (which mirror the
-packaged extraction rules' ``cms_*`` id types), the backend ``name``
-(``cms_projection``, kept for cutover parity with the comp-ops
-instance's alias-resolver config), matching, and SQL — is unchanged.
+the entity-type/prefix tables (which mirror the packaged extraction
+rules' ``cms_*`` id types), the backend ``name`` (``cms_projection``,
+kept for cutover parity with the comp-ops instance's alias-resolver
+config), and SQL are unchanged. Matching differs from the port source
+in two ways (circleback review, see
+``pact/changes/circleback-fixes/notes-enrichment.md``):
+
+- Dataset alias matching is case-sensitive: DBS dataset paths are
+  case-sensitive identifiers, and case-folding collapsed case-distinct
+  canonical ids (``/A/B/RAW`` vs ``/a/b/raw``) into whichever loaded
+  last. Sites, releases, JIRA keys, hostnames, and endpoints stay
+  case-insensitive — for those types case is transcription noise.
+- Dataset misses are no longer cached: the old negative cache grew
+  unboundedly with every unresolved mention, and memoized nothing (the
+  fallback lookup hit the same index).
 
 Deployment wiring (alias_resolver block)::
 
@@ -71,7 +82,9 @@ class ProjectionAliasBackend:
             for entity_type in self._ENTITY_PREFIXES
         }
         self._service_by_endpoint: dict[str, str] = {}
-        self._dataset_by_value: dict[str, str | None] = {}
+        # Case-sensitive dataset-path -> node id index (DBS paths are
+        # case-sensitive). Holds only live nodes; misses are not cached.
+        self._dataset_by_value: dict[str, str] = {}
         self._dataset_index_loaded = False
         self._load()
 
@@ -148,14 +161,12 @@ class ProjectionAliasBackend:
 
     def _resolve_dataset(self, value: str) -> str | None:
         self._load_dataset_index()
-        key = _norm(value)
-        canonical = self._dataset_by_value.get(key)
-        if canonical is not None or key in self._dataset_by_value:
+        # Exact-case lookup: DBS dataset paths are case-sensitive, so
+        # /A/B/RAW and /a/b/raw are distinct canonical ids.
+        canonical = self._dataset_by_value.get(value)
+        if canonical is not None:
             return canonical
-        node_id = value if value.startswith("dataset:") else f"dataset:{value}"
-        canonical = self._dataset_by_value.get(_norm(node_id.removeprefix("dataset:")))
-        self._dataset_by_value[key] = canonical
-        return canonical
+        return self._dataset_by_value.get(value.removeprefix("dataset:"))
 
     def _load_dataset_index(self) -> None:
         if self._dataset_index_loaded:
@@ -173,7 +184,7 @@ class ProjectionAliasBackend:
             node_id = str(row["node_id"])
             prefix, _, value = node_id.partition(":")
             if prefix == "dataset" and value:
-                self._dataset_by_value[_norm(value)] = node_id
+                self._dataset_by_value[value.strip()] = node_id
         self._dataset_index_loaded = True
 
     def _index_service_endpoint(
