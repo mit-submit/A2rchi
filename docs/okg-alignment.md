@@ -92,7 +92,9 @@ graph-projection deployment from `OKG_PACT_GRAPH_DEPLOYMENT` (default
 `graph_projection.deployment` — external repos need the env var exported or
 gates refuse with an okg-workspace database-identity mismatch. New PACT v4 note
 from the re-pin: `change.tier` is now mandatory (`missing_lifecycle_tier`
-otherwise).
+otherwise). The superseded v2 application has been removed from the archi_v3
+line (W10 teardown, PR #611 merged 2026-08-21); v2 lives on `main` until
+instance cutover.
 
 ## The exact substrate surface Archi consumes today
 
