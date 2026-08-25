@@ -100,31 +100,25 @@ mkdir -p "$DEP"/schemas/bridges
 cp "$SITE"/schemas/bridges/sources.yaml "$DEP"/schemas/bridges/sources.yaml
 ```
 
-**Do not copy `schemas/bridges/operations.yaml` verbatim** — friction
-found live: the wheel's full operations bridge references subtypes
-owned by substrate modules this bundle does not compose (`dataset`,
-`ticket`, `service`, `repo_starter`, `git_graph`, ...) and its
-narrowings lack `optional_when_subtypes_missing`, so
-`okg catalog load` fails with `bridge_subtype_unknown`
-(first failure: narrowing `documentation_page_references_dataset`,
-child subtype `dataset`). Write a pruned bridge instead; the
-cern-team connectors need exactly one narrowing beyond
-`bridges/sources.yaml`:
+**Copy `schemas/bridges/operations.yaml` verbatim too** — as of the
+portable-bridge fix it composes on this bundle unmodified:
 
-```yaml
-# $DEP/schemas/bridges/operations.yaml
-classes:
-  EdgeNarrowings:
-    description: Archi operations edge narrowings (pruned).
-    annotations:
-      okg_edge_narrowings: "true"
-    attributes:
-      cmssw_release_supersedes_release:
-        annotations:
-          edge_archetype: supersedes
-          src_subtypes: CMSSWRelease
-          dst_subtypes: CMSSWRelease
+```bash
+cp "$SITE"/schemas/bridges/operations.yaml "$DEP"/schemas/bridges/operations.yaml
 ```
+
+This step used to be a hand-written prune. The wheel's operations bridge
+references subtypes owned by substrate modules this bundle does not
+compose (`dataset`, `ticket`, `service`, `repo`, `source_file`, ...) and
+its narrowings lacked `optional_when_subtypes_missing`, so
+`okg catalog load` failed with `bridge_subtype_unknown` (first failure:
+narrowing `documentation_page_references_dataset`, child subtype
+`dataset`). Both this bundle and the comp-ops instance therefore carried
+their own, *differently* pruned copies. The shipped file now flags
+exactly the narrowings whose endpoints vary by consumer, so the composer
+skips those and keeps the rest strict — an accidentally dropped module
+still fails loudly. Regression-tested for both consumers in
+`python/tests/test_bridge_portability.py`.
 
 (Also inherited from W1: narrowings placed outside `schemas/bridges/`
 are silently ignored and only fail at ingest as
