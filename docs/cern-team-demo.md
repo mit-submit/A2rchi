@@ -41,13 +41,22 @@ whose *playbooks* guide agents.
 - Environment for every command that follows:
 
   ```bash
-  export OKG_PROFILES_DIR=<archi repo>/bundles          # parent dir of the bundle dir
+  export OKG_PROFILES_DIR="$(archi-profiles-dir)"       # the installed wheel's payload
   export OKG_DEPLOYMENTS_DIR=<deployments root>         # demo: /work/submit/lavezzo/okg-scratch
   export OKG_DSN='postgresql://<user>:<pw>@127.0.0.1:5455/okg_cern_team'
   ```
 
   `OKG_PROFILES_DIR` points at the *parent* of profile directories —
   the installer resolves `$OKG_PROFILES_DIR/cern-team/profile.yaml`.
+
+  **No authoring checkout is needed.** The wheel carries `bundles/` and the
+  materialised playbooks, and `archi-profiles-dir` (installed with the
+  package) prints their location; `<archi repo>/bundles` still works if you
+  are running from a checkout. The env var itself is still required because
+  okg's profile resolver has no installed-distribution discovery — its
+  cascade is explicit override, `OKG_PROFILES_DIR`, `./profiles/`, the
+  substrate's own library, then the fetch cache. Closing that step is the
+  okg#1179 half of an artifact-only install.
 
 ## 1. Scaffold the instance
 
