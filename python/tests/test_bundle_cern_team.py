@@ -30,7 +30,15 @@ def test_source_defaults_carry_strict_admission_shape():
             assert policy.get("output_signature"), f"{path.name}:{name} missing output_signature"
             assert policy.get("output_scope_summary"), f"{path.name}:{name} missing output_scope_summary"
             assert entry.get("sync"), f"{path.name}:{name} missing sync block"
-            assert entry["module"].startswith("archi.sources."), f"{path.name}:{name} not an archi connector"
+            # A bundle legitimately composes BOTH archi connectors and
+            # substrate-resident okg sources — profile.yaml has said so since
+            # the bundle was written ("code repositories via the substrate's
+            # own okg modules"). What must not appear is a module from
+            # anywhere else: a bundle that reaches outside these two homes is
+            # shipping a dependency its consumers have no way to install.
+            assert entry["module"].startswith(
+                ("archi.sources.", "okg.substrate.library.sources.")
+            ), f"{path.name}:{name} is neither an archi connector nor a substrate source"
 
 
 def test_playbook_symlinks_resolve():

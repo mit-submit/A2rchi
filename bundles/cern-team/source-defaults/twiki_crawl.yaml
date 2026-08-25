@@ -1,0 +1,69 @@
+# TWiki connector — seeded live crawl (a link, not an EOS dump).
+#
+# The sibling twiki_eos.yaml reads a filesystem snapshot; this one
+# walks the live wiki from seed topics over HTTP.
+#
+# A CERN SSO COOKIE IS REQUIRED, even for a web whose pages are public.
+# Verified on twiki.cern.ch 2026-08-25: the connector reads a topic's
+# source via `?raw=all`, and CERN redirects THAT to auth.cern.ch even
+# where the rendered page returns 200 to an anonymous client. The
+# connector detects the login bounce and refuses — correctly; ingesting
+# a login page as wiki text is exactly the silent-failure shape the
+# circle-back review removed. So "public web" is not the same as "no
+# credential" here, whatever archi/sources/twiki.py's own template
+# suggests.
+#
+# Produce the cookie with the CERN SSO login helper (interactive: it
+# prompts for a TOTP code) and point CERN_TWIKI_COOKIE_FILE at it.
+#
+# Adapted from the registry template in archi/sources/twiki.py.
+twiki_crawl:
+  module: archi.sources.twiki
+  class: TwikiCrawlSource
+  ownership_id: ${deployment_name}.twiki-crawl
+  admission_policy:
+    producer_id: ${deployment_name}.twiki-crawl
+    producer_kind: source
+    trust_label: implicit_legacy_trusted
+    admission_mode: fast_track
+    authority_scope:
+      source_family: cern-team
+      source_name: twiki_crawl
+    output_signature:
+      nodes:
+        - {subtype: documentation_page}
+        - {subtype: document_chunk}
+      edges:
+        - {src_subtype: documentation_page, edge_type: references, dst_subtype: documentation_page}
+        - {src_subtype: documentation_page, edge_type: contains, dst_subtype: document_chunk}
+    output_scope_summary:
+      summary: seeded live TWiki topics, their text chunks, and topic-to-topic references
+      nodes: [documentation_page, document_chunk]
+      edges:
+        - documentation_page references documentation_page
+        - documentation_page contains document_chunk
+  source_class: discovery_crawl
+  record_identity_kind: scoped_locator
+  record_identity_fields: [path]
+  source_revision_kind: content_hash
+  deletion_semantics: missing_from_completed_scope
+  publication_mode: published_generation
+  credential_refs: [CERN_TWIKI_COOKIE_FILE]
+  required_for_baseline: false
+  params:
+    source_name: twiki_crawl
+    base_url: ${twiki_base_url}
+    # One seed topic, templated as a single-element list. Add more by
+    # editing the instance's source_registry.yaml after install.
+    seed_topics: ['${twiki_seed_topic}']
+    # Depth 0 = the seed topic only. Raise deliberately: any linked
+    # topic that fails to fetch makes the whole run forfeit its
+    # completed-scope claim, which is the right behaviour but means a
+    # link-rich seed at depth 1 is fragile.
+    max_depth: ${twiki_max_depth}
+    cookie_file_env: CERN_TWIKI_COOKIE_FILE
+    # max_pages: 250
+  sync:
+    triggers: [manual, reconcile]
+    default_event_mode: scope_complete
+    reconcile_mode: scope_complete

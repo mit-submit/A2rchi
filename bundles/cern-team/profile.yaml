@@ -68,6 +68,71 @@ init_questions:
       cache resolver anchors relative paths there. Pass an absolute
       path to decouple the data root from the deployment dir.
 
+  - id: twiki_base_url
+    prompt: TWiki base URL to crawl
+    type: string
+    required: false
+    default: https://twiki.cern.ch/twiki
+    description: |
+      Base URL of the TWiki to crawl live. The crawl connector walks
+      from the seed topic below over HTTP — no EOS snapshot needed.
+
+  - id: twiki_seed_topic
+    prompt: TWiki seed topic (Web/Topic)
+    type: string
+    required: false
+    default: CMSPublic/SWGuideCrab
+    description: |
+      Where the crawl starts, as Web/Topic. NOTE: a CERN SSO cookie is
+      required even for a web whose pages are public — the connector
+      reads topic source via `?raw=all`, which CERN redirects to its
+      login. See source-defaults/twiki_crawl.yaml.
+
+  - id: twiki_max_depth
+    prompt: how many links deep to follow from the seed topic
+    type: string
+    required: false
+    default: "0"
+    description: |
+      Depth bound for the crawl. 0 is the seed topic only, which is the
+      safe default: any linked topic that fails to fetch makes the whole
+      run forfeit its completed-scope claim. Raise deliberately once you
+      know the web's link hygiene.
+
+  - id: github_repo_name
+    prompt: short name for the GitHub repository (graph identity)
+    type: string
+    required: false
+    default: github-repo
+    description: |
+      Names the repository inside the graph. Any stable slug; it does
+      not have to match the GitHub name.
+
+  - id: github_repo_root
+    prompt: local path to a clone of the GitHub repository
+    type: string
+    required: false
+    default: repos/github-repo
+    description: |
+      The connector reads a working tree on disk; it does not clone or
+      fetch. Clone the repository first and point this at it.
+
+  - id: gitlab_repo_name
+    prompt: short name for the GitLab repository (graph identity)
+    type: string
+    required: false
+    default: gitlab-repo
+    description: |
+      Names the repository inside the graph.
+
+  - id: gitlab_repo_root
+    prompt: local path to a clone of the GitLab repository
+    type: string
+    required: false
+    default: repos/gitlab-repo
+    description: |
+      As above — clone first, then point this at the working tree.
+
 # References to sibling files within this bundle dir.
 modules: modules.yaml
 source_defaults: source-defaults/

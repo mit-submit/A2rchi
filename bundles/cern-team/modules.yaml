@@ -17,3 +17,8 @@ modules:
   - document_starter
   - person
   - extraction
+  # Repository content: source_file / git_branch subtypes for the
+  # github_repo + gitlab_repo connectors (source-defaults/code_repos.yaml).
+  # Composed by default now that the bundle offers code repositories; an
+  # instance that wants neither can drop this line and both connectors.
+  - git_graph

@@ -1,0 +1,58 @@
+# Code repository connector — GitLab clone, via the substrate's own
+# git_graph adapter.
+#
+# Why not archi/sources/github_repos.py: that connector emits repo
+# *identity* nodes only. It records that a repository exists; it does
+# not read it. To let an agent answer questions FROM a repository you
+# need its files, which is what GitFilesSource provides — source_file
+# nodes carrying tracked-file content, plus the branch they belong to.
+#
+# The adapter reads a working tree on disk; it does not clone or fetch.
+# Needs the `git_graph` module composed (modules.yaml).
+#
+# The GitHub sibling is github_repo.yaml: same adapter, different clone.
+
+gitlab_repo:
+  module: okg.substrate.library.sources.git_graph_files
+  class: GitFilesSource
+  ownership_id: ${deployment_name}.gitlab-repo
+  admission_policy:
+    producer_id: ${deployment_name}.gitlab-repo
+    producer_kind: source
+    trust_label: implicit_legacy_trusted
+    admission_mode: fast_track
+    authority_scope:
+      source_family: cern-team
+      source_name: gitlab_repo
+    output_signature:
+      nodes:
+        - {subtype: source_file}
+        - {subtype: git_branch}
+      edges:
+        - {src_subtype: source_file, edge_type: member_of, dst_subtype: git_branch}
+    output_scope_summary:
+      summary: tracked files of the configured GitLab clone and the branch they belong to
+      nodes: [source_file, git_branch]
+      edges:
+        - source_file member_of git_branch
+  source_class: discovery_crawl
+  record_identity_kind: scoped_locator
+  record_identity_fields: [repo, path]
+  source_revision_kind: content_hash
+  deletion_semantics: missing_from_completed_scope
+  publication_mode: published_generation
+  required_for_baseline: false
+  params:
+    repo: ${gitlab_repo_name}
+    repo_root: ${gitlab_repo_root}
+    include_untracked: false
+    exclude_globs:
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/*.pyc"
+  sync:
+    triggers: [manual, reconcile]
+    default_event_mode: scope_complete
+    reconcile_mode: scope_complete
