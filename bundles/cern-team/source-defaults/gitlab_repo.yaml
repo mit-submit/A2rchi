@@ -8,6 +8,14 @@
 # nodes carrying tracked-file content, plus the branch they belong to.
 #
 # The adapter reads a working tree on disk; it does not clone or fetch.
+#
+# CAPABILITY REGRESSION, recorded rather than hidden: archi v2 accepted a
+# repository URL and cloned it itself (the git scraper, driven by
+# GIT_USERNAME/GIT_TOKEN). v3 requires the operator to clone first and
+# point at the result. The trade is deliberate — a private repo now uses
+# the operator's own git credentials and no token has to reach the
+# instance — but it IS one manual step v2 did not have. Maintainer
+# accepted this for now (2026-08-25); revisit if operators trip on it.
 # Needs the `git_graph` module composed (modules.yaml).
 #
 # The GitHub sibling is github_repo.yaml: same adapter, different clone.
