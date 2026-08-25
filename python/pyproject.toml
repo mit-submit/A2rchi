@@ -12,6 +12,9 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+archi-profiles-dir = "archi.paths:main"
+
 [project.optional-dependencies]
 # ADR SS10's definition of done mandates `black --check .` and `isort --check .`;
 # without this extra neither tool (nor pytest) is declared anywhere, so the DoD
@@ -35,3 +38,17 @@ known_first_party = ["archi"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["archi"]
+
+# The distribution must be installable *as an artifact*: `okg install
+# --profile cern-team` has to work from the wheel alone, with no
+# authoring checkout of this repo. bundles/ and skills/ live at the repo
+# root (outside python/), so force-include maps them into the package.
+#
+# The playbooks under bundles/cern-team/skills/ are relative symlinks
+# escaping bundles/; hatchling reads file *contents*, so they land in the
+# wheel dereferenced — which is what a materialised payload requires and
+# what a plain directory copy would get wrong. tests/test_artifact_payload.py
+# asserts that on the built wheel, not on the working tree.
+[tool.hatch.build.targets.wheel.force-include]
+"../bundles" = "archi/bundles"
+"../skills" = "archi/skills"
