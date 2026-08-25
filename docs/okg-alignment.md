@@ -170,6 +170,26 @@ narrowings; install profiles (`OKG_PROFILES_DIR` cascade) for bundles; the close
 | #1184 automation accounting | Matches our kill criterion (defer until >1 real automation) | ADR §7 ask 4 |
 | #1185 end-to-end proof | **Our `cern-team` bundle install demo is this proof** — an external, wheel-installed distribution driven end to end on a SubMIT host. Coordinate before building a synthetic consumer | W1 seam proof (done); demo lands with the bundle work |
 
+**Packaged bridges cannot compose anywhere as shipped — a #1179 blocker with
+two independent instances in our tree.** Copying the wheel's
+`schemas/bridges/operations.yaml` verbatim fails `okg catalog load` with
+`bridge_subtype_unknown`, because its narrowings lack
+`optional_when_subtypes_missing` and therefore require every referenced subtype
+to be in the composed module set. First failure, verbatim from the executed
+runbook (`docs/cern-team-demo.md:106-110`): narrowing
+`documentation_page_references_dataset`, child subtype `dataset`. Both
+consumers hit it independently and both had to hand-prune: the cern-team demo
+(friction 2, `docs/cern-team-demo.md:269-275`) and the comp-ops instance, whose
+committed copy "prunes the five narrowings owned by the ticket/service/code
+modules" (`cms-compops docs/bring-up.md:63-67`). **The fix already has
+precedent in our own tree** — `schemas/bridges/sources.yaml` flags exactly this
+case for the MONIT narrowings. Ask, unchanged from the demo's friction log:
+packaged bridges should flag cross-module narrowings
+`optional_when_subtypes_missing`, or ship split per family. Until then a
+distribution cannot ship a bridge that composes on an arbitrary instance, which
+also bears on the sealed-artifact packaging design — a materialised payload that
+still needs hand-pruning at install is not artifact-only.
+
 Additional substrate friction found while porting, not yet in any issue:
 narrowings outside `schemas/bridges/` silently ignored (lint green, ingest-time
 ProducerPolicyViolation); `output_scope_summary` must hand-duplicate

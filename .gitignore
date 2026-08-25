@@ -51,3 +51,11 @@ tests/ui/playbooks.spec.ts
 .okg/
 python/dist/
 profiles/
+
+# PACT generated artifacts: pact/project.yaml declares pact.md and
+# pact.yaml.lock local/noncanonical, and CLAUDE.md says they should not be
+# committed. The CLI regenerates them per checkout; committing them made five
+# stale copies that disagreed with each other.
+pact/**/pact.yaml.lock
+pact/**/pact.md
+pact/.locks/
