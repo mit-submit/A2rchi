@@ -4,12 +4,12 @@ change:
   id: w4-playbooks
   title: 'W4: port and de-site-ify the CMS playbooks'
   status: proposal
-  rationale: 'Backfills the unrecorded W4 wave. The playbooks shipped and one of the
-    ADR''s three done-clauses is evidenced; the other two were never implemented or
-    never run, and are recorded here as open rather than assumed. OPEN CLAUSES: skill_bundle_hash
-    pinning unimplemented; doctor check never run.'
-  root_cause: Small nontrivial change whose intent, task, acceptance, and proof fit
-    the PACT fast path.
+  rationale: 'Backfills the unrecorded W4 wave. The playbooks shipped and one of the ADR''s
+    three done-clauses is evidenced; the other two were never implemented or never run, and
+    are recorded here as open rather than assumed. OPEN CLAUSES: skill_bundle_hash pinning
+    unimplemented; doctor check never run.'
+  root_cause: Small nontrivial change whose intent, task, acceptance, and proof fit the PACT
+    fast path.
   tier: 1
   method_metadata:
     pact_shape: fast_path
@@ -20,14 +20,20 @@ change:
 requirements:
 - id: req.w4-playbooks
   title: 'W4: port and de-site-ify the CMS playbooks'
-  statement: 'The CMS playbooks are ported and de-site-ified (21 in skills/, symlinked
-    into bundles/cern-team/skills/ and materialised into the wheel), skill_triggers
-    is wired per bundle, and no playbook carries site markers, hostnames or secrets
-    - that last clause is test-enforced. Two ADR clauses do NOT hold: bundle install
-    does not pin a skill_bundle_hash (the mechanism is okg''s; nothing in this repo
-    sets it), and okg doctor --check agent-skills has never been run against an instance.
-    This change stays OPEN until both are either satisfied or consciously dropped
-    from the wave definition.'
+  statement: 'The CMS playbooks are ported and de-site-ified (21 in skills/, symlinked into
+    bundles/cern-team/skills/ and materialised into the wheel), skill_triggers is wired per
+    bundle, and no playbook carries site markers, hostnames or secrets - that clause is test-enforced
+    and green. The other two ADR clauses are MIS-SPECIFIED rather than merely unmet, established
+    by running them. (1) ''bundle install materializes playbooks with skill_bundle_hash pinned'':
+    the hash is computed by okg from the instance''s skills_dir during `okg deployment release`
+    (deployment_release.py:308), which further requires a release.channel the instance does
+    not declare. It is an instance release-lifecycle step, never a distribution or bundle-install
+    one, so no work in this repo can satisfy the clause as worded; skills/README.md claimed
+    otherwise and has been corrected. (2) ''okg doctor --check agent-skills green'': the check
+    RUNS green against the comp-ops instance, but it inspects the okg checkout''s own agent
+    tooling skills (root = the okg repo, 18 skills, targets claude-code and codex), not a
+    deployment''s playbooks - green and irrelevant. This change stays OPEN until the wave
+    definition is re-specified against mechanisms that actually measure playbooks.'
   evidence_policy:
     required:
     - executed_test
@@ -43,17 +49,17 @@ requirements:
     and: []
   acceptance:
   - id: acc.w4-playbooks
-    description: python/tests/test_skills.py green (playbook set, trigger references,
-      no site markers) AND a bundle install that pins skill_bundle_hash AND okg doctor
-      --check agent-skills green on an instance.
+    description: python/tests/test_skills.py green (playbook set, trigger references, no site
+      markers) AND a bundle install that pins skill_bundle_hash AND okg doctor --check agent-skills
+      green on an instance.
     evidence:
     - executed_test
 tasks:
 - id: task.w4-playbooks
   title: 'W4: port and de-site-ify the CMS playbooks'
   status: todo
-  verification: pytest python/tests/test_skills.py -q (passing) + okg doctor --check
-    agent-skills on a live instance (never run)
+  verification: pytest python/tests/test_skills.py -q (passing) + okg doctor --check agent-skills
+    on a live instance (never run)
   requirements:
   - req.w4-playbooks
   evidence: []
@@ -76,8 +82,8 @@ evidence:
   artifact: python/tests/test_skills.py
   command: /work/submit/lavezzo/okg-venv/bin/python -m pytest python/tests/test_skills.py
     -q
-  summary: Playbook set, trigger references and the no-site-markers/hostnames/secrets
-    clause are test-enforced and green. The skill_bundle_hash and doctor clauses remain
-    unmet and are stated in the requirement.
+  summary: Playbook set, trigger references and the no-site-markers/hostnames/secrets clause
+    are test-enforced and green. The skill_bundle_hash and doctor clauses remain unmet and
+    are stated in the requirement.
   data:
     attached_at: '2026-08-25T01:59:19.131587+00:00'
