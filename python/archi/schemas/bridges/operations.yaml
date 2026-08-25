@@ -142,6 +142,7 @@ classes:
           edge_archetype: references
           src_subtypes: DocumentationPage
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       documentation_page_references_workflow:
         annotations:
@@ -197,6 +198,7 @@ classes:
           edge_archetype: references
           src_subtypes: ForumThread
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       forum_thread_references_workflow:
         annotations:
@@ -259,6 +261,7 @@ classes:
           edge_archetype: references
           src_subtypes: MeetingMinutes
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       meeting_minutes_references_workflow:
         annotations:
@@ -307,6 +310,7 @@ classes:
           edge_archetype: references
           src_subtypes: Document
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       document_references_workflow:
         annotations:
@@ -339,24 +343,28 @@ classes:
           edge_archetype: references
           src_subtypes: SoftwareRepository
           dst_subtypes: Repo
+          optional_when_subtypes_missing: 'true'
 
       service_exposes_infrastructure_service:
         annotations:
           edge_archetype: exposes
           src_subtypes: Service
           dst_subtypes: InfrastructureService
+          optional_when_subtypes_missing: 'true'
 
       infrastructure_service_exposes_endpoint:
         annotations:
           edge_archetype: exposes
           src_subtypes: InfrastructureService
           dst_subtypes: Endpoint
+          optional_when_subtypes_missing: 'true'
 
       jira_issue_references_ticket:
         annotations:
           edge_archetype: references
           src_subtypes: JiraIssue
           dst_subtypes: Ticket
+          optional_when_subtypes_missing: 'true'
 
       jira_issue_references_site:
         description: JIRA issue inherits site mentions from its text chunks.
@@ -399,6 +407,7 @@ classes:
           edge_archetype: references
           src_subtypes: JiraIssue
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       jira_issue_references_workflow:
         description: JIRA issue inherits workflow mentions from its text chunks.
@@ -419,6 +428,7 @@ classes:
           edge_archetype: has_comment
           src_subtypes: JiraIssue
           dst_subtypes: Comment
+          optional_when_subtypes_missing: 'true'
 
       jira_issue_affects_site:
         annotations:
@@ -473,18 +483,21 @@ classes:
           edge_archetype: consumes
           src_subtypes: Workflow
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       workflow_produces_dataset:
         annotations:
           edge_archetype: produces
           src_subtypes: Workflow
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       dataset_derived_from_dataset:
         annotations:
           edge_archetype: derives_from
           src_subtypes: Dataset
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       document_derived_from_source_file:
         description: A parsed Document derives from its filesystem source file (doc-corpus).
@@ -492,6 +505,7 @@ classes:
           edge_archetype: derived_from
           src_subtypes: Document
           dst_subtypes: SourceFile
+          optional_when_subtypes_missing: 'true'
 
       # storage_endpoint_hosts_dataset / site_hosts_dataset: see
       # archi/schemas/bridges/sources.yaml (single definition, landed
@@ -544,18 +558,21 @@ classes:
           edge_archetype: references
           src_subtypes: DataCertification
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       transfer_job_consumes_dataset:
         annotations:
           edge_archetype: consumes
           src_subtypes: TransferJob
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       transfer_job_produces_dataset:
         annotations:
           edge_archetype: produces
           src_subtypes: TransferJob
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       # site_hosts_transfer_job / transfer_site_to_site /
       # site_hosts_monitoring_snapshot: see
@@ -579,6 +596,7 @@ classes:
           edge_archetype: references
           src_subtypes: DocumentChunk
           dst_subtypes: Dataset
+          optional_when_subtypes_missing: 'true'
 
       chunk_references_workflow:
         annotations:
