@@ -2,23 +2,26 @@
 # git_graph adapter.
 #
 # Why not archi/sources/github_repos.py: that connector emits repo
-# *identity* nodes only. It records that a repository exists; it does
-# not read it. To let an agent answer questions FROM a repository you
-# need its files, which is what GitFilesSource provides — source_file
-# nodes carrying tracked-file content, plus the branch they belong to.
+# *identity* nodes only. It records that a repository exists; it does not
+# read it. To let an agent answer questions FROM a repository you need
+# its files, which is what GitFilesSource provides — source_file nodes
+# carrying tracked-file content, plus the branch they belong to.
 #
-# The adapter reads a working tree on disk; it does not clone or fetch.
+# THE CONNECTOR CLONES ITSELF. `manage_checkout: true` with a `url` makes
+# this source the owner of materialising `repo_root`: the runner calls
+# ensure_checkout() before the change probe reads HEAD, which clones if
+# missing and fast-forwards if present. So an operator declares a URL and
+# never runs `git clone` by hand — the same shape archi v2 had.
 #
-# CAPABILITY REGRESSION, recorded rather than hidden: archi v2 accepted a
-# repository URL and cloned it itself (the git scraper, driven by
-# GIT_USERNAME/GIT_TOKEN). v3 requires the operator to clone first and
-# point at the result. The trade is deliberate — a private repo now uses
-# the operator's own git credentials and no token has to reach the
-# instance — but it IS one manual step v2 did not have. Maintainer
-# accepted this for now (2026-08-25); revisit if operators trip on it.
+# repo_root is anchored under ${archi_data_root} rather than left
+# cwd-relative. GitFilesSource resolves a relative repo_root against the
+# PROCESS working directory, so a bare `repos/x` silently resolves to
+# nothing when okg is run from anywhere but the deployment dir — and a
+# repo source that finds no repo takes the whole publish down with it
+# (the completeness gate fails the batch, not just the source). Pass an
+# absolute archi_data_root to decouple it from the deployment dir.
+#
 # Needs the `git_graph` module composed (modules.yaml).
-#
-# The GitHub sibling is github_repo.yaml: same adapter, different clone.
 
 gitlab_repo:
   module: okg.substrate.library.sources.git_graph_files
@@ -39,7 +42,7 @@ gitlab_repo:
       edges:
         - {src_subtype: source_file, edge_type: member_of, dst_subtype: git_branch}
     output_scope_summary:
-      summary: tracked files of the configured GitLab clone and the branch they belong to
+      summary: tracked files of the configured GitLab repository and the branch they belong to
       nodes: [source_file, git_branch]
       edges:
         - source_file member_of git_branch
@@ -51,8 +54,12 @@ gitlab_repo:
   publication_mode: published_generation
   required_for_baseline: false
   params:
-    repo: ${gitlab_repo_name}
-    repo_root: ${gitlab_repo_root}
+    repo: "${gitlab_repo_name}"
+    url: "${gitlab_repo_url}"
+    manage_checkout: true
+    # Quoted: interpolation is textual, so an unquoted path containing a
+    # `#` would be truncated by the YAML parser without a word of warning.
+    repo_root: "${archi_data_root}/repos/${gitlab_repo_name}"
     include_untracked: false
     exclude_globs:
       - "**/__pycache__/**"

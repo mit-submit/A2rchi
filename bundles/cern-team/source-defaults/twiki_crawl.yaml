@@ -16,6 +16,12 @@
 # Produce the cookie with the CERN SSO login helper (interactive: it
 # prompts for a TOTP code) and point CERN_TWIKI_COOKIE_FILE at it.
 #
+# SCOPE OF THE EVIDENCE: the redirect above was observed directly against
+# the live URL, so the requirement is established. The cookie path itself
+# is UNEXERCISED — no cookie was available on the host where this was
+# written, so this entry has never completed a run. Treat a first
+# successful crawl as the thing that confirms it.
+#
 # Adapted from the registry template in archi/sources/twiki.py.
 twiki_crawl:
   module: archi.sources.twiki

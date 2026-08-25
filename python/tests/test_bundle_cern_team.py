@@ -5,6 +5,7 @@ tests keep its structure honest offline: strict-admission blocks on
 every connector default, resolvable playbook symlinks, no operator
 paths or credential values in bundle files.
 """
+import importlib.util
 import re
 from pathlib import Path
 
@@ -31,14 +32,27 @@ def test_source_defaults_carry_strict_admission_shape():
             assert policy.get("output_scope_summary"), f"{path.name}:{name} missing output_scope_summary"
             assert entry.get("sync"), f"{path.name}:{name} missing sync block"
             # A bundle legitimately composes BOTH archi connectors and
-            # substrate-resident okg sources — profile.yaml has said so since
-            # the bundle was written ("code repositories via the substrate's
-            # own okg modules"). What must not appear is a module from
-            # anywhere else: a bundle that reaches outside these two homes is
-            # shipping a dependency its consumers have no way to install.
-            assert entry["module"].startswith(
+            # substrate-resident okg sources. What must not appear is a
+            # module from anywhere else: a bundle reaching outside these two
+            # homes ships a dependency its consumers have no way to install.
+            module = entry["module"]
+            assert module.startswith(
                 ("archi.sources.", "okg.substrate.library.sources.")
             ), f"{path.name}:{name} is neither an archi connector nor a substrate source"
+            # A prefix check alone is weaker than what it replaced. `archi.*`
+            # modules ship in this wheel, so a rename breaks the import tests
+            # next door; `okg.*` modules do not — okg is the host environment
+            # and pyproject declares no dependency on it, so nothing else here
+            # would notice okg renaming or relocating a source. Resolve it for
+            # real: an unimportable module is a bundle that fails at ingest
+            # time on an operator's machine, which is the worst place to find
+            # out.
+            if module.startswith("okg."):
+                assert importlib.util.find_spec(module) is not None, (
+                    f"{path.name}:{name} names {module}, which does not resolve "
+                    "in this environment — the host okg has renamed, moved or "
+                    "dropped it"
+                )
 
 
 def test_playbook_symlinks_resolve():
