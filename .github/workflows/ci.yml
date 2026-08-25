@@ -1,0 +1,98 @@
+# CI for the v3 distribution (ADR §14: CI on archi_v3 from day one).
+#
+# SECURITY — read before editing. This repository is PUBLIC and the okg
+# substrate is PRIVATE. The tests import okg, so the job needs a token
+# (OKG_REPO_TOKEN, a fine-grained PAT scoped read-only to the private fork
+# lucalavezzo/okg). A secret exposed to a pull_request run from a fork is
+# readable by anyone who can open a PR, so:
+#
+#   * the job is guarded on the head repo being this repository, and
+#   * `pull_request` is used rather than `pull_request_target`, which would
+#     run untrusted code with access to secrets by design.
+#
+# A fork PR therefore reports "skipped", not "passed": no green tick is
+# claimed for tests that never ran. A maintainer re-runs it from a branch in
+# this repo before merge.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [archi_v3]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests (python 3.12)
+    runs-on: ubuntu-latest
+    # Fork PRs cannot see OKG_REPO_TOKEN. Skip rather than fail, and never
+    # fall back to a partial run that could read as full coverage.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned deliberately: the package targets 3.12, and black cannot parse
+      # the f-strings in three connectors under anything older -- that is what
+      # made the §10 definition of done look broken.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install okg (private substrate, pinned)
+        env:
+          OKG_REPO_TOKEN: ${{ secrets.OKG_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OKG_REPO_TOKEN}" ]; then
+            echo "::error::OKG_REPO_TOKEN is not available; refusing to run a partial suite"
+            exit 1
+          fi
+          # The pin is the commit archi is tested against; see
+          # docs/okg-alignment.md, which states the drift from okg dev.
+          python -m pip install --upgrade pip
+          pip install "okg @ git+https://x-access-token:${OKG_REPO_TOKEN}@github.com/lucalavezzo/okg@f5ec3b58d"
+
+      - name: Install archi with dev extras
+        run: pip install -e "./python[dev]"
+
+      - name: Tests
+        run: python -m pytest python/tests -q
+
+      # Report-only. The tree predates any formatter: black would reformat 58
+      # files and isort ~47, and the connectors are kept line-comparable with
+      # the frozen canonical okg-deployments/cms copies so upstream bug reports
+      # cite matching lines. Enforcing would destroy that. Flip
+      # continue-on-error to false to enforce, once a reformat is agreed.
+      - name: Format check (report-only)
+        continue-on-error: true
+        working-directory: python
+        run: |
+          echo "::group::black"
+          black --check --diff . || true
+          echo "::endgroup::"
+          echo "::group::isort"
+          isort --check-only --diff . || true
+          echo "::endgroup::"
+
+  # The two tests that do not import okg, so they run for anyone -- including
+  # fork PRs that the guarded job skips. Small on purpose: it is a smoke check
+  # that the repo is coherent, not a substitute for the suite.
+  no-substrate:
+    name: substrate-free checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest pyyaml
+      - name: Alignment page and comp-ops lint baseline
+        run: |
+          python -m pytest \
+            python/tests/test_alignment_page.py \
+            python/tests/test_compops_lint_recheck.py -q
