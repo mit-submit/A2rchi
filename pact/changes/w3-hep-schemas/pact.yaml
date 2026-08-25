@@ -1,0 +1,79 @@
+pact_version: 4
+target_pact_version: 4
+change:
+  id: w3-hep-schemas
+  title: 'W3: HEP schema slices and deployment bridges'
+  status: proposal
+  rationale: >-
+    Backfills the unrecorded W3 wave, and records that its ADR
+    done-clause is FALSE AS WRITTEN rather than quietly re-scoping it. The
+    clause reads: 'the cern-team bundle and the comp-ops instance compose the
+    same files without divergence.' They do not, and cannot today.
+    OPEN BY DESIGN: the ADR done-clause is false as written; see docs/okg-alignment.md.
+  root_cause: Small nontrivial change whose intent, task, acceptance, and proof fit
+    the PACT fast path.
+  tier: 1
+  method_metadata:
+    pact_shape: fast_path
+    fast_path: Compact PACT for small nontrivial work. Upgrade when scope, risk, hierarchy,
+      formal proof, graph evidence, or review complexity increases.
+  affected_areas: []
+  affected_code: []
+requirements:
+- id: req.w3-hep-schemas
+  title: 'W3: HEP schema slices and deployment bridges'
+  statement: >-
+    The schema slices shipped: archi/schemas/operations.yaml and
+    sources.yaml plus schemas/bridges/, deployment-scoped, every class and
+    narrowing single-defined, shipping inside the wheel. The composition
+    clause does NOT hold: the wheel's bridges/operations.yaml cannot be copied
+    verbatim into any instance, because its narrowings lack
+    optional_when_subtypes_missing and catalog load then fails with
+    bridge_subtype_unknown (first failure: documentation_page_references_dataset,
+    child subtype dataset). Both consumers therefore hand-prune, and prune
+    DIFFERENTLY - the cern-team demo keeps only cmssw_release_supersedes_release,
+    while cms-compops prunes the five narrowings owned by the ticket/service/code
+    modules. That is divergence twice over. The fix has precedent in our own
+    tree (bridges/sources.yaml already flags the MONIT narrowings) and is filed
+    upstream as part of okg#1179; this change stays OPEN until a packaged bridge
+    composes without hand-editing.
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w3-hep-schemas.fast-path
+    title: Fast-path work is verified
+    given:
+    - a small nontrivial change fits one requirement
+    when:
+    - the declared verification runs
+    then:
+    - the requirement has executed proof before completion
+    and: []
+  acceptance:
+  - id: acc.w3-hep-schemas
+    description: >-
+      A packaged bridge composes on both the cern-team bundle and the
+      cms-compops instance with no hand-pruning, and okg catalog load is green
+      on both from the wheel's files as shipped.
+    evidence:
+    - executed_test
+tasks:
+- id: task.w3-hep-schemas
+  title: 'W3: HEP schema slices and deployment bridges'
+  status: todo
+  verification: "okg catalog load --apply on both consumers using the wheel's bridges/operations.yaml unmodified (currently fails with bridge_subtype_unknown)"
+  requirements:
+  - req.w3-hep-schemas
+  evidence: []
+  environment: []
+dependencies: []
+test_plan:
+- id: test.req-w3-hep-schemas.backfill
+  requirement: req.w3-hep-schemas
+  test_id: python/tests
+  evidence:
+  - pytest
+formal: []
+waivers: []
+evidence: []

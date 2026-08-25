@@ -1,0 +1,81 @@
+pact_version: 4
+target_pact_version: 4
+change:
+  id: w0-ratify-and-pin
+  title: 'W0: ratify the ADR, adopt PACT, file the asks, pin the repos'
+  status: proposal
+  rationale: 'Invariant 1 says one PACT change per work package; W0 shipped without
+    one, so the wave that adopted PACT is itself unrecorded in the ledger. This backfills
+    it. Recorded retroactively and honestly: three of the ADR''s four done-clauses
+    now hold, and the fourth is not ours to close. OPEN CLAUSE: R1-R3 owners and dates
+    are unassigned (maintainer''s).'
+  root_cause: Small nontrivial change whose intent, task, acceptance, and proof fit
+    the PACT fast path.
+  tier: 1
+  method_metadata:
+    pact_shape: fast_path
+    fast_path: Compact PACT for small nontrivial work. Upgrade when scope, risk, hierarchy,
+      formal proof, graph evidence, or review complexity increases.
+  affected_areas: []
+  affected_code: []
+requirements:
+- id: req.w0-ratify-and-pin
+  title: 'W0: ratify the ADR, adopt PACT, file the asks, pin the repos'
+  statement: 'The ADR is merged and is the program''s reference; PACT is adopted (pact/project.yaml,
+    the interim archi-pact ledger, openspec archived); the five asks have upstream
+    issue links (okg#1179-#1185, plus #1282/#1283/#1284 for porting frictions); and
+    the suite runs in CI on archi_v3. The remaining ADR clause, owners and dates for
+    R1-R3, is a maintainer assignment and is recorded here as open rather than silently
+    dropped.'
+  evidence_policy:
+    required:
+    - executed_test
+  scenarios:
+  - id: scn.w0-ratify-and-pin.fast-path
+    title: Fast-path work is verified
+    given:
+    - a small nontrivial change fits one requirement
+    when:
+    - the declared verification runs
+    then:
+    - the requirement has executed proof before completion
+    and: []
+  acceptance:
+  - id: acc.w0-ratify-and-pin
+    description: docs/adr/0001-archi-v3-program-spec.md present on archi_v3; pact/project.yaml
+      present with the archi-pact projection; the asks resolvable as okg#1179-#1185;
+      a green CI run on archi_v3 covering the full suite.
+    evidence:
+    - executed_test
+tasks:
+- id: task.w0-ratify-and-pin
+  title: 'W0: ratify the ADR, adopt PACT, file the asks, pin the repos'
+  status: todo
+  verification: gh run view (CI green on archi_v3) + docs/adr/0001-archi-v3-program-spec.md
+    and pact/project.yaml on trunk
+  requirements:
+  - req.w0-ratify-and-pin
+  evidence: []
+  environment: []
+dependencies: []
+test_plan:
+- id: test.req-w0-ratify-and-pin.backfill
+  requirement: req.w0-ratify-and-pin
+  test_id: python/tests
+  evidence:
+  - pytest
+formal: []
+waivers: []
+evidence:
+- id: ev.executed-test.req-w0-ratify-and-pin.20260825T015917752351Z
+  kind: executed_test
+  status: pass
+  refs:
+  - req.w0-ratify-and-pin
+  artifact: python/tests
+  command: gh run view 32799269515
+  summary: "CI on archi_v3 is green (run 32799269515: tests (python 3.12) 326 passed,\
+    \ substrate-free checks 3 passed) \u2014 this was W0's last unmet mechanical clause.\
+    \ ADR merged on archi_v3; pact/project.yaml present; asks resolve to okg#1179-#1185."
+  data:
+    attached_at: '2026-08-25T01:59:17.752378+00:00'
