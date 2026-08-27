@@ -50,10 +50,20 @@ okg-venv/bin/okg install --profile cern-team \
 the distribution's schemas, loads the catalog, clones both repositories,
 ingests, and publishes.
 
-Run it without the repository flags and it asks interactively instead;
-leave a URL blank to install without that source. **You never run `git
-clone`** — the repository connectors own their checkouts, cloning on first
-run and fast-forwarding after.
+**You never run `git clone`** — the repository connectors own their
+checkouts, cloning on first run and fast-forwarding after.
+
+**But do give both repository URLs, or remove those two defaults first.**
+Tested 2026-08-27: an install with no source flags at all does *not* reach
+a published generation. `cmssw_releases` completes, but `github_repo` and
+`gitlab_repo` are still selected with no URL, fail, and the completeness
+gate blocks the publish for everything. To install genuinely empty, rename
+`github_repo.yaml` and `gitlab_repo.yaml` to `.yaml.example` first; then
+only the CMSSW catalog runs, and it needs no credential.
+
+That is a gap, not a preference: ADR 0001 W6 requires an instance with
+nothing configured to start cleanly, and a connector whose input is blank
+should opt itself out rather than fail. Adding sources later is §3.
 
 `ARCHI_DATA_ROOT` is worth setting absolute: connector caches and
 repository clones anchor to it, so no later command depends on which
@@ -87,6 +97,15 @@ environment variable, and re-run the ingest:
 ```bash
 okg-venv/bin/okg ingest --deployment myteam --progress
 ```
+
+To add something the bundle does not ship — another repository, say —
+there is `okg add <source> --deployment myteam` (`git-files` is the
+repository one). It writes the registry entry but deliberately leaves it
+incomplete, reporting `activation_blocked` and naming what is missing,
+rather than activating a source it cannot fully describe. You finish the
+entry in `source_registry.yaml`, then re-claim and re-load. Workable, but
+hand-work — adding a source from a UI is OKG's operator console and is not
+built yet.
 
 **One rule worth knowing before you do.** The completeness gate requires
 every *selected* source to finish, whether or not it is marked optional.
