@@ -279,13 +279,39 @@ okg-venv/bin/okg mcp-serve --deployment myteam \
 container reaches this from inside, where a loopback-only port is not
 reachable.
 
+**The port must be 8765**, because that is what the bundle declares in
+`chat.mcp.port`. `chat sync` looks for the endpoint there and nowhere else —
+serve on a different port and it fails with `mcp_unreachable` while the
+server is running perfectly well somewhere you did not tell it about.
+
 **Then wire the chat to it**, from your first terminal:
 
 ```bash
 export OKG_CHAT_INSTANCE_URL=http://127.0.0.1:8099
-export OKG_CHAT_ADMIN_TOKEN='<an API key you create in the chat admin settings>'
+export OKG_CHAT_ADMIN_TOKEN='<see below>'
 okg-venv/bin/okg chat sync --deployment myteam
 ```
+
+**Getting that token without touching a browser.** The first account
+created on a fresh instance becomes the admin, and signing up returns a
+token `chat sync` accepts directly — so this is one scriptable command, not
+a round trip through the UI:
+
+```bash
+export OKG_CHAT_ADMIN_TOKEN=$(curl -s -X POST "$OKG_CHAT_INSTANCE_URL/api/v1/auths/signup" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"admin","email":"you@example.org","password":"pick-a-password"}' \
+  | okg-venv/bin/python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+```
+
+On an instance where that account already exists, swap `signup` for
+`signin` and drop the `name` field. Keep the chat app database and the
+account persists, so this is a one-liner on every later run rather than a
+fresh sign-up.
+
+*(If you would rather use the UI: sign up in the browser, then
+**Settings → Account → API Keys → Create new key**. Same result, more
+clicks.)*
 
 `chat sync` is the step that makes this automatic rather than clicked
 together: it renders the site's appearance from the bundle, creates the MCP
@@ -325,6 +351,32 @@ API key at all. Two things about the URL, both verified:
   address — only the gateway alias reaches it.
 - **Check the port.** `OLLAMA_HOST` is often set to something other than the
   default `11434`; `systemctl show ollama -p Environment` will tell you.
+
+### Then use it — and pick the right model
+
+**Select the deployment's preset in the model picker, not a bare model.**
+This is the step that is easy to miss and produces the most misleading
+result. The graph tools are bound to the *preset* `chat sync` created (named
+after your deployment). Choose a raw ollama model from the same list and you
+get a model with no tools at all — and, because it still has the system
+prompt telling it that it has graph tools, it will happily describe searches
+it never ran and invent plausible-looking results. Nothing warns you.
+
+A good first question, with a checkable answer:
+
+> What repositories are indexed in this graph? Name three actual files from
+> them.
+
+It should name the repositories you installed and files that really exist in
+them. If it names things you never indexed — plausible-sounding projects from
+the same domain — it is not reaching the graph. Check that you selected the
+preset before concluding anything is broken.
+
+The same trap applies to calling the API directly rather than using the
+browser: Open WebUI deliberately does **not** attach a preset's tools for API
+callers (*"API callers don't expect hidden tools; they can explicitly request
+tools via `tool_ids`"*), so a raw completions call gets a toolless model that
+confabulates. Pass `tool_ids` explicitly if you script against it.
 
 Ollama on a *different* machine is simpler — an ordinary
 `http://<other-host>:<port>` works, because outbound networking from a
