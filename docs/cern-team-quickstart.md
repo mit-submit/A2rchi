@@ -173,24 +173,55 @@ everything.
 
 ## 6. Stand up the chat frontend
 
-> **Not verified** — no model-provider key was available on this host.
-> Flags below are taken from each command's own `--help`.
+> **Partly verified 2026-08-27.** No model key is needed — a local ollama
+> works. What is *not* yet possible is bringing the instance up from this
+> bundle unchanged; the reason is below and it is ours to fix.
+
+**A local ollama removes the API-key problem entirely.** Verified on
+submit76: ollama runs there bound to `0.0.0.0:7870` (not the default
+11434), is reachable across the cluster, and serves 37 models on three
+V100s. Open WebUI was originally built for ollama, so it is a first-class
+provider — you point it at `http://<host>:7870` and no key exists to leak.
+If ollama is on the same machine as the chat container, `okg chat-instance
+up --host-gateway-alias host.docker.internal` makes the host reachable
+from inside it.
+
+**Order matters, and it is the opposite of what you might expect.** The
+`chat:` block has to exist in `deployment.yaml` *before* `chat-instance
+up` — okg refuses to stand up an instance for a deployment that declares
+no chat (`no_chat_block`).
+
+**The block cannot be partial.** An enabled chat must declare all five of
+`ui`, `models`, `preset`, `search_profile` and `mcp`. Declaring two gets
+`chat_manifest_invalid` listing what is missing, with the reasoning stated
+outright: *"a hollow declaration never degrades into a default-configured
+chat."*
+
+**And that is where this stops today.** `search_profile` must name a
+profile declared in the manifest's `search:` block, and the cern-team
+bundle ships neither — so the bundle as it stands cannot enable chat. The
+missing pieces are a `search:` block with at least one profile, and a
+complete `chat:` block, both of which belong in the bundle rather than in
+every operator's hands. That is bundle work, not an okg gap.
+
+Once those ship, the sequence is:
 
 ```bash
 export OKG_CHAT_APP_DATABASE_URL='postgresql://...'   # the chat app's OWN database
 export OKG_CHAT_WEBUI_SECRET_KEY='...'                # instance secret
 
 okg-venv/bin/okg chat-instance up --deployment myteam \
-  --container-runtime podman --instance-port 8080
+  --container-runtime podman --instance-port 8099
 okg-venv/bin/okg chat-instance status --deployment myteam
 ```
 
-`--container-runtime` defaults to **docker**, so a podman host must say
-so. `--instance-port` is effectively required until the manifest can carry
-it. Both environment variables are named as *variable names* on purpose —
+`--container-runtime` defaults to **docker**, so a podman host must say so
+— and note it is accepted by `up` only; `status` rejects it.
+`--instance-port` is effectively required until the manifest can carry it.
+Both environment variables are named as *variable names* on purpose:
 neither the manifest nor the command line carries the value.
 
-Then declare a `chat:` block in `deployment.yaml` and project it:
+Then project the declaration into the running instance:
 
 ```bash
 export OKG_CHAT_INSTANCE_URL=...     # from `chat-instance status`
@@ -198,13 +229,8 @@ export OKG_CHAT_ADMIN_TOKEN=...      # the instance admin key
 okg-venv/bin/okg chat sync --deployment myteam
 ```
 
-`sync` writes the declaration into the instance and reads every change
-back to prove it landed. Its fields are validated strictly and an unknown
-key is refused, so write it against
-`okg/src/okg/substrate/deployments/chat_block.py` rather than from memory.
-Leave the `ui:` sub-block out unless you need it — its keys are checked
-against an artifact living in okg's repository, which a pip-only install
-may not have.
+`sync` writes the declaration in and reads every change back to prove it
+landed.
 
 ## 7. Give it a model
 
