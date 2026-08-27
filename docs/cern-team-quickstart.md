@@ -235,15 +235,20 @@ here — that one really is just slow.
 **`--container-runtime podman`** is needed because the default is docker,
 and it is accepted by `up` only — `status` rejects it.
 
-**Already created the chat database, with the wrong binding or a password
-that no longer matches?** Remove and recreate it; nothing else needs
-redoing. The container has no volume, so removing it discards the database
-with it:
+**Retrying after a failed attempt? Remove BOTH containers, not just the
+database.** The chat container bakes its connection string in at creation,
+and `chat-instance up` will reuse an existing one — so a chat container
+built against the old password keeps failing with
+`password authentication failed` no matter how correct the database and DSN
+now are. Neither container has a volume, so removing them loses nothing:
 
 ```bash
-podman rm -f myteam-chat-pg
+podman rm -f okg-chat-myteam myteam-chat-pg
 # then re-run the block above from the top, in one shell
 ```
+
+This is the single most likely reason a second attempt fails the same way
+as the first.
 
 Expect `status` to report the tools endpoint dead. It is telling the truth:
 the site is up, but the graph tools are a separate process. **Take it
