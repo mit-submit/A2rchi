@@ -69,3 +69,51 @@ def test_no_operator_paths_or_secrets_in_bundle():
         if path.is_file() and not path.is_symlink():
             for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                 assert not pattern.search(line), f"{path}:{lineno}: {line.strip()[:80]}"
+
+
+def test_bundle_ships_schema_slices_matching_the_package():
+    """The `schemas:` slot (okg#1367) needs real files, so they are duplicated.
+
+    okg refuses symlinked schema assets — `profile_invalid: schema assets may
+    not be symlinks` — which is why these are copies rather than links into
+    `python/archi/schemas/` the way `skills/` links into `skills/`. Duplication
+    without a guard drifts, and a drifted bridge is the exact failure W3 spent
+    a wave on: the instance composes something the distribution did not ship.
+    """
+    declared = yaml.safe_load((BUNDLE / "profile.yaml").read_text()).get("schemas")
+    assert declared == "schemas/", "bundle must declare the schemas: slot"
+
+    bundled = BUNDLE / "schemas"
+    packaged = Path(__file__).resolve().parents[1] / "archi" / "schemas"
+    expected = {"operations.yaml", "sources.yaml",
+                "bridges/operations.yaml", "bridges/sources.yaml"}
+    present = {str(p.relative_to(bundled)) for p in bundled.rglob("*.yaml")}
+    assert present == expected, f"bundle schemas drifted: {present ^ expected}"
+    for rel in sorted(expected):
+        assert not (bundled / rel).is_symlink(), f"{rel} is a symlink; okg refuses those"
+        assert (bundled / rel).read_bytes() == (packaged / rel).read_bytes(), (
+            f"{rel} differs from python/archi/schemas/{rel} — the bundle copy and "
+            "the package copy must stay byte-identical"
+        )
+
+
+def test_default_sources_need_no_credentials():
+    """A bare install must publish, so nothing selected by default may be gated.
+
+    ADR 0001 W6: "A deployment with no optional connector configured must start
+    cleanly." The completeness gate fails the whole batch when any *selected*
+    source fails, so a credential-gated default silently makes a fresh install
+    unable to publish at all. Sources needing credentials or a prebuilt cache
+    ship as `.yaml.example` and are opted into by renaming.
+    """
+    selected = sorted(p.name for p in (BUNDLE / "source-defaults").glob("*.yaml"))
+    assert selected == ["cmssw_releases.yaml", "github_repo.yaml", "gitlab_repo.yaml"], (
+        f"default source set changed: {selected}. Anything needing a credential "
+        "or a prebuilt cache belongs in a .yaml.example."
+    )
+    for path in (BUNDLE / "source-defaults").glob("*.yaml"):
+        entry = next(iter(yaml.safe_load(path.read_text()).values()))
+        assert not entry.get("credential_refs"), (
+            f"{path.name} is selected by default but declares credential_refs; "
+            "a fresh install would fail to publish"
+        )

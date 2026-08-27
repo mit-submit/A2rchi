@@ -20,15 +20,30 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-24, archi branch `archi_v3` @ `81dbdb6b` (PRs #610, #611,
-#616, #617 merged), tested against okg `dev` @ `f5ec3b58d` (2026-08-18).*
+*Last updated 2026-08-27, tested against okg `dev` @ `2d528e824`; archi branch
+`archi_v3` with PRs #610–#627 merged and #628 open.*
 
-**Pin drift, flagged deliberately:** okg `dev` is now `03470e2b4` — **210 commits
-ahead of the pin we have actually validated against**. Per this page's own
-re-audit-on-bump rule that is an open exposure, not a claim of compatibility:
-until we re-pin and re-run, treat every statement below as verified against
-`f5ec3b58d` only. It matters more than usual while #1181 (the connector/enricher
-SDK) is open, because we still import ten private `okg.substrate` symbols.
+**Pin bumped, drift closed (2026-08-27).** The 210-commit exposure this page
+flagged is resolved: we fast-forwarded to okg `dev` @ `2d528e824` and re-ran the
+full archi suite — **337 passed**, including `test_alignment_page.py`, which
+mechanically checks every one of the ten private `okg.substrate.*` symbols below
+still resolves. The import surface survived the bump unchanged.
+
+**okg#1367 landed, and it removes most of our install friction.** The profile
+`schemas:` slot now materializes distribution-owned schema files before the
+first catalog load. Verified end to end on an empty database: `okg install
+--profile cern-team` alone — no `--no-publish`, no manual schema copy, no manual
+migrate/claim/load — reaches `first publish complete`, generation
+`gen:20260827T142617739260Z:5e3c0fc5ada0`, 2,586 nodes / 2,279 edges. The
+quickstart went from ten steps to one command. Two notes for you: (1) the
+contract refuses symlinked schema assets, so our bundle carries real copies of
+`python/archi/schemas/` with a byte-identity test guarding the duplication —
+worth knowing if other distributions try to link rather than copy; (2) passing
+the manifest's deferred `'${OKG_DSN}'` literal now fails the install's own
+migrate step (`missing "=" after "${OKG_DSN}"`), so a one-command install must
+pass a real DSN and the password lands in `deployment.yaml`. That is a small
+regression in the credential-indirection story and the only reason we cannot
+recommend the literal form any more.
 
 **Sync channel: okg#1178** (established 2026-08-19; surface-change heads-ups land
 there). Re-pin validation 2026-08-19 against the strict registry-admission schema

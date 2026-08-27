@@ -10,17 +10,25 @@
 #
 # Install (the okg profile installer consumes this file):
 #
-#   export OKG_PROFILES_DIR=<archi repo>/bundles
+#   export OKG_PROFILES_DIR="$(archi-profiles-dir)"
 #   okg install --profile cern-team \
 #     --deployment-name <slug> \
-#     --postgres-dsn 'postgresql://...' \
-#     --no-publish
+#     --postgres-dsn 'postgresql://...'
 #
-# `--no-publish` matters: two documented post-install steps (schema
-# slice copy from the installed archi wheel; see README.md) must land
-# before the first catalog load, so the bundled first-publish path
-# would fail on a fresh instance. Both steps are flagged as okg#1179
-# contract input in README.md.
+# That is the whole install. It provisions, migrates, materialises this
+# bundle's schemas/ (okg#1367), loads the catalog, ingests and publishes.
+#
+# `--no-publish` is no longer needed. It used to be, because the schema
+# slices had to be hand-copied between the scaffold and the catalog load,
+# which meant re-doing the rest of the install by hand as well. The
+# `schemas:` slot below removed that.
+#
+# The three connectors selected by default need no credentials, so a bare
+# install reaches a published generation on its own (ADR 0001 W6: an
+# instance with nothing configured must start cleanly). Sources needing a
+# credential or a prebuilt cache ship as `.yaml.example` in
+# source-defaults/ — rename one to `.yaml` to opt in, and supply its
+# credential by environment variable.
 
 name: cern-team
 version: 0.1.0
@@ -146,3 +154,9 @@ source_defaults: source-defaults/
 invariants: invariants.yaml
 deployment_defaults: deployment-defaults.yaml
 skills: skills/
+# The distribution's own HEP vocabulary, materialised into the instance
+# before the first catalog load (okg#1367). Symlinks into python/archi/
+# so there is one copy in the repo; packaging dereferences them, exactly
+# as it already does for skills/. This is what removes the manual
+# schema-copy step and with it the whole --no-publish interlude.
+schemas: schemas/
