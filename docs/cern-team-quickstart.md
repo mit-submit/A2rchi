@@ -254,10 +254,32 @@ Expect `status` to report the tools endpoint dead. It is telling the truth:
 the site is up, but the graph tools are a separate process. **Take it
 seriously — the site can be up and every tool call still fail.**
 
-Open `http://127.0.0.1:8099` and point it at your model provider in the
-admin settings. A local ollama needs no API key at all — check which port
-yours actually listens on rather than assuming the default, and note that a
-container reaching *another* machine's ollama works fine.
+### Opening it, and giving it a model
+
+**If the machine is remote, tunnel to it.** The site binds to loopback on
+purpose, so it is not reachable across the network. From your own machine:
+
+```bash
+ssh -L 8099:127.0.0.1:8099 <that-host>
+```
+
+Then open `http://127.0.0.1:8099` in your own browser.
+
+**Connect a model provider in the admin settings.** A local ollama needs no
+API key at all. Two things about the URL, both verified:
+
+- **Use the gateway name, not loopback or the hostname.** If ollama runs on
+  the same machine as the chat container, the URL is
+  `http://host.docker.internal:<port>`. `127.0.0.1` is the *container's* own
+  loopback, and a rootless container cannot route to its host's network
+  address — only the gateway alias reaches it.
+- **Check the port.** `OLLAMA_HOST` is often set to something other than the
+  default `11434`; `systemctl show ollama -p Environment` will tell you.
+
+Ollama on a *different* machine is simpler — an ordinary
+`http://<other-host>:<port>` works, because outbound networking from a
+container is unrestricted. It is only reaching back to its own host that
+needs the gateway name.
 
 ## 7. If the publish is blocked
 
