@@ -25,3 +25,83 @@ nomos:
 # instance manifest (operator surfaces).
 skills_dir: skills
 skill_triggers: skills/skill-triggers.yaml
+
+# ---------------------------------------------------------------------------
+# Search scope
+# ---------------------------------------------------------------------------
+# A graph holds content (docs, code files, releases) alongside bookkeeping
+# (change records, session logs, run metadata). Search ranks within a fixed
+# budget, so without a declared scope the bookkeeping competes with the
+# content and can evict the row that actually answers the question.
+#
+# `content` names what counts as an answer in a cern-team instance. Every
+# subtype below comes from a module this bundle composes by default
+# (git_graph) or from the distribution's own schema slices, so the profile
+# resolves on a stock install. Drop `git_graph` from modules.yaml and you
+# must drop source_file/git_branch from here too — okg refuses a profile
+# naming a subtype the catalog lacks rather than silently narrowing it.
+search:
+  default_profile: content
+  profiles:
+    content:
+      description: Documents, code files and catalog entries — what a question is asked about.
+      subtypes:
+        - document_chunk
+        - documentation_page
+        - source_file
+        - software_repository
+        - cmssw_release
+
+# ---------------------------------------------------------------------------
+# Chat site
+# ---------------------------------------------------------------------------
+# The deployment's own description of its chat site, so every install of this
+# bundle gets the same one instead of each operator assembling it by hand.
+# It carries no credentials: the model provider is configured inside Open
+# WebUI with the operator's own key (or none at all, for a local ollama).
+#
+# All five sub-blocks are required when enabled — okg refuses a partial
+# declaration rather than letting the rest fall back to defaults.
+#
+# Declaring this does NOT start anything. `okg chat-instance up` is a
+# separate, explicit step.
+chat:
+  enabled: true
+  ui:
+    site_name: ${chat_site_name}
+    features:
+      # Off by design: this assistant answers from the graph. Web search and
+      # image generation invite answers with no provenance in it, and the
+      # code interpreter is a sandbox this deployment does not want to own.
+      web_search: false
+      image_generation: false
+      code_interpreter: false
+  models:
+    # One model to start. Set `chat_model` at install to a name your provider
+    # actually serves — for a local ollama, whatever `ollama list` shows.
+    builtin:
+      - ${chat_model}
+    default: ${chat_model}
+  preset:
+    display_name: ${chat_site_name}
+    description: >-
+      Answers from this instance's knowledge graph — indexed repositories,
+      documentation and catalogs — with the sources it used.
+    suggestions:
+      - What repositories are indexed here, and what is in them?
+      - Summarise what the documentation says about deployment.
+      - Which CMSSW releases are in the graph?
+  search_profile: content
+  mcp:
+    # The AKMON read operators. `query`, the raw escape hatch, is deliberately
+    # not exposed to chat users: it is admitted by okg but belongs to an
+    # operator surface, not a team chat window.
+    port: 8765
+    tools:
+      - inspect
+      - search
+      - expand
+      - filter
+      - map
+      - aggregate
+    auth_token_env: OKG_CHAT_MCP_TOKEN

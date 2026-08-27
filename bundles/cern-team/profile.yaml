@@ -148,6 +148,24 @@ init_questions:
       uses your own git credentials, so no token reaches the instance.
       Leave blank to install without this source.
 
+  - id: chat_site_name
+    prompt: name for the chat site
+    type: string
+    required: false
+    default: Team knowledge chat
+    description: |
+      Shown as the site title and the assistant's display name.
+
+  - id: chat_model
+    prompt: model the chat should offer
+    type: string
+    required: false
+    default: llama3.1:8b
+    description: |
+      One model name, as your provider spells it. For a local ollama use
+      whatever `ollama list` shows. The provider itself is configured
+      inside the chat app with your own key — it is never written here.
+
 # References to sibling files within this bundle dir.
 modules: modules.yaml
 source_defaults: source-defaults/
