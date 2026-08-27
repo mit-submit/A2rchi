@@ -1,0 +1,73 @@
+# Code repository connector — GitLab clone, via the substrate's own
+# git_graph adapter.
+#
+# Why not archi/sources/github_repos.py: that connector emits repo
+# *identity* nodes only. It records that a repository exists; it does not
+# read it. To let an agent answer questions FROM a repository you need
+# its files, which is what GitFilesSource provides — source_file nodes
+# carrying tracked-file content, plus the branch they belong to.
+#
+# THE CONNECTOR CLONES ITSELF. `manage_checkout: true` with a `url` makes
+# this source the owner of materialising `repo_root`: the runner calls
+# ensure_checkout() before the change probe reads HEAD, which clones if
+# missing and fast-forwards if present. So an operator declares a URL and
+# never runs `git clone` by hand — the same shape archi v2 had.
+#
+# repo_root is anchored under ${archi_data_root} rather than left
+# cwd-relative. GitFilesSource resolves a relative repo_root against the
+# PROCESS working directory, so a bare `repos/x` silently resolves to
+# nothing when okg is run from anywhere but the deployment dir — and a
+# repo source that finds no repo takes the whole publish down with it
+# (the completeness gate fails the batch, not just the source). Pass an
+# absolute archi_data_root to decouple it from the deployment dir.
+#
+# Needs the `git_graph` module composed (modules.yaml).
+
+gitlab_repo:
+  module: okg.substrate.library.sources.git_graph_files
+  class: GitFilesSource
+  ownership_id: ${deployment_name}.gitlab-repo
+  admission_policy:
+    producer_id: ${deployment_name}.gitlab-repo
+    producer_kind: source
+    trust_label: implicit_legacy_trusted
+    admission_mode: fast_track
+    authority_scope:
+      source_family: cern-team
+      source_name: gitlab_repo
+    output_signature:
+      nodes:
+        - {subtype: source_file}
+        - {subtype: git_branch}
+      edges:
+        - {src_subtype: source_file, edge_type: member_of, dst_subtype: git_branch}
+    output_scope_summary:
+      summary: tracked files of the configured GitLab repository and the branch they belong to
+      nodes: [source_file, git_branch]
+      edges:
+        - source_file member_of git_branch
+  source_class: discovery_crawl
+  record_identity_kind: scoped_locator
+  record_identity_fields: [repo, path]
+  source_revision_kind: content_hash
+  deletion_semantics: missing_from_completed_scope
+  publication_mode: published_generation
+  required_for_baseline: false
+  params:
+    repo: "${gitlab_repo_name}"
+    url: "${gitlab_repo_url}"
+    manage_checkout: true
+    # Quoted: interpolation is textual, so an unquoted path containing a
+    # `#` would be truncated by the YAML parser without a word of warning.
+    repo_root: "${archi_data_root}/repos/${gitlab_repo_name}"
+    include_untracked: false
+    exclude_globs:
+      - "**/__pycache__/**"
+      - "**/.venv/**"
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/*.pyc"
+  sync:
+    triggers: [manual, reconcile]
+    default_event_mode: scope_complete
+    reconcile_mode: scope_complete

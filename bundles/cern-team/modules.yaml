@@ -10,10 +10,17 @@
 # Everything HEP-specific (jira_issue, documentation_page,
 # software_repository, cmssw_release, site, ...) comes from the archi
 # wheel's schema slices copied into the instance's schemas/ dir after
-# install (README.md step 1 — okg#1179 contract input). Deliberately
-# minimal: instances that want the substrate's code_graph/git_graph/
-# views layers append them here after install.
+# install (README.md step 1 — okg#1179 contract input).
+#
+# git_graph is composed by DEFAULT, not opt-in: the bundle now offers
+# github_repo and gitlab_repo connectors and their source_file /
+# git_branch subtypes have to resolve for the catalog to load. An
+# instance wanting neither drops the module line and both connectors.
+# code_graph and views remain opt-in — append them here after install.
 modules:
   - document_starter
   - person
   - extraction
+  # Repository content: source_file / git_branch subtypes required by
+  # source-defaults/github_repo.yaml and gitlab_repo.yaml.
+  - git_graph
