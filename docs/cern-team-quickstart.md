@@ -191,10 +191,26 @@ export OKG_CHAT_APP_DATABASE_URL="postgresql://postgres:$CHAT_DB_PASSWORD@127.0.
 export OKG_CHAT_WEBUI_SECRET_KEY='choose-anything'
 export OKG_CHAT_MCP_TOKEN='choose-anything'
 
+# Prove the credentials work before handing them to okg. If this fails,
+# fix it here — a wrong password shows up much later as a crashed
+# container and a command that appears to hang.
+sleep 5
+okg-venv/bin/python -c "
+import os, psycopg
+psycopg.connect(os.environ['OKG_CHAT_APP_DATABASE_URL']).close()
+print('chat database reachable with these credentials')"
+
 okg-venv/bin/okg chat-instance up --deployment myteam \
   --container-runtime podman --instance-port 8099 --ready-timeout 300
 okg-venv/bin/okg chat-instance status --deployment myteam
 ```
+
+**Set `CHAT_DB_PASSWORD` and create the database in the same shell**, and do
+not change it afterwards. The container bakes the password in at creation,
+so a value that changes between `podman run` and the DSN gives
+`password authentication failed for user "postgres"` — which surfaces as a
+crashed chat container while `chat-instance up` polls on, looking like a
+hang. The check above catches it immediately instead.
 
 **Why `0.0.0.0` here and nowhere else.** This database is read from
 *inside* a container, and under rootless podman a loopback-only published
@@ -219,12 +235,14 @@ here — that one really is just slow.
 **`--container-runtime podman`** is needed because the default is docker,
 and it is accepted by `up` only — `status` rejects it.
 
-**Already created the chat database before reading this?** Remove and
-recreate it; nothing else needs redoing:
+**Already created the chat database, with the wrong binding or a password
+that no longer matches?** Remove and recreate it; nothing else needs
+redoing. The container has no volume, so removing it discards the database
+with it:
 
 ```bash
 podman rm -f myteam-chat-pg
-# then re-run the block above from the top
+# then re-run the block above from the top, in one shell
 ```
 
 Expect `status` to report the tools endpoint dead. It is telling the truth:
