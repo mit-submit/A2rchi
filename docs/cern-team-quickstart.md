@@ -16,6 +16,41 @@ needs a CERN SSO cookie this host did not have.
 
 ## Before you start
 
+### Get the code, and install it
+
+**Neither package can be installed from PyPI today.** Read this before
+anything else — it is the step most likely to stop you.
+
+- **okg is a private repository and is not published.** There is no
+  `pip install okg`. You need read access to `mitdbg/okg`, then clone it
+  and install from your clone. Without that access you cannot complete
+  this document at all; ask the OKG maintainers.
+- **`pip install archi` installs someone else's package.** The name on
+  PyPI belongs to an unrelated archive library (`archi` 3.8.7.0,
+  "Multi-format archive library based on libarchive"). Ours is
+  `3.0.0a1` and is not published — install it from git, as below.
+
+```bash
+python3.12 -m venv okg-venv        # 3.12+ required; archi refuses older
+
+# okg: private, so this needs your GitHub access. Clone, then install.
+git clone git@github.com:mitdbg/okg.git
+okg-venv/bin/pip install ./okg     # add -e only to edit okg itself
+
+# archi: public, so pip fetches it directly — no clone, no wheel build.
+okg-venv/bin/pip install \
+  "archi @ git+https://github.com/archi-physics/archi@archi_v3#subdirectory=python"
+```
+
+Verified 2026-08-27: that second command installs into a clean 3.12
+virtualenv and leaves `archi-profiles-dir` on the path, pointing at the
+bundle inside the installed package. On Python 3.11 or older pip refuses
+with *"Package 'archi' requires a different Python"*.
+
+`-e` is an *editable* install: pip points at your clone instead of copying
+it, so local edits take effect immediately. That is what a developer
+wants; a team installing to use it should leave `-e` off.
+
 ### A Postgres okg can use
 
 Not any Postgres. It needs six extensions, three of which
@@ -28,8 +63,8 @@ server.** `pg_cron` is single-database, so each deployment gets its own
 server process.
 
 ```bash
-# Build the image once (from your okg clone).
-cd /path/to/okg/ops/pg && podman build -t okg-pg17:local .
+# Build the image once, from the okg clone you made above.
+cd okg/ops/pg && podman build -t okg-pg17:local . && cd -
 
 # Then one server per deployment. Loopback-only on purpose: the graph
 # database should never be reachable off-host.
@@ -57,39 +92,6 @@ export OKG_DSN='postgresql://postgres:okg@127.0.0.1:5433/myteam'
 Change the password if the host is shared. `--shm-size 2g` matters: the
 default 64 MB is too small for the index builds and produces intermittent
 disk-full errors mid-run.
-
-**Neither package can be installed from PyPI today.** Read this before
-anything else — it is the step most likely to stop you.
-
-- **okg is a private repository and is not published.** There is no
-  `pip install okg`. You need read access to `mitdbg/okg`, then clone it
-  and install from your clone. Without that access you cannot complete
-  this document at all; ask the OKG maintainers.
-- **`pip install archi` installs someone else's package.** The name on
-  PyPI belongs to an unrelated archive library (`archi` 3.8.7.0,
-  "Multi-format archive library based on libarchive"). Ours is
-  `3.0.0a1` and is not published. Install it from the built wheel.
-
-```bash
-python3.12 -m venv okg-venv        # 3.12+ required; archi refuses older
-
-# okg: private, so this needs your GitHub access. Clone, then install.
-git clone git@github.com:mitdbg/okg.git
-okg-venv/bin/pip install ./okg     # add -e only to edit okg itself
-
-# archi: public, so pip fetches it directly — no clone, no wheel build.
-okg-venv/bin/pip install \
-  "archi @ git+https://github.com/archi-physics/archi@archi_v3#subdirectory=python"
-```
-
-Verified 2026-08-27: that second command installs into a clean 3.12
-virtualenv and leaves `archi-profiles-dir` on the path, pointing at the
-bundle inside the installed package. On Python 3.11 or older pip refuses
-with *"Package 'archi' requires a different Python"*.
-
-`-e` is an *editable* install: pip points at your clone instead of copying
-it, so local edits take effect immediately. That is what a developer
-wants; a team installing to use it should leave `-e` off.
 
 ## 1. Install
 
