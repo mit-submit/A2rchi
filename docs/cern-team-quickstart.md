@@ -22,14 +22,29 @@ not have. Use okg's own image (`ops/pg/docker-compose.yaml` in the okg
 repo). Give each instance its own database. The install creates the
 extensions itself once the server can load them.
 
-**Install both packages into one environment.** The `archi` wheel is not
-on PyPI yet, so install it from a built artifact or the repository:
+**Neither package can be installed from PyPI today.** Read this before
+anything else — it is the step most likely to stop you.
+
+- **okg is a private repository and is not published.** There is no
+  `pip install okg`. You need read access to `mitdbg/okg`, then clone it
+  and install from your clone. Without that access you cannot complete
+  this document at all; ask the OKG maintainers.
+- **`pip install archi` installs someone else's package.** The name on
+  PyPI belongs to an unrelated archive library (`archi` 3.8.7.0,
+  "Multi-format archive library based on libarchive"). Ours is
+  `3.0.0a1` and is not published. Install it from the built wheel.
 
 ```bash
+git clone git@github.com:mitdbg/okg.git        # needs repo access
 python3 -m venv okg-venv
-okg-venv/bin/pip install -e /path/to/okg
+okg-venv/bin/pip install ./okg                 # add -e only if you intend
+                                               # to edit okg itself
 okg-venv/bin/pip install /path/to/archi/python/dist/archi-*.whl
 ```
+
+`-e` is an *editable* install: pip points at your clone instead of copying
+it, so local edits take effect immediately. That is what a developer
+wants; a team installing to use it should leave `-e` off.
 
 ## 1. Install
 
