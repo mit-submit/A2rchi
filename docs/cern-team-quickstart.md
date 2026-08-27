@@ -16,12 +16,47 @@ needs a CERN SSO cookie this host did not have.
 
 ## Before you start
 
-**Postgres with okg's extensions — not any Postgres.** Three of the six
-(`timescaledb`, `pg_cron`, `pg_textsearch`) must be in
-`shared_preload_libraries` at server start, which a stock Postgres will
-not have. Use okg's own image (`ops/pg/docker-compose.yaml` in the okg
-repo). Give each instance its own database. The install creates the
-extensions itself once the server can load them.
+### A Postgres okg can use
+
+Not any Postgres. It needs six extensions, three of which
+(`timescaledb`, `pg_cron`, `pg_textsearch`) must be loaded at server start,
+so a stock install cannot be made to work after the fact. okg ships an image
+that has them.
+
+**One Postgres *instance* per deployment — not one database on a shared
+server.** `pg_cron` is single-database, so each deployment gets its own
+server process.
+
+```bash
+# Build the image once (from your okg clone).
+cd /path/to/okg/ops/pg && podman build -t okg-pg17:local .
+
+# Then one server per deployment. Loopback-only on purpose: the graph
+# database should never be reachable off-host.
+podman run -d --name myteam-pg --shm-size 2g \
+  -e POSTGRES_PASSWORD=okg \
+  -e POSTGRES_DB=myteam \
+  -e POSTGRES_INITDB_ARGS="--locale=C --encoding=UTF8" \
+  -p 127.0.0.1:5433:5432 \
+  okg-pg17:local \
+  postgres -c shared_preload_libraries=timescaledb,pg_cron,pg_textsearch \
+           -c cron.database_name=myteam \
+           -c max_connections=100
+```
+
+Verified 2026-08-27: all six extensions create cleanly on a server started
+exactly like that.
+
+That gives you the connection string used everywhere below — **this is a
+real value, not a placeholder**:
+
+```bash
+export OKG_DSN='postgresql://postgres:okg@127.0.0.1:5433/myteam'
+```
+
+Change the password if the host is shared. `--shm-size 2g` matters: the
+default 64 MB is too small for the index builds and produces intermittent
+disk-full errors mid-run.
 
 **Neither package can be installed from PyPI today.** Read this before
 anything else — it is the step most likely to stop you.
@@ -65,7 +100,7 @@ export ARCHI_DATA_ROOT="$PWD/deployments/myteam"
 
 okg-venv/bin/okg install --profile cern-team \
   --deployment-name myteam \
-  --postgres-dsn 'postgresql://USER:PW@HOST:PORT/DBNAME' \
+  --postgres-dsn "$OKG_DSN" \
   --github-repo-name click --github-repo-url https://github.com/pallets/click \
   --gitlab-repo-name ci-example \
   --gitlab-repo-url https://gitlab.cern.ch/gitlabci-examples/build_docker_image.git
