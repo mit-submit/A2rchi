@@ -3,11 +3,12 @@
 From nothing to a knowledge graph you can query, holding a GitHub
 repository and a GitLab repository, with a chat frontend in front of it.
 
-Follow it top to bottom. Every command is real — no placeholders to fill
-in. Where a value is yours to choose, it says so.
+Follow it top to bottom. The commands are real and runnable as written.
+Two things are yours to choose and are marked where they appear: the
+repositories you want indexed, and a password for the chat database.
 
-**What is proven.** Steps 1–5 were executed end to end against an empty
-database on 2026-08-27, and their results are quoted inline. Step 7 (TWiki)
+**What is proven.** Steps 1–6 were executed end to end against an empty
+database on 2026-08-27, and their results are quoted inline. Step 8 (TWiki)
 is the one part not verified, and says so where it appears.
 
 **You need:** a machine with `podman` (or `docker`), Python 3.12+, `git`,
@@ -50,7 +51,7 @@ a stock Postgres cannot be adapted afterwards. okg ships an image with them.
 server — `pg_cron` is single-database.
 
 ```bash
-cd okg/ops/pg && podman build -t okg-pg17:local . && cd -
+( cd okg/ops/pg && podman build -t okg-pg17:local . )
 
 podman run -d --name myteam-pg --shm-size 2g \
   -e POSTGRES_PASSWORD=okg \
@@ -78,29 +79,38 @@ export OKG_DSN='postgresql://postgres:okg@127.0.0.1:5433/myteam'
 okg-venv/bin/okg install --profile cern-team \
   --deployment-name myteam \
   --postgres-dsn "$OKG_DSN" \
-  --github-repo-name click \
-  --github-repo-url https://github.com/pallets/click \
+  --github-repo-name click --github-repo-url https://github.com/pallets/click \
   --gitlab-repo-name ci-example \
-  --gitlab-repo-url https://gitlab.cern.ch/gitlabci-examples/build_docker_image.git \
-  --chat-site-name 'myteam knowledge chat' \
-  --chat-model 'qwen3.6:27b-q4_K_M'
+  --gitlab-repo-url https://gitlab.cern.ch/gitlabci-examples/build_docker_image.git
 ```
 
-**That single command is the whole install.** It creates the extensions,
+**That one command is the whole install.** It creates the extensions,
 migrates, materialises the distribution's schemas, loads the catalog,
 clones both repositories, ingests, and publishes.
 
-Substitute your own repository URLs and a model your provider actually
-serves. Omit any flag and it asks interactively instead.
+Swap in your own repositories. `--*-repo-name` is just a short label for
+the graph; `--*-repo-url` is what gets cloned.
 
-**You never run `git clone` for the repositories** — the connectors own
-their checkouts, cloning on first run and fast-forwarding afterwards.
+Optionally add `--chat-site-name 'my team chat'` and `--chat-model
+'<a model your provider serves>'`. Both have defaults, and both can be
+changed afterwards in `deployments/myteam/deployment.yaml` under `chat:`.
 
-**Expected result:** `first publish complete`, and roughly 2,586 nodes /
-2,279 edges for the two repositories above.
+**Give the repository URLs here.** They look like noise, but the bundle
+selects both repository connectors by default, and a *selected* source that
+cannot run blocks the publish for every other source too — so an install
+without them ends with nothing published. Step 4 is how to fill them in
+afterwards if you would rather not decide now, and how to change them
+later.
+
+**You never run `git clone`** — the connectors own their checkouts,
+cloning on first run and fast-forwarding afterwards.
+
+**Expected result:** `first publish complete`, roughly 2,586 nodes / 2,279
+edges for the two repositories above.
 
 *If the catalog load fails on authentication, the migration created the
-loopback roles without passwords. Set them and re-run the install:*
+loopback roles without passwords. Set them, then re-run the ingest (not the
+install — see step 4):*
 
 ```bash
 podman exec myteam-pg psql -U postgres -d myteam \
@@ -111,7 +121,43 @@ podman exec myteam-pg psql -U postgres -d myteam \
   -c "ALTER ROLE app_ro PASSWORD 'okg_ro'"
 ```
 
-## 4. Confirm it published
+## 4. Changing or adding repositories later
+
+**`okg install` will not re-run over an existing deployment** — it refuses
+rather than overwrite, and `--force --yes` rebuilds the directory. So this
+is the route for any later change, and the recovery if you installed
+without URLs.
+
+Edit `deployments/myteam/source_registry.yaml`, and under `github_repo` and
+`gitlab_repo` set the two values:
+
+```yaml
+    params:
+      repo: click
+      url: https://github.com/pallets/click
+```
+
+Then apply and publish:
+
+```bash
+cd deployments/myteam
+okg-venv/bin/okg catalog ownership claim --deployment . --json
+okg-venv/bin/okg catalog load --deployment . --apply --json
+okg-venv/bin/okg ingest --deployment myteam --progress
+cd -
+```
+
+**Not interested in repositories at all?** Install without the URLs — that
+install will end with the publish blocked, which is expected — then exclude
+the two connectors and ingest again. The CMSSW catalog alone publishes
+fine:
+
+```bash
+okg-venv/bin/okg ingest --deployment myteam --progress \
+  --exclude github_repo,gitlab_repo
+```
+
+## 5. Confirm it published
 
 ```bash
 okg-venv/bin/okg status --deployment myteam --json
@@ -120,23 +166,28 @@ okg-venv/bin/okg search --deployment myteam --query "docker image build"
 
 `latest_published_status` must be `published` and
 `latest_published_generation` must not be null. If the generation is null,
-nothing was published and search will refuse — see step 6.
+nothing was published and search will refuse — see step 7.
 
 The search returns real files from the GitLab repository, pinned to that
 generation. Direct SQL against the graph tables is refused by design.
 
-## 5. Start the chat frontend
+## 6. Start the chat frontend
 
 The bundle already declares the chat site, so there is nothing to write.
 The chat app needs **its own** database, separate from the graph; okg
 checks they really are distinct and refuses if not.
 
-```bash
-podman run -d --name myteam-chat-pg \
-  -e POSTGRES_PASSWORD=okg -e POSTGRES_DB=okg_chat_app \
-  -p 127.0.0.1:5458:5432 docker.io/library/postgres:16
+**Read the note under the block before running it** — the `0.0.0.0` is
+deliberate and the reason matters.
 
-export OKG_CHAT_APP_DATABASE_URL='postgresql://postgres:okg@127.0.0.1:5458/okg_chat_app'
+```bash
+export CHAT_DB_PASSWORD='pick-your-own-here'
+
+podman run -d --name myteam-chat-pg \
+  -e POSTGRES_PASSWORD="$CHAT_DB_PASSWORD" -e POSTGRES_DB=okg_chat_app \
+  -p 0.0.0.0:5458:5432 docker.io/library/postgres:16
+
+export OKG_CHAT_APP_DATABASE_URL="postgresql://postgres:$CHAT_DB_PASSWORD@127.0.0.1:5458/okg_chat_app"
 export OKG_CHAT_WEBUI_SECRET_KEY='choose-anything'
 export OKG_CHAT_MCP_TOKEN='choose-anything'
 
@@ -145,19 +196,36 @@ okg-venv/bin/okg chat-instance up --deployment myteam \
 okg-venv/bin/okg chat-instance status --deployment myteam
 ```
 
-**Give it `127.0.0.1`, not a hostname.** okg validates the database from
-the host and rewrites the container's copy to reach back through the
-container gateway, reporting the substitution rather than doing it
-silently. A container-only name fails host-side; the machine's own network
-address fails container-side. Loopback is the one that works, and it needs
-no root and no second machine.
+**Why `0.0.0.0` here and nowhere else.** This database is read from
+*inside* a container, and under rootless podman a loopback-only published
+port is not reachable from one. Get this wrong and the chat container
+crashes on startup — *"server closed the connection unexpectedly"* — while
+`chat-instance up` keeps polling until its timeout, which looks exactly
+like a hang. Binding beyond loopback means other machines can reach it, so
+choose a real password. The graph database is read from the host and stays
+loopback-only.
 
-**`--ready-timeout 300` matters.** On first start Open WebUI downloads and
-loads a sentence-embedding model, which overruns the 120-second default;
-okg then tears the container down as never-started.
+**The DSN still says `127.0.0.1`, and that is correct.** okg validates the
+database from the host, then rewrites the container's copy to reach back
+through the container gateway, reporting the substitution rather than doing
+it quietly. A container-only name fails host-side; the machine's own
+network address fails container-side.
 
-`--container-runtime podman` is needed because the default is docker — and
-it is accepted by `up` only, not by `status`.
+**`--ready-timeout 300` matters.** On first start Open WebUI loads a
+sentence-embedding model, which overruns the 120-second default; okg then
+tears the container down as never-started. Expect a quiet minute or two
+here — that one really is just slow.
+
+**`--container-runtime podman`** is needed because the default is docker,
+and it is accepted by `up` only — `status` rejects it.
+
+**Already created the chat database before reading this?** Remove and
+recreate it; nothing else needs redoing:
+
+```bash
+podman rm -f myteam-chat-pg
+# then re-run the block above from the top
+```
 
 Expect `status` to report the tools endpoint dead. It is telling the truth:
 the site is up, but the graph tools are a separate process. **Take it
@@ -165,10 +233,10 @@ seriously — the site can be up and every tool call still fail.**
 
 Open `http://127.0.0.1:8099` and point it at your model provider in the
 admin settings. A local ollama needs no API key at all — check which port
-yours listens on rather than assuming the default, and note that a
+yours actually listens on rather than assuming the default, and note that a
 container reaching *another* machine's ollama works fine.
 
-## 6. If the publish is blocked
+## 7. If the publish is blocked
 
 Every *selected* source must finish or none of them publish — including the
 ones that worked. So a single source you cannot feed blocks everything.
@@ -181,7 +249,7 @@ okg-venv/bin/okg ingest --deployment myteam --progress \
   --exclude docsite,jira,twiki_eos,twiki_crawl
 ```
 
-## 7. Adding a TWiki
+## 8. Adding a TWiki
 
 > **Not verified** — no CERN SSO cookie was available where this was
 > written. The requirement below is evidenced; the working configuration is
@@ -221,11 +289,35 @@ re-load.
 
 ## Starting over
 
+The ownership claim lives in the **database**, not the deployment folder, so
+deleting the folder alone is not a reset — the next publish will refuse with
+`catalog_ownership_mismatch` because the registry no longer matches what was
+claimed. Remove the container to clear it.
+
 ```bash
 okg-venv/bin/okg chat-instance down --deployment myteam --container-runtime podman
 podman rm -f myteam-pg myteam-chat-pg
 rm -rf deployments
 ```
+
+Keep `okg-venv` and the okg clone — nothing is wrong with them, and
+reinstalling costs you the slow part again.
+
+**If you hit `catalog_ownership_mismatch` and would rather not start over,**
+re-running the claim is enough — it re-records the current registry as the
+owner:
+
+```bash
+cd deployments/myteam
+okg-venv/bin/okg catalog ownership claim --deployment . --json
+okg-venv/bin/okg catalog load --deployment . --apply --json
+okg-venv/bin/okg ingest --deployment myteam --progress
+cd -
+```
+
+**`okg install` is not a retry.** It refuses to run over an existing
+deployment directory, and where it does run it cannot fix a stale claim —
+it will re-ingest happily and still fail to publish.
 
 ## What still needs a person
 
