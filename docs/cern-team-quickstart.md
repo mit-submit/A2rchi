@@ -254,6 +254,56 @@ Expect `status` to report the tools endpoint dead. It is telling the truth:
 the site is up, but the graph tools are a separate process. **Take it
 seriously — the site can be up and every tool call still fail.**
 
+### Connect the graph tools
+
+**The site being up does not mean the assistant can reach your graph.** Ask
+it something now and it will search Open WebUI's own built-in "knowledge
+bases" — which are unrelated and empty — and tell you it has no access. Two
+more steps wire the graph in.
+
+**First, serve the tools.** This is a long-running process; give it its own
+terminal. One server per deployment, on one branch — which is why it is not
+folded into `chat-instance up`.
+
+```bash
+export OKG_DSN='postgresql://postgres:okg@127.0.0.1:5433/myteam'
+export OKG_CHAT_MCP_TOKEN='choose-anything'   # the value you used above
+
+okg-venv/bin/okg mcp-serve --deployment myteam \
+  --transport streamable-http \
+  --host 0.0.0.0 --port 8765 \
+  --auth-token-env OKG_CHAT_MCP_TOKEN
+```
+
+`--host 0.0.0.0` for the same reason as the chat database: the chat
+container reaches this from inside, where a loopback-only port is not
+reachable.
+
+**Then wire the chat to it**, from your first terminal:
+
+```bash
+export OKG_CHAT_INSTANCE_URL=http://127.0.0.1:8099
+export OKG_CHAT_ADMIN_TOKEN='<an API key you create in the chat admin settings>'
+okg-venv/bin/okg chat sync --deployment myteam
+```
+
+`chat sync` is the step that makes this automatic rather than clicked
+together: it renders the site's appearance from the bundle, creates the MCP
+connection, applies the model preset with the graph tools bound, and then
+**proves it works** — an `initialize` and a `tools/list` through the
+registered credential. A 401, an empty tool list, or a bare TCP connect is
+treated as failure, not success. It reads everything back and compares
+against the manifest, and a partial application is a failure.
+
+**The bundle ships the assistant's system prompt**, at
+`skills/chat-system-prompt.md` in your deployment. It tells the model it has
+graph tools, names them, and tells it to ground answers and to say when the
+graph does not contain something. This is required, not decorative: `chat
+sync` refuses a deployment that declares no prompt, because Open WebUI never
+shows the model the MCP server's own instructions — without it the assistant
+would have tools registered and no idea it had them. Edit that file to
+change the assistant's behaviour, then re-run `chat sync`.
+
 ### Opening it, and giving it a model
 
 **If the machine is remote, tunnel to it.** The site binds to loopback on
