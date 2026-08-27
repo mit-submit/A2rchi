@@ -3,8 +3,9 @@
 From nothing to a knowledge graph you can query, holding a GitHub
 repository and a GitLab repository, with a chat frontend in front of it.
 
-Follow it top to bottom. Every command is real — no placeholders to fill
-in. Where a value is yours to choose, it says so.
+Follow it top to bottom. The commands are real and runnable as written.
+Two things are yours to choose and are marked where they appear: the
+repositories you want indexed, and a password for the chat database.
 
 **What is proven.** Steps 1–6 were executed end to end against an empty
 database on 2026-08-27, and their results are quoted inline. Step 8 (TWiki)
@@ -50,7 +51,7 @@ a stock Postgres cannot be adapted afterwards. okg ships an image with them.
 server — `pg_cron` is single-database.
 
 ```bash
-cd okg/ops/pg && podman build -t okg-pg17:local . && cd -
+( cd okg/ops/pg && podman build -t okg-pg17:local . )
 
 podman run -d --name myteam-pg --shm-size 2g \
   -e POSTGRES_PASSWORD=okg \
@@ -88,8 +89,11 @@ migrates, materialises the distribution's schemas, loads the catalog,
 clones both repositories, ingests, and publishes.
 
 Swap in your own repositories. `--*-repo-name` is just a short label for
-the graph; `--*-repo-url` is what gets cloned. Add `--chat-site-name` and
-`--chat-model` if you want to name the chat site now rather than later.
+the graph; `--*-repo-url` is what gets cloned.
+
+Optionally add `--chat-site-name 'my team chat'` and `--chat-model
+'<a model your provider serves>'`. Both have defaults, and both can be
+changed afterwards in `deployments/myteam/deployment.yaml` under `chat:`.
 
 **Give the repository URLs here.** They look like noise, but the bundle
 selects both repository connectors by default, and a *selected* source that
@@ -143,8 +147,9 @@ okg-venv/bin/okg ingest --deployment myteam --progress
 cd -
 ```
 
-**Not interested in repositories at all?** Leave them out of the install and
-exclude them from the ingest instead — the CMSSW catalog alone publishes
+**Not interested in repositories at all?** Install without the URLs — that
+install will end with the publish blocked, which is expected — then exclude
+the two connectors and ingest again. The CMSSW catalog alone publishes
 fine:
 
 ```bash
@@ -172,12 +177,17 @@ The bundle already declares the chat site, so there is nothing to write.
 The chat app needs **its own** database, separate from the graph; okg
 checks they really are distinct and refuses if not.
 
+**Read the note under the block before running it** — the `0.0.0.0` is
+deliberate and the reason matters.
+
 ```bash
+export CHAT_DB_PASSWORD='pick-your-own-here'
+
 podman run -d --name myteam-chat-pg \
-  -e POSTGRES_PASSWORD=CHOOSE-A-REAL-PASSWORD -e POSTGRES_DB=okg_chat_app \
+  -e POSTGRES_PASSWORD="$CHAT_DB_PASSWORD" -e POSTGRES_DB=okg_chat_app \
   -p 0.0.0.0:5458:5432 docker.io/library/postgres:16
 
-export OKG_CHAT_APP_DATABASE_URL='postgresql://postgres:CHOOSE-A-REAL-PASSWORD@127.0.0.1:5458/okg_chat_app'
+export OKG_CHAT_APP_DATABASE_URL="postgresql://postgres:$CHAT_DB_PASSWORD@127.0.0.1:5458/okg_chat_app"
 export OKG_CHAT_WEBUI_SECRET_KEY='choose-anything'
 export OKG_CHAT_MCP_TOKEN='choose-anything'
 
@@ -186,27 +196,36 @@ okg-venv/bin/okg chat-instance up --deployment myteam \
 okg-venv/bin/okg chat-instance status --deployment myteam
 ```
 
-**Note `0.0.0.0` on the chat database, and only there.** Unlike the graph
-database, this one is read from *inside* a container, and under rootless
-podman a loopback-only published port is not reachable from one — the
-container connects and the connection dies with *"server closed the
-connection unexpectedly"*. Binding beyond loopback does mean other machines
-can reach it, so give it a real password rather than a placeholder. The
-graph database stays loopback-only and is unaffected.
+**Why `0.0.0.0` here and nowhere else.** This database is read from
+*inside* a container, and under rootless podman a loopback-only published
+port is not reachable from one. Get this wrong and the chat container
+crashes on startup — *"server closed the connection unexpectedly"* — while
+`chat-instance up` keeps polling until its timeout, which looks exactly
+like a hang. Binding beyond loopback means other machines can reach it, so
+choose a real password. The graph database is read from the host and stays
+loopback-only.
 
-**Give the DSN `127.0.0.1`, not a hostname.** okg validates the database from
-the host and rewrites the container's copy to reach back through the
-container gateway, reporting the substitution rather than doing it
-silently. A container-only name fails host-side; the machine's own network
-address fails container-side. Loopback is the one that works, and it needs
-no root and no second machine.
+**The DSN still says `127.0.0.1`, and that is correct.** okg validates the
+database from the host, then rewrites the container's copy to reach back
+through the container gateway, reporting the substitution rather than doing
+it quietly. A container-only name fails host-side; the machine's own
+network address fails container-side.
 
-**`--ready-timeout 300` matters.** On first start Open WebUI downloads and
-loads a sentence-embedding model, which overruns the 120-second default;
-okg then tears the container down as never-started.
+**`--ready-timeout 300` matters.** On first start Open WebUI loads a
+sentence-embedding model, which overruns the 120-second default; okg then
+tears the container down as never-started. Expect a quiet minute or two
+here — that one really is just slow.
 
-`--container-runtime podman` is needed because the default is docker — and
-it is accepted by `up` only, not by `status`.
+**`--container-runtime podman`** is needed because the default is docker,
+and it is accepted by `up` only — `status` rejects it.
+
+**Already created the chat database before reading this?** Remove and
+recreate it; nothing else needs redoing:
+
+```bash
+podman rm -f myteam-chat-pg
+# then re-run the block above from the top
+```
 
 Expect `status` to report the tools endpoint dead. It is telling the truth:
 the site is up, but the graph tools are a separate process. **Take it
@@ -214,7 +233,7 @@ seriously — the site can be up and every tool call still fail.**
 
 Open `http://127.0.0.1:8099` and point it at your model provider in the
 admin settings. A local ollama needs no API key at all — check which port
-yours listens on rather than assuming the default, and note that a
+yours actually listens on rather than assuming the default, and note that a
 container reaching *another* machine's ollama works fine.
 
 ## 7. If the publish is blocked
