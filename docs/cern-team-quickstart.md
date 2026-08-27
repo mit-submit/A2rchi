@@ -174,10 +174,10 @@ checks they really are distinct and refuses if not.
 
 ```bash
 podman run -d --name myteam-chat-pg \
-  -e POSTGRES_PASSWORD=okg -e POSTGRES_DB=okg_chat_app \
-  -p 127.0.0.1:5458:5432 docker.io/library/postgres:16
+  -e POSTGRES_PASSWORD=CHOOSE-A-REAL-PASSWORD -e POSTGRES_DB=okg_chat_app \
+  -p 0.0.0.0:5458:5432 docker.io/library/postgres:16
 
-export OKG_CHAT_APP_DATABASE_URL='postgresql://postgres:okg@127.0.0.1:5458/okg_chat_app'
+export OKG_CHAT_APP_DATABASE_URL='postgresql://postgres:CHOOSE-A-REAL-PASSWORD@127.0.0.1:5458/okg_chat_app'
 export OKG_CHAT_WEBUI_SECRET_KEY='choose-anything'
 export OKG_CHAT_MCP_TOKEN='choose-anything'
 
@@ -186,7 +186,15 @@ okg-venv/bin/okg chat-instance up --deployment myteam \
 okg-venv/bin/okg chat-instance status --deployment myteam
 ```
 
-**Give it `127.0.0.1`, not a hostname.** okg validates the database from
+**Note `0.0.0.0` on the chat database, and only there.** Unlike the graph
+database, this one is read from *inside* a container, and under rootless
+podman a loopback-only published port is not reachable from one — the
+container connects and the connection dies with *"server closed the
+connection unexpectedly"*. Binding beyond loopback does mean other machines
+can reach it, so give it a real password rather than a placeholder. The
+graph database stays loopback-only and is unaffected.
+
+**Give the DSN `127.0.0.1`, not a hostname.** okg validates the database from
 the host and rewrites the container's copy to reach back through the
 container gateway, reporting the substitution rather than doing it
 silently. A container-only name fails host-side; the machine's own network
@@ -262,11 +270,35 @@ re-load.
 
 ## Starting over
 
+The ownership claim lives in the **database**, not the deployment folder, so
+deleting the folder alone is not a reset — the next publish will refuse with
+`catalog_ownership_mismatch` because the registry no longer matches what was
+claimed. Remove the container to clear it.
+
 ```bash
 okg-venv/bin/okg chat-instance down --deployment myteam --container-runtime podman
 podman rm -f myteam-pg myteam-chat-pg
 rm -rf deployments
 ```
+
+Keep `okg-venv` and the okg clone — nothing is wrong with them, and
+reinstalling costs you the slow part again.
+
+**If you hit `catalog_ownership_mismatch` and would rather not start over,**
+re-running the claim is enough — it re-records the current registry as the
+owner:
+
+```bash
+cd deployments/myteam
+okg-venv/bin/okg catalog ownership claim --deployment . --json
+okg-venv/bin/okg catalog load --deployment . --apply --json
+okg-venv/bin/okg ingest --deployment myteam --progress
+cd -
+```
+
+**`okg install` is not a retry.** It refuses to run over an existing
+deployment directory, and where it does run it cannot fix a stale claim —
+it will re-ingest happily and still fail to publish.
 
 ## What still needs a person
 
