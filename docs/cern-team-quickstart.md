@@ -6,8 +6,8 @@ repository and a GitLab repository, with a chat frontend in front of it.
 Follow it top to bottom. Every command is real — no placeholders to fill
 in. Where a value is yours to choose, it says so.
 
-**What is proven.** Steps 1–5 were executed end to end against an empty
-database on 2026-08-27, and their results are quoted inline. Step 7 (TWiki)
+**What is proven.** Steps 1–6 were executed end to end against an empty
+database on 2026-08-27, and their results are quoted inline. Step 8 (TWiki)
 is the one part not verified, and says so where it appears.
 
 **You need:** a machine with `podman` (or `docker`), Python 3.12+, `git`,
@@ -78,29 +78,35 @@ export OKG_DSN='postgresql://postgres:okg@127.0.0.1:5433/myteam'
 okg-venv/bin/okg install --profile cern-team \
   --deployment-name myteam \
   --postgres-dsn "$OKG_DSN" \
-  --github-repo-name click \
-  --github-repo-url https://github.com/pallets/click \
+  --github-repo-name click --github-repo-url https://github.com/pallets/click \
   --gitlab-repo-name ci-example \
-  --gitlab-repo-url https://gitlab.cern.ch/gitlabci-examples/build_docker_image.git \
-  --chat-site-name 'myteam knowledge chat' \
-  --chat-model 'qwen3.6:27b-q4_K_M'
+  --gitlab-repo-url https://gitlab.cern.ch/gitlabci-examples/build_docker_image.git
 ```
 
-**That single command is the whole install.** It creates the extensions,
+**That one command is the whole install.** It creates the extensions,
 migrates, materialises the distribution's schemas, loads the catalog,
 clones both repositories, ingests, and publishes.
 
-Substitute your own repository URLs and a model your provider actually
-serves. Omit any flag and it asks interactively instead.
+Swap in your own repositories. `--*-repo-name` is just a short label for
+the graph; `--*-repo-url` is what gets cloned. Add `--chat-site-name` and
+`--chat-model` if you want to name the chat site now rather than later.
 
-**You never run `git clone` for the repositories** — the connectors own
-their checkouts, cloning on first run and fast-forwarding afterwards.
+**Give the repository URLs here.** They look like noise, but the bundle
+selects both repository connectors by default, and a *selected* source that
+cannot run blocks the publish for every other source too — so an install
+without them ends with nothing published. Step 4 is how to fill them in
+afterwards if you would rather not decide now, and how to change them
+later.
 
-**Expected result:** `first publish complete`, and roughly 2,586 nodes /
-2,279 edges for the two repositories above.
+**You never run `git clone`** — the connectors own their checkouts,
+cloning on first run and fast-forwarding afterwards.
+
+**Expected result:** `first publish complete`, roughly 2,586 nodes / 2,279
+edges for the two repositories above.
 
 *If the catalog load fails on authentication, the migration created the
-loopback roles without passwords. Set them and re-run the install:*
+loopback roles without passwords. Set them, then re-run the ingest (not the
+install — see step 4):*
 
 ```bash
 podman exec myteam-pg psql -U postgres -d myteam \
@@ -111,7 +117,42 @@ podman exec myteam-pg psql -U postgres -d myteam \
   -c "ALTER ROLE app_ro PASSWORD 'okg_ro'"
 ```
 
-## 4. Confirm it published
+## 4. Changing or adding repositories later
+
+**`okg install` will not re-run over an existing deployment** — it refuses
+rather than overwrite, and `--force --yes` rebuilds the directory. So this
+is the route for any later change, and the recovery if you installed
+without URLs.
+
+Edit `deployments/myteam/source_registry.yaml`, and under `github_repo` and
+`gitlab_repo` set the two values:
+
+```yaml
+    params:
+      repo: click
+      url: https://github.com/pallets/click
+```
+
+Then apply and publish:
+
+```bash
+cd deployments/myteam
+okg-venv/bin/okg catalog ownership claim --deployment . --json
+okg-venv/bin/okg catalog load --deployment . --apply --json
+okg-venv/bin/okg ingest --deployment myteam --progress
+cd -
+```
+
+**Not interested in repositories at all?** Leave them out of the install and
+exclude them from the ingest instead — the CMSSW catalog alone publishes
+fine:
+
+```bash
+okg-venv/bin/okg ingest --deployment myteam --progress \
+  --exclude github_repo,gitlab_repo
+```
+
+## 5. Confirm it published
 
 ```bash
 okg-venv/bin/okg status --deployment myteam --json
@@ -120,12 +161,12 @@ okg-venv/bin/okg search --deployment myteam --query "docker image build"
 
 `latest_published_status` must be `published` and
 `latest_published_generation` must not be null. If the generation is null,
-nothing was published and search will refuse — see step 6.
+nothing was published and search will refuse — see step 7.
 
 The search returns real files from the GitLab repository, pinned to that
 generation. Direct SQL against the graph tables is refused by design.
 
-## 5. Start the chat frontend
+## 6. Start the chat frontend
 
 The bundle already declares the chat site, so there is nothing to write.
 The chat app needs **its own** database, separate from the graph; okg
@@ -168,7 +209,7 @@ admin settings. A local ollama needs no API key at all — check which port
 yours listens on rather than assuming the default, and note that a
 container reaching *another* machine's ollama works fine.
 
-## 6. If the publish is blocked
+## 7. If the publish is blocked
 
 Every *selected* source must finish or none of them publish — including the
 ones that worked. So a single source you cannot feed blocks everything.
@@ -181,7 +222,7 @@ okg-venv/bin/okg ingest --deployment myteam --progress \
   --exclude docsite,jira,twiki_eos,twiki_crawl
 ```
 
-## 7. Adding a TWiki
+## 8. Adding a TWiki
 
 > **Not verified** — no CERN SSO cookie was available where this was
 > written. The requirement below is evidenced; the working configuration is
