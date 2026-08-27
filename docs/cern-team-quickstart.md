@@ -38,8 +38,13 @@ git clone git@github.com:mitdbg/okg.git
 okg-venv/bin/pip install ./okg     # add -e only to edit okg itself
 
 # archi: public, so pip fetches it directly — no clone, no wheel build.
+# NOTE the branch. This document describes the bundle as it exists on
+# worktree-w-quickstart (PR #628). Installing from archi_v3 gets you the
+# PREVIOUS bundle — no repository connectors, no chat, and docsite/jira/
+# twiki_eos still selected by default, which blocks the first publish.
+# Change this to archi_v3 once #628 merges.
 okg-venv/bin/pip install \
-  "archi @ git+https://github.com/archi-physics/archi@archi_v3#subdirectory=python"
+  "archi @ git+https://github.com/archi-physics/archi@worktree-w-quickstart#subdirectory=python"
 ```
 
 Verified 2026-08-27: that second command installs into a clean 3.12
