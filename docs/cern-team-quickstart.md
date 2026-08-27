@@ -6,10 +6,11 @@ repository and a GitLab repository, with a chat frontend in front of it.
 `cern-team-demo.md` is the evidence runbook for the same bundle — longer,
 and written to prove things rather than to be followed.
 
-**What was actually run.** §1–3 were executed end to end on 2026-08-27
-against an empty database, and the results are quoted inline. Two things
-are **not** verified and say so where they appear: the TWiki source (§5)
-and the chat frontend (§6–7).
+**What was actually run.** §1–4 and §6 were executed end to end on
+2026-08-27 against an empty database — install, publish, read-back, and a
+healthy chat instance — and the results are quoted inline. One thing is
+**not** verified and says so where it appears: the TWiki source (§5), which
+needs a CERN SSO cookie this host did not have.
 
 ---
 
@@ -173,58 +174,53 @@ everything.
 
 ## 6. Stand up the chat frontend
 
-> **Partly verified 2026-08-27.** No model key is needed — a local ollama
-> works. What is *not* yet possible is bringing the instance up from this
-> bundle unchanged; the reason is below and it is ours to fix.
+> **Verified 2026-08-27** on one machine, rootless podman, no root access.
 
-**A local ollama removes the API-key problem entirely.** Verified on
-submit76: ollama runs there bound to `0.0.0.0:7870` (not the default
-11434), is reachable across the cluster, and serves 37 models on three
-V100s. Open WebUI was originally built for ollama, so it is a first-class
-provider — you point it at `http://<host>:7870` and no key exists to leak.
-If ollama is on the same machine as the chat container, `okg chat-instance
-up --host-gateway-alias host.docker.internal` makes the host reachable
-from inside it.
+The bundle ships the `search:` and `chat:` blocks, so the deployment already
+declares its chat site — you do not write one.
 
-**Order matters, and it is the opposite of what you might expect.** The
-`chat:` block has to exist in `deployment.yaml` *before* `chat-instance
-up` — okg refuses to stand up an instance for a deployment that declares
-no chat (`no_chat_block`).
-
-**The block cannot be partial.** An enabled chat must declare all five of
-`ui`, `models`, `preset`, `search_profile` and `mcp`. Declaring two gets
-`chat_manifest_invalid` listing what is missing, with the reasoning stated
-outright: *"a hollow declaration never degrades into a default-configured
-chat."*
-
-**And that is where this stops today.** `search_profile` must name a
-profile declared in the manifest's `search:` block, and the cern-team
-bundle ships neither — so the bundle as it stands cannot enable chat. The
-missing pieces are a `search:` block with at least one profile, and a
-complete `chat:` block, both of which belong in the bundle rather than in
-every operator's hands. That is bundle work, not an okg gap.
-
-Once those ship, the sequence is:
+The chat app needs **its own database**, separate from the graph. okg checks
+they really are different and refuses if not:
 
 ```bash
-export OKG_CHAT_APP_DATABASE_URL='postgresql://...'   # the chat app's OWN database
-export OKG_CHAT_WEBUI_SECRET_KEY='...'                # instance secret
+podman run -d --name okg-chat-pg \
+  -e POSTGRES_PASSWORD=okg -e POSTGRES_DB=okg_chat_app \
+  -p 127.0.0.1:5458:5432 docker.io/library/postgres:16
+
+export OKG_CHAT_APP_DATABASE_URL='postgresql://postgres:okg@127.0.0.1:5458/okg_chat_app'
+export OKG_CHAT_WEBUI_SECRET_KEY='choose-something'
+export OKG_CHAT_MCP_TOKEN='choose-something'
 
 okg-venv/bin/okg chat-instance up --deployment myteam \
-  --container-runtime podman --instance-port 8099
+  --container-runtime podman --instance-port 8099 --ready-timeout 300
 okg-venv/bin/okg chat-instance status --deployment myteam
 ```
 
-`--container-runtime` defaults to **docker**, so a podman host must say so
-— and note it is accepted by `up` only; `status` rejects it.
-`--instance-port` is effectively required until the manifest can carry it.
-Both environment variables are named as *variable names* on purpose:
-neither the manifest nor the command line carries the value.
+**Give it a plain `127.0.0.1` address, not a hostname.** okg validates the
+database from the host and then rewrites the container's copy to reach back
+through the container gateway, reporting the substitution rather than doing
+it quietly. Handing it a container-only name like `host.docker.internal`
+fails on the host; handing it the machine's own LAN address fails inside the
+container. Loopback is the one that works, and it needs no root and no
+second machine.
+
+**Use a generous `--ready-timeout`.** On first boot Open WebUI downloads and
+loads a sentence-embedding model, which can exceed the 120s default; okg
+then tears the container down as never-started. 300 is comfortable, and
+later starts are quick.
+
+`--container-runtime` defaults to **docker**, so a podman host must say so —
+and it is accepted by `up` only; `status` rejects it.
+
+**Expect `status` to report the tools endpoint dead at this point**, and take
+it seriously — it says so plainly: *"the site can be up and every tool call
+still fail."* The site is running; the graph tools are a separate process,
+which is the next step.
 
 Then project the declaration into the running instance:
 
 ```bash
-export OKG_CHAT_INSTANCE_URL=...     # from `chat-instance status`
+export OKG_CHAT_INSTANCE_URL=http://127.0.0.1:8099
 export OKG_CHAT_ADMIN_TOKEN=...      # the instance admin key
 okg-venv/bin/okg chat sync --deployment myteam
 ```
@@ -232,9 +228,21 @@ okg-venv/bin/okg chat sync --deployment myteam
 `sync` writes the declaration in and reads every change back to prove it
 landed.
 
+To remove it all again: `okg chat-instance down --deployment myteam
+--container-runtime podman`, then `podman rm -f okg-chat-pg`.
+
 ## 7. Give it a model
 
-Configure the provider in Open WebUI itself with your own API key. It is
-deliberately not part of the deployment declaration, which carries no
-credentials. Add the provider in the instance's admin settings, name the
-model in `chat.models`, re-run `okg chat sync`.
+The model provider is configured **inside Open WebUI**, not in the
+deployment — the manifest has no field that could hold a credential, by
+design.
+
+A local ollama is the easiest option and needs no API key at all. Open
+WebUI treats it as a first-class provider: point it at
+`http://<host>:<port>` in the admin settings. Check where yours listens
+before assuming the default — `OLLAMA_HOST` is often set to something other
+than `11434`, and a container reaching *another* machine's ollama works
+fine (only reaching back to its own host needs the gateway alias).
+
+Then name the model in `chat_model` at install (or `chat.models` in the
+manifest) and re-run `okg chat sync`.
