@@ -85,3 +85,23 @@ def test_bundle_dir_reports_available_bundles_when_missing():
         paths.bundle_dir("no-such-bundle")
     assert "no-such-bundle" in str(excinfo.value)
     assert "available" in str(excinfo.value)
+
+
+def test_wheel_carries_the_bundle_schema_slices(wheel_names):
+    """The `schemas:` slot is only real if the ARTIFACT carries the files.
+
+    The one-command install was first proven with OKG_PROFILES_DIR pointing at
+    a source tree, which proves nothing about an installed wheel — the whole
+    point of okg#1367 for an external consumer is that a pip install is enough.
+    force-include maps all of ../bundles, so this passes today; it exists so a
+    narrowed include cannot silently drop the schemas and leave the artifact
+    unable to complete an install.
+    """
+    names, _ = wheel_names
+    expected = {
+        "archi/bundles/cern-team/schemas/operations.yaml",
+        "archi/bundles/cern-team/schemas/sources.yaml",
+        "archi/bundles/cern-team/schemas/bridges/operations.yaml",
+        "archi/bundles/cern-team/schemas/bridges/sources.yaml",
+    }
+    assert expected <= set(names), f"wheel is missing: {sorted(expected - set(names))}"

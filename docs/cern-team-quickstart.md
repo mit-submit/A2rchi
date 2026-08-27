@@ -35,12 +35,21 @@ anything else — it is the step most likely to stop you.
   `3.0.0a1` and is not published. Install it from the built wheel.
 
 ```bash
-git clone git@github.com:mitdbg/okg.git        # needs repo access
-python3 -m venv okg-venv
-okg-venv/bin/pip install ./okg                 # add -e only if you intend
-                                               # to edit okg itself
-okg-venv/bin/pip install /path/to/archi/python/dist/archi-*.whl
+python3.12 -m venv okg-venv        # 3.12+ required; archi refuses older
+
+# okg: private, so this needs your GitHub access. Clone, then install.
+git clone git@github.com:mitdbg/okg.git
+okg-venv/bin/pip install ./okg     # add -e only to edit okg itself
+
+# archi: public, so pip fetches it directly — no clone, no wheel build.
+okg-venv/bin/pip install \
+  "archi @ git+https://github.com/archi-physics/archi@archi_v3#subdirectory=python"
 ```
+
+Verified 2026-08-27: that second command installs into a clean 3.12
+virtualenv and leaves `archi-profiles-dir` on the path, pointing at the
+bundle inside the installed package. On Python 3.11 or older pip refuses
+with *"Package 'archi' requires a different Python"*.
 
 `-e` is an *editable* install: pip points at your clone instead of copying
 it, so local edits take effect immediately. That is what a developer
