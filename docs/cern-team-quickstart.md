@@ -341,8 +341,21 @@ ssh -L 8099:127.0.0.1:8099 <that-host>
 
 Then open `http://127.0.0.1:8099` in your own browser.
 
-**Connect a model provider in the admin settings.** A local ollama needs no
-API key at all. Two things about the URL, both verified:
+**Point it at a model provider.** A local ollama needs no API key at all, and
+with the admin token you already exported this is one command rather than a
+trip through the settings screens:
+
+```bash
+curl -s -X POST "$OKG_CHAT_INSTANCE_URL/ollama/config/update" \
+  -H "Authorization: Bearer $OKG_CHAT_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"ENABLE_OLLAMA_API":true,"OLLAMA_BASE_URLS":["http://host.docker.internal:<port>"]}'
+```
+
+*(You can do the same thing by hand under **Settings → Admin → Connections**
+if you prefer clicking.)*
+
+Two things about that URL, both verified the hard way:
 
 - **Use the gateway name, not loopback or the hostname.** If ollama runs on
   the same machine as the chat container, the URL is
@@ -354,13 +367,16 @@ API key at all. Two things about the URL, both verified:
 
 ### Then use it — and pick the right model
 
-**Select the deployment's preset in the model picker, not a bare model.**
-This is the step that is easy to miss and produces the most misleading
-result. The graph tools are bound to the *preset* `chat sync` created (named
-after your deployment). Choose a raw ollama model from the same list and you
-get a model with no tools at all — and, because it still has the system
-prompt telling it that it has graph tools, it will happily describe searches
-it never ran and invent plausible-looking results. Nothing warns you.
+**Select the deployment's preset in the model picker — the pre-selected model
+is the wrong one.** This is the single most misleading step, and it is not a
+matter of carelessness: the model the site opens on is a raw ollama model,
+because the manifest field that names the preset's underlying model is also
+the field that sets the site default. The graph tools are bound to the
+*preset* `chat sync` created (named after your deployment), so unless you
+change the picker you are talking to a plain language model with no access to
+anything you indexed and no instructions about this deployment. It will
+answer CMS questions from whatever it already knows, fluently, with nothing
+indicating the graph was never consulted.
 
 A good first question, with a checkable answer:
 
