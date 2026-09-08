@@ -7,9 +7,18 @@ Follow it top to bottom. The commands are real and runnable as written.
 Two things are yours to choose and are marked where they appear: the
 repositories you want indexed, and a password for the chat database.
 
-**What is proven.** Steps 1–6 were executed end to end against an empty
-database on 2026-08-27, and their results are quoted inline. Step 8 (TWiki)
-is the one part not verified, and says so where it appears.
+**What is proven.** Steps 1–5 were re-run end to end against an empty
+database on 2026-09-08, with okg at `1475c87d5`, and their results are quoted
+inline. Step 6 (chat) was proven on 2026-08-27 and its mechanics are
+unchanged since — okg's chat modules are byte-identical between the two
+revisions. Step 8 (TWiki) is the one part never verified, and says so where
+it appears.
+
+**A note on okg versions.** This document does not pin one, so `git clone`
+gives you whatever `dev` is that day. okg changes quickly, and the install
+requirements in step 3 are recent additions — if a command here fails in a
+way this document does not describe, check whether okg has moved before
+assuming you did something wrong.
 
 **You need:** a machine with `podman` (or `docker`), Python 3.12+, `git`,
 and read access to the private `mitdbg/okg` repository. No root required.
@@ -24,11 +33,21 @@ mkdir -p ~/archi-quickstart && cd ~/archi-quickstart
 python3.12 -m venv okg-venv          # 3.12+; archi refuses anything older
 
 git clone git@github.com:mitdbg/okg.git
-okg-venv/bin/pip install ./okg       # add -e only if you plan to edit okg
+okg-venv/bin/pip install -e ./okg    # -e is REQUIRED, not a preference
 
 okg-venv/bin/pip install \
   "archi @ git+https://github.com/archi-physics/archi@archi_v3#subdirectory=python"
 ```
+
+**Why `-e` is required.** okg stamps every published generation with the Git
+revision of the code that produced it, and it finds that revision by looking
+for a Git checkout around its own installed module. A plain
+`pip install ./okg` copies the code into `site-packages`, outside any
+checkout, and okg then refuses to publish — with five failed authority
+checks and a message about `release.pin.code_repository` that does not
+mention the cause. `-e` keeps the running code inside the clone, where it
+can see its own revision. Leave the clone in place afterwards; it is now
+part of the installation, not a build artefact.
 
 **Why a clone for okg but not for archi.** okg is a private repository and
 is not on PyPI, so pip cannot fetch it for you. archi is public, so pip
@@ -70,6 +89,19 @@ for the index builds and fails partway through.
 
 ## 3. Install the bundle
 
+**First, make the deployments directory a Git repository.** This is not
+optional and not bookkeeping: okg records the exact deployment configuration
+that produced each published generation, and it refuses to publish from a
+directory it cannot resolve to a commit.
+
+```bash
+mkdir -p deployments
+git -C deployments init
+git -C deployments commit --allow-empty -m "deployment repository baseline"
+```
+
+Then install:
+
 ```bash
 export OKG_PROFILES_DIR="$(okg-venv/bin/archi-profiles-dir)"
 export OKG_DEPLOYMENTS_DIR="$PWD/deployments"
@@ -84,9 +116,28 @@ okg-venv/bin/okg install --profile cern-team \
   --gitlab-repo-url https://gitlab.cern.ch/gitlabci-examples/build_docker_image.git
 ```
 
-**That one command is the whole install.** It creates the extensions,
-migrates, materialises the distribution's schemas, loads the catalog,
-clones both repositories, ingests, and publishes.
+**This command will fail, and that is expected.** It creates the extensions,
+migrates the database, materialises the distribution's schemas, loads the
+catalog, clones both repositories and ingests them — then stops at the final
+publish with `repository provenance inputs are not committed`, listing the
+files it just wrote. It exits non-zero. Nothing is wrong: okg requires the
+deployment's configuration to be committed before it will publish a
+generation from it, and those files did not exist until this command created
+them. You are the one who commits them.
+
+```bash
+git -C deployments add -A
+git -C deployments commit -m "myteam deployment config"
+
+okg-venv/bin/okg run --once --deployment myteam --apply
+```
+
+That last command publishes the work the install staged, and is the one that
+must exit zero.
+
+*If the install fails for some other reason, do not commit and re-run — see
+"Starting over". A half-finished deployment stays wedged behind `staged
+source work was not published`, and the recovery is a teardown, not a retry.*
 
 Swap in your own repositories. `--*-repo-name` is just a short label for
 the graph; `--*-repo-url` is what gets cloned.
@@ -105,8 +156,17 @@ later.
 **You never run `git clone`** — the connectors own their checkouts,
 cloning on first run and fast-forwarding afterwards.
 
-**Expected result:** `first publish complete`, roughly 2,586 nodes / 2,279
-edges for the two repositories above.
+**Expected result:** a published generation of roughly 2,600 nodes / 2,293
+edges for the two repositories above. Confirm with `okg status --deployment
+myteam`: `latest_published_status: published` and a
+`latest_published_generation` id.
+
+Do not treat those numbers as exact. They were 2,586 / 2,279 on 2026-08-27
+and 2,600 / 2,293 on 2026-09-08 — the difference is CMSSW gaining three
+releases and `click` gaining eleven files upstream in twelve days. Counts
+that drift by tens are the sources moving; counts that differ by an order of
+magnitude, or a `latest_published_generation` of `None`, mean something
+failed.
 
 *If the catalog load fails on authentication, the migration created the
 loopback roles without passwords. Set them, then re-run the ingest (not the
@@ -137,15 +197,23 @@ Edit `deployments/myteam/source_registry.yaml`, and under `github_repo` and
       url: https://github.com/pallets/click
 ```
 
-Then apply and publish:
+**Commit the edit before applying it.** The same rule as step 3: okg will not
+publish from a deployment directory with uncommitted changes, and you have
+just changed one.
 
 ```bash
+git -C deployments add -A
+git -C deployments commit -m "point github_repo at a different repository"
+
 cd deployments/myteam
 okg-venv/bin/okg catalog ownership claim --deployment . --json
 okg-venv/bin/okg catalog load --deployment . --apply --json
 okg-venv/bin/okg ingest --deployment myteam --progress
 cd -
 ```
+
+If you forget, the ingest fails with `repository provenance inputs are not
+committed` and names the file you edited. Commit and re-run.
 
 **Not interested in repositories at all?** Install without the URLs — that
 install will end with the publish blocked, which is expected — then exclude
@@ -463,8 +531,21 @@ podman rm -f myteam-pg myteam-chat-pg
 rm -rf deployments
 ```
 
+`rm -rf deployments` removes the Git repository along with the configuration,
+so step 3 starts again from `git init`. That is intended — the deployment
+repository records one deployment's history, and you are discarding the
+deployment.
+
 Keep `okg-venv` and the okg clone — nothing is wrong with them, and
-reinstalling costs you the slow part again.
+reinstalling costs you the slow part again. **Do not delete the okg clone**:
+with `-e` it is where the running code lives, not a build leftover.
+
+**When a run fails partway, this is the recovery.** okg refuses to start new
+source writes while an earlier run's work sits unpublished — `staged source
+work was not published; refusing to start new source writes`. Fixing the
+original problem and re-running does not clear it, and neither does
+`okg up`, which fails differently at its backup phase. Tear down and start
+again.
 
 **If you hit `catalog_ownership_mismatch` and would rather not start over,**
 re-running the claim is enough — it re-records the current registry as the
