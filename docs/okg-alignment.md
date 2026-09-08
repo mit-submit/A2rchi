@@ -20,8 +20,62 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-08-27, tested against okg `dev` @ `2d528e824`; archi branch
-`archi_v3` with PRs #610–#627 merged and #628 open.*
+*Last updated 2026-09-08. Tested against okg `dev` @ `2d528e824`; live okg `dev` is
+`1475c87d5`, so **the pin is behind and the re-audit is pending** — see "Pin drift"
+below. Archi branch `archi_v3` with PRs #610–#631 merged and #632 open.*
+
+**The bundle now ships the assistant's system prompt (2026-09-08, PR #632).**
+`bundles/cern-team/skills/chat-system-prompt.md`, declared as
+`chat.preset.system_prompt_ref`. This is required, not decorative: `okg chat sync`
+refuses a deployment that declares neither `mcp_instructions` nor a
+`system_prompt_ref`, because Open WebUI never shows the model the MCP server's own
+instructions — without it the assistant has graph tools registered and no idea it
+has them. Tests assert the prompt is declared, shipped, non-empty, and still names
+the six operators. **For #1183: we think that refusal is right, and it argues the
+prompt belongs to what a bundle supplies rather than being optional decoration.**
+
+The rest of the chat surface (`chat:` and `search:` blocks, the preset, the MCP tool
+list, the `schemas/` slices, the `skills/` slot) was already on `archi_v3` and is
+unchanged. The full chain is verified end to end on a fresh database: install →
+publish 2,586 nodes → `chat-instance up` → `mcp-serve` on the port the bundle
+declares → `chat sync` exiting 0 with the graph tools bound and the prompt applied.
+
+**Three chat findings for #1183, drafted in `docs/outbound/`** and verified against
+`dev` @ `1475c87d5`. Worst first: a synced instance opens on a model with **no graph
+access**, because `chat.models.default` is both the preset's `base_model_id`
+(`sync.py:4937`) and the site default (`sync.py:4432`) while the vendor selects
+`default_models.split(',')[0]` — there is no deployment-side workaround, and the
+failure is a confident ungrounded answer with no warning. Second, the model provider
+cannot be declared at all (`chat-instance up` injects two hardcoded variables,
+`instance.py:1253`) and sits in none of the six reconciled surfaces, so `chat sync`
+reports green on an instance that cannot answer. Third, the first admin account is
+not bootstrapped. Filed separately; recorded here so #1183's design has them.
+
+**Pin drift, and why it matters more than usual (2026-09-08).** We are pinned to
+`2d528e824`; `dev` is `1475c87d5`. The external-distribution conformance contract
+landed inside that gap — `conformance.py` did not exist at our pin and is 2,132 lines
+at `dev`, arriving in `46c42c7e0` via PR #1377 (merged 2026-08-28), with #1406
+following on 08-30. Two consequences: our installed okg cannot evaluate the
+conformance schema at all, and **our existing acknowledgement is stale**. Comment
+`5440260363` names branch `f4081329` and schema digest `sha256:301ec97f…`; the
+catalog digest at `dev` is now
+`sha256:db38e9bbbe571dbb9efec29192f786d851095ca412f5a5fda17d1af81f62e662`. Until it
+is re-issued, the real conformance arm returns
+`conformance_external_acknowledgement_pending`. The suite has **not** yet been re-run
+against `1475c87d5`; the ten guarded `okg.substrate.*` symbols below are therefore
+still asserted only at `2d528e824`.
+
+**Sprint 11 (okg#1698) is the Archi chain.** Its exit criteria are
+#1178 → #1179 → #1181 → #1180 → #1183 → #1184 → #1185, with #1185 run on a real
+deployment — which their own #1185 note says only the `cern-team` wheel on SubMIT
+satisfies. Design notes for #1178, #1179, #1181 and #1185 are posted and
+adversarially reviewed; our answers to #1178's seven open questions are
+[comment `5590581856`](https://github.com/mitdbg/okg/issues/1178#issuecomment-5590581856).
+In flight and directly relevant to us: **#1737** owner-keyed module providers (the
+D11 gap this page has flagged since 2026-08-19), **#1740** package v2 with an OKG
+compatibility window, **#1742** the SDK connector fact surface and a `partial`
+source-run status — which closes our own **#1284**. None had merged as of
+2026-09-08.
 
 **Pin bumped, drift closed (2026-08-27).** The 210-commit exposure this page
 flagged is resolved: we fast-forwarded to okg `dev` @ `2d528e824` and re-ran the
