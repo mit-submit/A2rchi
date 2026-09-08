@@ -1,7 +1,7 @@
 pact_version: 5
 id: w10-v2-teardown
 title: 'W10: delete the v2 application from the v3 line'
-tier: 1
+tier: 2
 why: 'Backfills the unrecorded W10 wave. The deletions executed as PR #611 without a PACT
   change and without the LOC delta the ADR and section 10 both require; that number is recorded
   here. The wave stays open because its done-clause is the section 14 cutover, which does

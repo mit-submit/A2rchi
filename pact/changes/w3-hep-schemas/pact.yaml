@@ -1,7 +1,7 @@
 pact_version: 5
 id: w3-hep-schemas
 title: 'W3: HEP schema slices and deployment bridges'
-tier: 1
+tier: 2
 why: 'Backfills the unrecorded W3 wave, and records that its ADR done-clause is FALSE AS WRITTEN
   rather than quietly re-scoping it. The clause reads: ''the cern-team bundle and the comp-ops
   instance compose the same files without divergence.'' They do not, and cannot today. OPEN
