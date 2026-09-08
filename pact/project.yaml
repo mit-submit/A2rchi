@@ -1,3 +1,19 @@
+# The CORPUS is v5 as of 2026-09-08: every manifest under pact/changes/ and
+# pact/archive/ carries `pact_version: 5`, migrated by okg's own `pact migrate`.
+#
+# This file stays at 4 on purpose, and okg made the same choice for their own
+# project.yaml after migrating their corpus. Two reasons: the v4 compatibility
+# reader behind `okg pact ...` still consults it, and the v5 CLI never reads it
+# at all — v5 is git-native and takes the git toplevel as its root. Bumping the
+# number here would change nothing for v5 and degrade the v4 reader.
+#
+# Author NEW changes with the v5 CLI, not `okg pact new`, or you will get a v4
+# manifest in a v5 corpus:
+#   /work/submit/lavezzo/okg-venv/bin/python -m pact.cli --root <repo> new <id>
+#
+# The `review_policy` and `decide/merge gate` wording below describes the v4
+# lifecycle. v5 replaces that whole flow with one `check` gate plus a
+# `Pact-Approved` git commit trailer. See CLAUDE.md's overrides section.
 pact_version: 4
 project: archi
 default_change_status: proposal
