@@ -20,9 +20,8 @@ reimplementation of OKG services.
 
 ## Current state (update this section when it changes)
 
-*Last updated 2026-09-08. Tested against okg `dev` @ `2d528e824`; live okg `dev` is
-`1475c87d5`, so **the pin is behind and the re-audit is pending** — see "Pin drift"
-below. Archi branch `archi_v3` with PRs #610–#631 merged and #632 open.*
+*Last updated 2026-09-08, tested against okg `dev` @ `1475c87d5`; archi branch
+`archi_v3` with PRs #610–#634 merged.*
 
 **The bundle now ships the assistant's system prompt (2026-09-08, PR #632).**
 `bundles/cern-team/skills/chat-system-prompt.md`, declared as
@@ -51,19 +50,42 @@ cannot be declared at all (`chat-instance up` injects two hardcoded variables,
 reports green on an instance that cannot answer. Third, the first admin account is
 not bootstrapped. Filed separately; recorded here so #1183's design has them.
 
-**Pin drift, and why it matters more than usual (2026-09-08).** We are pinned to
-`2d528e824`; `dev` is `1475c87d5`. The external-distribution conformance contract
-landed inside that gap — `conformance.py` did not exist at our pin and is 2,132 lines
-at `dev`, arriving in `46c42c7e0` via PR #1377 (merged 2026-08-28), with #1406
-following on 08-30. Two consequences: our installed okg cannot evaluate the
-conformance schema at all, and **our existing acknowledgement is stale**. Comment
-`5440260363` names branch `f4081329` and schema digest `sha256:301ec97f…`; the
-catalog digest at `dev` is now
-`sha256:db38e9bbbe571dbb9efec29192f786d851095ca412f5a5fda17d1af81f62e662`. Until it
-is re-issued, the real conformance arm returns
-`conformance_external_acknowledgement_pending`. The suite has **not** yet been re-run
-against `1475c87d5`; the ten guarded `okg.substrate.*` symbols below are therefore
-still asserted only at `2d528e824`.
+**Pin bumped 2d528e824 → 1475c87d5, drift closed (2026-09-08).** A 1153-commit
+fast-forward, and **the import surface survived it unchanged**: full archi suite
+**339 passed**, including `test_alignment_page.py`, which mechanically checks every
+one of the ten private `okg.substrate.*` symbols below still resolves. No source
+change was needed on our side.
+
+The external-distribution conformance contract landed inside that gap —
+`conformance.py` did not exist at the old pin and is 2,132 lines at `dev`, arriving
+in `46c42c7e0` via PR #1377 (merged 2026-08-28), with #1406 following on 08-30. That
+had made our acknowledgement stale twice over: comment `5440260363` named branch
+`f4081329` and schema digest `sha256:301ec97f…`, while the catalog digest is now
+`sha256:db38e9bbbe571dbb9efec29192f786d851095ca412f5a5fda17d1af81f62e662`. **Re-issued
+2026-09-08** at
+[#1185 comment `5591114065`](https://github.com/mitdbg/okg/issues/1185#issuecomment-5591114065),
+naming `dev` rather than a branch and vouching for `archi_v3` @ `0aec65f9`, so the
+real conformance arm no longer returns
+`conformance_external_acknowledgement_pending`. Note for whoever re-runs it: that
+acknowledgement binds one Archi revision to one OKG schema digest, so a commit to
+either side stales it again — an open question on that comment asks whether it is
+meant to be re-issued per run.
+
+**PACT corpus migrated to v5 (2026-09-08).** okg cut over on 2026-09-07 (#1691,
+#1687) and we followed the same day, using okg's own `pact migrate`: all nine
+manifests under `pact/changes/` and `pact/archive/` are now `pact_version: 5`, zero
+refused, zero destructive notes. Two things for anyone reading our ledger:
+
+- **Our evidence carries but does not bind.** `check` reports the migrated evidence
+  rows as `evidence_unbound` and W2's five requirements as unproven. v5 binds
+  receipts to a commit and ours predate that model. This is the same conclusion v4's
+  staleness guard had already reached after PR #617 touched `python/archi` — not new
+  breakage — but it does mean our ledger currently asserts less than its prose does,
+  and re-attaching receipts is outstanding work.
+- **`pact/project.yaml` stays at `pact_version: 4` deliberately**, matching okg's own
+  choice for theirs: the v4 compatibility reader consults it and the v5 CLI never
+  does. Note also that `okg pact view` still parses a v5 manifest but reports
+  `normative_v4: true` on it — degraded output, not authority.
 
 **Sprint 11 (okg#1698) is the Archi chain.** Its exit criteria are
 #1178 → #1179 → #1181 → #1180 → #1183 → #1184 → #1185, with #1185 run on a real

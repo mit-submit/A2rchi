@@ -12,6 +12,40 @@ conflicts with this repo, these overrides win (they match
 - References to `okg-workspace`, `okg dogfood`, and okg-repo runbooks
   (`docs/runbooks/agent-*.md`) do not exist in this repo; the PACT graph
   projection here is the interim `archi-pact` ledger deployment.
+- **This repo's PACT corpus is v5; the managed section's verb list is
+  stale (2026-09-08).** All nine manifests under `pact/changes/` and
+  `pact/archive/` were migrated by okg's own `pact migrate`. The v5 CLI is
+  a separate entry point that ignores `pact/project.yaml` entirely and
+  takes the git toplevel as its root:
+
+  ```
+  /work/submit/lavezzo/okg-venv/bin/python -m pact.cli --root <repo> <verb>
+  ```
+
+  Its verbs are `new`, `view`, `evidence attach`, `check`, `approve`,
+  `digest`, `migrate`, `usage`. **`check` is the one gate** — it validates,
+  binds receipts, verifies approval and computes the tier in a single call,
+  replacing the separate gate/decide steps below. **`approve` records the
+  operator's approval as a `Pact-Approved` git commit trailer**, not as a
+  ledger row. `gate`, `decide`, `hooks`, `sync` and `migrate-version` are
+  suppressed in v5: where the managed section names them, prefer `check`.
+
+  Two consequences worth knowing before you trust a reading:
+  - The old `okg pact view` still parses a v5 manifest but reports
+    `normative_v4: true` on it. Treat that output as degraded, not as
+    authority.
+  - A v5 task has only `id`, `requirement` and `verification` — **there is
+    no per-task status field.** Completion is derived from receipts bound
+    to a commit, so migrated evidence carries as `evidence_unbound`
+    warnings until it is re-attached with `evidence attach`. That is why
+    `check` currently reports W2's five requirements as unproven; it is the
+    same conclusion v4's staleness guard had already reached, not new
+    breakage.
+
+  `pact/project.yaml` deliberately still declares `pact_version: 4` — okg
+  left theirs at 4 after migrating their own corpus, the v4 compatibility
+  reader still uses it, and v5 never reads it. Do not "fix" it.
+
 - **Alignment-page policy (standing):** `docs/okg-alignment.md` is the
   OKG-side program's (okg#1178) window into this repo. Any change that
   touches python/archi's okg imports, bumps the okg commit we test
