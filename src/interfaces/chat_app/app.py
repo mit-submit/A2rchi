@@ -42,6 +42,7 @@ from src.archi.pipelines.agents.agent_spec import (
 )
 from src.archi.providers.base import ModelInfo, ProviderConfig, ProviderType
 from src.archi.utils.output_dataclass import PipelineOutput
+from src.evaluation.qa.console import EvaluationConsoleService
 # from src.data_manager.data_manager import DataManager
 from src.data_manager.data_viewer_service import DataViewerService
 from src.data_manager.vectorstore.manager import VectorStoreManager
@@ -71,6 +72,7 @@ from src.archi.pipelines.agents.tools.playbook_tools import (
     classify_playbook_tool_result,
 )
 from src.interfaces.chat_app.document_utils import *
+from src.interfaces.chat_app.evaluation_routes import register_evaluations
 from src.interfaces.chat_app.playbook_routes import register_playbooks
 from src.interfaces.chat_app.service_alerts import (
     register_service_alerts, get_active_banner_alerts, is_alert_manager,
@@ -2683,6 +2685,27 @@ class FlaskAppWrapper(object):
         self.services_config = self.config["services"]
         self.chat_app_config = self.config["services"]["chat_app"]
         self.data_path = self.global_config["DATA_PATH"]
+        evaluations_config = self.chat_app_config.get("evaluations", {})
+        self.evaluations_enabled = evaluations_config.get("enabled") is True
+        self.evaluation_service = None
+        if self.evaluations_enabled:
+            evaluation_mcp_config_path = evaluations_config.get("mcp_config_path")
+            self.evaluation_service = EvaluationConsoleService(
+                Path(evaluations_config.get("root", "/root/archi/evaluations")),
+                agent_config_path=Path(
+                    evaluations_config.get(
+                        "agent_config_path", "/root/archi/configs/config.yaml"
+                    )
+                ),
+                agents_dir=Path(
+                    self.chat_app_config.get("agents_dir") or "/root/archi/agents"
+                ),
+                mcp_config_path=(
+                    Path(evaluation_mcp_config_path)
+                    if evaluation_mcp_config_path
+                    else None
+                ),
+            )
         self.salt = read_secret("UPLOADER_SALT")
         # Persist an auto-generated key in the DATA_PATH volume when none is configured, so signed
         # sessions survive a restart — a fresh random key per boot would log every user out on each
@@ -2881,6 +2904,14 @@ class FlaskAppWrapper(object):
             chat_app_config=self.chat_app_config,
             require_auth=self.require_auth,
         )
+
+        if self.evaluation_service is not None:
+            logger.info("Adding QA evaluation console endpoints")
+            register_evaluations(
+                self.app,
+                authorize_request=self.authorize_request,
+                service=self.evaluation_service,
+            )
 
         # add unified auth endpoints
         if self.auth_enabled:
@@ -3227,58 +3258,75 @@ class FlaskAppWrapper(object):
             return f(*args, **kwargs)
         return decorated_function
 
+    def authorize_request(self, permission: str):
+        """Return an error response unless the current request has ``permission``."""
+        if not self.auth_enabled:
+            return None
+
+        if not session.get("logged_in"):
+            if not self._authenticate_bearer_token():
+                if self.sso_enabled:
+                    registry = get_registry()
+                    if not registry.allow_anonymous:
+                        if request.path.startswith("/api/"):
+                            return (
+                                jsonify(
+                                    {
+                                        "error": "Unauthorized",
+                                        "message": "Authentication required",
+                                    }
+                                ),
+                                401,
+                            )
+                        return redirect(url_for("login"))
+                return (
+                    jsonify(
+                        {"error": "Unauthorized", "message": "Authentication required"}
+                    ),
+                    401,
+                )
+
+        roles = session.get("roles", [])
+        if not has_permission(permission, roles):
+            user_email = session.get("user", {}).get("email", "unknown")
+            logger.warning(
+                f"Permission denied: user {user_email} with roles {roles} lacks '{permission}'"
+            )
+            from src.utils.rbac.audit import log_permission_check
+
+            log_permission_check(
+                permission=permission,
+                granted=False,
+                user=user_email,
+                roles=roles,
+                endpoint=request.path,
+            )
+            return (
+                jsonify(
+                    {
+                        "error": "Forbidden",
+                        "message": f"Permission denied: requires {permission}",
+                        "required_permission": permission,
+                    }
+                ),
+                403,
+            )
+
+        return None
+
     def require_perm(self, permission: str):
-        """
-        Decorator to require authentication AND a specific permission for routes.
-        
-        This combines require_auth with permission checking. Use for routes
-        that need specific RBAC permissions (e.g., document uploads, config changes).
-        
-        Args:
-            permission: The permission string required (e.g., 'upload:documents')
-            
-        Returns:
-            Decorator function
-        """
+        """Decorate a route to require authentication and ``permission``."""
+
         def decorator(f):
             @wraps(f)
             def decorated_function(*args, **kwargs):
-                # First check authentication
-                if not self.auth_enabled:
-                    return f(*args, **kwargs)
-
-                if not session.get('logged_in'):
-                    # Try Bearer token authentication
-                    if not self._authenticate_bearer_token():
-                        if self.sso_enabled:
-                            registry = get_registry()
-                            if not registry.allow_anonymous:
-                                if request.path.startswith('/api/'):
-                                    return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-                                return redirect(url_for('login'))
-                        return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
-
-                # Now check permission
-                roles = session.get('roles', [])
-                if not has_permission(permission, roles):
-                    user_email = session.get('user', {}).get('email', 'unknown')
-                    logger.warning(f"Permission denied: user {user_email} with roles {roles} lacks '{permission}'")
-                    from src.utils.rbac.audit import log_permission_check
-                    log_permission_check(
-                        permission=permission,
-                        granted=False,
-                        user=user_email,
-                        roles=roles,
-                        endpoint=request.path
-                    )
-                    return jsonify({
-                        'error': 'Forbidden',
-                        'message': f'Permission denied: requires {permission}',
-                        'required_permission': permission
-                    }), 403
-                
+                error_response = self.authorize_request(permission)
+                if error_response is not None:
+                    return error_response
                 return f(*args, **kwargs)
+
             return decorated_function
+
         return decorator
 
     def health(self):
@@ -4657,6 +4705,11 @@ class FlaskAppWrapper(object):
             or has_permission(Permission.AB.METRICS)
         )
 
+    def _can_view_evaluations(self) -> bool:
+        if not self.evaluations_enabled:
+            return False
+        return not self.auth_enabled or has_permission(Permission.Evaluations.VIEW)
+
     def _can_manage_ab_testing(self) -> bool:
         return self._is_admin_request() or has_permission(Permission.AB.MANAGE)
 
@@ -5001,7 +5054,10 @@ class FlaskAppWrapper(object):
                              basic_auth_enabled=self.basic_auth_enabled)
 
     def index(self):
-        return render_template('index.html')
+        return render_template(
+            'index.html',
+            can_view_evaluations=self._can_view_evaluations(),
+        )
 
     def terms(self):
         return render_template('terms.html')
