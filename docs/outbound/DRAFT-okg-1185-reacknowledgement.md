@@ -7,10 +7,10 @@ https://github.com/mitdbg/okg/issues/1178#issuecomment-5440260363.
 ```json
 {
   "consumer_id": "archi-physics/archi:cern-team",
-  "review_reference": "<this comment's URL>",
+  "review_reference": "https://github.com/mitdbg/okg/issues/1185#issuecomment-5591114065",
   "acknowledged_interface_revision": "1475c87d5d7fc60083bb0c87a9f9f3467a1a647a",
   "acknowledged_schema_digest": "sha256:db38e9bbbe571dbb9efec29192f786d851095ca412f5a5fda17d1af81f62e662",
-  "source_revision": "e70b22043c563a95bb2850031f1a25a3472548a7",
+  "source_revision": "0aec65f9b219672f7d2d5b6c120f93e34f719e52",
   "acknowledgement_status": "current"
 }
 ```
@@ -36,15 +36,20 @@ and, for a `current` status, the acknowledged digest to equal the *current* cata
 digest. So any commit to either side invalidates it, and both sides are moving —
 #1179 through #1185 are landing on yours.
 
-On ours, one thing is worth naming because it bears on #1183. The bundle's `chat:`
-and `search:` blocks, its `schemas/` slices and its `skills/` slot are all on
-`archi_v3` and included above. Its **assistant system prompt** is not yet: it sits on
-an open PR. That asset exists because `okg chat sync` refuses a deployment declaring
-neither `mcp_instructions` nor a `system_prompt_ref` — Open WebUI never shows the
-model the MCP server's own instructions, so without it an assistant has graph tools
-registered and no idea it has them. We think that refusal is right, and we mention it
-because #1183's design should probably treat the prompt as part of what a bundle
-supplies rather than as optional decoration.
+On ours the revision above is deliberately the complete `cern-team` bundle: the
+`chat:` and `search:` blocks, the preset, the `schemas/` slices, the `skills/` slot,
+and — merged today, specifically so this acknowledgement would not need an asterisk —
+the assistant's **system prompt**.
+
+That last asset is worth a sentence for #1183, because it is a constraint we found by
+running the thing rather than by reading it. `okg chat sync` refuses a deployment
+that declares neither `mcp_instructions` nor a `system_prompt_ref`, and it is right
+to: Open WebUI never shows the model the MCP server's own instructions, so without
+one the assistant has graph tools registered and no idea it has them. That argues the
+prompt is part of what a bundle supplies rather than optional decoration. Our
+alignment page now carries the same note, along with the rest of the bundle's current
+shape — it had gone twelve days without an update while you were designing against
+it, which was our miss to fix.
 
 Second, and following from that: this cannot be the acknowledgement the real arm
 finally runs against, because the real arm cannot run until the install verb exists,

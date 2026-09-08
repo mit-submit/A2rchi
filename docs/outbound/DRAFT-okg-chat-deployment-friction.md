@@ -108,8 +108,10 @@ against the same assets, one step further along.
 
 - Vendor selection logic read out of `ghcr.io/open-webui/open-webui:v0.11.0`
   directly (`config.py`, `main.py`, and the built frontend chunk cited above).
-- okg behavior read from `src/okg` at `2d528e824`; every line reference above
-  was opened, not recalled.
+- okg behavior read from `src/okg` at `2d528e824`; every line reference above was
+  opened, not recalled. Re-checked at `dev` `1475c87d5`: `chat/sync.py`,
+  `chat/instance.py` and `deployments/chat_block.py` are byte-identical between the
+  two, so every citation holds at the tree you are working on.
 - Findings 2 and 3 were met in practice during two end-to-end bring-ups: both
   were completed only by calling the vendor admin API by hand, and finding 1
   produced a confidently wrong answer that was mistaken for an okg bug until
