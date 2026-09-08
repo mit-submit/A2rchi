@@ -1,7 +1,7 @@
 pact_version: 5
 id: w4-playbooks
 title: 'W4: port and de-site-ify the CMS playbooks'
-tier: 1
+tier: 2
 why: 'Backfills the unrecorded W4 wave. The playbooks shipped and one of the ADR''s three
   done-clauses is evidenced; the other two were never implemented or never run, and are recorded
   here as open rather than assumed. OPEN CLAUSES: skill_bundle_hash pinning unimplemented;

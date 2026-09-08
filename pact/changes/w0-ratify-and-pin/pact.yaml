@@ -1,7 +1,7 @@
 pact_version: 5
 id: w0-ratify-and-pin
 title: 'W0: ratify the ADR, adopt PACT, file the asks, pin the repos'
-tier: 1
+tier: 2
 why: 'Invariant 1 says one PACT change per work package; W0 shipped without one, so the wave
   that adopted PACT is itself unrecorded in the ledger. This backfills it. Recorded retroactively
   and honestly: three of the ADR''s four done-clauses now hold, and the fourth is not ours
