@@ -71,10 +71,21 @@ acknowledgement binds one Archi revision to one OKG schema digest, so a commit t
 either side stales it again — an open question on that comment asks whether it is
 meant to be re-issued per run.
 
-**Still on v4 PACT.** okg cut its corpus over to v5 (#1691, #1687, merged
-2026-09-07); `pact/project.yaml` here still declares `pact_version: 4`. v5 support
-exists only at `dev` — `src/pact/` and `okg/substrate/pact/v5_adapter.py` — so the
-migration was blocked until this pin bump and is now unblocked.
+**PACT corpus migrated to v5 (2026-09-08).** okg cut over on 2026-09-07 (#1691,
+#1687) and we followed the same day, using okg's own `pact migrate`: all nine
+manifests under `pact/changes/` and `pact/archive/` are now `pact_version: 5`, zero
+refused, zero destructive notes. Two things for anyone reading our ledger:
+
+- **Our evidence carries but does not bind.** `check` reports the migrated evidence
+  rows as `evidence_unbound` and W2's five requirements as unproven. v5 binds
+  receipts to a commit and ours predate that model. This is the same conclusion v4's
+  staleness guard had already reached after PR #617 touched `python/archi` — not new
+  breakage — but it does mean our ledger currently asserts less than its prose does,
+  and re-attaching receipts is outstanding work.
+- **`pact/project.yaml` stays at `pact_version: 4` deliberately**, matching okg's own
+  choice for theirs: the v4 compatibility reader consults it and the v5 CLI never
+  does. Note also that `okg pact view` still parses a v5 manifest but reports
+  `normative_v4: true` on it — degraded output, not authority.
 
 **Sprint 11 (okg#1698) is the Archi chain.** Its exit criteria are
 #1178 → #1179 → #1181 → #1180 → #1183 → #1184 → #1185, with #1185 run on a real
