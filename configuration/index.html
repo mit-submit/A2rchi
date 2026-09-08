@@ -88,6 +88,8 @@
         <ul>
     <li class="toctree-l4"><a class="reference internal" href="#serviceschat_appalerts">services.chat_app.alerts</a>
     </li>
+    <li class="toctree-l4"><a class="reference internal" href="#chat-app-evaluation-configuration">Chat-app evaluation configuration</a>
+    </li>
     <li class="toctree-l4"><a class="reference internal" href="#serviceschat_appauth">services.chat_app.auth</a>
     </li>
     <li class="toctree-l4"><a class="reference internal" href="#provider-configuration">Provider Configuration</a>
@@ -151,6 +153,10 @@
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../benchmarking/">Benchmarking</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../evaluation/">Evaluation Guide</a>
                 </li>
               </ul>
               <ul>
@@ -400,6 +406,31 @@ services:
             permissions:
               - alerts:manage
 </code></pre>
+<h4 id="chat-app-evaluation-configuration">Chat-app evaluation configuration</h4>
+<p>The evaluation console is opt-in. Both <code>archi create</code> and the chat runtime
+disable it when <code>enabled</code> is omitted or <code>false</code>. Set <code>enabled: true</code> explicitly
+to expose the console and its APIs. When enabled, it persists catalogs,
+atom-review drafts, jobs, and run artifacts.</p>
+<pre><code class="language-yaml">services:
+  chat_app:
+    agents_dir: ../configs/agents
+    evaluations:
+      enabled: true
+      mcp_config_path: ../configs/qa_evaluation_mcp.yaml
+</code></pre>
+<ul>
+<li><code>agents_dir</code> points to the host directory of Markdown agent specs that the
+  Console offers for selection.</li>
+<li><code>evaluations.enabled</code> must be <code>true</code> to expose <code>/evaluations</code> and its APIs.</li>
+<li><code>evaluations.mcp_config_path</code> is needed only for Dataset V2 live oracle
+  items. It is an absolute host path or a path relative to this deployment YAML.
+  Archi validates and stages the referenced evaluator MCP registry.</li>
+</ul>
+<p>Top-level <code>mcp_servers</code> configures tools available to the tested agent; it is
+not reused as the evaluator registry. See
+<a href="../evaluation/#chat-app-evaluation-configuration">Chat-app evaluation configuration</a>
+and <a href="../evaluation/#evaluator-mcp-registry">Evaluator MCP registry</a> for path
+resolution, runtime reachability, authentication, and schema rules.</p>
 <h4 id="serviceschat_appauth"><code>services.chat_app.auth</code></h4>
 <p>Authentication can be enabled with SSO or basic auth.</p>
 <p>For RBAC-managed admin access, use SSO plus <code>auth_roles</code>. Basic auth supports identity-only login, but it does not assign RBAC roles.</p>

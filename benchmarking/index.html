@@ -110,6 +110,10 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../evaluation/">Evaluation Guide</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../advanced_setup_deploy/">Advanced Setup</a>
                 </li>
               </ul>
@@ -150,7 +154,12 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="benchmarking">Benchmarking</h1>
-<p>Archi provides benchmarking functionality via the <code>archi evaluate</code> CLI command to measure retrieval and response quality.</p>
+<p>Archi provides two evaluation workflows. The deprecated <code>archi evaluate</code> CLI
+command measures retrieval and RAGAS quality. The newer <code>archi eval qa</code> command
+and browser console perform atom-based correctness evaluation of complete agent
+answers, repeated attempts, optional manual gold-atom review, live Dataset V2
+checks, and persisted per-attempt tool evidence. See the separate
+<a href="../evaluation/">Evaluation Guide</a> for the current workflow.</p>
 <h2 id="evaluation-modes">Evaluation Modes</h2>
 <p>Two modes are supported (can be used together):</p>
 <h3 id="sources-mode">SOURCES Mode</h3>
@@ -338,7 +347,7 @@ archi evaluate -n benchmark -c config.yaml -e .secrets.env --gpu-ids all
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
         <a href="../api_reference/" class="btn btn-neutral float-left" title="API Reference"><span class="icon icon-circle-arrow-left"></span> Previous</a>
-        <a href="../advanced_setup_deploy/" class="btn btn-neutral float-right" title="Advanced Setup">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="../evaluation/" class="btn btn-neutral float-right" title="Evaluation Guide">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
   <hr/>
@@ -368,7 +377,7 @@ archi evaluate -n benchmark -c config.yaml -e .secrets.env --gpu-ids all
       <span><a href="../api_reference/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
-      <span><a href="../advanced_setup_deploy/" style="color: #fcfcfc">Next &raquo;</a></span>
+      <span><a href="../evaluation/" style="color: #fcfcfc">Next &raquo;</a></span>
     
   </span>
 </div>
